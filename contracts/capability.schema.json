@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://quality-contract.dev/schemas/capability.v1.json",
-  "title": "Quality host capability",
+  "$id": "https://traceknot.dev/schemas/capability.v1.json",
+  "title": "Traceknot host capability",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "host", "adapterVersion", "capabilities"],

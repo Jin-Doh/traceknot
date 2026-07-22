@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-labelledby="title desc">
+  <title id="title">Traceknot mark</title>
+  <desc id="desc">A six-node traceability chain tightened into a knot around a vermillion verdict point.</desc>
+  <rect width="320" height="320" rx="44" fill="#F4F1EA"/>
+  <path d="M64 160c0-56 66-76 96-26 30-50 96-30 96 26s-66 76-96 26c-30 50-96 30-96-26Z" fill="none" stroke="#1A1917" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M160 64c56 0 76 66 26 96 50 30 30 96-26 96s-76-66-26-96c-50-30-30-96 26-96Z" fill="none" stroke="#5A5750" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#FFFEFA" stroke="#1A1917" stroke-width="6">
+    <circle cx="78" cy="132" r="11"/>
+    <circle cx="78" cy="188" r="11"/>
+    <circle cx="160" cy="76" r="11"/>
+    <circle cx="160" cy="244" r="11"/>
+    <circle cx="242" cy="132" r="11"/>
+    <circle cx="242" cy="188" r="11"/>
+  </g>
+  <circle cx="160" cy="160" r="38" fill="#B33A2B" stroke="#FFFEFA" stroke-width="8"/>
+  <path d="M138 160c0-17 15-17 22 0s22 17 22 0-15-17-22 0-22 17-22 0Z" fill="none" stroke="#F4F1EA" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

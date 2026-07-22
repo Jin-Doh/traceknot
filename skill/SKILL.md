@@ -1,9 +1,9 @@
 ---
-name: quality-contract
-description: Apply an ISTQB-aligned, evidence-first QA process to repository changes across OMP, Codex, GajaeCode, Claude Code, and OpenCode. Use for implementation verification, bug fixes, release checks, repository audits, defect confirmation, and residual-risk decisions without treating an agent's own completion claim as proof.
+name: traceknot
+description: Apply Traceknot's ISTQB-aligned, evidence-bound QA process to repository changes across OMP, Codex, GajaeCode, Claude Code, and OpenCode. Use for implementation verification, bug fixes, release checks, repository audits, defect confirmation, and residual-risk decisions without treating an agent's own completion claim as proof.
 ---
 
-# Quality Contract
+# Traceknot
 
 **Evidence-bound QA for coding agents.**
 

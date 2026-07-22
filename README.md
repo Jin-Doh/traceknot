@@ -1,18 +1,18 @@
-# Quality Contract
+# Traceknot
 
-<p align="center"><img src="assets/quality-contract-mark.svg" alt="Quality Contract mark" width="144"></p>
+<p align="center"><img src="assets/traceknot-mark.svg" alt="Traceknot mark" width="144"></p>
 
 **Evidence-bound QA for coding agents.**
 
 [한국어 문서](README.ko.md) · [Brand system](BRAND.md)
 
-Quality Contract is an ISTQB-aligned QA framework for coding-agent harnesses such as OMP, Codex, Claude Code, OpenCode, and GajaeCode. It separates portable test-process guidance from deterministic QA decisions and optional harness-level completion authority.
+Traceknot is an ISTQB-aligned, evidence-bound QA framework for coding-agent harnesses such as OMP, Codex, Claude Code, OpenCode, and GajaeCode. It separates portable test-process guidance from deterministic QA decisions and optional harness-level completion authority.
 
-The framework does **not** manage subagents. Each harness owns its agents, models, task graph, concurrency, retries, worktrees, lifecycle, and final task completion. Quality Contract defines what must be verified, what evidence is acceptable, how defects and residual risk are handled, and how the QA verdict is resolved.
+The framework does **not** manage subagents. Each harness owns its agents, models, task graph, concurrency, retries, worktrees, lifecycle, and final task completion. Traceknot defines what must be verified, what evidence is acceptable, how defects and residual risk are handled, and how the QA verdict is resolved.
 
 > `QA PASS` means the declared test basis and mandatory verification obligations passed. It does not mean every harness task, agent, job, or delivery has completed.
 
-## Why Quality Contract
+## Why Traceknot
 
 Coding-agent harnesses already orchestrate agents, tools, jobs, retries, and lifecycle events. Those signals establish that activity occurred; they do not establish that the declared change was sufficiently verified.
 
@@ -24,7 +24,7 @@ Coding-agent harnesses already orchestrate agents, tools, jobs, retries, and lif
 | Observed jobs became idle | Global quiescence or absence of unobserved work |
 | Hook or app-server event fired | Deterministic QA verdict or completion authority |
 
-Quality Contract supplies the missing test-process layer: traceability from basis through verdict, explicit evidence and independence requirements, defect and residual-risk handling, and deterministic verdict precedence. Lifecycle events remain observations, never proof by themselves.
+Traceknot supplies the missing test-process layer: traceability from basis through verdict, explicit evidence and independence requirements, defect and residual-risk handling, and deterministic verdict precedence. Every verdict is knotted to its evidence; lifecycle events remain observations, never proof by themselves.
 
 ## Status
 
@@ -74,7 +74,7 @@ flowchart TB
       HC[Harness completion]
     end
 
-    subgraph QC[Owned by Quality Contract]
+    subgraph TK[Owned by Traceknot]
       QB[Test basis and risks]
       QP[Test conditions and obligations]
       QE[Evidence requirements]
@@ -86,7 +86,7 @@ flowchart TB
     QC -->|returns QA verdict, never agent instructions| Harness
 ```
 
-Quality Contract specifies evidence requirements and minimum independence. It never instructs a harness to create a particular subagent, use a particular model, or apply a particular concurrency policy.
+Traceknot specifies evidence requirements and minimum independence. It never instructs a harness to create a particular subagent, use a particular model, or apply a particular concurrency policy.
 
 ## QA process
 

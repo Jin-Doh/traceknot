@@ -1,18 +1,18 @@
-# Quality Contract
+# Traceknot
 
-<p align="center"><img src="assets/quality-contract-mark.svg" alt="Quality Contract mark" width="144"></p>
+<p align="center"><img src="assets/traceknot-mark.svg" alt="Traceknot mark" width="144"></p>
 
 **코딩 에이전트를 위한 증거 결속형 QA.**
 
 [English documentation](README.md) · [브랜드 시스템](BRAND.ko.md)
 
-Quality Contract는 OMP, Codex, Claude Code, OpenCode, GajaeCode와 같은 코딩 에이전트 하네스에서 사용할 수 있는 ISTQB 기반 QA 체계입니다. 휴대 가능한 테스트 프로세스 지침, 결정론적 QA 판정, 선택적인 하네스 완료 권위를 서로 분리합니다.
+Traceknot(트레이스노트)은 OMP, Codex, Claude Code, OpenCode, GajaeCode 같은 코딩 에이전트 하네스를 위한 ISTQB 기반 증거 결속형 QA 프레임워크입니다. 휴대 가능한 테스트 프로세스 지침, 결정론적 QA 판정, 선택적 하네스 완료 권위를 분리합니다.
 
-이 체계는 **서브에이전트를 관리하지 않습니다.** 에이전트, 모델, task graph, 병렬성, retry, worktree, lifecycle과 최종 task 완료는 각 하네스가 소유합니다. Quality Contract는 무엇을 검증해야 하는지, 어떤 evidence를 인정할지, defect와 residual risk를 어떻게 처리할지, QA verdict를 어떻게 결정할지를 정의합니다.
+이 체계는 **서브에이전트를 관리하지 않습니다.** 에이전트, 모델, task graph, 병렬성, retry, worktree, lifecycle과 최종 task 완료는 각 하네스가 소유합니다. Traceknot은 무엇을 검증해야 하는지, 어떤 evidence를 인정할지, defect와 residual risk를 어떻게 처리할지, QA verdict를 어떻게 결정할지를 정의합니다.
 
 > `QA PASS`는 선언된 test basis와 mandatory verification obligation이 통과했다는 뜻입니다. 모든 하네스 task, agent, job 또는 delivery가 완료됐다는 뜻이 아닙니다.
 
-## Quality Contract가 필요한 이유
+## Traceknot이 필요한 이유
 
 코딩 에이전트 하네스는 이미 에이전트, 도구, job, retry, lifecycle event를 조정합니다. 이런 신호는 활동이 발생했음을 보여 주지만 선언된 변경이 충분히 검증되었음을 보장하지 않습니다.
 
@@ -24,7 +24,7 @@ Quality Contract는 OMP, Codex, Claude Code, OpenCode, GajaeCode와 같은 코�
 | 관찰된 job의 idle 전환 | 전역 quiescence 또는 미관찰 작업의 부재 |
 | hook 또는 app-server 이벤트 | 결정적 QA 판정 또는 완료 권한 |
 
-Quality Contract는 누락된 테스트 프로세스 계층을 제공합니다. 기준에서 판정까지의 추적성, 명시적 증거·독립성 요건, 결함·잔여 위험 처리, 결정적 판정 우선순위입니다. lifecycle event 자체는 증명이 아니라 관찰로 남습니다.
+Traceknot은 기준에서 판정까지의 추적성, 명시적 증거·독립성 요건, 결함·잔여 위험 처리, 결정적 판정 우선순위를 제공합니다. 모든 판정은 증거에 매듭지어지며 lifecycle event 자체는 증명이 아니라 관찰로 남습니다.
 
 ## 현재 상태
 
@@ -74,7 +74,7 @@ flowchart TB
       HC[Harness completion]
     end
 
-    subgraph QC[Quality Contract가 소유]
+    subgraph TK[Traceknot이 소유]
       QB[Test basis와 risk]
       QP[Test condition과 obligation]
       QE[Evidence requirement]
@@ -86,7 +86,7 @@ flowchart TB
     QC -->|agent 지시가 아닌 QA verdict 반환| Harness
 ```
 
-Quality Contract는 evidence requirement와 최소 independence 수준을 선언합니다. 특정 subagent 생성, 특정 모델 사용 또는 특정 병렬 정책을 하네스에 지시하지 않습니다.
+Traceknot은 evidence requirement와 최소 independence 수준을 선언합니다. 특정 subagent 생성, 특정 모델 사용 또는 특정 병렬 정책을 하네스에 지시하지 않습니다.
 
 ## QA 프로세스
 
