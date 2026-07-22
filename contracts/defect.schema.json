@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://traceknot.dev/schemas/defect.v1.json",
+  "$id": "https://traceknot.kyungho.info/schemas/defect.v1.json",
   "title": "Defect record",
   "type": "object",
   "additionalProperties": false,

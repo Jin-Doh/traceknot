@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://traceknot.dev/schemas/verdict.v1.json",
+  "$id": "https://traceknot.kyungho.info/schemas/verdict.v1.json",
   "title": "QA completion verdict",
   "type": "object",
   "additionalProperties": false,

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://traceknot.dev/schemas/verification-request.v1.json",
+  "$id": "https://traceknot.kyungho.info/schemas/verification-request.v1.json",
   "title": "Verification request",
   "type": "object",
   "additionalProperties": false,

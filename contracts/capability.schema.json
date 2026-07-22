@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://traceknot.dev/schemas/capability.v1.json",
+  "$id": "https://traceknot.kyungho.info/schemas/capability.v1.json",
   "title": "Traceknot host capability",
   "type": "object",
   "additionalProperties": false,

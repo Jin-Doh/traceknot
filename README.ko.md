@@ -4,7 +4,7 @@
 
 **코딩 에이전트를 위한 증거 결속형 QA.**
 
-[English documentation](README.md) · [브랜드 시스템](BRAND.ko.md)
+[웹사이트](https://traceknot.kyungho.info) · [English documentation](README.md) · [브랜드 시스템](BRAND.ko.md)
 
 Traceknot(트레이스노트)은 OMP, Codex, Claude Code, OpenCode, GajaeCode 같은 코딩 에이전트 하네스를 위한 ISTQB 기반 증거 결속형 QA 프레임워크입니다. 휴대 가능한 테스트 프로세스 지침, 결정론적 QA 판정, 선택적 하네스 완료 권위를 분리합니다.
 
