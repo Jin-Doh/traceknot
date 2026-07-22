@@ -43,7 +43,34 @@ The portable Skill and host-neutral core are usable now. Authoritative harness c
 
 ## Install
 
-Clone the repository, then run the installer without `sudo`:
+Install the current `main` revision without cloning the repository:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh
+```
+
+The script downloads the matching source archive over HTTPS, then installs without `sudo`. The default destination is `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`.
+
+To install a fixed tag or commit, use the same revision in the script URL and `TRACEKNOT_REF`:
+
+```sh
+TRACEKNOT_REF=<tag-or-commit>
+curl -fsSL "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/install.sh" \
+  | TRACEKNOT_REF="$TRACEKNOT_REF" sh
+```
+
+The installer copies the portable Skill, record schemas, capability manifests, host-neutral core, and GPL license. It does not install the optional completion-authority extension or register Traceknot with a specific harness. Point the harness's Skill loader at the installed `skill/` directory.
+
+Use an absolute prefix to change the destination:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh \
+  | sh -s -- --prefix "$HOME/tools/traceknot"
+```
+
+Pass `--dry-run` the same way to preview writes. Re-running the installer updates files owned by Traceknot and leaves unrelated files untouched.
+
+If you prefer to inspect the script before running it, download it first or install from a clone:
 
 ```sh
 git clone https://github.com/Jin-Doh/traceknot.git
@@ -51,27 +78,22 @@ cd traceknot
 ./install.sh
 ```
 
-The default destination is `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`. The installer copies the portable Skill, record schemas, capability manifests, host-neutral core, and GPL license. It does not install the optional completion-authority extension or register Traceknot with a specific harness.
-
-Point your harness's Skill loader at the installed `skill/` directory. To choose a different location, use an absolute path:
-
-```sh
-./install.sh --prefix "$HOME/tools/traceknot"
-```
-
-Re-running the command updates files owned by Traceknot and leaves unrelated files untouched. Preview changes with `./install.sh --dry-run`.
-
 ## Uninstall
 
-Use the same prefix that was used during installation:
+For the default destination:
 
 ```sh
-./uninstall.sh
-# or
-./uninstall.sh --prefix "$HOME/tools/traceknot"
+curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh | sh
 ```
 
-The uninstaller reads the installation manifest and removes only files installed by Traceknot. `./uninstall.sh --dry-run` previews removals; running uninstall again is harmless.
+For a custom prefix:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh \
+  | sh -s -- --prefix "$HOME/tools/traceknot"
+```
+
+The uninstaller reads the installation manifest and removes only files installed by Traceknot. Pass `--dry-run` to preview removals; running uninstall again is harmless. A cloned repository can use `./uninstall.sh` instead.
 
 ## Architecture
 

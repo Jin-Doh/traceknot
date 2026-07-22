@@ -8,6 +8,20 @@ SOURCE_ROOT=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
 MANIFEST_NAME=.traceknot-install-manifest
 DRY_RUN=0
 PREFIX=
+BOOTSTRAP_TMP=
+MANIFEST_TMP=
+
+cleanup() {
+    if [ -n "$MANIFEST_TMP" ]; then
+        rm -f "$MANIFEST_TMP"
+    fi
+    if [ -n "$BOOTSTRAP_TMP" ]; then
+        rm -rf "$BOOTSTRAP_TMP"
+    fi
+}
+
+trap cleanup 0
+trap 'exit 1' HUP INT TERM
 
 usage() {
     cat <<EOF
@@ -22,6 +36,8 @@ Options:
   --help, -h         show this help
 
 Default prefix: \${XDG_DATA_HOME:-\$HOME/.local/share}/traceknot
+Remote installs download the source archive for TRACEKNOT_REF (default: main).
+Set TRACEKNOT_REF to a tag or commit to pin the installed revision.
 EOF
 }
 
@@ -98,6 +114,49 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
+source_is_complete() {
+    candidate_root=$1
+    for candidate_component in skill contracts adapters system/core; do
+        [ -d "$candidate_root/$candidate_component" ] || return 1
+    done
+    [ -f "$candidate_root/LICENSE" ]
+}
+
+bootstrap_source() {
+    source_is_complete "$SOURCE_ROOT" && return
+
+    command -v curl >/dev/null 2>&1 || fail 'curl is required for remote installation'
+    command -v tar >/dev/null 2>&1 || fail 'tar is required for remote installation'
+
+    remote_ref=${TRACEKNOT_REF:-main}
+    case "$remote_ref" in
+        ''|/*|-*|*..*|*//*|*[!A-Za-z0-9._/-]*) fail "unsafe TRACEKNOT_REF: $remote_ref" ;;
+    esac
+
+    BOOTSTRAP_TMP=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-bootstrap.XXXXXX") ||
+        fail 'cannot create temporary bootstrap directory'
+    archive_path=$BOOTSTRAP_TMP/source.tar.gz
+    archive_url=https://codeload.github.com/Jin-Doh/traceknot/tar.gz/$remote_ref
+
+    printf 'Downloading Traceknot source (%s)...\n' "$remote_ref"
+    curl --proto '=https' --tlsv1.2 -fL "$archive_url" -o "$archive_path" ||
+        fail "cannot download Traceknot source: $archive_url"
+    tar -xzf "$archive_path" -C "$BOOTSTRAP_TMP" ||
+        fail 'cannot extract Traceknot source archive'
+
+    discovered_root=
+    for candidate_root in "$BOOTSTRAP_TMP"/*; do
+        if source_is_complete "$candidate_root"; then
+            [ -z "$discovered_root" ] || fail 'archive contains multiple Traceknot source roots'
+            discovered_root=$candidate_root
+        fi
+    done
+    [ -n "$discovered_root" ] || fail 'downloaded archive does not contain the required Traceknot files'
+    SOURCE_ROOT=$discovered_root
+}
+
+bootstrap_source
+
 if [ -z "$PREFIX" ]; then
     [ -n "${HOME:-}" ] || fail 'HOME is required when --prefix is not supplied'
     PREFIX=${XDG_DATA_HOME:-"$HOME/.local/share"}/traceknot
@@ -123,10 +182,7 @@ if [ -L "$PREFIX" ]; then
     fail "refusing symlink destination: $PREFIX"
 fi
 
-for component in skill contracts adapters system/core; do
-    [ -d "$SOURCE_ROOT/$component" ] || fail "missing source component: $component"
-done
-[ -f "$SOURCE_ROOT/LICENSE" ] || fail 'missing source file: LICENSE'
+source_is_complete "$SOURCE_ROOT" || fail 'Traceknot source is incomplete'
 
 MANIFEST="$PREFIX_CANON/$MANIFEST_NAME"
 if [ -L "$MANIFEST" ]; then
@@ -209,7 +265,6 @@ PREFIX_CANON=$(canonical_path "$PREFIX_CANON") || fail 'cannot resolve destinati
 [ "$PREFIX_CANON" != "/" ] || fail 'refusing to install into filesystem root'
 
 MANIFEST_TMP="$PREFIX_CANON/$MANIFEST_NAME.tmp.$$"
-trap 'rm -f "$MANIFEST_TMP"' 0
 printf '%s\n' 'traceknot-install/v1' > "$MANIFEST_TMP"
 
 copy_file() {
@@ -239,5 +294,5 @@ EOF
 done
 
 mv "$MANIFEST_TMP" "$PREFIX_CANON/$MANIFEST_NAME"
-trap - 0
+MANIFEST_TMP=
 printf 'Installed Traceknot to %s\n' "$PREFIX_CANON"

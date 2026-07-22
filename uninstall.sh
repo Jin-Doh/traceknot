@@ -4,7 +4,14 @@
 set -eu
 
 PROGRAM=traceknot-uninstall
-SOURCE_ROOT=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
+LOCAL_SOURCE=0
+SOURCE_ROOT=
+case "$0" in
+    */*)
+        LOCAL_SOURCE=1
+        SOURCE_ROOT=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
+        ;;
+esac
 MANIFEST_NAME=.traceknot-install-manifest
 DRY_RUN=0
 PREFIX=
@@ -132,12 +139,14 @@ case "$PREFIX" in
     *) fail "destination must be an absolute path: $PREFIX" ;;
 esac
 
-SOURCE_CANON=$(canonical_path "$SOURCE_ROOT") || fail "cannot resolve source directory"
 PREFIX_CANON=$(canonical_path "$PREFIX") || fail "cannot resolve destination: $PREFIX"
 [ "$PREFIX_CANON" != "/" ] || fail 'refusing to uninstall from filesystem root'
 
-if [ "$PREFIX_CANON" = "$SOURCE_CANON" ] || path_is_under "$PREFIX_CANON" "$SOURCE_CANON" || path_is_under "$SOURCE_CANON" "$PREFIX_CANON"; then
-    fail 'destination must not overlap the cloned Traceknot source tree'
+if [ "$LOCAL_SOURCE" -eq 1 ]; then
+    SOURCE_CANON=$(canonical_path "$SOURCE_ROOT") || fail "cannot resolve source directory"
+    if [ "$PREFIX_CANON" = "$SOURCE_CANON" ] || path_is_under "$PREFIX_CANON" "$SOURCE_CANON" || path_is_under "$SOURCE_CANON" "$PREFIX_CANON"; then
+        fail 'destination must not overlap the cloned Traceknot source tree'
+    fi
 fi
 if [ -e "$PREFIX" ] && [ ! -d "$PREFIX" ]; then
     fail "destination is not a directory: $PREFIX"

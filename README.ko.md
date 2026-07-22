@@ -43,7 +43,34 @@ Traceknot은 테스트 기준에서 판정까지의 추적성, 증거와 독립�
 
 ## 설치
 
-저장소를 복제한 뒤 `sudo` 없이 installer를 실행합니다.
+저장소를 복제하지 않고 현재 `main` revision을 설치할 수 있습니다.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh
+```
+
+Script는 HTTPS로 같은 revision의 source archive를 내려받고 `sudo` 없이 설치합니다. 기본 설치 경로는 `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`입니다.
+
+특정 tag나 commit을 고정하려면 script URL과 `TRACEKNOT_REF`에 같은 revision을 사용합니다.
+
+```sh
+TRACEKNOT_REF=<tag-or-commit>
+curl -fsSL "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/install.sh" \
+  | TRACEKNOT_REF="$TRACEKNOT_REF" sh
+```
+
+Installer는 portable Skill, record schema, capability manifest, host-neutral core, GPL 라이선스를 복사합니다. 선택 사항인 completion-authority extension은 설치하지 않으며, 특정 하네스에 Traceknot을 자동 등록하지도 않습니다. 설치된 `skill/` 디렉터리를 하네스의 Skill loader에 연결하세요.
+
+설치 경로를 바꾸려면 절대 경로를 지정합니다.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh \
+  | sh -s -- --prefix "$HOME/tools/traceknot"
+```
+
+같은 방식으로 `--dry-run`을 전달하면 복사 대상을 미리 확인할 수 있습니다. Installer를 다시 실행하면 Traceknot이 소유한 파일만 갱신하고 다른 파일은 건드리지 않습니다.
+
+실행 전에 script를 검토하려면 먼저 파일로 내려받거나 저장소를 복제해서 실행합니다.
 
 ```sh
 git clone https://github.com/Jin-Doh/traceknot.git
@@ -51,27 +78,22 @@ cd traceknot
 ./install.sh
 ```
 
-기본 설치 경로는 `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`입니다. Portable Skill, record schema, capability manifest, host-neutral core, GPL 라이선스를 복사합니다. 선택 사항인 completion-authority extension은 설치하지 않으며, 특정 하네스에 Traceknot을 자동 등록하지도 않습니다.
-
-설치된 `skill/` 디렉터리를 하네스의 Skill loader에 연결하세요. 다른 경로에 설치하려면 절대 경로를 지정합니다.
-
-```sh
-./install.sh --prefix "$HOME/tools/traceknot"
-```
-
-같은 명령을 다시 실행하면 Traceknot이 소유한 파일만 갱신하고 다른 파일은 건드리지 않습니다. `./install.sh --dry-run`으로 변경 내용을 미리 확인할 수 있습니다.
-
 ## 제거
 
-설치할 때 사용한 경로와 같은 경로를 지정합니다.
+기본 설치 경로에서 제거합니다.
 
 ```sh
-./uninstall.sh
-# 또는
-./uninstall.sh --prefix "$HOME/tools/traceknot"
+curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh | sh
 ```
 
-Uninstaller는 설치 manifest를 읽고 Traceknot이 설치한 파일만 삭제합니다. `./uninstall.sh --dry-run`으로 삭제 대상을 미리 확인할 수 있으며, 이미 제거된 상태에서 다시 실행해도 오류가 발생하지 않습니다.
+사용자 지정 경로에서 제거합니다.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh \
+  | sh -s -- --prefix "$HOME/tools/traceknot"
+```
+
+Uninstaller는 설치 manifest를 읽고 Traceknot이 설치한 파일만 삭제합니다. `--dry-run`으로 삭제 대상을 미리 확인할 수 있으며, 이미 제거된 상태에서 다시 실행해도 오류가 발생하지 않습니다. 저장소를 복제한 경우에는 `./uninstall.sh`를 사용할 수 있습니다.
 
 ## 아키텍처
 

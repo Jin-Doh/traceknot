@@ -58,6 +58,18 @@ test "$(cat "$PREFIX/unrelated-sentinel.txt")" = keep-me
 # A second uninstall is intentionally harmless.
 sh "$ROOT/uninstall.sh" --prefix "$PREFIX" >/dev/null
 
+# A piped uninstaller must not mistake its current directory for the source tree.
+PIPE_PREFIX=$TMP_DIR/pipe-prefix
+sh "$ROOT/install.sh" --prefix "$PIPE_PREFIX" >/dev/null
+(cd "$PIPE_PREFIX" && sh -s -- --prefix "$PIPE_PREFIX" < "$ROOT/uninstall.sh")
+test ! -e "$PIPE_PREFIX/skill/SKILL.md"
+
+# Remote refs are validated before any download.
+if (cd "$TMP_DIR" && TRACEKNOT_REF='../unsafe' sh -s -- --prefix "$TMP_DIR/unsafe" < "$ROOT/install.sh") >/dev/null 2>&1; then
+    printf '%s\n' 'unsafe remote ref unexpectedly accepted' >&2
+    exit 1
+fi
+
 # Relative, root, and source-overlapping destinations are rejected.
 if sh "$ROOT/install.sh" --prefix relative-destination >/dev/null 2>&1; then
     printf '%s\n' 'relative destination unexpectedly accepted' >&2
