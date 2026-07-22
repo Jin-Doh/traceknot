@@ -1,0 +1,34 @@
+{
+  "format": "quality-contract.quiescence-extension-approval-fixtures.v1",
+  "phase1Authorized": false,
+  "goldenVectors": [
+    {
+      "id": "u64-empty-components",
+      "componentsHex": ["", "", "", ""],
+      "framingHex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "sha256": "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925"
+    },
+    {
+      "id": "sha256-abc",
+      "inputHex": "616263",
+      "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a3961777a9cb410ff61f20015ad"
+    },
+    {
+      "id": "production-shaped-pin",
+      "payloadCanonical": "{\"hashDomain\":\"gajae:quality-contract:qtb:extension-lock-payload:v1\",\"phase1Authorized\":false,\"sourceInventoryHash\":\"0000000000000000000000000000000000000000000000000000000000000000\"}",
+      "signatureCanonical": "{\"hashDomain\":\"gajae:quality-contract:qtb:extension-lock-signature-set:v1\",\"payloadDigest\":\"3a6455ebc79d3fec805be799c1a3e3550a98feb93aefbe0889fa0b194565fdbe\",\"records\":[],\"threshold\":1,\"version\":\"qtb-lock-signatures-v1\"}",
+      "pinSha256": "f3754abf874fa21ddb3ecc22323e21e2e0687bc5dc57eb4e04bc8b35f99a49d4"
+    }
+  ],
+  "cases": [
+    { "id": "approval-valid", "kind": "approvalPayload", "valid": true },
+    { "id": "receipt-valid", "kind": "approvalReceipt", "valid": true },
+    { "id": "signature-valid", "kind": "signatureSet", "valid": true },
+    { "id": "phase-one-authorization", "kind": "approvalReceipt", "valid": false, "mutations": ["phase1Authorized:true"] },
+    { "id": "absolute-inventory-path", "kind": "approvalPayload", "valid": false, "mutations": ["artifactInventory[0].path=/tmp/artifact"] },
+    { "id": "duplicate-review-role", "kind": "approvalPayload", "valid": false, "mutations": ["reviewRecords:duplicate architect"] },
+    { "id": "wrong-signature-domain", "kind": "signatureSet", "valid": false, "mutations": ["hashDomain:wrong-domain"] },
+    { "id": "self-inventory-entry", "kind": "finalIndex", "valid": false, "mutations": ["entries:include final index"] },
+    { "id": "layer-inversion", "kind": "approvalPayload", "valid": false, "mutations": ["artifactInventory:include receipt"] }
+  ]
+}

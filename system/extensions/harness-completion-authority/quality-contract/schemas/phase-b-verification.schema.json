@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gajae.dev/quality-contract/schemas/phase-b-verification.schema.json",
+  "title": "Closed Phase B verification artifact protocol",
+  "type": "object",
+  "unevaluatedProperties": false,
+  "oneOf": [
+    { "$ref": "#/$defs/phaseBCommandV1" },
+    { "$ref": "#/$defs/phaseBTraceV1" },
+    { "$ref": "#/$defs/phaseBInventoryV1" },
+    { "$ref": "#/$defs/phaseBResultV1" },
+    { "$ref": "#/$defs/phaseBFinalInventoryV1" }
+  ],
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "identifier": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._:-]{0,127}$" },
+    "path": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/@+-]+(?:/[A-Za-z0-9._/@+-]+)*$" },
+    "gateId": { "type": "string", "enum": ["b1-unit", "b2-gjc-integration", "b3-hook-integration", "b4-enforcement-e2e", "coding-agent-types", "coding-agent-check", "coding-agent-regression", "root-check-ts", "root-test-ts"] },
+    "qualityGateId": { "type": "string", "enum": ["b1-unit", "b2-gjc-integration", "b3-hook-integration", "b4-enforcement-e2e"] },
+    "nonQualityGateId": { "type": "string", "enum": ["coding-agent-types", "coding-agent-check", "coding-agent-regression", "root-check-ts", "root-test-ts"] },
+    "phaseBCommandV1": {
+      "type": "object", "additionalProperties": false, "unevaluatedProperties": false,
+      "required": ["schemaVersion", "objectType", "runId", "gateId", "matrixHash", "wrapperHash", "schemaHash", "argv", "cwd", "executable", "envPolicyHash", "envNames", "admittedAtUtc", "commandHash"],
+      "properties": {
+        "schemaVersion": { "const": "phase-b-command/v1" }, "objectType": { "const": "PhaseBCommand" }, "runId": { "$ref": "#/$defs/identifier" }, "gateId": { "$ref": "#/$defs/gateId" }, "matrixHash": { "$ref": "#/$defs/hash" }, "wrapperHash": { "$ref": "#/$defs/hash" }, "schemaHash": { "$ref": "#/$defs/hash" },
+        "argv": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }, "cwd": { "type": "string", "pattern": "^[A-Za-z0-9._/-]+$" },
+        "executable": { "type": "object", "additionalProperties": false, "required": ["path", "sha256", "version"], "properties": { "path": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/$defs/hash" }, "version": { "type": "string", "minLength": 1 } } },
+        "envPolicyHash": { "$ref": "#/$defs/hash" }, "envNames": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" } }, "admittedAtUtc": { "type": "string", "format": "date-time" }, "commandHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "baseLeaseTuple": {
+      "type": "object", "additionalProperties": false, "unevaluatedProperties": false,
+      "required": ["projectId", "rootObjectiveId", "candidateGeneration", "mutationEpoch", "profileId"],
+      "properties": { "projectId": { "$ref": "#/$defs/identifier" }, "rootObjectiveId": { "$ref": "#/$defs/identifier" }, "candidateGeneration": { "type": "integer", "minimum": 0 }, "mutationEpoch": { "type": "integer", "minimum": 0 }, "profileId": { "$ref": "#/$defs/identifier" } }
+    },
+    "clockAnchor": {
+      "type": "object", "additionalProperties": false, "unevaluatedProperties": false,
+      "required": ["bootId", "wallUtcMs", "monoMs", "uncertaintyMs", "persistedActionSequence", "candidateGeneration", "mutationEpoch", "cancellationEpoch"],
+      "properties": { "bootId": { "$ref": "#/$defs/identifier" }, "wallUtcMs": { "type": "integer", "minimum": 0 }, "monoMs": { "type": "integer", "minimum": 0 }, "uncertaintyMs": { "type": "integer", "minimum": 0, "maximum": 1000 }, "persistedActionSequence": { "type": "integer", "minimum": 0 }, "candidateGeneration": { "type": "integer", "minimum": 0 }, "mutationEpoch": { "type": "integer", "minimum": 0 }, "cancellationEpoch": { "type": "integer", "minimum": 0 } }
+    },
+    "timingSegment": {
+      "type": "object", "additionalProperties": false, "unevaluatedProperties": false,
+      "required": ["start", "end", "derivation", "durationMs"],
+      "properties": { "start": { "$ref": "#/$defs/clockAnchor" }, "end": { "$ref": "#/$defs/clockAnchor" }, "derivation": { "type": "string", "enum": ["same-boot-monotonic", "cross-boot-conservative-upper-bound"] }, "durationMs": { "type": "integer", "minimum": 0 } }
+    },
+    "timing": {
+      "type": "object", "additionalProperties": false, "unevaluatedProperties": false,
+      "required": ["unit", "clockSource", "queueMs", "bootstrapMs", "collectionMs", "executionMs", "evidenceFlushMs", "shutdownMs", "segments"],
+      "properties": {
+        "unit": { "const": "ms" }, "clockSource": { "const": "coordinator-monotonic-v1" }, "queueMs": { "type": "integer", "minimum": 0 }, "bootstrapMs": { "type": "integer", "minimum": 0 }, "collectionMs": { "type": "integer", "minimum": 0 }, "executionMs": { "type": "integer", "minimum": 0 }, "evidenceFlushMs": { "type": "integer", "minimum": 0 }, "shutdownMs": { "type": "integer", "minimum": 0 },
+        "segments": { "type": "object", "additionalProperties": false, "unevaluatedProperties": false, "required": ["queue", "bootstrap", "collection", "execution", "evidenceFlush", "shutdown"], "properties": { "queue": { "$ref": "#/$defs/timingSegment" }, "bootstrap": { "$ref": "#/$defs/timingSegment" }, "collection": { "$ref": "#/$defs/timingSegment" }, "execution": { "$ref": "#/$defs/timingSegment" }, "evidenceFlush": { "$ref": "#/$defs/timingSegment" }, "shutdown": { "$ref": "#/$defs/timingSegment" } } }
+      }
+    },
+    "assertion": {
+      "type": "object", "additionalProperties": false, "unevaluatedProperties": false, "required": ["id", "passed"],
+      "properties": { "id": { "$ref": "#/$defs/identifier" }, "passed": { "type": "boolean" }, "evidenceHash": { "$ref": "#/$defs/hash" } },
+      "allOf": [ { "if": { "properties": { "passed": { "const": true } } }, "then": { "required": ["evidenceHash"] } }, { "if": { "properties": { "passed": { "const": false } } }, "then": { "not": { "required": ["evidenceHash"] } } } ]
+    },
+    "phaseBTraceV1": {
+      "type": "object", "additionalProperties": false, "unevaluatedProperties": false,
+      "required": ["schemaVersion", "objectType", "runId", "gateId", "timingSource", "candidateKey", "baseLeaseTuple", "fenceTokens", "receiptHash", "bindingHash", "pairHash", "timings", "assertions", "traceHash"],
+      "properties": {
+        "schemaVersion": { "const": "phase-b-trace/v1" }, "objectType": { "const": "PhaseBTrace" }, "runId": { "$ref": "#/$defs/identifier" }, "gateId": { "$ref": "#/$defs/qualityGateId" }, "timingSource": { "const": "quality-trace" }, "candidateKey": { "anyOf": [ { "$ref": "#/$defs/hash" }, { "type": "null" } ] }, "baseLeaseTuple": { "anyOf": [ { "$ref": "#/$defs/baseLeaseTuple" }, { "type": "null" } ] }, "fenceTokens": { "type": "array", "uniqueItems": true, "items": { "type": "integer", "minimum": 1 } }, "receiptHash": { "anyOf": [ { "$ref": "#/$defs/hash" }, { "type": "null" } ] }, "bindingHash": { "anyOf": [ { "$ref": "#/$defs/hash" }, { "type": "null" } ] }, "pairHash": { "anyOf": [ { "$ref": "#/$defs/hash" }, { "type": "null" } ] }, "timings": { "$ref": "#/$defs/timing" }, "assertions": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/assertion" } }, "traceHash": { "$ref": "#/$defs/hash" }
+      },
+      "allOf": [
+        { "if": { "properties": { "gateId": { "enum": ["b1-unit", "b3-hook-integration"] } } }, "then": { "properties": { "candidateKey": { "type": "null" }, "baseLeaseTuple": { "type": "null" }, "fenceTokens": { "const": [] }, "receiptHash": { "type": "null" }, "bindingHash": { "type": "null" }, "pairHash": { "type": "null" } } } },
+        { "if": { "properties": { "gateId": { "enum": ["b2-gjc-integration", "b4-enforcement-e2e"] } } }, "then": { "required": ["candidateKey", "baseLeaseTuple"], "properties": { "candidateKey": { "$ref": "#/$defs/hash" }, "baseLeaseTuple": { "$ref": "#/$defs/baseLeaseTuple" }, "fenceTokens": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 1 } } } } },
+        { "if": { "properties": { "gateId": { "const": "b4-enforcement-e2e" } } }, "then": { "properties": { "receiptHash": { "$ref": "#/$defs/hash" }, "bindingHash": { "$ref": "#/$defs/hash" }, "pairHash": { "$ref": "#/$defs/hash" } } } },
+        { "if": { "properties": { "gateId": { "enum": ["b1-unit", "b2-gjc-integration", "b3-hook-integration"] } } }, "then": { "properties": { "receiptHash": { "type": "null" }, "bindingHash": { "type": "null" }, "pairHash": { "type": "null" } } } }
+      ]
+    },
+    "phaseBInventoryV1": {
+      "type": "object", "additionalProperties": false, "unevaluatedProperties": false, "required": ["schemaVersion", "objectType", "runId", "gateId", "entries", "inventoryHash"],
+      "properties": { "schemaVersion": { "const": "phase-b-content-inventory/v1" }, "objectType": { "const": "PhaseBContentInventory" }, "runId": { "$ref": "#/$defs/identifier" }, "gateId": { "$ref": "#/$defs/gateId" }, "entries": { "type": "array", "items": { "type": "object", "additionalProperties": false, "unevaluatedProperties": false, "required": ["relativePath", "bytes", "sha256", "mediaType"], "properties": { "relativePath": { "$ref": "#/$defs/path" }, "bytes": { "type": "integer", "minimum": 0 }, "sha256": { "$ref": "#/$defs/hash" }, "mediaType": { "type": "string", "minLength": 1 } } } }, "inventoryHash": { "$ref": "#/$defs/hash" } }
+    },
+    "phaseBResultV1": {
+      "type": "object", "additionalProperties": false, "unevaluatedProperties": false, "required": ["schemaVersion", "objectType", "runId", "gateId", "commandHash", "startedAtUtc", "endedAtUtc", "wallElapsedMs", "exitCode", "signal", "passed", "timingSource", "queueMs", "bootstrapMs", "collectionMs", "executionMs", "evidenceFlushMs", "shutdownMs", "contentInventoryPath", "contentInventoryFileSha256", "contentInventoryHash", "declaredArtifactIds", "resultHash"],
+      "properties": { "schemaVersion": { "const": "phase-b-result/v1" }, "objectType": { "const": "PhaseBResult" }, "runId": { "$ref": "#/$defs/identifier" }, "gateId": { "$ref": "#/$defs/gateId" }, "commandHash": { "$ref": "#/$defs/hash" }, "startedAtUtc": { "type": "string", "format": "date-time" }, "endedAtUtc": { "type": "string", "format": "date-time" }, "wallElapsedMs": { "type": "integer", "minimum": 0 }, "exitCode": { "anyOf": [ { "type": "integer", "minimum": 0 }, { "type": "null" } ] }, "signal": { "anyOf": [ { "type": "string" }, { "type": "null" } ] }, "passed": { "type": "boolean" }, "timingSource": { "type": "string", "enum": ["quality-trace", "not-applicable"] }, "queueMs": { "anyOf": [ { "type": "integer", "minimum": 0 }, { "type": "null" } ] }, "bootstrapMs": { "anyOf": [ { "type": "integer", "minimum": 0 }, { "type": "null" } ] }, "collectionMs": { "anyOf": [ { "type": "integer", "minimum": 0 }, { "type": "null" } ] }, "executionMs": { "anyOf": [ { "type": "integer", "minimum": 0 }, { "type": "null" } ] }, "evidenceFlushMs": { "anyOf": [ { "type": "integer", "minimum": 0 }, { "type": "null" } ] }, "shutdownMs": { "anyOf": [ { "type": "integer", "minimum": 0 }, { "type": "null" } ] }, "contentInventoryPath": { "$ref": "#/$defs/path" }, "contentInventoryFileSha256": { "$ref": "#/$defs/hash" }, "contentInventoryHash": { "$ref": "#/$defs/hash" }, "declaredArtifactIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/path" } }, "resultHash": { "$ref": "#/$defs/hash" } },
+      "allOf": [
+        { "if": { "properties": { "timingSource": { "const": "quality-trace" } } }, "then": { "required": ["queueMs", "bootstrapMs", "collectionMs", "executionMs", "evidenceFlushMs", "shutdownMs"], "properties": { "queueMs": { "type": "integer", "minimum": 0 }, "bootstrapMs": { "type": "integer", "minimum": 0 }, "collectionMs": { "type": "integer", "minimum": 0 }, "executionMs": { "type": "integer", "minimum": 0 }, "evidenceFlushMs": { "type": "integer", "minimum": 0 }, "shutdownMs": { "type": "integer", "minimum": 0 } } } },
+        { "if": { "properties": { "timingSource": { "const": "not-applicable" } } }, "then": { "properties": { "queueMs": { "type": "null" }, "bootstrapMs": { "type": "null" }, "collectionMs": { "type": "null" }, "executionMs": { "type": "null" }, "evidenceFlushMs": { "type": "null" }, "shutdownMs": { "type": "null" } } } }
+      ]
+    },
+    "phaseBFinalInventoryV1": {
+      "type": "object", "additionalProperties": false, "unevaluatedProperties": false, "required": ["schemaVersion", "objectType", "runId", "matrixHash", "wrapperHash", "schemaHash", "gates", "overallPass", "finalInventoryHash"],
+      "properties": { "schemaVersion": { "const": "phase-b-final-inventory/v1" }, "objectType": { "const": "PhaseBFinalInventory" }, "runId": { "$ref": "#/$defs/identifier" }, "matrixHash": { "$ref": "#/$defs/hash" }, "wrapperHash": { "$ref": "#/$defs/hash" }, "schemaHash": { "$ref": "#/$defs/hash" }, "gates": { "type": "array", "items": { "type": "object", "additionalProperties": false, "unevaluatedProperties": false, "required": ["gateId", "inventoryPath", "inventoryFileSha256", "inventoryHash", "resultPath", "resultFileSha256", "resultHash"], "properties": { "gateId": { "$ref": "#/$defs/gateId" }, "inventoryPath": { "$ref": "#/$defs/path" }, "inventoryFileSha256": { "$ref": "#/$defs/hash" }, "inventoryHash": { "$ref": "#/$defs/hash" }, "resultPath": { "$ref": "#/$defs/path" }, "resultFileSha256": { "$ref": "#/$defs/hash" }, "resultHash": { "$ref": "#/$defs/hash" } } } }, "overallPass": { "type": "boolean" }, "finalInventoryHash": { "$ref": "#/$defs/hash" } }
+    }
+  }
+}

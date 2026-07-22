@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gajae.dev/quality-contract/schemas/quiescence-and-budget.schema.json",
+  "title": "Quiescence and time-budget contract v1",
+  "type": "object",
+  "unevaluatedProperties": false,
+  "oneOf": [
+    { "$ref": "#/$defs/harnessObservation" },
+    { "$ref": "#/$defs/quiescenceAction" },
+    { "$ref": "#/$defs/quiescenceLedger" },
+    { "$ref": "#/$defs/candidateIdentity" },
+    { "$ref": "#/$defs/verificationLease" },
+    { "$ref": "#/$defs/timingObservation" },
+    { "$ref": "#/$defs/completionBinding" }
+  ],
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._:-]{0,127}$" },
+    "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "nonNegative": { "type": "integer", "minimum": 0 },
+    "timestampMs": { "type": "integer", "minimum": 0 },
+    "sourceHarness": { "type": "string", "enum": ["claude-code", "codex", "codex-app-server", "gajaecode"] },
+    "versioned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "objectType"],
+      "properties": {
+        "schemaVersion": { "const": "qtb-v1" },
+        "objectType": { "type": "string" }
+      }
+    },
+    "actor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "status", "sourceKey", "lastActionSequence"],
+      "properties": {
+        "kind": { "enum": ["main", "subagent", "job", "hook", "external"] },
+        "status": { "enum": ["active", "queued", "paused", "terminal", "cancelled"] },
+        "requiredTaskId": { "$ref": "#/$defs/identifier" },
+        "sourceKey": { "$ref": "#/$defs/identifier" },
+        "lastActionSequence": { "$ref": "#/$defs/nonNegative" }
+      }
+    },
+    "task": {
+      "type": "object", "additionalProperties": false,
+      "required": ["required", "status", "sourceKey", "lastActionSequence"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "status": { "enum": ["open", "completed", "reopened", "cancelled"] },
+        "actorId": { "$ref": "#/$defs/identifier" },
+        "sourceKey": { "$ref": "#/$defs/identifier" },
+        "lastActionSequence": { "$ref": "#/$defs/nonNegative" }
+      }
+    },
+    "delivery": {
+      "type": "object", "additionalProperties": false,
+      "required": ["jobId", "status", "sourceKey", "lastActionSequence"],
+      "properties": {
+        "jobId": { "$ref": "#/$defs/identifier" },
+        "status": { "enum": ["queued", "started", "acked", "dead_lettered"] },
+        "sourceKey": { "$ref": "#/$defs/identifier" },
+        "lastActionSequence": { "$ref": "#/$defs/nonNegative" }
+      }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["capabilityProfileId", "gapRanges"],
+      "properties": {
+        "capabilityProfileId": { "$ref": "#/$defs/identifier" },
+        "lastCursor": { "$ref": "#/$defs/nonNegative" },
+        "gapRanges": { "type": "array", "items": { "$ref": "#/$defs/cursorRange" } },
+        "reconciledThrough": { "$ref": "#/$defs/nonNegative" },
+        "degradedReason": { "type": "string", "minLength": 1 },
+        "lastSnapshotHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "cursorRange": {
+      "type": "object", "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": { "from": { "$ref": "#/$defs/nonNegative" }, "to": { "$ref": "#/$defs/nonNegative" } }
+    },
+    "harnessObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "objectType", "observationId", "sourceHarness", "sourceVersion", "adapterVersion", "sourceEvent", "projectLocator", "kind", "boundedPayload", "provenanceHash"],
+      "properties": {
+        "schemaVersion": { "const": "qtb-v1" }, "objectType": { "const": "harness_observation" },
+        "observationId": { "$ref": "#/$defs/identifier" }, "sourceHarness": { "$ref": "#/$defs/sourceHarness" },
+        "sourceVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "adapterVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sourceEvent": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sourceOccurrenceId": { "$ref": "#/$defs/identifier" }, "sourceCursor": { "$ref": "#/$defs/nonNegative" },
+        "sourceWallUtcMs": { "$ref": "#/$defs/timestampMs" }, "projectLocator": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "rootSessionLocator": { "type": "string", "minLength": 1, "maxLength": 1024 }, "nativeActorId": { "$ref": "#/$defs/identifier" },
+        "nativeTaskId": { "$ref": "#/$defs/identifier" }, "nativeDeliveryId": { "$ref": "#/$defs/identifier" },
+        "kind": { "enum": ["root_completion_observed", "main_settle_observed", "actor_started", "actor_queued", "actor_paused", "actor_terminal", "task_opened", "task_completed", "task_reopened", "delivery_queued", "delivery_started", "delivery_acked", "delivery_dead_lettered", "mutation_observed", "mutation_scan_overflow", "turn_terminal_observed", "source_health", "abort_observed"] },
+        "boundedPayload": { "type": "object", "maxProperties": 64, "x-composition-fragment": true }, "provenanceHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "quiescenceAction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "objectType", "actionId", "projectId", "physicalRootHash", "rootObjectiveId", "coordinatorSequence", "coordinatorBootId", "persistedWallUtcMs", "persistedMonoMs", "originUncertaintyMs", "candidateGeneration", "mutationEpoch", "principalId", "capabilityProfileId", "causeObservationIds", "actionKind", "payload"],
+      "properties": {
+        "schemaVersion": { "const": "qtb-v1" }, "objectType": { "const": "quiescence_action" }, "actionId": { "$ref": "#/$defs/identifier" },
+        "projectId": { "$ref": "#/$defs/identifier" }, "physicalRootHash": { "$ref": "#/$defs/hash" }, "rootObjectiveId": { "$ref": "#/$defs/identifier" },
+        "coordinatorSequence": { "$ref": "#/$defs/nonNegative" }, "coordinatorBootId": { "$ref": "#/$defs/identifier" },
+        "persistedWallUtcMs": { "$ref": "#/$defs/timestampMs" }, "persistedMonoMs": { "$ref": "#/$defs/nonNegative" }, "originUncertaintyMs": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "candidateGeneration": { "$ref": "#/$defs/nonNegative" }, "mutationEpoch": { "$ref": "#/$defs/nonNegative" }, "principalId": { "$ref": "#/$defs/identifier" }, "capabilityProfileId": { "$ref": "#/$defs/identifier" },
+        "causeObservationIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/identifier" } },
+        "actionKind": { "enum": ["observation_ingested", "source_snapshot_reconciled", "root_candidate_opened", "main_settle_started", "main_settled", "actor_projected", "task_projected", "delivery_projected", "mutation_committed", "quiet_timer_armed", "quiet_timer_elapsed", "candidate_sealed", "lease_claimed", "lease_recovered", "lease_committed", "lease_rejected", "budget_crossed", "verification_result_committed", "terminal_binding_committed", "cancelled"] },
+        "payload": { "type": "object", "maxProperties": 128, "x-composition-fragment": true }
+      }
+    },
+    "quiescenceLedger": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "objectType", "projectId", "rootObjectiveId", "phase", "candidateGeneration", "mutationEpoch", "coordinatorSequence", "rootCandidateSeen", "mainSettled", "actorMode", "actors", "tasks", "deliveries", "sources", "activeCount", "queuedCount", "pendingDeliveryCount", "incompleteRequiredTaskCount", "sourceGapCount", "deadLetterCount", "quietWindowMs", "clockState", "cancellationEpoch"],
+      "properties": {
+        "schemaVersion": { "const": "qtb-v1" }, "objectType": { "const": "quiescence_ledger" }, "projectId": { "$ref": "#/$defs/identifier" }, "rootObjectiveId": { "$ref": "#/$defs/identifier" },
+        "phase": { "enum": ["collecting", "candidate", "settling", "quiet_wait", "sealing", "sealed", "verifying", "verification_pending", "clear", "blocked", "cancelled", "stale"] },
+        "candidateGeneration": { "$ref": "#/$defs/nonNegative" }, "mutationEpoch": { "$ref": "#/$defs/nonNegative" }, "coordinatorSequence": { "$ref": "#/$defs/nonNegative" },
+        "rootCandidateSeen": { "type": "boolean" }, "mainSettled": { "type": "boolean" }, "actorMode": { "enum": ["single", "multi"] },
+        "actors": { "type": "object", "additionalProperties": { "$ref": "#/$defs/actor" } }, "tasks": { "type": "object", "additionalProperties": { "$ref": "#/$defs/task" } }, "deliveries": { "type": "object", "additionalProperties": { "$ref": "#/$defs/delivery" } }, "sources": { "type": "object", "additionalProperties": { "$ref": "#/$defs/source" } },
+        "activeCount": { "$ref": "#/$defs/nonNegative" }, "queuedCount": { "$ref": "#/$defs/nonNegative" }, "pendingDeliveryCount": { "$ref": "#/$defs/nonNegative" }, "incompleteRequiredTaskCount": { "$ref": "#/$defs/nonNegative" }, "sourceGapCount": { "$ref": "#/$defs/nonNegative" }, "deadLetterCount": { "$ref": "#/$defs/nonNegative" },
+        "quietWindowMs": { "enum": [2000, 5000] }, "quietSinceMonoMs": { "$ref": "#/$defs/nonNegative" }, "clockState": { "$ref": "#/$defs/clockState" }, "candidateIdentity": { "$ref": "#/$defs/candidateIdentity" }, "leaseFence": { "$ref": "#/$defs/verificationLease" }, "cancellationEpoch": { "$ref": "#/$defs/nonNegative" }
+      }
+    },
+    "clockState": {
+      "type": "object", "additionalProperties": false, "required": ["bootId", "wallUtcMs", "monoMs", "uncertaintyMs"],
+      "properties": { "bootId": { "$ref": "#/$defs/identifier" }, "wallUtcMs": { "$ref": "#/$defs/timestampMs" }, "monoMs": { "$ref": "#/$defs/nonNegative" }, "uncertaintyMs": { "type": "integer", "minimum": 0, "maximum": 1000 } }
+    },
+    "candidateIdentity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "objectType", "projectId", "physicalRootHash", "rootObjectiveId", "candidateGeneration", "mutationEpoch", "profileId", "snapshotHash", "inventoryHash", "acceptanceContractHash", "obligationCatalogHash", "obligationSetHash", "commandManifestSetHash", "capabilityProfileHash", "timeBudgetPolicyHash", "riskPolicyHash", "candidateKey"],
+      "properties": {
+        "schemaVersion": { "const": "qtb-v1" }, "objectType": { "const": "candidate_identity" }, "projectId": { "$ref": "#/$defs/identifier" }, "physicalRootHash": { "$ref": "#/$defs/hash" }, "rootObjectiveId": { "$ref": "#/$defs/identifier" }, "candidateGeneration": { "$ref": "#/$defs/nonNegative" }, "mutationEpoch": { "$ref": "#/$defs/nonNegative" }, "profileId": { "$ref": "#/$defs/identifier" }, "snapshotHash": { "$ref": "#/$defs/hash" }, "inventoryHash": { "$ref": "#/$defs/hash" }, "acceptanceContractHash": { "$ref": "#/$defs/hash" }, "obligationCatalogHash": { "$ref": "#/$defs/hash" }, "obligationSetHash": { "$ref": "#/$defs/hash" }, "commandManifestSetHash": { "$ref": "#/$defs/hash" }, "capabilityProfileHash": { "$ref": "#/$defs/hash" }, "timeBudgetPolicyHash": { "$ref": "#/$defs/hash" }, "riskPolicyHash": { "$ref": "#/$defs/hash" }, "candidateKey": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "verificationLease": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "objectType", "leaseKey", "baseLeaseTuple", "leaseId", "holderPrincipal", "candidateKey", "snapshotHash", "inventoryHash", "physicalRootHash", "status", "fenceToken", "claimMonoMs", "expiresMonoMs", "cancellationEpoch", "attempt"],
+      "properties": {
+        "schemaVersion": { "const": "qtb-v1" }, "objectType": { "const": "verification_lease" }, "leaseKey": { "$ref": "#/$defs/hash" }, "baseLeaseTuple": { "$ref": "#/$defs/baseLeaseTuple" }, "leaseId": { "$ref": "#/$defs/identifier" }, "holderPrincipal": { "$ref": "#/$defs/identifier" }, "candidateKey": { "$ref": "#/$defs/hash" }, "snapshotHash": { "$ref": "#/$defs/hash" }, "inventoryHash": { "$ref": "#/$defs/hash" }, "physicalRootHash": { "$ref": "#/$defs/hash" }, "status": { "enum": ["claimed", "running", "released", "expired", "committed"] }, "fenceToken": { "type": "integer", "minimum": 1 }, "claimMonoMs": { "$ref": "#/$defs/nonNegative" }, "expiresMonoMs": { "$ref": "#/$defs/nonNegative" }, "cancellationEpoch": { "$ref": "#/$defs/nonNegative" }, "attempt": { "type": "integer", "minimum": 1 }, "finalOutcomeHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "baseLeaseTuple": {
+      "type": "object", "additionalProperties": false, "required": ["projectId", "rootObjectiveId", "candidateGeneration", "mutationEpoch", "profileId"],
+      "properties": { "projectId": { "$ref": "#/$defs/identifier" }, "rootObjectiveId": { "$ref": "#/$defs/identifier" }, "candidateGeneration": { "$ref": "#/$defs/nonNegative" }, "mutationEpoch": { "$ref": "#/$defs/nonNegative" }, "profileId": { "$ref": "#/$defs/identifier" } }
+    },
+    "timingObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "objectType", "unit", "clockSource", "queueMs", "bootstrapMs", "collectionMs", "executionMs", "evidenceFlushMs", "shutdownMs", "segments", "runnerProfileId", "runnerSoftTotalMs", "runnerHardTotalMs", "riskSoftMs", "riskHardMs", "globalCompletionMs", "optionalStopDeadline", "workDeadline", "finalDeadline", "softCrossed", "hardCrossed", "skippedOptionalIds", "unfinishedMandatoryIds", "outcome"],
+      "properties": {
+        "schemaVersion": { "const": "qtb-v1" }, "objectType": { "const": "timing_observation" }, "unit": { "const": "ms" }, "clockSource": { "const": "coordinator-monotonic-v1" },
+        "queueMs": { "$ref": "#/$defs/nonNegative" }, "bootstrapMs": { "$ref": "#/$defs/nonNegative" }, "collectionMs": { "$ref": "#/$defs/nonNegative" }, "executionMs": { "$ref": "#/$defs/nonNegative" }, "evidenceFlushMs": { "$ref": "#/$defs/nonNegative" }, "shutdownMs": { "$ref": "#/$defs/nonNegative" },
+        "segments": { "type": "object", "additionalProperties": false, "required": ["queue", "bootstrap", "collection", "execution", "evidenceFlush", "shutdown"], "properties": { "queue": { "$ref": "#/$defs/timingSegment" }, "bootstrap": { "$ref": "#/$defs/timingSegment" }, "collection": { "$ref": "#/$defs/timingSegment" }, "execution": { "$ref": "#/$defs/timingSegment" }, "evidenceFlush": { "$ref": "#/$defs/timingSegment" }, "shutdown": { "$ref": "#/$defs/timingSegment" } } },
+        "runnerProfileId": { "$ref": "#/$defs/identifier" }, "runnerSoftTotalMs": { "$ref": "#/$defs/nonNegative" }, "runnerHardTotalMs": { "$ref": "#/$defs/nonNegative" }, "riskSoftMs": { "$ref": "#/$defs/nonNegative" }, "riskHardMs": { "$ref": "#/$defs/nonNegative" }, "globalCompletionMs": { "$ref": "#/$defs/nonNegative" }, "optionalStopDeadline": { "$ref": "#/$defs/nonNegative" }, "workDeadline": { "$ref": "#/$defs/nonNegative" }, "finalDeadline": { "$ref": "#/$defs/nonNegative" }, "softCrossed": { "type": "boolean" }, "hardCrossed": { "type": "boolean" }, "skippedOptionalIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/identifier" } }, "unfinishedMandatoryIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/identifier" } }, "outcome": { "enum": ["clear", "blocked", "verification_pending", "cancelled"] }
+      }
+    },
+    "clockAnchor": {
+      "type": "object", "additionalProperties": false, "required": ["bootId", "wallUtcMs", "monoMs", "uncertaintyMs", "persistedActionSequence", "candidateGeneration", "mutationEpoch", "cancellationEpoch"],
+      "properties": { "bootId": { "$ref": "#/$defs/identifier" }, "wallUtcMs": { "$ref": "#/$defs/timestampMs" }, "monoMs": { "$ref": "#/$defs/nonNegative" }, "uncertaintyMs": { "type": "integer", "minimum": 0, "maximum": 1000 }, "persistedActionSequence": { "$ref": "#/$defs/nonNegative" }, "candidateGeneration": { "$ref": "#/$defs/nonNegative" }, "mutationEpoch": { "$ref": "#/$defs/nonNegative" }, "cancellationEpoch": { "$ref": "#/$defs/nonNegative" } }
+    },
+    "timingSegment": { "type": "object", "additionalProperties": false, "required": ["start", "end", "derivation", "durationMs"], "properties": { "start": { "$ref": "#/$defs/clockAnchor" }, "end": { "$ref": "#/$defs/clockAnchor" }, "derivation": { "enum": ["same-boot-monotonic", "cross-boot-conservative-upper-bound"] }, "durationMs": { "$ref": "#/$defs/nonNegative" } } },
+    "completionBinding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "objectType", "bindingId", "candidateKey", "baseLeaseTuple", "leaseId", "fenceToken", "physicalRootHash", "snapshotHash", "inventoryHash", "acceptanceContractHash", "obligationSetHash", "timingObservationHash", "verificationOutcomeHash", "receiptObjectId", "receiptCanonicalHash", "sessionId", "promptGeneration", "terminalId", "primaryId", "secondaryId", "activeId", "coordinatorSequence", "bindingCanonicalHash"],
+      "properties": {
+        "schemaVersion": { "const": "qtb-v1" }, "objectType": { "const": "quality_completion_binding" }, "bindingId": { "$ref": "#/$defs/identifier" }, "candidateKey": { "$ref": "#/$defs/hash" }, "baseLeaseTuple": { "$ref": "#/$defs/baseLeaseTuple" }, "leaseId": { "$ref": "#/$defs/identifier" }, "fenceToken": { "type": "integer", "minimum": 1 }, "physicalRootHash": { "$ref": "#/$defs/hash" }, "snapshotHash": { "$ref": "#/$defs/hash" }, "inventoryHash": { "$ref": "#/$defs/hash" }, "acceptanceContractHash": { "$ref": "#/$defs/hash" }, "obligationSetHash": { "$ref": "#/$defs/hash" }, "timingObservationHash": { "$ref": "#/$defs/hash" }, "verificationOutcomeHash": { "$ref": "#/$defs/hash" }, "receiptObjectId": { "$ref": "#/$defs/identifier" }, "receiptCanonicalHash": { "$ref": "#/$defs/hash" }, "sessionId": { "$ref": "#/$defs/identifier" }, "promptGeneration": { "$ref": "#/$defs/nonNegative" }, "terminalId": { "$ref": "#/$defs/identifier" }, "primaryId": { "$ref": "#/$defs/identifier" }, "secondaryId": { "$ref": "#/$defs/identifier" }, "activeId": { "$ref": "#/$defs/identifier" }, "coordinatorSequence": { "$ref": "#/$defs/nonNegative" }, "bindingCanonicalHash": { "$ref": "#/$defs/hash" }
+      }
+    }
+  }
+}

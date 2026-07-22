@@ -1,0 +1,242 @@
+{
+  "id": "gajae-quality-contract-semantic-rules",
+  "schemaVersion": "semantic-rules/v1",
+  "failClosed": true,
+  "description": "Phase 0 cross-object invariants that cannot be expressed by Draft 2020-12 JSON Schema alone.",
+  "unknownRuleDisposition": "BLOCK",
+  "rules": [
+    {
+      "id": "terminal.verdict-reason-binding",
+      "inputs": ["/status", "/reasonCode", "/terminalState/state", "/terminalState/reasonCode", "/terminalState/receiptHash", "/receiptHash"],
+      "predicate": "status=CLEAR iff reasonCode=QUALITY_CLEAR; status=WATCH iff reasonCode=QUALITY_WATCH_EXCEPTION; terminal receiptHash and receipt evidence hash are present and equal.",
+      "error": { "code": "TERMINAL_VERDICT_REASON_MISMATCH", "message": "Terminal verdict, reason code, and receipt must agree." },
+      "fixtureRequirements": { "positive": ["terminal-valid-clear", "terminal-valid-watch"], "negative": ["verdict-reason-mismatch", "terminal-receipt-missing"] }
+    },
+    {
+      "id": "terminal.identity-binding",
+      "inputs": ["/sessionId", "/promptGeneration", "/terminalId", "/status", "/reasonCode", "/receiptHash"],
+      "predicate": "TerminalOwner and TerminalPair records for one terminal have byte-equal sessionId,promptGeneration,terminalId,status,reasonCode,receiptHash.",
+      "error": { "code": "TERMINAL_IDENTITY_MISMATCH", "message": "Terminal records must bind to one immutable decision identity." },
+      "fixtureRequirements": { "positive": ["terminal-identity-valid"], "negative": ["terminal-identity-mismatch"] }
+    },
+    {
+      "id": "timer.restart-bound",
+      "inputs": ["/timerId", "/cancellationEpoch", "/wallDeadlineUtcMs", "/originBootId", "/monoAtPersistMs", "/wallAtPersistMs", "/originUncertaintyBoundMs"],
+      "predicate": "A restart preserves timerId and cancellationEpoch and computes a deadline no later than the persisted wallDeadlineUtcMs; reboot and clock uncertainty may never extend it.",
+      "error": { "code": "TIMER_RESTART_EXTENDS_DEADLINE", "message": "Timer restart must not extend a persisted deadline." },
+      "fixtureRequirements": { "positive": ["timer-valid"], "negative": ["timer-restart-extension"] }
+    },
+    {
+      "id": "admission.durable-start",
+      "inputs": ["/claimId", "/headHash", "/epoch", "/principalId", "/nonceHash", "/invocationId", "/outboxId", "/archiveId"],
+      "predicate": "An admitted start binds claimId, headHash, epoch, principalId, and nonceHash to exactly one stable invocationId and durable outbox/archive records before execution.",
+      "error": { "code": "DURABLE_START_BINDING_INVALID", "message": "Admission must durably bind its claim and invocation before execution." },
+      "fixtureRequirements": { "positive": ["invocation-valid"], "negative": ["invocation-outbox-binding"] }
+    },
+    {
+      "id": "recovery.same-slot",
+      "inputs": ["/originalPhysicalWriteSeq", "/recoveryOfSeq", "/recoveryAttempt", "/inputFileVersion", "/claimId", "/claimantPrincipal", "/invocationId", "/status", "/disposition"],
+      "predicate": "Recovery targets the same physical write slot with recoveryOfSeq=originalPhysicalWriteSeq, uses the captured inputFileVersion and claim identity, and recoveryAttempt is at most 3; no new slot is allocated.",
+      "error": { "code": "RECOVERY_SLOT_OR_ATTEMPT_INVALID", "message": "Recovery must remain in the original write slot and bounded attempt budget." },
+      "fixtureRequirements": { "positive": ["recovery-valid"], "negative": ["recovery-same-slot", "recovery-attempt-limit"] }
+    },
+    {
+      "id": "receipt.canonical-binding",
+      "inputs": ["/hashDomain", "/canonicalEnvelopeHash", "/canonicalization", "/signatureGroup"],
+      "predicate": "canonicalEnvelopeHash is SHA-256 over the exact RFC8785 canonical signed-envelope bytes in the declared domain; domain and signed bytes are immutable.",
+      "error": { "code": "RECEIPT_CANONICAL_HASH_INVALID", "message": "Receipt hash must cover the exact canonical signed envelope and domain." },
+      "fixtureRequirements": { "positive": ["receipt-valid"], "negative": ["receipt-canonical-binding"] }
+    },
+    {
+      "id": "evidence.exact-set",
+      "inputs": ["/evidenceIds", "/evidenceCount", "/evidenceMerkleRoot", "/evidenceHash"],
+      "predicate": "Evidence IDs are ordered and unique, evidenceCount equals the set length, and evidenceMerkleRoot is the count-bound Merkle root of that exact ordered set; evidenceHash covers the same set.",
+      "error": { "code": "EVIDENCE_SET_BINDING_INVALID", "message": "Receipt evidence must be an ordered, unique, count-bound exact set." },
+      "fixtureRequirements": { "positive": ["evidence-valid"], "negative": ["receipt-evidence-binding"] }
+    },
+    {
+      "id": "signature.threshold-unique",
+      "inputs": ["/signatureGroup/threshold", "/signatureGroup/signatures", "/rootTransition/signatureGroup", "/rootKeySet"],
+      "predicate": "Signer identities (signerId,keyId) are unique, each signer is non-revoked and scoped to the object, and the number of valid distinct signers is at least threshold and no greater than the authorized key set.",
+      "error": { "code": "SIGNATURE_THRESHOLD_INVALID", "message": "Signatures must be unique, authorized, non-revoked, and satisfy threshold." },
+      "fixtureRequirements": { "positive": ["signature-valid-threshold"], "negative": ["duplicate-signer", "threshold-unsatisfied", "revoked-signer"] }
+    },
+    {
+      "id": "authorization.scope",
+      "inputs": ["/projectId", "/riskLevel", "/role", "/keyId", "/validFrom", "/validUntil", "/rootSequence", "/trustSequence"],
+      "predicate": "Authorization is valid only when project root, risk level, role, key, validity interval, root sequence, and trust sequence all match the requested operation; missing or stale scope is denied.",
+      "error": { "code": "AUTHORIZATION_SCOPE_INVALID", "message": "Authorization is not scoped to the project, risk, principal, key, and current trust/root state." },
+      "fixtureRequirements": { "positive": ["authorization-valid"], "negative": ["authorization-scope"] }
+    },
+    {
+      "id": "root.transition",
+      "inputs": ["/transitionKind", "/previousRootHash", "/nextRootHash", "/rootEpoch", "/trustSequence"],
+      "predicate": "GENESIS has null previousRootHash and epoch zero; ROTATE/REVOKE have a non-null previous root, strictly increasing epoch, and a valid signed transition.",
+      "error": { "code": "ROOT_TRANSITION_INVALID", "message": "Root transition is not a valid monotonic signed state transition." },
+      "fixtureRequirements": { "positive": ["root-genesis-valid", "root-rotate-valid"], "negative": ["root-transition"] }
+    },
+    {
+      "id": "attestation.binding",
+      "inputs": ["/nonce", "/principalId", "/keyId", "/executableDigest", "/deviceId", "/bootId", "/ipcPeer"],
+      "predicate": "Service attestation binds the challenge nonce, principal and key, executable digest, device and boot identity, and authenticated IPC peer; any missing or changed input fails closed.",
+      "error": { "code": "SERVICE_ATTESTATION_INVALID", "message": "Service attestation is not bound to the challenged executable and peer." },
+      "fixtureRequirements": { "positive": ["attestation-valid"], "negative": ["attestation-binding"] }
+    },
+    {
+      "id": "risk.raise-only",
+      "inputs": ["/riskLevel", "/projectHint", "/unsupported", "/classified"],
+      "predicate": "Hints may only raise risk or restrict a decision; unknown, malformed, stale, or unsupported input resolves to R3/BLOCK and never authorizes.",
+      "error": { "code": "RISK_NOT_FAIL_CLOSED", "message": "Risk evaluation must be monotonic and fail closed." },
+      "fixtureRequirements": { "positive": ["risk-monotonic-valid"], "negative": ["risk-lower-by-hint"] }
+    },
+    {
+      "id": "exception.single-use",
+      "inputs": ["/subjectId", "/causeHash", "/scopeHash", "/maxUses", "/expiresAt", "/revoked", "/approvedBy"],
+      "predicate": "An exception is scoped to one subject and cause, has bounded uses and expiry, cannot be revoked or expired, and cannot be self-approved by its subject.",
+      "error": { "code": "EXCEPTION_REUSE_OR_SELF_APPROVAL", "message": "Exception use exceeds its scope, lifetime, or approval separation." },
+      "fixtureRequirements": { "positive": ["exception-valid"], "negative": ["exception-reuse"] }
+    },
+    {
+      "id": "metrics.identity-binding",
+      "inputs": ["/projectId", "/riskLevel", "/checkpointId", "/profileId", "/stage", "/rootSequence", "/trustSequence", "/counters"],
+      "predicate": "Metrics bind the complete decision identity and checkpoint/window/profile/stage/root/trust sequence; counters are integers and never inferred from missing fields.",
+      "error": { "code": "METRICS_IDENTITY_INVALID", "message": "Metrics are not bound to the complete decision identity." },
+      "fixtureRequirements": { "positive": ["metrics-valid"], "negative": ["metrics-identity"] }
+    },
+    {
+      "id": "adjudication.rank2",
+      "inputs": ["/decision", "/subjectId", "/evidenceIds", "/signatureGroup", "/securityPrincipalId"],
+      "predicate": "R3, false-accept, or suspicion resolution requires two distinct valid principals, including a principal with the security role; one principal cannot self-approve.",
+      "error": { "code": "ADJUDICATION_SECOND_REVIEW_REQUIRED", "message": "High-risk adjudication requires an independent security review." },
+      "fixtureRequirements": { "positive": ["adjudication-rank2-valid"], "negative": ["adjudication-rank2-single-review"] }
+    },
+    {
+      "id": "adapter.manifest-identity",
+      "inputs": [
+        "/adapterId", "/owner", "/signer", "/project", "/tool", "/interpreter",
+        "/argv", "/cwd", "/env", "/secrets", "/network", "/fixture", "/timeout",
+        "/output", "/cleanup", "/rerun", "/surface", "/surfaceIdentity"
+      ],
+      "predicate": "An adapter manifest binds owner and signer to one project, tool, interpreter, exact argv/cwd/environment and declared secrets/network policy, fixture, timeout, output, cleanup, rerun policy, and the identity of its execution surface; any omission, type change, unknown field, or cross-surface identity is rejected.",
+      "error": { "code": "ADAPTER_MANIFEST_IDENTITY_INVALID", "message": "Adapter execution identity is incomplete, forged, or bound to the wrong surface." },
+      "fixtureRequirements": {
+        "positive": ["adapter-manifest-valid"],
+        "negative": [
+          "adapter-owner-omission",
+          "adapter-argv-type",
+          "adapter-unknown-field",
+          "adapter-forged-signer",
+          "adapter-cross-surface"
+        ]
+      }
+    },
+    {
+      "id": "snapshot.inventory-binding",
+      "inputs": [
+        "/physicalRoot", "/treeHash", "/worktreeHash", "/baseHash", "/headHash",
+        "/mutationEpoch", "/inventoryPolicy", "/entries"
+      ],
+      "predicate": "A snapshot binds the physical root, tree/worktree/base/head hashes, mutation epoch, closed include/exclude policy, and complete ordered entry inventory; each entry carries typed hash, length, mode, symlink, gitlink, submodule, rename, and generated provenance, with no forged or cross-root entry.",
+      "error": { "code": "SNAPSHOT_INVENTORY_INVALID", "message": "Snapshot inventory or provenance is incomplete, forged, unordered, or bound to another root." },
+      "fixtureRequirements": {
+        "positive": ["snapshot-inventory-valid"],
+        "negative": [
+          "snapshot-physical-root-omission",
+          "snapshot-entry-type",
+          "snapshot-unknown-field",
+          "snapshot-forged-hash",
+          "snapshot-cross-root"
+        ]
+      }
+    },
+    {
+      "id": "terminal.branch-binding",
+      "inputs": [
+        "/status", "/reason", "/reasonCode", "/terminalState/state",
+        "/terminalState/status", "/terminalState/reason", "/terminalState/reasonCode",
+        "/terminalState/receiptHash", "/receiptHash"
+      ],
+      "predicate": "verified_success is exactly the CLEAR-WATCH branch with clear_watch_receipt and a required equal receipt; failed, cancelled, and blocked use only their exact reason/status branches and must not carry a receipt.",
+      "error": { "code": "TERMINAL_BRANCH_INVALID", "message": "Terminal status, reason, branch, and receipt presence do not agree." },
+      "fixtureRequirements": {
+        "positive": ["terminal-verified-success-valid", "terminal-failed-valid", "terminal-cancelled-valid", "terminal-blocked-valid"],
+        "negative": [
+          "terminal-verified-success-missing-receipt",
+          "terminal-failed-receipt-present",
+          "terminal-cancelled-wrong-reason",
+          "terminal-blocked-cross-branch"
+        ]
+      }
+    },
+    {
+      "id": "quiescence.source-action-authority",
+      "inputs": ["/objectType", "/kind", "/actionKind", "/principalId", "/candidateGeneration", "/mutationEpoch", "/coordinatorSequence", "/seal", "/lease", "/result", "/receipt"],
+      "predicate": "Harness observations are closed source facts and cannot contain coordinator identity, generation, epoch, reconciliation, seal, lease, result, Receipt, or terminal decision; only authenticated coordinator actions may carry those fields.",
+      "error": { "code": "QTB_SOURCE_ACTION_AUTHORITY_INVALID", "message": "Untrusted harness input cannot forge coordinator authority." },
+      "fixtureRequirements": { "positive": ["qtb-observation-valid", "qtb-action-valid"], "negative": ["qtb-observation-forged-authority", "qtb-observation-unknown-field"] }
+    },
+    {
+      "id": "quiescence.single-signal-nonauthority",
+      "inputs": ["/sourceEvent", "/kind", "/actionKind", "/phase", "/rootCandidateSeen", "/mainSettled", "/activeCount", "/queuedCount", "/pendingDeliveryCount", "/incompleteRequiredTaskCount", "/sourceGapCount", "/deadLetterCount", "/quietWindowMs"],
+      "predicate": "No individual TaskCompleted, SubagentStop, Stop, agent_end, turn_end, turn/completed, actor_terminal, or job-terminal observation or action may transition directly to sealing, sealed, or verifying.",
+      "error": { "code": "QTB_SINGLE_SIGNAL_AUTHORITY_INVALID", "message": "A terminal event is only an observation and cannot seal or start verification." },
+      "fixtureRequirements": { "positive": ["qtb-multi-signal-seal-valid"], "negative": ["qtb-single-terminal-seal", "qtb-single-terminal-verify"] }
+    },
+    {
+      "id": "quiescence.seal-conjunction",
+      "inputs": ["/phase", "/rootCandidateSeen", "/mainSettled", "/activeCount", "/queuedCount", "/pendingDeliveryCount", "/incompleteRequiredTaskCount", "/sourceGapCount", "/deadLetterCount", "/mutationEpoch", "/quietSinceMonoMs", "/quietWindowMs", "/actorMode"],
+      "predicate": "Seal requires trusted root candidate and main settle, all six derived ledger counts equal zero, unchanged mutation epoch, and an elapsed coordinator-owned quiet window of exactly 2000 ms for single-agent or 5000 ms for multi-agent.",
+      "error": { "code": "QTB_SEAL_CONJUNCTION_INVALID", "message": "Quiescence seal requires the complete coordinator-owned census and quiet window." },
+      "fixtureRequirements": { "positive": ["qtb-seal-single-valid", "qtb-seal-multi-valid"], "negative": ["qtb-seal-missing-root", "qtb-seal-active-count", "qtb-seal-source-gap", "qtb-seal-quiet-window", "qtb-seal-epoch-changed"] }
+    },
+    {
+      "id": "quiescence.reconciliation-census",
+      "inputs": ["/actionKind", "/payload/sourceKey", "/payload/capabilityProfileId", "/payload/authoritativeCursor", "/payload/coversThroughCursor", "/payload/closedSnapshot", "/payload/actors", "/payload/tasks", "/payload/deliveries", "/payload/nativeRootIdentity", "/payload/snapshotCanonicalHash", "/payload/observationInventoryHash"],
+      "predicate": "Only an authenticated source_snapshot_reconciled coordinator action with an authorized complete actor/task/delivery census, authoritative cursor, matching root identity, and monotonic coverage may clear a source gap or dead letter.",
+      "error": { "code": "QTB_RECONCILIATION_INVALID", "message": "A source gap cannot be cleared without an authenticated complete census." },
+      "fixtureRequirements": { "positive": ["qtb-reconciliation-valid"], "negative": ["qtb-gap-cleared-by-event"] }
+    },
+    {
+      "id": "quiescence.ledger-derived-counts",
+      "inputs": ["/actors", "/tasks", "/deliveries", "/activeCount", "/queuedCount", "/pendingDeliveryCount", "/incompleteRequiredTaskCount", "/sourceGapCount", "/deadLetterCount"],
+      "predicate": "Active, queued, pending-delivery, incomplete-required, gap, and dead-letter counts are derived from identity-indexed ledgers; duplicate/reordered transitions never decrement aggregate counters, and a paused required actor references an open required task.",
+      "error": { "code": "QTB_LEDGER_DERIVATION_INVALID", "message": "Ledger counts or paused-required-task identity are inconsistent." },
+      "fixtureRequirements": { "positive": ["qtb-ledger-derived-valid"], "negative": ["qtb-forged-count"] }
+    },
+    {
+      "id": "quiescence.generation-epoch-invalidation",
+      "inputs": ["/candidateGeneration", "/mutationEpoch", "/cancellationEpoch", "/sourceCursor", "/phase", "/candidateKey", "/leaseKey"],
+      "predicate": "The coordinator allocates generation and mutation epoch; mutation, new work, reopen, queued delivery, or unresolved gap invalidates the candidate and stale lease, while late observations are audit-only or create a gap; commit requires the current generation, mutation epoch, and cancellation epoch.",
+      "error": { "code": "QTB_GENERATION_EPOCH_INVALID", "message": "Stale generation, mutation epoch, or cancellation epoch cannot commit." },
+      "fixtureRequirements": { "positive": ["qtb-generation-current-valid"], "negative": ["qtb-stale-generation-commit", "qtb-stale-epoch-commit"] }
+    },
+    {
+      "id": "quiescence.candidate-lease-binding",
+      "inputs": ["/candidateKey", "/physicalRootHash", "/snapshotHash", "/inventoryHash", "/baseLeaseTuple", "/leaseKey", "/fenceToken", "/holderPrincipal", "/cancellationEpoch"],
+      "predicate": "Candidate bytes bind physical root, snapshot, inventory, acceptance, obligations, capability, budget, and risk hashes; one lease exists per base tuple, and a same-tuple different candidate/root/snapshot/inventory or stale fence is rejected.",
+      "error": { "code": "QTB_CANDIDATE_LEASE_BINDING_INVALID", "message": "The lease is not bound to one immutable candidate and current fence." },
+      "fixtureRequirements": { "positive": ["qtb-candidate-lease-valid"], "negative": ["qtb-candidate-root-mismatch", "qtb-lease-stale-fence"] }
+    },
+    {
+      "id": "quiescence.mandatory-budget",
+      "inputs": ["/mandatory", "/unfinishedMandatoryIds", "/skippedOptionalIds", "/softCrossed", "/hardCrossed", "/outcome"],
+      "predicate": "Soft budget may stop optional scheduling only; mandatory obligations remain selected and visible. Hard timeout, incomplete evidence, or unfinished mandatory IDs can never produce CLEAR.",
+      "error": { "code": "QTB_MANDATORY_BUDGET_INVALID", "message": "Mandatory verification was dropped or timeout incorrectly cleared." },
+      "fixtureRequirements": { "positive": ["qtb-soft-optional-stop-valid"], "negative": ["qtb-timeout-clear"] }
+    },
+    {
+      "id": "quiescence.phase-timing",
+      "inputs": ["/queueMs", "/bootstrapMs", "/collectionMs", "/executionMs", "/evidenceFlushMs", "/shutdownMs", "/segments", "/globalCompletionMs", "/runnerSoftTotalMs", "/runnerHardTotalMs", "/riskSoftMs", "/riskHardMs"],
+      "predicate": "Queue, bootstrap, collection, execution, evidence flush, and shutdown are separate nonnegative coordinator timings; scalar values equal their segments, total budgets are explicit, and inclusive hard equality is non-CLEAR.",
+      "error": { "code": "QTB_PHASE_TIMING_INVALID", "message": "Timing segments, total budgets, or inclusive deadline behavior is invalid." },
+      "fixtureRequirements": { "positive": ["qtb-timing-valid"], "negative": ["qtb-timing-sum-mismatch"] }
+    },
+    {
+      "id": "quiescence.completion-bridge",
+      "inputs": ["/candidateKey", "/baseLeaseTuple", "/fenceToken", "/receiptObjectId", "/receiptCanonicalHash", "/sessionId", "/promptGeneration", "/terminalId", "/primaryId", "/secondaryId", "/activeId"],
+      "predicate": "The companion binding joins one current candidate and fence to the five existing Evidence objects, existing Receipt, and receipt-bound TerminalPair; bridge fields and owner identities must be equal and Receipt/TerminalPair substitution is forbidden.",
+      "error": { "code": "QTB_COMPLETION_BRIDGE_INVALID", "message": "Candidate, lease, Evidence, Receipt, and TerminalPair are not bound to one completion." },
+      "fixtureRequirements": { "positive": ["qtb-completion-bridge-valid"], "negative": ["qtb-bridge-receipt-mismatch", "qtb-bridge-missing-field"] }
+    }
+  ]
+}

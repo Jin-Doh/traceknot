@@ -1,0 +1,57 @@
+{
+  "format": "quality-contract.callsite-audit-report.v3",
+  "sourceCount": 1333,
+  "candidateCount": 2372,
+  "checked": 2372,
+  "failures": [],
+  "omissionProbes": [
+    {
+      "id": "producer-create-write-stream-row-delete",
+      "fixtureId": "raw-create-write-stream-forms",
+      "method": "createWriteStream",
+      "token": "createWriteStream",
+      "mutation": "row-delete",
+      "outcome": "killed",
+      "detail": "manifest does not contain exactly one semantic row for createWriteStream"
+    },
+    {
+      "id": "producer-create-write-stream-row-corrupt",
+      "fixtureId": "raw-create-write-stream-forms",
+      "method": "createWriteStream",
+      "token": "createWriteStream",
+      "mutation": "row-corrupt",
+      "outcome": "killed",
+      "detail": "decision expected BLOCK got ALLOW"
+    },
+    {
+      "id": "producer-create-write-stream-inventory-omission",
+      "fixtureId": "raw-create-write-stream-forms",
+      "method": "createWriteStream",
+      "token": "createWriteStream",
+      "mutation": "producer-inventory-omission",
+      "outcome": "killed",
+      "detail": "manifest does not contain exactly one semantic row for createWriteStream"
+    },
+    {
+      "id": "producer-create-write-stream-collector-omission",
+      "fixtureId": "raw-create-write-stream-forms",
+      "method": "createWriteStream",
+      "token": "createWriteStream",
+      "mutation": "producer-collector-omission",
+      "outcome": "killed",
+      "detail": "manifest does not contain exactly one semantic row for createWriteStream"
+    },
+    {
+      "id": "auditor-oracle-unknown-fs-writer",
+      "fixtureId": "unknown-future-fs-writer",
+      "method": "futureWriter",
+      "token": "futureWriter",
+      "mutation": "auditor-oracle-omission",
+      "outcome": "killed",
+      "detail": "manifest does not contain exactly one semantic row for futureWriter"
+    }
+  ],
+  "passed": true,
+  "phase1Authorized": false,
+  "payloadSha256": "1282ede3df2e60b4a1500d980d05970f1004b4fa5410ff013d22affc2d1f99d6"
+}

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schemaVersion": "official-source-evidence/v1",
+  "recordType": "OfficialSourceEvidence",
+  "recordId": "openai-codex-hooks-v1",
+  "source": {
+    "publisher": "OpenAI",
+    "title": "Codex Hooks",
+    "url": "https://developers.openai.com/codex/hooks",
+    "sourceKind": "official-documentation"
+  },
+  "review": {
+    "reviewId": "qtb-a0-official-review-2026-07-16",
+    "reviewedAt": "2026-07-16T00:00:00Z",
+    "reviewerId": "gajae-quality-contract-review",
+    "method": "manual-document-review"
+  },
+  "runtimePolicy": {
+    "refetchAllowed": false,
+    "verificationMode": "pinned-bytes-only"
+  },
+  "excerpts": [
+    {
+      "excerptId": "matching-hooks-concurrent",
+      "locator": "#hooks:runtime-behavior",
+      "text": "Multiple matching command hooks for the same event are launched concurrently, so one hook can't prevent another matching hook from starting.",
+      "encoding": "UTF-8",
+      "lineEnding": "LF",
+      "excerptSha256": "26b91645357e4efab8dfe9671c6b69f4090dcb5e81d2cf7a5f7c2eba679197bb"
+    },
+    {
+      "excerptId": "non-managed-review",
+      "locator": "#review-and-trust-hooks",
+      "text": "Non-managed command hooks must be reviewed and trusted before they run.",
+      "encoding": "UTF-8",
+      "lineEnding": "LF",
+      "excerptSha256": "543e1fb1ccb80e699b61333ec68e423752d72ff5e780bb5d6d2616a61c98204d"
+    },
+    {
+      "excerptId": "turn-scope-events",
+      "locator": "#hooks:runtime-behavior:turn-scope",
+      "text": "PreToolUse, PermissionRequest, PostToolUse, PreCompact, PostCompact, UserPromptSubmit, SubagentStop, and Stop run at turn scope.",
+      "encoding": "UTF-8",
+      "lineEnding": "LF",
+      "excerptSha256": "3c1225822e0b401f99312362e4e5d4ff599ce388a050b8531fa16298b59fdcf8"
+    }
+  ],
+  "conclusions": [
+    {
+      "conclusionId": "concurrent-hooks-do-not-prove-global-join",
+      "statement": "Codex hook events may run concurrently and require independent trust review; they are external observations and do not establish a GJC global join or authorize verification by themselves.",
+      "globalJoinEstablished": false,
+      "disposition": "observation-only",
+      "evidenceExcerptIds": [
+        "matching-hooks-concurrent",
+        "non-managed-review",
+        "turn-scope-events"
+      ],
+      "frozen": true
+    }
+  ]
+}

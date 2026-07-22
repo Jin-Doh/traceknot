@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gajae.dev/quality-contract/schemas/official-source-evidence.schema.json",
+  "title": "Official source evidence contract",
+  "oneOf": [{}],
+  "$defs": {},
+  "type": "object",
+  "additionalProperties": false,
+  "unevaluatedProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "recordType",
+    "recordId",
+    "source",
+    "review",
+    "runtimePolicy",
+    "excerpts",
+    "conclusions"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "schemaVersion": {
+      "const": "official-source-evidence/v1"
+    },
+    "recordType": {
+      "const": "OfficialSourceEvidence"
+    },
+    "recordId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,127}$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["publisher", "title", "url", "sourceKind"],
+      "properties": {
+        "publisher": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" },
+        "sourceKind": {
+          "type": "string",
+          "enum": ["official-documentation"]
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewId", "reviewedAt", "reviewerId", "method"],
+      "properties": {
+        "reviewId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,127}$"
+        },
+        "reviewedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reviewerId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9._:-]{0,127}$"
+        },
+        "method": {
+          "type": "string",
+          "enum": ["manual-document-review"]
+        }
+      }
+    },
+    "runtimePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["refetchAllowed", "verificationMode"],
+      "properties": {
+        "refetchAllowed": { "const": false },
+        "verificationMode": { "const": "pinned-bytes-only" }
+      }
+    },
+    "excerpts": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "excerptId",
+          "locator",
+          "text",
+          "encoding",
+          "lineEnding",
+          "excerptSha256"
+        ],
+        "properties": {
+          "excerptId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,127}$"
+          },
+          "locator": { "type": "string", "minLength": 1 },
+          "text": { "type": "string", "minLength": 1 },
+          "encoding": { "const": "UTF-8" },
+          "lineEnding": { "const": "LF" },
+          "excerptSha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
+    },
+    "conclusions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "conclusionId",
+          "statement",
+          "globalJoinEstablished",
+          "disposition",
+          "evidenceExcerptIds",
+          "frozen"
+        ],
+        "properties": {
+          "conclusionId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,127}$"
+          },
+          "statement": { "type": "string", "minLength": 1 },
+          "globalJoinEstablished": { "const": false },
+          "disposition": {
+            "type": "string",
+            "enum": ["observation-only", "not-enforcing"]
+          },
+          "evidenceExcerptIds": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,127}$"
+            }
+          },
+          "frozen": { "const": true }
+        }
+      }
+    }
+  }
+}

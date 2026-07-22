@@ -1,0 +1,705 @@
+{
+  "format": "quality-contract.sqlite-report.v1",
+  "authoritySqlSha256": "04df7a940d05e700c2e4528c50f87a4b558bbb51491d01298ad846ace751f04c",
+  "promotionSqlSha256": "4b5e1be4b442b62df7b22d5bff7615779d51c61e4c2d2a038fcb8e813cd90d4a",
+  "quiescenceSqlSha256": "9b0cf5137ee8ac0f1543df308e5771bda51357d6fdd19cd912ae166a1be26107",
+  "fixturesSha256": "a3a5a1926de2fb6dcea3e548c04da960f0b1461800a526e76326f5730ee1b55f",
+  "quiescenceFixturesSha256": "38e4bf4c53343a95716a638923c44b53e5d21beec86b7a8093003a5f4544d769",
+  "fixtureVersion": 4,
+  "quiescenceFixtureVersion": 4,
+  "windowSeconds": 1209600,
+  "assertions": [
+    {
+      "id": "authority-constraints",
+      "passed": true,
+      "detail": "base authority row committed"
+    },
+    {
+      "id": "bootstrap-wal",
+      "passed": true,
+      "detail": "journal_mode=wal"
+    },
+    {
+      "id": "bootstrap-synchronous-full",
+      "passed": true,
+      "detail": "synchronous=2"
+    },
+    {
+      "id": "clear-receipt-positive",
+      "passed": true,
+      "detail": "CLEAR receipt commits without exception use"
+    },
+    {
+      "id": "clear-receipt-idempotent",
+      "passed": true,
+      "detail": "same CLEAR receipt bytes are idempotent"
+    },
+    {
+      "id": "canonical-receipt-envelope",
+      "passed": true,
+      "detail": "receipt is a schema-valid signed JCS envelope"
+    },
+    {
+      "id": "watch-receipt-exception-required",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: WATCH receipt requires exception use"
+    },
+    {
+      "id": "clear-receipt-exception-forbidden",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: exception use forbidden for CLEAR/BLOCK receipt"
+    },
+    {
+      "id": "block-receipt-exception-forbidden",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: exception use forbidden for CLEAR/BLOCK receipt"
+    },
+    {
+      "id": "canonical-receipt-noncanonical",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: receipt must use JCS canonical encoding"
+    },
+    {
+      "id": "canonical-receipt-missing-signature",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: receipt signature required"
+    },
+    {
+      "id": "canonical-receipt-invalid-signature",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: receipt signature invalid"
+    },
+    {
+      "id": "identity-mismatch-ground-truth-key",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: FOREIGN KEY constraint failed"
+    },
+    {
+      "id": "identity-mismatch-project-root-identity",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: FOREIGN KEY constraint failed"
+    },
+    {
+      "id": "identity-mismatch-root-bundle-sequence",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: FOREIGN KEY constraint failed"
+    },
+    {
+      "id": "identity-mismatch-trust-bundle-sequence",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: FOREIGN KEY constraint failed"
+    },
+    {
+      "id": "identity-mismatch-gate-verdict",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: FOREIGN KEY constraint failed"
+    },
+    {
+      "id": "identity-mismatch-risk",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: FOREIGN KEY constraint failed"
+    },
+    {
+      "id": "identity-mismatch-checkpoint-key",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: UNIQUE constraint failed: gate_decisions.ground_truth_key, gate_decisions.project_root_identity, gate_decisions.root_bundle_sequence, gate_decisions.trust_bundle_sequence, gate_decisions.gate_verdict, gate_decisions.risk"
+    },
+    {
+      "id": "identity-mismatch-profile-key",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: UNIQUE constraint failed: gate_decisions.ground_truth_key, gate_decisions.project_root_identity, gate_decisions.root_bundle_sequence, gate_decisions.trust_bundle_sequence, gate_decisions.gate_verdict, gate_decisions.risk"
+    },
+    {
+      "id": "identity-mismatch-stage-key",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: UNIQUE constraint failed: gate_decisions.ground_truth_key, gate_decisions.project_root_identity, gate_decisions.root_bundle_sequence, gate_decisions.trust_bundle_sequence, gate_decisions.gate_verdict, gate_decisions.risk"
+    },
+    {
+      "id": "zero-denominator",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: promotion predicate failed"
+    },
+    {
+      "id": "evaluation-counter-mismatch",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: evaluation metric identity mismatch"
+    },
+    {
+      "id": "evaluation-before-measurement",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: evaluation metric identity mismatch"
+    },
+    {
+      "id": "expiry-before-window",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: CHECK constraint failed: expires_at = measured_at + 1209600"
+    },
+    {
+      "id": "expiry-at-boundary",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: promotion predicate failed"
+    },
+    {
+      "id": "bounded-promotion-arithmetic",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: CHECK constraint failed: blocked_ppm BETWEEN 0 AND 1000000 AND blocked_ppm = CASE WHEN denominator = 0 THEN 0 ELSE (blocked_count * 1000000 + denominator / 2) / denominator END"
+    },
+    {
+      "id": "duplicate-signers",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: rank two signer must be security"
+    },
+    {
+      "id": "rank2-security-required",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: rank two authorized security signer required"
+    },
+    {
+      "id": "rank2-security-positive",
+      "passed": true,
+      "detail": "distinct authorized REVIEWER and SECURITY signers permit R3 promotion"
+    },
+    {
+      "id": "r3-deny-rejected",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: ALLOW adjudication required for R3 promotion"
+    },
+    {
+      "id": "r3-resolve-rejected",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: ALLOW adjudication required for R3 promotion"
+    },
+    {
+      "id": "promotion-conclusion-forgery",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: CHECK constraint failed: (status = 'PROMOTED' AND reason = 'verified-allow') OR (status = 'BLOCKED' AND reason = 'blocked')"
+    },
+    {
+      "id": "unauthorized-adjudicator",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: scoped adjudicator authorization required"
+    },
+    {
+      "id": "grant-expired-boundary",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: WATCH grant unavailable"
+    },
+    {
+      "id": "grant-revoked",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: WATCH grant unavailable"
+    },
+    {
+      "id": "authorization-revoked-before-grant",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: scoped approver authorization required"
+    },
+    {
+      "id": "authorization-revoked-during-use",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: exception authorization unavailable"
+    },
+    {
+      "id": "direct-exception-use-bypass",
+      "passed": true,
+      "detail": "direct SQL exception use reconciles the grant count"
+    },
+    {
+      "id": "direct-exception-use-overuse",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: exception grant unavailable"
+    },
+    {
+      "id": "exception-use-rollback",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: evidence hash must be canonical sha256"
+    },
+    {
+      "id": "exception-use-rollback-state",
+      "passed": true,
+      "detail": "failed receipt rolls back use and reconciled grant count"
+    },
+    {
+      "id": "forged-prebinding-evidence-update",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: evidence hash mismatch"
+    },
+    {
+      "id": "forged-prebinding-audit-update",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: audit hash mismatch"
+    },
+    {
+      "id": "r3-watch-grant-rejected",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: CHECK constraint failed: risk IN ('R0','R1','R2')"
+    },
+    {
+      "id": "watch-exception-transaction",
+      "passed": true,
+      "detail": "exactly one transactional grant use"
+    },
+    {
+      "id": "same-slot-idempotent-receipt",
+      "passed": true,
+      "detail": "same committed receipt bytes"
+    },
+    {
+      "id": "canonical-receipt-hash",
+      "passed": true,
+      "detail": "approved domain-separated length-prefixed canonical signed-envelope receipt hash"
+    },
+    {
+      "id": "canonical-receipt-hash-negative",
+      "passed": true,
+      "detail": "receipt byte or length change invalidates the approved hash"
+    },
+    {
+      "id": "transactional-evidence-audit-outbox",
+      "passed": true,
+      "detail": "receipt binds evidence, audit, and outbox"
+    },
+    {
+      "id": "receipt-tamper-evidence-bytes",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: receipt evidence binding is immutable"
+    },
+    {
+      "id": "receipt-tamper-evidence-hash",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: receipt evidence binding is immutable"
+    },
+    {
+      "id": "receipt-tamper-audit-bytes",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: receipt audit binding is immutable"
+    },
+    {
+      "id": "receipt-tamper-audit-hash",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: receipt audit binding is immutable"
+    },
+    {
+      "id": "receipt-tamper-outbox-payload",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: receipt outbox binding is immutable"
+    },
+    {
+      "id": "receipt-tamper-receipt-bytes",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: committed receipt is immutable"
+    },
+    {
+      "id": "receipt-tamper-receipt-hash",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: committed receipt is immutable"
+    },
+    {
+      "id": "canonical-receipt-byte-hash-binding",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: receipt hash mismatch"
+    },
+    {
+      "id": "forged-initial-receipt-hash",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: receipt hash mismatch"
+    },
+    {
+      "id": "forged-initial-evidence-hash",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: evidence hash mismatch"
+    },
+    {
+      "id": "forged-initial-audit-hash",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: audit hash mismatch"
+    },
+    {
+      "id": "concurrent-duplicate-finalization",
+      "passed": true,
+      "detail": "two independently spawned SQLite finalizers race from one barrier and converge on one receipt"
+    },
+    {
+      "id": "promotion-positive",
+      "passed": true,
+      "detail": "fresh full-identity promotion committed"
+    },
+    {
+      "id": "suspicion-blocks-promotion",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: unresolved suspicion"
+    },
+    {
+      "id": "qtb-catalog-wrong-identity",
+      "passed": true,
+      "detail": "wrong profile and catalog version cannot bind a recovery lease"
+    },
+    {
+      "id": "qtb-concurrent-initial-claim",
+      "passed": true,
+      "detail": "two process-like SQLite claimers produce one initial lease winner"
+    },
+    {
+      "id": "qtb-takeover-before-expiry",
+      "passed": true,
+      "detail": "takeover one tick before expiry is rejected"
+    },
+    {
+      "id": "qtb-takeover-at-expiry",
+      "passed": true,
+      "detail": "takeover at incumbent expiry is accepted"
+    },
+    {
+      "id": "qtb-takeover-after-expiry",
+      "passed": true,
+      "detail": "takeover after incumbent expiry is accepted"
+    },
+    {
+      "id": "qtb-recovery-winner",
+      "passed": true,
+      "detail": "only the highest-fence recovery lease is current"
+    },
+    {
+      "id": "qtb-superseded-lease-delete-immutable",
+      "passed": true,
+      "detail": "superseded lease deletion is rejected and historical fence remains"
+    },
+    {
+      "id": "qtb-stale-lease-mutation",
+      "passed": true,
+      "detail": "superseded lease fence mutation is rejected"
+    },
+    {
+      "id": "qtb-stale-lease-mutation",
+      "passed": true,
+      "detail": "superseded lease expires_at mutation is rejected"
+    },
+    {
+      "id": "qtb-stale-lease-mutation",
+      "passed": true,
+      "detail": "superseded lease profile_id mutation is rejected"
+    },
+    {
+      "id": "qtb-stale-owner-commit",
+      "passed": true,
+      "detail": "stale owner receipt and bridge are denied after recovery takeover"
+    },
+    {
+      "id": "qtb-monotonic-fence",
+      "passed": true,
+      "detail": "fence and claim time regressions are rejected"
+    },
+    {
+      "id": "qtb-schema-positive",
+      "passed": true,
+      "detail": "quiescence authority tables installed"
+    },
+    {
+      "id": "qtb-profile-catalog",
+      "passed": true,
+      "detail": "all runner profiles have exact verification-obligations/v1 mandatory catalogs"
+    },
+    {
+      "id": "qtb-catalog-exact-all-profiles",
+      "passed": true,
+      "detail": "all immutable profile catalogs match the exact governed sets"
+    },
+    {
+      "id": "qtb-catalog-delete-immutable",
+      "passed": true,
+      "detail": "g0-evidence-only omission is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-update-immutable",
+      "passed": true,
+      "detail": "g0-evidence-only replacement is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-insert-immutable",
+      "passed": true,
+      "detail": "g0-evidence-only extra row is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-delete-immutable",
+      "passed": true,
+      "detail": "js-ts-focused omission is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-update-immutable",
+      "passed": true,
+      "detail": "js-ts-focused replacement is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-insert-immutable",
+      "passed": true,
+      "detail": "js-ts-focused extra row is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-delete-immutable",
+      "passed": true,
+      "detail": "python-focused omission is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-update-immutable",
+      "passed": true,
+      "detail": "python-focused replacement is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-insert-immutable",
+      "passed": true,
+      "detail": "python-focused extra row is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-delete-immutable",
+      "passed": true,
+      "detail": "rust-incremental omission is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-update-immutable",
+      "passed": true,
+      "detail": "rust-incremental replacement is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-insert-immutable",
+      "passed": true,
+      "detail": "rust-incremental extra row is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-delete-immutable",
+      "passed": true,
+      "detail": "rust-cold omission is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-update-immutable",
+      "passed": true,
+      "detail": "rust-cold replacement is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-insert-immutable",
+      "passed": true,
+      "detail": "rust-cold extra row is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-delete-immutable",
+      "passed": true,
+      "detail": "playwright-focused omission is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-update-immutable",
+      "passed": true,
+      "detail": "playwright-focused replacement is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-catalog-insert-immutable",
+      "passed": true,
+      "detail": "playwright-focused extra row is rejected and catalog remains exact"
+    },
+    {
+      "id": "qtb-ledger-duplicate",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: UNIQUE constraint failed: qtb_identity_ledger.project_id, qtb_identity_ledger.root_objective_id, qtb_identity_ledger.action_sequence"
+    },
+    {
+      "id": "qtb-reordered-events",
+      "passed": true,
+      "detail": "duplicate/reordered event did not overwrite ledger"
+    },
+    {
+      "id": "qtb-candidate-immutable",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: candidate immutable"
+    },
+    {
+      "id": "qtb-lease-committed-insert",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: lease must begin uncommitted"
+    },
+    {
+      "id": "qtb-lease-identity-mutation",
+      "passed": true,
+      "detail": "lease lease_id mutation is rejected"
+    },
+    {
+      "id": "qtb-lease-identity-mutation",
+      "passed": true,
+      "detail": "lease candidate_key mutation is rejected"
+    },
+    {
+      "id": "qtb-lease-identity-mutation",
+      "passed": true,
+      "detail": "lease project_id mutation is rejected"
+    },
+    {
+      "id": "qtb-lease-identity-mutation",
+      "passed": true,
+      "detail": "lease root_objective_id mutation is rejected"
+    },
+    {
+      "id": "qtb-lease-identity-mutation",
+      "passed": true,
+      "detail": "lease candidate_generation mutation is rejected"
+    },
+    {
+      "id": "qtb-lease-identity-mutation",
+      "passed": true,
+      "detail": "lease mutation_epoch mutation is rejected"
+    },
+    {
+      "id": "qtb-lease-identity-mutation",
+      "passed": true,
+      "detail": "lease profile_id mutation is rejected"
+    },
+    {
+      "id": "qtb-lease-identity-mutation",
+      "passed": true,
+      "detail": "lease catalog_version mutation is rejected"
+    },
+    {
+      "id": "qtb-lease-identity-mutation",
+      "passed": true,
+      "detail": "lease fence mutation is rejected"
+    },
+    {
+      "id": "qtb-lease-identity-mutation",
+      "passed": true,
+      "detail": "lease claimed_at mutation is rejected"
+    },
+    {
+      "id": "qtb-lease-identity-mutation",
+      "passed": true,
+      "detail": "lease expires_at mutation is rejected"
+    },
+    {
+      "id": "qtb-lease-committed-regression",
+      "passed": true,
+      "detail": "uncommitted lease cannot accept a non-commit update"
+    },
+    {
+      "id": "qtb-lease-direct-commit",
+      "passed": true,
+      "detail": "direct lease commit without matching bridge is rejected"
+    },
+    {
+      "id": "qtb-lease-delete-immutable",
+      "passed": true,
+      "detail": "lease deletion is rejected and fence history remains"
+    },
+    {
+      "id": "qtb-lease-binding",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: lease candidate binding mismatch"
+    },
+    {
+      "id": "qtb-one-current-fence",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: lease incumbent still live"
+    },
+    {
+      "id": "qtb-receipt-fence",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: receipt fence mismatch"
+    },
+    {
+      "id": "qtb-receipt-byte-mutation",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: receipt immutable"
+    },
+    {
+      "id": "qtb-terminal-pair-byte-mutation",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: terminal pair immutable"
+    },
+    {
+      "id": "qtb-zero-obligation",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: bridge mandatory obligations missing"
+    },
+    {
+      "id": "qtb-missing-evidence",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: bridge mandatory evidence mismatch"
+    },
+    {
+      "id": "qtb-wrong-obligation-id",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: bridge mandatory catalog mismatch"
+    },
+    {
+      "id": "qtb-omitted-obligation-id",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: bridge mandatory catalog mismatch"
+    },
+    {
+      "id": "qtb-extra-obligation-id",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: bridge mandatory catalog mismatch"
+    },
+    {
+      "id": "qtb-duplicate-evidence",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: bridge mandatory evidence not one-to-one"
+    },
+    {
+      "id": "qtb-bridge-failures-atomic",
+      "passed": true,
+      "detail": "failed bridge attempts leave lease uncommitted"
+    },
+    {
+      "id": "qtb-backdated-bridge",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: bridge timestamp backdated"
+    },
+    {
+      "id": "qtb-expired-bridge",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: bridge lease stale or expired"
+    },
+    {
+      "id": "qtb-stale-fence-bridge",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: bridge lease stale or expired"
+    },
+    {
+      "id": "qtb-bridge-transaction",
+      "passed": true,
+      "detail": "five evidence rows bind through receipt to terminal pair"
+    },
+    {
+      "id": "qtb-lease-committed",
+      "passed": true,
+      "detail": "successful exact bridge atomically commits matching lease"
+    },
+    {
+      "id": "qtb-lease-committed-regression",
+      "passed": true,
+      "detail": "committed lease cannot regress to uncommitted"
+    },
+    {
+      "id": "qtb-pair-receipt",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: terminal pair receipt mismatch"
+    },
+    {
+      "id": "qtb-bridge-mismatch",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: bridge relation mismatch"
+    },
+    {
+      "id": "qtb-idempotent-replay",
+      "passed": true,
+      "detail": "identical replay preserves one immutable object"
+    },
+    {
+      "id": "qtb-idempotent-mutation",
+      "passed": true,
+      "detail": "SQL action rejected by intended guard: Error: idempotency record immutable"
+    },
+    {
+      "id": "qtb-crash-before-bridge",
+      "passed": true,
+      "detail": "rolled back bridge preparation leaves no partial object"
+    }
+  ],
+  "passed": 138,
+  "failed": 0
+}

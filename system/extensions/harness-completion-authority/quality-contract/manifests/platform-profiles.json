@@ -1,0 +1,146 @@
+{
+  "id": "gajae-code-platform-profiles",
+  "schemaVersion": "platform-profiles/v1",
+  "profilePolicyId": "gajae-code-platform-profiles",
+  "defaultProfile": "unknown-blocked",
+  "profiles": [
+    {
+      "id": "read-only",
+      "capability": "G0",
+      "confirmation": "C0",
+      "surfaces": ["read-only"],
+      "supportedOperations": [],
+      "disposition": "supported",
+      "decision": "ALLOW"
+    },
+    {
+      "id": "local-single-regular-file-confirmed",
+      "capability": "G1",
+      "confirmation": "C1",
+      "surfaces": ["local"],
+      "fileKinds": ["regular"],
+      "scope": "single",
+      "supportedOperations": ["create", "overwrite", "edit", "rewrite", "rename", "copy", "unlink"],
+      "disposition": "supported",
+      "decision": "ALLOW"
+    },
+    {
+      "id": "local-multi-regular-file-unproven",
+      "capability": "G2",
+      "confirmation": "C2",
+      "surfaces": ["local"],
+      "fileKinds": ["regular"],
+      "scope": "multiple",
+      "supportedOperations": [],
+      "disposition": "unsupported",
+      "decision": "BLOCK",
+      "reason": "multi-file atomicity and rollback are unproven"
+    },
+    {
+      "id": "privileged-or-external",
+      "capability": "G3",
+      "confirmation": "C2",
+      "surfaces": ["archive", "sqlite", "internal-url", "conflict", "acp-bridge", "notebook", "special", "external"],
+      "supportedOperations": [],
+      "disposition": "unsupported",
+      "decision": "BLOCK"
+    },
+    {
+      "id": "archive-blocked",
+      "capability": "G3",
+      "confirmation": "C2",
+      "surfaces": ["archive"],
+      "supportedOperations": [],
+      "disposition": "unsupported",
+      "decision": "BLOCK"
+    },
+    {
+      "id": "sqlite-blocked",
+      "capability": "G3",
+      "confirmation": "C2",
+      "surfaces": ["sqlite"],
+      "supportedOperations": [],
+      "disposition": "unsupported",
+      "decision": "BLOCK"
+    },
+    {
+      "id": "internal-url-blocked",
+      "capability": "G3",
+      "confirmation": "C2",
+      "surfaces": ["internal-url"],
+      "supportedOperations": [],
+      "disposition": "unsupported",
+      "decision": "BLOCK"
+    },
+    {
+      "id": "conflict-blocked",
+      "capability": "G3",
+      "confirmation": "C2",
+      "surfaces": ["conflict"],
+      "supportedOperations": [],
+      "disposition": "unsupported",
+      "decision": "BLOCK"
+    },
+    {
+      "id": "acp-bridge-blocked",
+      "capability": "G3",
+      "confirmation": "C2",
+      "surfaces": ["acp-bridge"],
+      "supportedOperations": [],
+      "disposition": "unsupported",
+      "decision": "BLOCK"
+    },
+    {
+      "id": "notebook-blocked",
+      "capability": "G3",
+      "confirmation": "C2",
+      "surfaces": ["notebook"],
+      "supportedOperations": [],
+      "disposition": "unsupported",
+      "decision": "BLOCK"
+    },
+    {
+      "id": "special-file-blocked",
+      "capability": "G3",
+      "confirmation": "C2",
+      "surfaces": ["special"],
+      "supportedOperations": [],
+      "disposition": "unsupported",
+      "decision": "BLOCK"
+    },
+    {
+      "id": "unknown-blocked",
+      "capability": "G3",
+      "confirmation": "C2",
+      "surfaces": ["unknown"],
+      "supportedOperations": [],
+      "disposition": "unsupported",
+      "decision": "BLOCK",
+      "reason": "unknown and unsupported states fail closed"
+    }
+  ],
+  "capabilityMatrix": [
+    { "capability": "G0", "confirmation": "C0", "localSingleRegularFile": "read-only", "unknown": "blocked" },
+    { "capability": "G1", "confirmation": "C0", "localSingleRegularFile": "blocked-unconfirmed", "unknown": "blocked" },
+    { "capability": "G1", "confirmation": "C1", "localSingleRegularFile": "supported", "unknown": "blocked" },
+    { "capability": "G1", "confirmation": "C2", "localSingleRegularFile": "supported-audited", "unknown": "blocked" },
+    { "capability": "G2", "confirmation": "C0", "localSingleRegularFile": "blocked", "multiFile": "unsupported", "unknown": "blocked" },
+    { "capability": "G2", "confirmation": "C1", "localSingleRegularFile": "blocked", "multiFile": "unsupported", "unknown": "blocked" },
+    { "capability": "G2", "confirmation": "C2", "localSingleRegularFile": "blocked", "multiFile": "unsupported", "unknown": "blocked" },
+    { "capability": "G3", "confirmation": "C0", "external": "blocked", "unknown": "blocked" },
+    { "capability": "G3", "confirmation": "C1", "external": "blocked", "unknown": "blocked" },
+    { "capability": "G3", "confirmation": "C2", "external": "blocked", "unknown": "blocked" }
+  ],
+  "codexEvidence": {
+    "sourceRoot": "/tmp/openai-codex-canonical",
+    "requiredEvidence": ["hooks", "Stop", "skills"],
+    "absenceDisposition": "unsupported",
+    "cacheClaimsTrusted": false
+  },
+  "invariants": [
+    "A profile cannot grant a capability absent from its typed surface adapter.",
+    "Confirmation is orthogonal to capability and cannot authorize unsupported surfaces.",
+    "Absence of openai-codex hook, Stop, or skills evidence is unsupported, not success.",
+    "Unknown profile, surface, file kind, or operation resolves to BLOCK."
+  ]
+}

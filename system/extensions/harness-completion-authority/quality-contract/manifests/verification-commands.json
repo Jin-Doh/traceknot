@@ -1,0 +1,600 @@
+{
+  "id": "gajae-code-verification-commands",
+  "schemaVersion": "verification-commands/v1",
+  "commandHashDomain": "gajae:quality-contract:qtb:command-manifest:v1",
+  "commands": [
+    {
+      "commandId": "cmd.js-ts.existing-tests",
+      "runnerProfileId": "js-ts-focused",
+      "platformIn": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "argv": [
+        "bun",
+        "run",
+        "test:ts"
+      ],
+      "cwd": "project-root",
+      "envPolicy": {
+        "inheritAllowlist": [
+          "CI",
+          "HOME",
+          "PATH",
+          "TMPDIR"
+        ],
+        "set": {}
+      },
+      "expectedExitCodes": [
+        0
+      ],
+      "producedEvidenceTypes": [
+        "tests"
+      ],
+      "artifactDeclarations": [],
+      "estimatedMinMs": 10000,
+      "commandManifestHash": "1ccc150d34a913f1c7c667af76db0ce93cb42c96fc9d65e8e3ceebaebed8f4cd"
+    },
+    {
+      "commandId": "cmd.js-ts.independent-smoke",
+      "runnerProfileId": "js-ts-focused",
+      "platformIn": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "argv": [
+        "bun",
+        "run",
+        "check:ts"
+      ],
+      "cwd": "project-root",
+      "envPolicy": {
+        "inheritAllowlist": [
+          "CI",
+          "HOME",
+          "PATH",
+          "TMPDIR"
+        ],
+        "set": {}
+      },
+      "expectedExitCodes": [
+        0
+      ],
+      "producedEvidenceTypes": [
+        "smoke"
+      ],
+      "artifactDeclarations": [],
+      "estimatedMinMs": 10000,
+      "commandManifestHash": "47a894cdc0948942481013438d0239c9273fb27980ec3ecefa610694d756b291"
+    },
+    {
+      "commandId": "cmd.js-ts.adversarial",
+      "runnerProfileId": "js-ts-focused",
+      "platformIn": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "argv": [
+        "bun",
+        "--cwd=packages/coding-agent",
+        "test"
+      ],
+      "cwd": "project-root",
+      "envPolicy": {
+        "inheritAllowlist": [
+          "CI",
+          "HOME",
+          "PATH",
+          "TMPDIR"
+        ],
+        "set": {}
+      },
+      "expectedExitCodes": [
+        0
+      ],
+      "producedEvidenceTypes": [
+        "adversarial"
+      ],
+      "artifactDeclarations": [
+        {
+          "artifactId": "js-ts-adversarial-report",
+          "relativePath": "quality-evidence/js-ts/adversarial.json",
+          "mediaType": "application/json",
+          "required": true
+        }
+      ],
+      "estimatedMinMs": 10000,
+      "commandManifestHash": "739b9e4f158e8ec3a589fed9453ef41582c663f2d036325c08c7a7f5aa0185eb"
+    },
+    {
+      "commandId": "cmd.python.existing-tests",
+      "runnerProfileId": "python-focused",
+      "platformIn": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-x",
+        "python/gjc-rpc/tests",
+        "python/robogjc/tests"
+      ],
+      "cwd": "project-root",
+      "envPolicy": {
+        "inheritAllowlist": [
+          "CI",
+          "HOME",
+          "PATH",
+          "TMPDIR"
+        ],
+        "set": {}
+      },
+      "expectedExitCodes": [
+        0
+      ],
+      "producedEvidenceTypes": [
+        "tests"
+      ],
+      "artifactDeclarations": [],
+      "estimatedMinMs": 15000,
+      "commandManifestHash": "d82292ce7f89d1346d5425cd55721921e88b92abeedcc79fa094049feb5b93ee"
+    },
+    {
+      "commandId": "cmd.python.independent-smoke",
+      "runnerProfileId": "python-focused",
+      "platformIn": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "--collect-only",
+        "-q",
+        "python/gjc-rpc/tests",
+        "python/robogjc/tests"
+      ],
+      "cwd": "project-root",
+      "envPolicy": {
+        "inheritAllowlist": [
+          "CI",
+          "HOME",
+          "PATH",
+          "TMPDIR"
+        ],
+        "set": {}
+      },
+      "expectedExitCodes": [
+        0
+      ],
+      "producedEvidenceTypes": [
+        "smoke"
+      ],
+      "artifactDeclarations": [],
+      "estimatedMinMs": 15000,
+      "commandManifestHash": "22eb54010d1b22d7092652f5e43c296a8383acbc88364e928e61f6e4cbca84f0"
+    },
+    {
+      "commandId": "cmd.python.adversarial",
+      "runnerProfileId": "python-focused",
+      "platformIn": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "argv": [
+        "python3",
+        "-m",
+        "pytest",
+        "-x",
+        "python/robogjc/tests/test_worker_smoke.py"
+      ],
+      "cwd": "project-root",
+      "envPolicy": {
+        "inheritAllowlist": [
+          "CI",
+          "HOME",
+          "PATH",
+          "TMPDIR"
+        ],
+        "set": {}
+      },
+      "expectedExitCodes": [
+        0
+      ],
+      "producedEvidenceTypes": [
+        "adversarial"
+      ],
+      "artifactDeclarations": [
+        {
+          "artifactId": "python-adversarial-report",
+          "relativePath": "quality-evidence/python/adversarial.json",
+          "mediaType": "application/json",
+          "required": true
+        }
+      ],
+      "estimatedMinMs": 15000,
+      "commandManifestHash": "c889acc4a57f28548dd2e7190f7a9281384ba7759a4c3b3dfeed586a0062691d"
+    },
+    {
+      "commandId": "cmd.rust-incremental.existing-tests",
+      "runnerProfileId": "rust-incremental",
+      "platformIn": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "argv": [
+        "bun",
+        "scripts/run-rs-task.ts",
+        "test:rs"
+      ],
+      "cwd": "project-root",
+      "envPolicy": {
+        "inheritAllowlist": [
+          "CI",
+          "HOME",
+          "PATH",
+          "TMPDIR"
+        ],
+        "set": {}
+      },
+      "expectedExitCodes": [
+        0
+      ],
+      "producedEvidenceTypes": [
+        "tests"
+      ],
+      "artifactDeclarations": [],
+      "estimatedMinMs": 90000,
+      "commandManifestHash": "f02046acd942847e6714c8101fb176e09c0b189f10ecf5a713488d02c3be367b"
+    },
+    {
+      "commandId": "cmd.rust-incremental.independent-smoke",
+      "runnerProfileId": "rust-incremental",
+      "platformIn": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "argv": [
+        "bun",
+        "scripts/run-rs-task.ts",
+        "check:rs"
+      ],
+      "cwd": "project-root",
+      "envPolicy": {
+        "inheritAllowlist": [
+          "CI",
+          "HOME",
+          "PATH",
+          "TMPDIR"
+        ],
+        "set": {}
+      },
+      "expectedExitCodes": [
+        0
+      ],
+      "producedEvidenceTypes": [
+        "smoke"
+      ],
+      "artifactDeclarations": [],
+      "estimatedMinMs": 15000,
+      "commandManifestHash": "44b8c8354af569e3a326ef15ae6148c8c3594152668074195aa67e89b3db11c1"
+    },
+    {
+      "commandId": "cmd.rust-incremental.adversarial",
+      "runnerProfileId": "rust-incremental",
+      "platformIn": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "argv": [
+        "bun",
+        "scripts/run-rs-task.ts",
+        "test:rs"
+      ],
+      "cwd": "project-root",
+      "envPolicy": {
+        "inheritAllowlist": [
+          "CI",
+          "HOME",
+          "PATH",
+          "TMPDIR"
+        ],
+        "set": {}
+      },
+      "expectedExitCodes": [
+        0
+      ],
+      "producedEvidenceTypes": [
+        "adversarial"
+      ],
+      "artifactDeclarations": [
+        {
+          "artifactId": "rust-incremental-adversarial-report",
+          "relativePath": "quality-evidence/rust-incremental/adversarial.json",
+          "mediaType": "application/json",
+          "required": true
+        }
+      ],
+      "estimatedMinMs": 90000,
+      "commandManifestHash": "f6dfbff493f807add3250fd2bb7754267fdc6248eeb5ca7edd44b74137140885"
+    },
+    {
+      "commandId": "cmd.rust-cold.existing-tests",
+      "runnerProfileId": "rust-cold",
+      "platformIn": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "argv": [
+        "bun",
+        "scripts/run-rs-task.ts",
+        "test:rs"
+      ],
+      "cwd": "project-root",
+      "envPolicy": {
+        "inheritAllowlist": [
+          "CI",
+          "HOME",
+          "PATH",
+          "TMPDIR"
+        ],
+        "set": {
+          "CARGO_TARGET_DIR": "quality-evidence/rust-cold/target"
+        }
+      },
+      "expectedExitCodes": [
+        0
+      ],
+      "producedEvidenceTypes": [
+        "tests"
+      ],
+      "artifactDeclarations": [],
+      "estimatedMinMs": 360000,
+      "commandManifestHash": "b766f2f21b53df8129213811e902994f73c9d591d295bb05411a8e49057e612c"
+    },
+    {
+      "commandId": "cmd.rust-cold.independent-smoke",
+      "runnerProfileId": "rust-cold",
+      "platformIn": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "argv": [
+        "bun",
+        "scripts/run-rs-task.ts",
+        "check:rs"
+      ],
+      "cwd": "project-root",
+      "envPolicy": {
+        "inheritAllowlist": [
+          "CI",
+          "HOME",
+          "PATH",
+          "TMPDIR"
+        ],
+        "set": {
+          "CARGO_TARGET_DIR": "quality-evidence/rust-cold/target"
+        }
+      },
+      "expectedExitCodes": [
+        0
+      ],
+      "producedEvidenceTypes": [
+        "smoke"
+      ],
+      "artifactDeclarations": [],
+      "estimatedMinMs": 15000,
+      "commandManifestHash": "0c1d79fab11c46e3d4a9ae4e4e0e8cb0f2f7ae447846607806832c74bf3a01cd"
+    },
+    {
+      "commandId": "cmd.rust-cold.adversarial",
+      "runnerProfileId": "rust-cold",
+      "platformIn": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "argv": [
+        "bun",
+        "scripts/run-rs-task.ts",
+        "test:rs"
+      ],
+      "cwd": "project-root",
+      "envPolicy": {
+        "inheritAllowlist": [
+          "CI",
+          "HOME",
+          "PATH",
+          "TMPDIR"
+        ],
+        "set": {
+          "CARGO_TARGET_DIR": "quality-evidence/rust-cold/target"
+        }
+      },
+      "expectedExitCodes": [
+        0
+      ],
+      "producedEvidenceTypes": [
+        "adversarial"
+      ],
+      "artifactDeclarations": [
+        {
+          "artifactId": "rust-cold-adversarial-report",
+          "relativePath": "quality-evidence/rust-cold/adversarial.json",
+          "mediaType": "application/json",
+          "required": true
+        }
+      ],
+      "estimatedMinMs": 195000,
+      "commandManifestHash": "8bedca3e9052280112aaa0ba01dc497528559a58ebaf7af18a21ac09151ba0ac"
+    },
+    {
+      "commandId": "cmd.playwright.existing-tests",
+      "runnerProfileId": "playwright-focused",
+      "platformIn": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "argv": [
+        "bunx",
+        "playwright",
+        "test"
+      ],
+      "cwd": "project-root",
+      "envPolicy": {
+        "inheritAllowlist": [
+          "CI",
+          "HOME",
+          "PATH",
+          "TMPDIR"
+        ],
+        "set": {}
+      },
+      "expectedExitCodes": [
+        0
+      ],
+      "producedEvidenceTypes": [
+        "tests"
+      ],
+      "artifactDeclarations": [
+        {
+          "artifactId": "playwright-trace",
+          "relativePath": "quality-evidence/playwright/trace.zip",
+          "mediaType": "application/zip",
+          "required": true
+        }
+      ],
+      "estimatedMinMs": 65000,
+      "commandManifestHash": "f4786586b344b508d4e2a5629f32a54692b3d9eed5f650c9d4c3e4984c817103"
+    },
+    {
+      "commandId": "cmd.playwright.independent-smoke",
+      "runnerProfileId": "playwright-focused",
+      "platformIn": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "argv": [
+        "bunx",
+        "playwright",
+        "test",
+        "--list"
+      ],
+      "cwd": "project-root",
+      "envPolicy": {
+        "inheritAllowlist": [
+          "CI",
+          "HOME",
+          "PATH",
+          "TMPDIR"
+        ],
+        "set": {}
+      },
+      "expectedExitCodes": [
+        0
+      ],
+      "producedEvidenceTypes": [
+        "smoke"
+      ],
+      "artifactDeclarations": [],
+      "estimatedMinMs": 20000,
+      "commandManifestHash": "0da48ad22c8cd8c42f213f4e4447254cfecebc121a889f696a8907907efcedea"
+    },
+    {
+      "commandId": "cmd.playwright.adversarial",
+      "runnerProfileId": "playwright-focused",
+      "platformIn": [
+        "darwin",
+        "linux",
+        "win32"
+      ],
+      "argv": [
+        "bunx",
+        "playwright",
+        "test",
+        "--project=chromium"
+      ],
+      "cwd": "project-root",
+      "envPolicy": {
+        "inheritAllowlist": [
+          "CI",
+          "HOME",
+          "PATH",
+          "TMPDIR"
+        ],
+        "set": {}
+      },
+      "expectedExitCodes": [
+        0
+      ],
+      "producedEvidenceTypes": [
+        "adversarial"
+      ],
+      "artifactDeclarations": [
+        {
+          "artifactId": "playwright-adversarial-trace",
+          "relativePath": "quality-evidence/playwright/adversarial-trace.zip",
+          "mediaType": "application/zip",
+          "required": true
+        }
+      ],
+      "estimatedMinMs": 240000,
+      "commandManifestHash": "13398f7760acc91814f7bd4fa5f137269e32139c78efba62a134e5b8a2962a7b"
+    }
+  ],
+  "evidenceProducers": [
+    {
+      "evidenceProducerId": "producer.coordinator.mutation-attestation-v1",
+      "producerKind": "trusted-coordinator",
+      "evidenceType": "acceptance",
+      "sourceId": "qtb-coordinator-v1",
+      "capabilities": [
+        "G0"
+      ],
+      "hashDomain": "gajae.quality.evidence.mutation-attestation.v1"
+    },
+    {
+      "evidenceProducerId": "producer.independent.ledger-smoke-v1",
+      "producerKind": "independent-verifier",
+      "evidenceType": "smoke",
+      "sourceId": "qtb-independent-verifier-v1",
+      "capabilities": [
+        "G0",
+        "G1",
+        "G2",
+        "G3"
+      ],
+      "hashDomain": "gajae.quality.evidence.ledger-smoke.v1"
+    },
+    {
+      "evidenceProducerId": "producer.coordinator.snapshot-seal-v1",
+      "producerKind": "trusted-coordinator",
+      "evidenceType": "snapshot",
+      "sourceId": "qtb-coordinator-v1",
+      "capabilities": [
+        "G1",
+        "G2",
+        "G3"
+      ],
+      "hashDomain": "gajae.quality.evidence.snapshot-seal.v1"
+    }
+  ],
+  "commandManifestSetHash": "a8b529d9e4260be1ccd73b46f1ad1543da423cdd75df3598f3ceea6c45ad68df",
+  "commandManifestSetHashDomain": "gajae:quality-contract:qtb:command-manifest-set:v1"
+}

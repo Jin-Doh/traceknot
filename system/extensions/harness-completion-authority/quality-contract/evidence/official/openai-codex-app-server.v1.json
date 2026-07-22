@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schemaVersion": "official-source-evidence/v1",
+  "recordType": "OfficialSourceEvidence",
+  "recordId": "openai-codex-app-server-v1",
+  "source": {
+    "publisher": "OpenAI",
+    "title": "Codex App Server",
+    "url": "https://developers.openai.com/codex/app-server",
+    "sourceKind": "official-documentation"
+  },
+  "review": {
+    "reviewId": "qtb-a0-official-review-2026-07-16",
+    "reviewedAt": "2026-07-16T00:00:00Z",
+    "reviewerId": "gajae-quality-contract-review",
+    "method": "manual-document-review"
+  },
+  "runtimePolicy": {
+    "refetchAllowed": false,
+    "verificationMode": "pinned-bytes-only"
+  },
+  "excerpts": [
+    {
+      "excerptId": "thread-contains-turns",
+      "locator": "#core-primitives:thread",
+      "text": "Thread: A conversation between a user and the Codex agent. Threads contain turns.",
+      "encoding": "UTF-8",
+      "lineEnding": "LF",
+      "excerptSha256": "543ac29c9c795631c649014bc4d166616d823455bf1f877216ed02c53b6c0313"
+    },
+    {
+      "excerptId": "streamed-turn-notifications",
+      "locator": "#lifecycle-overview:stream-events",
+      "text": "After turn/start, keep reading notifications on stdout: thread/archived, thread/unarchived, item/started, item/completed, item/agentMessage/delta, tool progress, and other updates.",
+      "encoding": "UTF-8",
+      "lineEnding": "LF",
+      "excerptSha256": "7c8f12f92be08c0dc33f1199f4b56bcb1ae04c1b42067a1ae401daf8ab4629c3"
+    },
+    {
+      "excerptId": "turn-completed-status",
+      "locator": "#lifecycle-overview:finish-turn",
+      "text": "Finish the turn: The server emits turn/completed with final status when the model finishes or after a turn/interrupt cancellation.",
+      "encoding": "UTF-8",
+      "lineEnding": "LF",
+      "excerptSha256": "8a310c833c350103958de3e9c9ede84fc35b4d3bc840edddbe43ae3a4f489505"
+    }
+  ],
+  "conclusions": [
+    {
+      "conclusionId": "app-server-events-do-not-prove-global-join",
+      "statement": "Codex App Server thread, turn, item, and completion notifications describe one protocol stream but do not establish a GJC global join or authorize verification by themselves.",
+      "globalJoinEstablished": false,
+      "disposition": "observation-only",
+      "evidenceExcerptIds": [
+        "thread-contains-turns",
+        "streamed-turn-notifications",
+        "turn-completed-status"
+      ],
+      "frozen": true
+    }
+  ]
+}

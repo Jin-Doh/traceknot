@@ -1,0 +1,311 @@
+{
+  "format": "quality-contract.phase0-verification-report.v1",
+  "verifier": "quality-contract/scripts/verify-contracts.ts",
+  "artifactHashes": [
+    {
+      "path": "quality-contract/evidence/official/claude-code-hooks.v1.json",
+      "bytes": 2473,
+      "sha256": "f984da199e76a8e8bc99174eb860fd7cdf27411b9e4ede6df11bf56750314df8"
+    },
+    {
+      "path": "quality-contract/evidence/official/openai-codex-app-server.v1.json",
+      "bytes": 2451,
+      "sha256": "da4a98716a217629db7d7cd05870443b09e8c8e2b48e30180686ce68799cc87f"
+    },
+    {
+      "path": "quality-contract/evidence/official/openai-codex-hooks.v1.json",
+      "bytes": 2371,
+      "sha256": "975db8db9bd1f7633a4c29daf57c062b50b01ecd2b03650e7fd52ddf26fca7eb"
+    },
+    {
+      "path": "quality-contract/fixtures/callsite-audit-fixtures.json",
+      "bytes": 8064,
+      "sha256": "b3da9f66a219b35f8601be250a24d495058833fd58b6a71c7a1e412ba6bece39"
+    },
+    {
+      "path": "quality-contract/fixtures/quiescence-extension-approval-fixtures.json",
+      "bytes": 2178,
+      "sha256": "a69a644b42607673328c24c23065d0b8312ed757cecb8eaa0539155f3ddc2a2e"
+    },
+    {
+      "path": "quality-contract/fixtures/quiescence-model-fixtures.json",
+      "bytes": 151714,
+      "sha256": "562afe41fe385c5a4e8b966cd2e4919ccda051b151897bf58b7d6330c7af4c70"
+    },
+    {
+      "path": "quality-contract/fixtures/quiescence-sql-fixtures.json",
+      "bytes": 5988,
+      "sha256": "38e4bf4c53343a95716a638923c44b53e5d21beec86b7a8093003a5f4544d769"
+    },
+    {
+      "path": "quality-contract/fixtures/schema-negative-fixtures.json",
+      "bytes": 206819,
+      "sha256": "07743cf52e14861a79d9d43b4dff135e77d8a351a476ad04e45022ab65d97686"
+    },
+    {
+      "path": "quality-contract/fixtures/sql-fixtures.json",
+      "bytes": 7292,
+      "sha256": "a3a5a1926de2fb6dcea3e548c04da960f0b1461800a526e76326f5730ee1b55f"
+    },
+    {
+      "path": "quality-contract/generated/ai-slop-cleanup-report.txt",
+      "bytes": 1765,
+      "sha256": "eedcd715223b633484cb9b4d7660252036e8103dfab0e02abd31e94f45f90f25"
+    },
+    {
+      "path": "quality-contract/generated/callsite-audit-report.json",
+      "bytes": 2020,
+      "sha256": "dc403235df47a135ce673fb167afb843dad01991c79dc8af66dae4a93162f07f"
+    },
+    {
+      "path": "quality-contract/generated/callsite-manifest.json",
+      "bytes": 1810042,
+      "sha256": "7870d6284812a24ceb70c97a84928b3b2529d8e69d43ef09b2383e6e0bac322f"
+    },
+    {
+      "path": "quality-contract/generated/model-report.json",
+      "bytes": 66012,
+      "sha256": "6523df34fe8ab48fd2f8872e16b27504df6577d03ce5b4138912068cc3afe709"
+    },
+    {
+      "path": "quality-contract/generated/schema-lock.payload.json",
+      "bytes": 3761,
+      "sha256": "6d5d88208565f10820f8f22cd18335ab3fbe94cbab8e8c007a36bb8d4f1ee1d3"
+    },
+    {
+      "path": "quality-contract/generated/schema-lock.pin.sha256",
+      "bytes": 65,
+      "sha256": "08b17ca19c924d36943f101dddb4f5a19a2d7fd8278a3f8d182d852931d02686"
+    },
+    {
+      "path": "quality-contract/generated/schema-lock.signatures.json",
+      "bytes": 3496,
+      "sha256": "4200722faf39d4982b41d815b92d6c17ef60ed9e57acbdc591f8315c2d3bb1ad"
+    },
+    {
+      "path": "quality-contract/generated/sqlite-report.json",
+      "bytes": 23626,
+      "sha256": "c3ba73d82e770ab12d062049594b733034b874c9e521a1b6052add01740aa18c"
+    },
+    {
+      "path": "quality-contract/manifests/candidate-materialization-policy.json",
+      "bytes": 2854,
+      "sha256": "0dbec0067a2a5e6ca404dcec1163576e7780f2a66d948c76f730e088f3130e83"
+    },
+    {
+      "path": "quality-contract/manifests/harness-ingress-contract.json",
+      "bytes": 5042,
+      "sha256": "2ff781d2dc5c27af620b80e49e82bc8ecdc680d70d3adbb8bbd65dbbc33679f8"
+    },
+    {
+      "path": "quality-contract/manifests/harness-lifecycle-events.json",
+      "bytes": 7118,
+      "sha256": "11645939f7c51d5cd4f8dc74d17f9a59618120e17cc99969460e3b4ca815d31d"
+    },
+    {
+      "path": "quality-contract/manifests/mutation-capabilities.json",
+      "bytes": 6950,
+      "sha256": "9f34bddeae9a7b7f5d7b86cc1c6854439867f72d77229470500d1d2759a27fb1"
+    },
+    {
+      "path": "quality-contract/manifests/phase-b-verification-matrix.json",
+      "bytes": 2918,
+      "sha256": "8ffdcd7b0bccad6f085ce18b1733655cef26dcad3b2456e773f0ec6528055515"
+    },
+    {
+      "path": "quality-contract/manifests/platform-profiles.json",
+      "bytes": 5090,
+      "sha256": "b523e1492b8ea84c25a98da058a23f44028217deca74ad3d63af749ddd48996f"
+    },
+    {
+      "path": "quality-contract/manifests/risk-policy.json",
+      "bytes": 12066,
+      "sha256": "5f9d08dfa30ff6dab0048af80927416b6c0ffde29dd1c9013baf498f761d4a5f"
+    },
+    {
+      "path": "quality-contract/manifests/semantic-rules.json",
+      "bytes": 20907,
+      "sha256": "a1b5e1fcf0747c53b8273ffb68d911a2ae0dfac00bf159d1fc7023ddb0e41aae"
+    },
+    {
+      "path": "quality-contract/manifests/verification-commands.json",
+      "bytes": 14247,
+      "sha256": "e23ecf86b7a28b9a5a7fff03c46cb56d2c050503577d484926c6ef316405f26d"
+    },
+    {
+      "path": "quality-contract/manifests/verification-obligations.json",
+      "bytes": 36818,
+      "sha256": "2965a20b8113c64235b47516b27e6768a48ca2b792b8e7ec760ebb4dbed8bc0a"
+    },
+    {
+      "path": "quality-contract/models/lifecycle-model.ts",
+      "bytes": 17220,
+      "sha256": "090576b1230427ca558414f35947dd5657f2cd43c2caa1d0e101f28819af105c"
+    },
+    {
+      "path": "quality-contract/models/quiescence-budget-model.ts",
+      "bytes": 28090,
+      "sha256": "befc3521a61422a59679cd1d8f91d7eb2ccca22db3ef69cd1064594e6c5cd7f9"
+    },
+    {
+      "path": "quality-contract/models/storage-model.ts",
+      "bytes": 13920,
+      "sha256": "db9a11f5f51a581785d81eca685918ddc6a918907693b3d7e13d9ce34c62d5d0"
+    },
+    {
+      "path": "quality-contract/schemas/evidence-and-receipt.schema.json",
+      "bytes": 22313,
+      "sha256": "bf4dd0218e50e1efa8061a5a8c617224c4c1312b4c3e842faed9bbb6a8850743"
+    },
+    {
+      "path": "quality-contract/schemas/lifecycle-and-terminal.schema.json",
+      "bytes": 18573,
+      "sha256": "7a899c11b1c88ddfac33e04dcded05c63229d6780476137c577f6f64354ab489"
+    },
+    {
+      "path": "quality-contract/schemas/official-source-evidence.schema.json",
+      "bytes": 4077,
+      "sha256": "2a1721c612ce790a24053d433b797d72501387bc42c636798130f34e6562a786"
+    },
+    {
+      "path": "quality-contract/schemas/phase-b-verification.schema.json",
+      "bytes": 13652,
+      "sha256": "3c23331b8343d97f1ea230728192e01e408a0e551ecb2434ea87b2f0f6d56a0d"
+    },
+    {
+      "path": "quality-contract/schemas/quiescence-and-budget.schema.json",
+      "bytes": 18194,
+      "sha256": "0f29ff06fc80736b88b9356c99fddb8971f1069070d87bcf849a2dd3ceb50e66"
+    },
+    {
+      "path": "quality-contract/schemas/quiescence-extension-approval.schema.json",
+      "bytes": 9524,
+      "sha256": "ffbc00eee0e605b55f76ca863531aa9f05b743e4639f738ade8a437c69a0b397"
+    },
+    {
+      "path": "quality-contract/schemas/trust-and-identity.schema.json",
+      "bytes": 22929,
+      "sha256": "4ca4e226234e58cf494080ec278fcf77b4373ae032b21fd91bb389d885e8cc81"
+    },
+    {
+      "path": "quality-contract/schemas/verification-command.schema.json",
+      "bytes": 2793,
+      "sha256": "ce5c55d718fdf49bc7d05efaf5a89443a676bf8b98d8691964bd2ea0bcf6ecc8"
+    },
+    {
+      "path": "quality-contract/scripts/audit-callsite-coverage.ts",
+      "bytes": 36522,
+      "sha256": "31cf3875fc0239a3ce7ecfc76997d3b73ab1d8e6e23d5c65ee938db8e88ad918"
+    },
+    {
+      "path": "quality-contract/scripts/generate-callsite-manifest.ts",
+      "bytes": 28625,
+      "sha256": "1d0be4b7e502adc6883a044068e0aad0953ac7d2a69b966c52b4a10babc6baa5"
+    },
+    {
+      "path": "quality-contract/scripts/generate-schema-lock.ts",
+      "bytes": 29685,
+      "sha256": "2de49fec9ad8d2e212573ee7f8cddb2d33712e2e2dd0be85ac2ef5f3dfaf6b98"
+    },
+    {
+      "path": "quality-contract/scripts/run-phase-b-verification.ts",
+      "bytes": 30957,
+      "sha256": "abf2f7265db074d14b7092b4728d14a32e7a28cb6c88681a76d7c23f0b0bfa9e"
+    },
+    {
+      "path": "quality-contract/scripts/sqlite-race-worker.ts",
+      "bytes": 4912,
+      "sha256": "2dc535c4f5b2b32d9c84580e34930df53ae8d3431b24b9498ba8e1a3ad58a454"
+    },
+    {
+      "path": "quality-contract/scripts/verify-contracts.ts",
+      "bytes": 146097,
+      "sha256": "d8179d990d52d1b716e6df1ddc9113ff1ca3b2215d17fef1747315a2081b3480"
+    },
+    {
+      "path": "quality-contract/scripts/verify-models.ts",
+      "bytes": 79634,
+      "sha256": "39c0dc62e8207281016e8a2ecdf50898fafe937742e96a7d251374a160ed0f54"
+    },
+    {
+      "path": "quality-contract/scripts/verify-sqlite-node.ts",
+      "bytes": 88088,
+      "sha256": "94b7c55593d7a82fff8b76b9cced1e461f4a3c4c825dae6311322404ed6ce040"
+    },
+    {
+      "path": "quality-contract/scripts/verify-sqlite.ts",
+      "bytes": 530,
+      "sha256": "d4ef0fc59daf7c064d3484e5103fcfc29e6c35ffa543c965f48096c309b4a82f"
+    },
+    {
+      "path": "quality-contract/sql/authority.sql",
+      "bytes": 25939,
+      "sha256": "04df7a940d05e700c2e4528c50f87a4b558bbb51491d01298ad846ace751f04c"
+    },
+    {
+      "path": "quality-contract/sql/promotion.sql",
+      "bytes": 11834,
+      "sha256": "4b5e1be4b442b62df7b22d5bff7615779d51c61e4c2d2a038fcb8e813cd90d4a"
+    },
+    {
+      "path": "quality-contract/sql/quiescence-authority.sql",
+      "bytes": 24389,
+      "sha256": "9b0cf5137ee8ac0f1543df308e5771bda51357d6fdd19cd912ae166a1be26107"
+    }
+  ],
+  "checks": [
+    {
+      "id": "schemas/closed-draft-2020-12-structure",
+      "passed": true
+    },
+    {
+      "id": "phase-b/intent-matrix-and-trace-mutants",
+      "passed": true
+    },
+    {
+      "id": "schemas/negative-fixture-mutations-rejected",
+      "passed": true
+    },
+    {
+      "id": "schema-lock/exact-canonical-payload-signature-pin",
+      "passed": true
+    },
+    {
+      "id": "quiescence-extension/final-index-and-approval",
+      "passed": true
+    },
+    {
+      "id": "model-reducer/source-mutants-killed",
+      "passed": true,
+      "details": "[{\"id\":\"lifecycle-terminal-pair-requires-both-acks\",\"target\":\"lifecycle\",\"killed\":true,\"status\":\"killed\",\"details\":\"model verification failed: lifecycle/pair-flush-requires-both-acks, lifecycle/reordered-pair-acks, lifecycle/duplicate-ack-event\"},{\"id\":\"lifecycle-stale-duplicate-callback-rejected\",\"target\":\"lifecycle\",\"killed\":true,\"status\":\"killed\",\"details\":\"model verification failed: lifecycle/stale-recovery-callback-is-audit-noop\"},{\"id\":\"lifecycle-verified-success-requires-receipt\",\"target\":\"lifecycle\",\"killed\":true,\"status\":\"killed\",\"details\":\"model verification failed: lifecycle/clear-requires-real-receipt\"}]"
+    },
+    {
+      "id": "model-report/zero-failures-required-cases-invariants",
+      "passed": true
+    },
+    {
+      "id": "model/strict-no-emit-typecheck",
+      "passed": true
+    },
+    {
+      "id": "sqlite-report/zero-failures-boundary-assertions",
+      "passed": true
+    },
+    {
+      "id": "callsite-manifest/source-hashes-and-fail-closed-allow",
+      "passed": true
+    },
+    {
+      "id": "callsite-manifest/independent-complete-coverage-audit",
+      "passed": true
+    },
+    {
+      "id": "policy-manifests/unknown-block-risk-raise-only-unsupported-profiles",
+      "passed": true
+    }
+  ],
+  "passed": 12,
+  "failed": 0,
+  "phase1Authorized": false,
+  "phase1BlockReason": "Phase A extension frozen; separate Phase B approval required"
+}

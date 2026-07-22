@@ -1,0 +1,4639 @@
+{
+  "id": "gajae-code-quiescence-model-fixtures",
+  "schemaVersion": "quiescence-model-fixtures/v1",
+  "phase1Authorized": false,
+  "boundaryPolicy": {
+    "inclusive": true,
+    "crossedWhen": "now >= deadline",
+    "admissionWhen": "now < deadline"
+  },
+  "riskBudgets": [
+    {
+      "risk": "R0",
+      "queueSlaMs": 15000,
+      "riskSoftMs": 30000,
+      "riskHardMs": 60000,
+      "globalCompletionMs": 75000
+    },
+    {
+      "risk": "R1",
+      "queueSlaMs": 30000,
+      "riskSoftMs": 120000,
+      "riskHardMs": 240000,
+      "globalCompletionMs": 270000
+    },
+    {
+      "risk": "R2-non-gui",
+      "queueSlaMs": 60000,
+      "riskSoftMs": 360000,
+      "riskHardMs": 720000,
+      "globalCompletionMs": 780000
+    },
+    {
+      "risk": "R2-gui",
+      "queueSlaMs": 60000,
+      "riskSoftMs": 600000,
+      "riskHardMs": 1080000,
+      "globalCompletionMs": 1140000
+    },
+    {
+      "risk": "R3-local",
+      "queueSlaMs": 120000,
+      "riskSoftMs": 600000,
+      "riskHardMs": 1200000,
+      "globalCompletionMs": 1320000
+    }
+  ],
+  "runnerBudgets": {
+    "g0-evidence-only": {
+      "totalSoftMs": 4000,
+      "totalHardMs": 9000,
+      "phases": {
+        "bootstrap": [
+          0,
+          1000
+        ],
+        "collection": [
+          1000,
+          2000
+        ],
+        "execution": [
+          1000,
+          2000
+        ],
+        "evidenceFlush": [
+          1000,
+          2000
+        ],
+        "shutdown": [
+          1000,
+          2000
+        ]
+      }
+    },
+    "js-ts-focused": {
+      "totalSoftMs": 90000,
+      "totalHardMs": 210000,
+      "phases": {
+        "bootstrap": [
+          10000,
+          30000
+        ],
+        "collection": [
+          10000,
+          30000
+        ],
+        "execution": [
+          60000,
+          120000
+        ],
+        "evidenceFlush": [
+          5000,
+          15000
+        ],
+        "shutdown": [
+          5000,
+          15000
+        ]
+      }
+    },
+    "python-focused": {
+      "totalSoftMs": 135000,
+      "totalHardMs": 360000,
+      "phases": {
+        "bootstrap": [
+          15000,
+          45000
+        ],
+        "collection": [
+          15000,
+          45000
+        ],
+        "execution": [
+          90000,
+          240000
+        ],
+        "evidenceFlush": [
+          10000,
+          20000
+        ],
+        "shutdown": [
+          5000,
+          10000
+        ]
+      }
+    },
+    "rust-incremental": {
+      "totalSoftMs": 240000,
+      "totalHardMs": 600000,
+      "phases": {
+        "bootstrap": [
+          90000,
+          240000
+        ],
+        "collection": [
+          15000,
+          30000
+        ],
+        "execution": [
+          120000,
+          300000
+        ],
+        "evidenceFlush": [
+          10000,
+          20000
+        ],
+        "shutdown": [
+          5000,
+          10000
+        ]
+      }
+    },
+    "rust-cold": {
+      "totalSoftMs": 600000,
+      "totalHardMs": 1200000,
+      "phases": {
+        "bootstrap": [
+          360000,
+          720000
+        ],
+        "collection": [
+          15000,
+          30000
+        ],
+        "execution": [
+          195000,
+          390000
+        ],
+        "evidenceFlush": [
+          20000,
+          40000
+        ],
+        "shutdown": [
+          10000,
+          20000
+        ]
+      }
+    },
+    "playwright-focused": {
+      "totalSoftMs": 355000,
+      "totalHardMs": 810000,
+      "phases": {
+        "bootstrap": [
+          65000,
+          180000
+        ],
+        "collection": [
+          20000,
+          60000
+        ],
+        "execution": [
+          240000,
+          480000
+        ],
+        "evidenceFlush": [
+          20000,
+          60000
+        ],
+        "shutdown": [
+          10000,
+          30000
+        ]
+      }
+    }
+  },
+  "fixtures": [
+    {
+      "id": "queue-global-boundaries",
+      "type": "boundary",
+      "cases": [
+        {
+          "id": "R0-queueSlaMs-before",
+          "kind": "queueSlaMs",
+          "configuredMs": 15000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 14999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R0-queueSlaMs-exact",
+          "kind": "queueSlaMs",
+          "configuredMs": 15000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 15000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R0-queueSlaMs-after",
+          "kind": "queueSlaMs",
+          "configuredMs": 15000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 15001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R0-riskSoftMs-before",
+          "kind": "riskSoftMs",
+          "configuredMs": 30000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 29999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R0-riskSoftMs-exact",
+          "kind": "riskSoftMs",
+          "configuredMs": 30000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 30000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R0-riskSoftMs-after",
+          "kind": "riskSoftMs",
+          "configuredMs": 30000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 30001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R0-riskHardMs-before",
+          "kind": "riskHardMs",
+          "configuredMs": 60000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 59999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R0-riskHardMs-exact",
+          "kind": "riskHardMs",
+          "configuredMs": 60000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 60000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R0-riskHardMs-after",
+          "kind": "riskHardMs",
+          "configuredMs": 60000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 60001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R0-globalCompletionMs-before",
+          "kind": "globalCompletionMs",
+          "configuredMs": 75000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 74999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R0-globalCompletionMs-exact",
+          "kind": "globalCompletionMs",
+          "configuredMs": 75000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 75000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R0-globalCompletionMs-after",
+          "kind": "globalCompletionMs",
+          "configuredMs": 75000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 75001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R1-queueSlaMs-before",
+          "kind": "queueSlaMs",
+          "configuredMs": 30000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 29999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R1-queueSlaMs-exact",
+          "kind": "queueSlaMs",
+          "configuredMs": 30000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 30000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R1-queueSlaMs-after",
+          "kind": "queueSlaMs",
+          "configuredMs": 30000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 30001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R1-riskSoftMs-before",
+          "kind": "riskSoftMs",
+          "configuredMs": 120000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 119999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R1-riskSoftMs-exact",
+          "kind": "riskSoftMs",
+          "configuredMs": 120000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 120000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R1-riskSoftMs-after",
+          "kind": "riskSoftMs",
+          "configuredMs": 120000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 120001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R1-riskHardMs-before",
+          "kind": "riskHardMs",
+          "configuredMs": 240000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 239999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R1-riskHardMs-exact",
+          "kind": "riskHardMs",
+          "configuredMs": 240000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 240000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R1-riskHardMs-after",
+          "kind": "riskHardMs",
+          "configuredMs": 240000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 240001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R1-globalCompletionMs-before",
+          "kind": "globalCompletionMs",
+          "configuredMs": 270000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 269999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R1-globalCompletionMs-exact",
+          "kind": "globalCompletionMs",
+          "configuredMs": 270000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 270000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R1-globalCompletionMs-after",
+          "kind": "globalCompletionMs",
+          "configuredMs": 270000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 270001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R2-non-gui-queueSlaMs-before",
+          "kind": "queueSlaMs",
+          "configuredMs": 60000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 59999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R2-non-gui-queueSlaMs-exact",
+          "kind": "queueSlaMs",
+          "configuredMs": 60000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 60000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R2-non-gui-queueSlaMs-after",
+          "kind": "queueSlaMs",
+          "configuredMs": 60000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 60001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R2-non-gui-riskSoftMs-before",
+          "kind": "riskSoftMs",
+          "configuredMs": 360000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 359999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R2-non-gui-riskSoftMs-exact",
+          "kind": "riskSoftMs",
+          "configuredMs": 360000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 360000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R2-non-gui-riskSoftMs-after",
+          "kind": "riskSoftMs",
+          "configuredMs": 360000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 360001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R2-non-gui-riskHardMs-before",
+          "kind": "riskHardMs",
+          "configuredMs": 720000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 719999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R2-non-gui-riskHardMs-exact",
+          "kind": "riskHardMs",
+          "configuredMs": 720000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 720000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R2-non-gui-riskHardMs-after",
+          "kind": "riskHardMs",
+          "configuredMs": 720000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 720001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R2-non-gui-globalCompletionMs-before",
+          "kind": "globalCompletionMs",
+          "configuredMs": 780000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 779999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R2-non-gui-globalCompletionMs-exact",
+          "kind": "globalCompletionMs",
+          "configuredMs": 780000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 780000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R2-non-gui-globalCompletionMs-after",
+          "kind": "globalCompletionMs",
+          "configuredMs": 780000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 780001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R2-gui-queueSlaMs-before",
+          "kind": "queueSlaMs",
+          "configuredMs": 60000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 59999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R2-gui-queueSlaMs-exact",
+          "kind": "queueSlaMs",
+          "configuredMs": 60000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 60000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R2-gui-queueSlaMs-after",
+          "kind": "queueSlaMs",
+          "configuredMs": 60000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 60001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R2-gui-riskSoftMs-before",
+          "kind": "riskSoftMs",
+          "configuredMs": 600000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 599999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R2-gui-riskSoftMs-exact",
+          "kind": "riskSoftMs",
+          "configuredMs": 600000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 600000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R2-gui-riskSoftMs-after",
+          "kind": "riskSoftMs",
+          "configuredMs": 600000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 600001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R2-gui-riskHardMs-before",
+          "kind": "riskHardMs",
+          "configuredMs": 1080000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 1079999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R2-gui-riskHardMs-exact",
+          "kind": "riskHardMs",
+          "configuredMs": 1080000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 1080000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R2-gui-riskHardMs-after",
+          "kind": "riskHardMs",
+          "configuredMs": 1080000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 1080001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R2-gui-globalCompletionMs-before",
+          "kind": "globalCompletionMs",
+          "configuredMs": 1140000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 1139999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R2-gui-globalCompletionMs-exact",
+          "kind": "globalCompletionMs",
+          "configuredMs": 1140000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 1140000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R2-gui-globalCompletionMs-after",
+          "kind": "globalCompletionMs",
+          "configuredMs": 1140000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 1140001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R3-local-queueSlaMs-before",
+          "kind": "queueSlaMs",
+          "configuredMs": 120000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 119999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R3-local-queueSlaMs-exact",
+          "kind": "queueSlaMs",
+          "configuredMs": 120000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 120000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R3-local-queueSlaMs-after",
+          "kind": "queueSlaMs",
+          "configuredMs": 120000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 120001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R3-local-riskSoftMs-before",
+          "kind": "riskSoftMs",
+          "configuredMs": 600000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 599999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R3-local-riskSoftMs-exact",
+          "kind": "riskSoftMs",
+          "configuredMs": 600000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 600000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R3-local-riskSoftMs-after",
+          "kind": "riskSoftMs",
+          "configuredMs": 600000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 600001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R3-local-riskHardMs-before",
+          "kind": "riskHardMs",
+          "configuredMs": 1200000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 1199999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R3-local-riskHardMs-exact",
+          "kind": "riskHardMs",
+          "configuredMs": 1200000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 1200000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R3-local-riskHardMs-after",
+          "kind": "riskHardMs",
+          "configuredMs": 1200000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 1200001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R3-local-globalCompletionMs-before",
+          "kind": "globalCompletionMs",
+          "configuredMs": 1320000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 1319999,
+          "expected": "admit-or-start"
+        },
+        {
+          "id": "R3-local-globalCompletionMs-exact",
+          "kind": "globalCompletionMs",
+          "configuredMs": 1320000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 1320000,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "R3-local-globalCompletionMs-after",
+          "kind": "globalCompletionMs",
+          "configuredMs": 1320000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 1320001,
+          "expected": "crossed-non-clear"
+        },
+        {
+          "id": "g0-evidence-only-bootstrap-soft-before",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 0,
+          "nowOffsetMs": -1,
+          "elapsedMs": -1,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "g0-evidence-only-bootstrap-soft-exact",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 0,
+          "nowOffsetMs": 0,
+          "elapsedMs": 0,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "g0-evidence-only-bootstrap-soft-after",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 0,
+          "nowOffsetMs": 1,
+          "elapsedMs": 1,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "g0-evidence-only-bootstrap-hard-before",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 1000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "g0-evidence-only-bootstrap-hard-exact",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 1000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 1000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "g0-evidence-only-bootstrap-hard-after",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 1000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 1001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "g0-evidence-only-collection-soft-before",
+          "kind": "collection.soft",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 1000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "g0-evidence-only-collection-soft-exact",
+          "kind": "collection.soft",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 1000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 1000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "g0-evidence-only-collection-soft-after",
+          "kind": "collection.soft",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 1000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 1001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "g0-evidence-only-collection-hard-before",
+          "kind": "collection.hard",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 2000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 1999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "g0-evidence-only-collection-hard-exact",
+          "kind": "collection.hard",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 2000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 2000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "g0-evidence-only-collection-hard-after",
+          "kind": "collection.hard",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 2000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 2001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "g0-evidence-only-execution-soft-before",
+          "kind": "execution.soft",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 1000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "g0-evidence-only-execution-soft-exact",
+          "kind": "execution.soft",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 1000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 1000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "g0-evidence-only-execution-soft-after",
+          "kind": "execution.soft",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 1000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 1001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "g0-evidence-only-execution-hard-before",
+          "kind": "execution.hard",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 2000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 1999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "g0-evidence-only-execution-hard-exact",
+          "kind": "execution.hard",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 2000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 2000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "g0-evidence-only-execution-hard-after",
+          "kind": "execution.hard",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 2000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 2001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "g0-evidence-only-evidenceFlush-soft-before",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 1000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "g0-evidence-only-evidenceFlush-soft-exact",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 1000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 1000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "g0-evidence-only-evidenceFlush-soft-after",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 1000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 1001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "g0-evidence-only-evidenceFlush-hard-before",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 2000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 1999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "g0-evidence-only-evidenceFlush-hard-exact",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 2000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 2000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "g0-evidence-only-evidenceFlush-hard-after",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 2000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 2001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "g0-evidence-only-shutdown-soft-before",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 1000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "g0-evidence-only-shutdown-soft-exact",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 1000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 1000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "g0-evidence-only-shutdown-soft-after",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 1000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 1001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "g0-evidence-only-shutdown-hard-before",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 2000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 1999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "g0-evidence-only-shutdown-hard-exact",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 2000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 2000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "g0-evidence-only-shutdown-hard-after",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "g0-evidence-only",
+          "configuredMs": 2000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 2001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "js-ts-focused-bootstrap-soft-before",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 10000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 9999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "js-ts-focused-bootstrap-soft-exact",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 10000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 10000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "js-ts-focused-bootstrap-soft-after",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 10000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 10001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "js-ts-focused-bootstrap-hard-before",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 30000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 29999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "js-ts-focused-bootstrap-hard-exact",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 30000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 30000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "js-ts-focused-bootstrap-hard-after",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 30000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 30001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "js-ts-focused-collection-soft-before",
+          "kind": "collection.soft",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 10000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 9999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "js-ts-focused-collection-soft-exact",
+          "kind": "collection.soft",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 10000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 10000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "js-ts-focused-collection-soft-after",
+          "kind": "collection.soft",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 10000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 10001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "js-ts-focused-collection-hard-before",
+          "kind": "collection.hard",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 30000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 29999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "js-ts-focused-collection-hard-exact",
+          "kind": "collection.hard",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 30000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 30000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "js-ts-focused-collection-hard-after",
+          "kind": "collection.hard",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 30000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 30001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "js-ts-focused-execution-soft-before",
+          "kind": "execution.soft",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 60000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 59999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "js-ts-focused-execution-soft-exact",
+          "kind": "execution.soft",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 60000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 60000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "js-ts-focused-execution-soft-after",
+          "kind": "execution.soft",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 60000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 60001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "js-ts-focused-execution-hard-before",
+          "kind": "execution.hard",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 120000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 119999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "js-ts-focused-execution-hard-exact",
+          "kind": "execution.hard",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 120000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 120000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "js-ts-focused-execution-hard-after",
+          "kind": "execution.hard",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 120000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 120001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "js-ts-focused-evidenceFlush-soft-before",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 5000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 4999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "js-ts-focused-evidenceFlush-soft-exact",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 5000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 5000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "js-ts-focused-evidenceFlush-soft-after",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 5000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 5001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "js-ts-focused-evidenceFlush-hard-before",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 15000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 14999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "js-ts-focused-evidenceFlush-hard-exact",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 15000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 15000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "js-ts-focused-evidenceFlush-hard-after",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 15000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 15001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "js-ts-focused-shutdown-soft-before",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 5000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 4999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "js-ts-focused-shutdown-soft-exact",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 5000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 5000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "js-ts-focused-shutdown-soft-after",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 5000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 5001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "js-ts-focused-shutdown-hard-before",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 15000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 14999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "js-ts-focused-shutdown-hard-exact",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 15000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 15000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "js-ts-focused-shutdown-hard-after",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "js-ts-focused",
+          "configuredMs": 15000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 15001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "python-focused-bootstrap-soft-before",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 15000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 14999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "python-focused-bootstrap-soft-exact",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 15000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 15000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "python-focused-bootstrap-soft-after",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 15000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 15001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "python-focused-bootstrap-hard-before",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 45000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 44999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "python-focused-bootstrap-hard-exact",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 45000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 45000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "python-focused-bootstrap-hard-after",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 45000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 45001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "python-focused-collection-soft-before",
+          "kind": "collection.soft",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 15000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 14999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "python-focused-collection-soft-exact",
+          "kind": "collection.soft",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 15000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 15000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "python-focused-collection-soft-after",
+          "kind": "collection.soft",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 15000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 15001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "python-focused-collection-hard-before",
+          "kind": "collection.hard",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 45000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 44999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "python-focused-collection-hard-exact",
+          "kind": "collection.hard",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 45000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 45000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "python-focused-collection-hard-after",
+          "kind": "collection.hard",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 45000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 45001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "python-focused-execution-soft-before",
+          "kind": "execution.soft",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 90000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 89999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "python-focused-execution-soft-exact",
+          "kind": "execution.soft",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 90000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 90000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "python-focused-execution-soft-after",
+          "kind": "execution.soft",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 90000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 90001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "python-focused-execution-hard-before",
+          "kind": "execution.hard",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 240000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 239999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "python-focused-execution-hard-exact",
+          "kind": "execution.hard",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 240000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 240000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "python-focused-execution-hard-after",
+          "kind": "execution.hard",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 240000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 240001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "python-focused-evidenceFlush-soft-before",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 10000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 9999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "python-focused-evidenceFlush-soft-exact",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 10000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 10000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "python-focused-evidenceFlush-soft-after",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 10000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 10001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "python-focused-evidenceFlush-hard-before",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 20000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 19999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "python-focused-evidenceFlush-hard-exact",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 20000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 20000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "python-focused-evidenceFlush-hard-after",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 20000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 20001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "python-focused-shutdown-soft-before",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 5000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 4999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "python-focused-shutdown-soft-exact",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 5000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 5000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "python-focused-shutdown-soft-after",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 5000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 5001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "python-focused-shutdown-hard-before",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 10000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 9999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "python-focused-shutdown-hard-exact",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 10000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 10000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "python-focused-shutdown-hard-after",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "python-focused",
+          "configuredMs": 10000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 10001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-incremental-bootstrap-soft-before",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 90000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 89999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "rust-incremental-bootstrap-soft-exact",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 90000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 90000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-incremental-bootstrap-soft-after",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 90000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 90001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-incremental-bootstrap-hard-before",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 240000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 239999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "rust-incremental-bootstrap-hard-exact",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 240000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 240000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-incremental-bootstrap-hard-after",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 240000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 240001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-incremental-collection-soft-before",
+          "kind": "collection.soft",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 15000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 14999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "rust-incremental-collection-soft-exact",
+          "kind": "collection.soft",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 15000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 15000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-incremental-collection-soft-after",
+          "kind": "collection.soft",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 15000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 15001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-incremental-collection-hard-before",
+          "kind": "collection.hard",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 30000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 29999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "rust-incremental-collection-hard-exact",
+          "kind": "collection.hard",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 30000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 30000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-incremental-collection-hard-after",
+          "kind": "collection.hard",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 30000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 30001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-incremental-execution-soft-before",
+          "kind": "execution.soft",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 120000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 119999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "rust-incremental-execution-soft-exact",
+          "kind": "execution.soft",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 120000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 120000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-incremental-execution-soft-after",
+          "kind": "execution.soft",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 120000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 120001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-incremental-execution-hard-before",
+          "kind": "execution.hard",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 300000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 299999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "rust-incremental-execution-hard-exact",
+          "kind": "execution.hard",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 300000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 300000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-incremental-execution-hard-after",
+          "kind": "execution.hard",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 300000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 300001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-incremental-evidenceFlush-soft-before",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 10000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 9999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "rust-incremental-evidenceFlush-soft-exact",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 10000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 10000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-incremental-evidenceFlush-soft-after",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 10000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 10001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-incremental-evidenceFlush-hard-before",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 20000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 19999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "rust-incremental-evidenceFlush-hard-exact",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 20000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 20000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-incremental-evidenceFlush-hard-after",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 20000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 20001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-incremental-shutdown-soft-before",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 5000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 4999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "rust-incremental-shutdown-soft-exact",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 5000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 5000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-incremental-shutdown-soft-after",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 5000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 5001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-incremental-shutdown-hard-before",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 10000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 9999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "rust-incremental-shutdown-hard-exact",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 10000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 10000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-incremental-shutdown-hard-after",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "rust-incremental",
+          "configuredMs": 10000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 10001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-cold-bootstrap-soft-before",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 360000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 359999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "rust-cold-bootstrap-soft-exact",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 360000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 360000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-cold-bootstrap-soft-after",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 360000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 360001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-cold-bootstrap-hard-before",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 720000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 719999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "rust-cold-bootstrap-hard-exact",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 720000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 720000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-cold-bootstrap-hard-after",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 720000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 720001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-cold-collection-soft-before",
+          "kind": "collection.soft",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 15000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 14999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "rust-cold-collection-soft-exact",
+          "kind": "collection.soft",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 15000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 15000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-cold-collection-soft-after",
+          "kind": "collection.soft",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 15000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 15001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-cold-collection-hard-before",
+          "kind": "collection.hard",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 30000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 29999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "rust-cold-collection-hard-exact",
+          "kind": "collection.hard",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 30000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 30000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-cold-collection-hard-after",
+          "kind": "collection.hard",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 30000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 30001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-cold-execution-soft-before",
+          "kind": "execution.soft",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 195000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 194999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "rust-cold-execution-soft-exact",
+          "kind": "execution.soft",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 195000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 195000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-cold-execution-soft-after",
+          "kind": "execution.soft",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 195000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 195001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-cold-execution-hard-before",
+          "kind": "execution.hard",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 390000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 389999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "rust-cold-execution-hard-exact",
+          "kind": "execution.hard",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 390000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 390000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-cold-execution-hard-after",
+          "kind": "execution.hard",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 390000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 390001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-cold-evidenceFlush-soft-before",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 20000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 19999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "rust-cold-evidenceFlush-soft-exact",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 20000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 20000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-cold-evidenceFlush-soft-after",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 20000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 20001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-cold-evidenceFlush-hard-before",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 40000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 39999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "rust-cold-evidenceFlush-hard-exact",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 40000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 40000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-cold-evidenceFlush-hard-after",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 40000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 40001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-cold-shutdown-soft-before",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 10000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 9999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "rust-cold-shutdown-soft-exact",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 10000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 10000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-cold-shutdown-soft-after",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 10000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 10001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "rust-cold-shutdown-hard-before",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 20000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 19999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "rust-cold-shutdown-hard-exact",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 20000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 20000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "rust-cold-shutdown-hard-after",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "rust-cold",
+          "configuredMs": 20000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 20001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "playwright-focused-bootstrap-soft-before",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 65000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 64999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "playwright-focused-bootstrap-soft-exact",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 65000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 65000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "playwright-focused-bootstrap-soft-after",
+          "kind": "bootstrap.soft",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 65000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 65001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "playwright-focused-bootstrap-hard-before",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 180000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 179999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "playwright-focused-bootstrap-hard-exact",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 180000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 180000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "playwright-focused-bootstrap-hard-after",
+          "kind": "bootstrap.hard",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 180000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 180001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "playwright-focused-collection-soft-before",
+          "kind": "collection.soft",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 20000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 19999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "playwright-focused-collection-soft-exact",
+          "kind": "collection.soft",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 20000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 20000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "playwright-focused-collection-soft-after",
+          "kind": "collection.soft",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 20000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 20001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "playwright-focused-collection-hard-before",
+          "kind": "collection.hard",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 60000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 59999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "playwright-focused-collection-hard-exact",
+          "kind": "collection.hard",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 60000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 60000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "playwright-focused-collection-hard-after",
+          "kind": "collection.hard",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 60000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 60001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "playwright-focused-execution-soft-before",
+          "kind": "execution.soft",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 240000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 239999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "playwright-focused-execution-soft-exact",
+          "kind": "execution.soft",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 240000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 240000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "playwright-focused-execution-soft-after",
+          "kind": "execution.soft",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 240000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 240001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "playwright-focused-execution-hard-before",
+          "kind": "execution.hard",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 480000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 479999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "playwright-focused-execution-hard-exact",
+          "kind": "execution.hard",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 480000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 480000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "playwright-focused-execution-hard-after",
+          "kind": "execution.hard",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 480000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 480001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "playwright-focused-evidenceFlush-soft-before",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 20000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 19999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "playwright-focused-evidenceFlush-soft-exact",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 20000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 20000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "playwright-focused-evidenceFlush-soft-after",
+          "kind": "evidenceFlush.soft",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 20000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 20001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "playwright-focused-evidenceFlush-hard-before",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 60000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 59999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "playwright-focused-evidenceFlush-hard-exact",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 60000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 60000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "playwright-focused-evidenceFlush-hard-after",
+          "kind": "evidenceFlush.hard",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 60000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 60001,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "playwright-focused-shutdown-soft-before",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 10000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 9999,
+          "expected": "optional-admit"
+        },
+        {
+          "id": "playwright-focused-shutdown-soft-exact",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 10000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 10000,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "playwright-focused-shutdown-soft-after",
+          "kind": "shutdown.soft",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 10000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 10001,
+          "expected": "mandatory-continue"
+        },
+        {
+          "id": "playwright-focused-shutdown-hard-before",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 30000,
+          "nowOffsetMs": -1,
+          "elapsedMs": 29999,
+          "expected": "work-continue"
+        },
+        {
+          "id": "playwright-focused-shutdown-hard-exact",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 30000,
+          "nowOffsetMs": 0,
+          "elapsedMs": 30000,
+          "expected": "phase-crossed-non-clear"
+        },
+        {
+          "id": "playwright-focused-shutdown-hard-after",
+          "kind": "shutdown.hard",
+          "runnerProfileId": "playwright-focused",
+          "configuredMs": 30000,
+          "nowOffsetMs": 1,
+          "elapsedMs": 30001,
+          "expected": "phase-crossed-non-clear"
+        }
+      ]
+    },
+    {
+      "id": "total-soft-runner-tighter",
+      "type": "precedence",
+      "runnerProfileId": "js-ts-focused",
+      "runnerSoftTotalMs": 90000,
+      "riskSoftMs": 120000,
+      "effectiveSoftMs": 90000,
+      "expected": "optional-stop-at-90000"
+    },
+    {
+      "id": "total-soft-risk-tighter",
+      "type": "precedence",
+      "runnerProfileId": "js-ts-focused",
+      "runnerSoftTotalMs": 90000,
+      "riskSoftMs": 30000,
+      "effectiveSoftMs": 30000,
+      "expected": "optional-stop-at-30000"
+    },
+    {
+      "id": "phase-hard-versus-work-hard",
+      "type": "precedence",
+      "phaseStartMs": 0,
+      "phaseHardMs": 120000,
+      "workDeadlineMs": 60000,
+      "phaseHardDeadlineMs": 60000,
+      "expected": "phase-hard-clamped-to-work"
+    },
+    {
+      "id": "flush-reserve-exact",
+      "type": "reserve",
+      "effectiveFinalHardMs": 100000,
+      "evidenceFlushHardMs": 15000,
+      "shutdownHardMs": 15000,
+      "reserveHardMs": 30000,
+      "effectiveWorkHardMs": 70000,
+      "expected": "reserved-cleanup-fits"
+    },
+    {
+      "id": "flush-reserve-short",
+      "type": "reserve",
+      "effectiveFinalHardMs": 29999,
+      "evidenceFlushHardMs": 15000,
+      "shutdownHardMs": 15000,
+      "expected": "blocked:required-verification-budget-incompatible"
+    },
+    {
+      "id": "shutdown-final-boundary",
+      "type": "boundary",
+      "finalDeadlineMs": 1000,
+      "shutdownHardDeadlineMs": 1000,
+      "offsets": [
+        -1,
+        0,
+        1
+      ],
+      "expectedAtMinusOne": "cleanup-admitted",
+      "expectedAtExact": "force-terminate-non-clear",
+      "expectedAtPlusOne": "force-terminate-non-clear"
+    },
+    {
+      "id": "lease-recovery-at-deadline",
+      "type": "recovery",
+      "globalDeadlineMs": 1000,
+      "recoveryTimesMs": [
+        999,
+        1000,
+        1001
+      ],
+      "expected": [
+        "recovered",
+        "blocked:global_deadline",
+        "blocked:global_deadline"
+      ]
+    },
+    {
+      "id": "commit-at-deadline",
+      "type": "commit",
+      "finalDeadlineMs": 1000,
+      "commitTimesMs": [
+        999,
+        1000,
+        1001
+      ],
+      "expected": [
+        "commit-allowed",
+        "blocked:global_deadline",
+        "blocked:global_deadline"
+      ]
+    },
+    {
+      "id": "queue-equality-before-runner",
+      "type": "queue",
+      "queueDeadlineMs": 1000,
+      "runnerStarted": false,
+      "nowMs": 1000,
+      "expected": "failed:global_deadline"
+    },
+    {
+      "id": "changed-boot-reconstruction",
+      "type": "restart",
+      "combinedUncertaintyMaxMs": 1000,
+      "cases": [
+        {
+          "id": "restart-g0-evidence-only-bootstrap-soft-before",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 0,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": -1,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-g0-evidence-only-bootstrap-soft-at",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 0,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 0,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-bootstrap-soft-after",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 0,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 1,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-bootstrap-hard-before",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 1000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-g0-evidence-only-bootstrap-hard-at",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 1000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 1000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-bootstrap-hard-after",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 1000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 1001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-collection-soft-before",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "collection",
+          "persistedDeadlineMs": 1000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-g0-evidence-only-collection-soft-at",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "collection",
+          "persistedDeadlineMs": 1000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 1000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-collection-soft-after",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "collection",
+          "persistedDeadlineMs": 1000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 1001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-collection-hard-before",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "collection",
+          "persistedDeadlineMs": 2000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 1999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-g0-evidence-only-collection-hard-at",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "collection",
+          "persistedDeadlineMs": 2000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 2000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-collection-hard-after",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "collection",
+          "persistedDeadlineMs": 2000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 2001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-execution-soft-before",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "execution",
+          "persistedDeadlineMs": 1000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-g0-evidence-only-execution-soft-at",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "execution",
+          "persistedDeadlineMs": 1000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 1000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-execution-soft-after",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "execution",
+          "persistedDeadlineMs": 1000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 1001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-execution-hard-before",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "execution",
+          "persistedDeadlineMs": 2000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 1999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-g0-evidence-only-execution-hard-at",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "execution",
+          "persistedDeadlineMs": 2000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 2000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-execution-hard-after",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "execution",
+          "persistedDeadlineMs": 2000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 2001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-evidenceFlush-soft-before",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 1000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-g0-evidence-only-evidenceFlush-soft-at",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 1000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 1000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-evidenceFlush-soft-after",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 1000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 1001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-evidenceFlush-hard-before",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 2000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 1999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-g0-evidence-only-evidenceFlush-hard-at",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 2000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 2000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-evidenceFlush-hard-after",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 2000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 2001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-shutdown-soft-before",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 1000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-g0-evidence-only-shutdown-soft-at",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 1000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 1000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-shutdown-soft-after",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 1000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 1001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-shutdown-hard-before",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 2000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 1999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-g0-evidence-only-shutdown-hard-at",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 2000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 2000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-g0-evidence-only-shutdown-hard-after",
+          "runnerProfileId": "g0-evidence-only",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 2000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 2001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-bootstrap-soft-before",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 9999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-js-ts-focused-bootstrap-soft-at",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 10000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-bootstrap-soft-after",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 10001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-bootstrap-hard-before",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 30000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 29999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-js-ts-focused-bootstrap-hard-at",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 30000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 30000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-bootstrap-hard-after",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 30000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 30001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-collection-soft-before",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 9999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-js-ts-focused-collection-soft-at",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 10000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-collection-soft-after",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 10001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-collection-hard-before",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 30000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 29999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-js-ts-focused-collection-hard-at",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 30000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 30000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-collection-hard-after",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 30000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 30001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-execution-soft-before",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 60000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 59999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-js-ts-focused-execution-soft-at",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 60000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 60000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-execution-soft-after",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 60000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 60001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-execution-hard-before",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 120000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 119999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-js-ts-focused-execution-hard-at",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 120000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 120000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-execution-hard-after",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 120000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 120001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-evidenceFlush-soft-before",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 5000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 4999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-js-ts-focused-evidenceFlush-soft-at",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 5000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 5000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-evidenceFlush-soft-after",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 5000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 5001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-evidenceFlush-hard-before",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 14999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-js-ts-focused-evidenceFlush-hard-at",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 15000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-evidenceFlush-hard-after",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 15001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-shutdown-soft-before",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 5000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 4999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-js-ts-focused-shutdown-soft-at",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 5000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 5000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-shutdown-soft-after",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 5000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 5001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-shutdown-hard-before",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 14999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-js-ts-focused-shutdown-hard-at",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 15000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-js-ts-focused-shutdown-hard-after",
+          "runnerProfileId": "js-ts-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 15001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-bootstrap-soft-before",
+          "runnerProfileId": "python-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 14999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-python-focused-bootstrap-soft-at",
+          "runnerProfileId": "python-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 15000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-bootstrap-soft-after",
+          "runnerProfileId": "python-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 15001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-bootstrap-hard-before",
+          "runnerProfileId": "python-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 45000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 44999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-python-focused-bootstrap-hard-at",
+          "runnerProfileId": "python-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 45000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 45000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-bootstrap-hard-after",
+          "runnerProfileId": "python-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 45000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 45001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-collection-soft-before",
+          "runnerProfileId": "python-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 14999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-python-focused-collection-soft-at",
+          "runnerProfileId": "python-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 15000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-collection-soft-after",
+          "runnerProfileId": "python-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 15001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-collection-hard-before",
+          "runnerProfileId": "python-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 45000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 44999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-python-focused-collection-hard-at",
+          "runnerProfileId": "python-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 45000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 45000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-collection-hard-after",
+          "runnerProfileId": "python-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 45000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 45001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-execution-soft-before",
+          "runnerProfileId": "python-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 90000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 89999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-python-focused-execution-soft-at",
+          "runnerProfileId": "python-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 90000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 90000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-execution-soft-after",
+          "runnerProfileId": "python-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 90000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 90001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-execution-hard-before",
+          "runnerProfileId": "python-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 240000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 239999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-python-focused-execution-hard-at",
+          "runnerProfileId": "python-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 240000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 240000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-execution-hard-after",
+          "runnerProfileId": "python-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 240000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 240001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-evidenceFlush-soft-before",
+          "runnerProfileId": "python-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 9999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-python-focused-evidenceFlush-soft-at",
+          "runnerProfileId": "python-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 10000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-evidenceFlush-soft-after",
+          "runnerProfileId": "python-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 10001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-evidenceFlush-hard-before",
+          "runnerProfileId": "python-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 19999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-python-focused-evidenceFlush-hard-at",
+          "runnerProfileId": "python-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 20000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-evidenceFlush-hard-after",
+          "runnerProfileId": "python-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 20001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-shutdown-soft-before",
+          "runnerProfileId": "python-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 5000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 4999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-python-focused-shutdown-soft-at",
+          "runnerProfileId": "python-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 5000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 5000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-shutdown-soft-after",
+          "runnerProfileId": "python-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 5000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 5001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-shutdown-hard-before",
+          "runnerProfileId": "python-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 9999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-python-focused-shutdown-hard-at",
+          "runnerProfileId": "python-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 10000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-python-focused-shutdown-hard-after",
+          "runnerProfileId": "python-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 10001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-bootstrap-soft-before",
+          "runnerProfileId": "rust-incremental",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 90000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 89999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-incremental-bootstrap-soft-at",
+          "runnerProfileId": "rust-incremental",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 90000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 90000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-bootstrap-soft-after",
+          "runnerProfileId": "rust-incremental",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 90000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 90001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-bootstrap-hard-before",
+          "runnerProfileId": "rust-incremental",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 240000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 239999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-incremental-bootstrap-hard-at",
+          "runnerProfileId": "rust-incremental",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 240000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 240000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-bootstrap-hard-after",
+          "runnerProfileId": "rust-incremental",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 240000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 240001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-collection-soft-before",
+          "runnerProfileId": "rust-incremental",
+          "phase": "collection",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 14999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-incremental-collection-soft-at",
+          "runnerProfileId": "rust-incremental",
+          "phase": "collection",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 15000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-collection-soft-after",
+          "runnerProfileId": "rust-incremental",
+          "phase": "collection",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 15001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-collection-hard-before",
+          "runnerProfileId": "rust-incremental",
+          "phase": "collection",
+          "persistedDeadlineMs": 30000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 29999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-incremental-collection-hard-at",
+          "runnerProfileId": "rust-incremental",
+          "phase": "collection",
+          "persistedDeadlineMs": 30000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 30000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-collection-hard-after",
+          "runnerProfileId": "rust-incremental",
+          "phase": "collection",
+          "persistedDeadlineMs": 30000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 30001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-execution-soft-before",
+          "runnerProfileId": "rust-incremental",
+          "phase": "execution",
+          "persistedDeadlineMs": 120000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 119999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-incremental-execution-soft-at",
+          "runnerProfileId": "rust-incremental",
+          "phase": "execution",
+          "persistedDeadlineMs": 120000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 120000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-execution-soft-after",
+          "runnerProfileId": "rust-incremental",
+          "phase": "execution",
+          "persistedDeadlineMs": 120000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 120001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-execution-hard-before",
+          "runnerProfileId": "rust-incremental",
+          "phase": "execution",
+          "persistedDeadlineMs": 300000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 299999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-incremental-execution-hard-at",
+          "runnerProfileId": "rust-incremental",
+          "phase": "execution",
+          "persistedDeadlineMs": 300000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 300000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-execution-hard-after",
+          "runnerProfileId": "rust-incremental",
+          "phase": "execution",
+          "persistedDeadlineMs": 300000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 300001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-evidenceFlush-soft-before",
+          "runnerProfileId": "rust-incremental",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 9999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-incremental-evidenceFlush-soft-at",
+          "runnerProfileId": "rust-incremental",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 10000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-evidenceFlush-soft-after",
+          "runnerProfileId": "rust-incremental",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 10001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-evidenceFlush-hard-before",
+          "runnerProfileId": "rust-incremental",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 19999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-incremental-evidenceFlush-hard-at",
+          "runnerProfileId": "rust-incremental",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 20000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-evidenceFlush-hard-after",
+          "runnerProfileId": "rust-incremental",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 20001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-shutdown-soft-before",
+          "runnerProfileId": "rust-incremental",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 5000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 4999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-incremental-shutdown-soft-at",
+          "runnerProfileId": "rust-incremental",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 5000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 5000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-shutdown-soft-after",
+          "runnerProfileId": "rust-incremental",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 5000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 5001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-shutdown-hard-before",
+          "runnerProfileId": "rust-incremental",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 9999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-incremental-shutdown-hard-at",
+          "runnerProfileId": "rust-incremental",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 10000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-incremental-shutdown-hard-after",
+          "runnerProfileId": "rust-incremental",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 10001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-bootstrap-soft-before",
+          "runnerProfileId": "rust-cold",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 360000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 359999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-cold-bootstrap-soft-at",
+          "runnerProfileId": "rust-cold",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 360000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 360000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-bootstrap-soft-after",
+          "runnerProfileId": "rust-cold",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 360000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 360001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-bootstrap-hard-before",
+          "runnerProfileId": "rust-cold",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 720000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 719999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-cold-bootstrap-hard-at",
+          "runnerProfileId": "rust-cold",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 720000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 720000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-bootstrap-hard-after",
+          "runnerProfileId": "rust-cold",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 720000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 720001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-collection-soft-before",
+          "runnerProfileId": "rust-cold",
+          "phase": "collection",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 14999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-cold-collection-soft-at",
+          "runnerProfileId": "rust-cold",
+          "phase": "collection",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 15000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-collection-soft-after",
+          "runnerProfileId": "rust-cold",
+          "phase": "collection",
+          "persistedDeadlineMs": 15000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 15001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-collection-hard-before",
+          "runnerProfileId": "rust-cold",
+          "phase": "collection",
+          "persistedDeadlineMs": 30000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 29999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-cold-collection-hard-at",
+          "runnerProfileId": "rust-cold",
+          "phase": "collection",
+          "persistedDeadlineMs": 30000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 30000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-collection-hard-after",
+          "runnerProfileId": "rust-cold",
+          "phase": "collection",
+          "persistedDeadlineMs": 30000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 30001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-execution-soft-before",
+          "runnerProfileId": "rust-cold",
+          "phase": "execution",
+          "persistedDeadlineMs": 195000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 194999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-cold-execution-soft-at",
+          "runnerProfileId": "rust-cold",
+          "phase": "execution",
+          "persistedDeadlineMs": 195000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 195000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-execution-soft-after",
+          "runnerProfileId": "rust-cold",
+          "phase": "execution",
+          "persistedDeadlineMs": 195000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 195001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-execution-hard-before",
+          "runnerProfileId": "rust-cold",
+          "phase": "execution",
+          "persistedDeadlineMs": 390000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 389999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-cold-execution-hard-at",
+          "runnerProfileId": "rust-cold",
+          "phase": "execution",
+          "persistedDeadlineMs": 390000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 390000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-execution-hard-after",
+          "runnerProfileId": "rust-cold",
+          "phase": "execution",
+          "persistedDeadlineMs": 390000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 390001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-evidenceFlush-soft-before",
+          "runnerProfileId": "rust-cold",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 19999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-cold-evidenceFlush-soft-at",
+          "runnerProfileId": "rust-cold",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 20000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-evidenceFlush-soft-after",
+          "runnerProfileId": "rust-cold",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 20001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-evidenceFlush-hard-before",
+          "runnerProfileId": "rust-cold",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 40000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 39999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-cold-evidenceFlush-hard-at",
+          "runnerProfileId": "rust-cold",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 40000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 40000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-evidenceFlush-hard-after",
+          "runnerProfileId": "rust-cold",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 40000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 40001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-shutdown-soft-before",
+          "runnerProfileId": "rust-cold",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 9999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-cold-shutdown-soft-at",
+          "runnerProfileId": "rust-cold",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 10000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-shutdown-soft-after",
+          "runnerProfileId": "rust-cold",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 10001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-shutdown-hard-before",
+          "runnerProfileId": "rust-cold",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 19999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-rust-cold-shutdown-hard-at",
+          "runnerProfileId": "rust-cold",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 20000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-rust-cold-shutdown-hard-after",
+          "runnerProfileId": "rust-cold",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 20001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-bootstrap-soft-before",
+          "runnerProfileId": "playwright-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 65000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 64999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-playwright-focused-bootstrap-soft-at",
+          "runnerProfileId": "playwright-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 65000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 65000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-bootstrap-soft-after",
+          "runnerProfileId": "playwright-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 65000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 65001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-bootstrap-hard-before",
+          "runnerProfileId": "playwright-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 180000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 179999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-playwright-focused-bootstrap-hard-at",
+          "runnerProfileId": "playwright-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 180000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 180000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-bootstrap-hard-after",
+          "runnerProfileId": "playwright-focused",
+          "phase": "bootstrap",
+          "persistedDeadlineMs": 180000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 180001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-collection-soft-before",
+          "runnerProfileId": "playwright-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 19999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-playwright-focused-collection-soft-at",
+          "runnerProfileId": "playwright-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 20000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-collection-soft-after",
+          "runnerProfileId": "playwright-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 20001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-collection-hard-before",
+          "runnerProfileId": "playwright-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 60000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 59999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-playwright-focused-collection-hard-at",
+          "runnerProfileId": "playwright-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 60000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 60000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-collection-hard-after",
+          "runnerProfileId": "playwright-focused",
+          "phase": "collection",
+          "persistedDeadlineMs": 60000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 60001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-execution-soft-before",
+          "runnerProfileId": "playwright-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 240000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 239999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-playwright-focused-execution-soft-at",
+          "runnerProfileId": "playwright-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 240000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 240000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-execution-soft-after",
+          "runnerProfileId": "playwright-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 240000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 240001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-execution-hard-before",
+          "runnerProfileId": "playwright-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 480000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 479999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-playwright-focused-execution-hard-at",
+          "runnerProfileId": "playwright-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 480000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 480000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-execution-hard-after",
+          "runnerProfileId": "playwright-focused",
+          "phase": "execution",
+          "persistedDeadlineMs": 480000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 480001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-evidenceFlush-soft-before",
+          "runnerProfileId": "playwright-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 19999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-playwright-focused-evidenceFlush-soft-at",
+          "runnerProfileId": "playwright-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 20000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-evidenceFlush-soft-after",
+          "runnerProfileId": "playwright-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 20000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 20001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-evidenceFlush-hard-before",
+          "runnerProfileId": "playwright-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 60000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 59999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-playwright-focused-evidenceFlush-hard-at",
+          "runnerProfileId": "playwright-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 60000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 60000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-evidenceFlush-hard-after",
+          "runnerProfileId": "playwright-focused",
+          "phase": "evidenceFlush",
+          "persistedDeadlineMs": 60000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 60001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-shutdown-soft-before",
+          "runnerProfileId": "playwright-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 9999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-playwright-focused-shutdown-soft-at",
+          "runnerProfileId": "playwright-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 10000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-shutdown-soft-after",
+          "runnerProfileId": "playwright-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 10000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 10001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-shutdown-hard-before",
+          "runnerProfileId": "playwright-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 30000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 29999,
+          "expected": "deadline-not-extended",
+          "crossed": false
+        },
+        {
+          "id": "restart-playwright-focused-shutdown-hard-at",
+          "runnerProfileId": "playwright-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 30000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 30000,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        },
+        {
+          "id": "restart-playwright-focused-shutdown-hard-after",
+          "runnerProfileId": "playwright-focused",
+          "phase": "shutdown",
+          "persistedDeadlineMs": 30000,
+          "persistedUncertaintyMs": 10,
+          "currentUncertaintyMs": 10,
+          "currentWallMs": 30001,
+          "expected": "non-clear-boundary",
+          "crossed": true
+        }
+      ]
+    },
+    {
+      "id": "restart-uncertainty-over-limit",
+      "type": "restart",
+      "persistedUncertaintyMs": 600,
+      "currentUncertaintyMs": 401,
+      "expected": "non-clear:clock-uncertainty"
+    },
+    {
+      "id": "restart-wall-rollback",
+      "type": "restart",
+      "persistedWallMs": 1000,
+      "currentWallMs": 900,
+      "expected": "non-clear:clock-rollback"
+    },
+    {
+      "id": "restart-lost-child",
+      "type": "restart",
+      "processIdentityPresent": false,
+      "expected": "cancel-reap-infrastructure-inconclusive"
+    },
+    {
+      "id": "optional-stop-equality",
+      "type": "optional-stop",
+      "optionalStopDeadlineMs": 1000,
+      "admissionTimesMs": [
+        999,
+        1000,
+        1001
+      ],
+      "expected": [
+        "admitted",
+        "stopped",
+        "stopped"
+      ],
+      "mandatoryAtEquality": "continues"
+    },
+    {
+      "id": "mandatory-retention",
+      "type": "retention",
+      "mandatoryEvidence": "retain",
+      "failedPartialRunsDays": 7,
+      "referencedDurableEvidence": "retain",
+      "importedEphemeralAfterAck": "remove",
+      "crossRunCache": "forbidden"
+    },
+    {
+      "id": "acceptance-resolver",
+      "type": "resolver",
+      "cases": [
+        {
+          "id": "acceptance.tests-pass|js-ts-focused|G1|R1",
+          "acceptanceRequirementId": "acceptance.tests-pass",
+          "runnerProfileId": "js-ts-focused",
+          "capability": "G1",
+          "risk": "R1",
+          "resolvedObligationId": "qtb.js-ts.existing-tests",
+          "expected": "resolved"
+        },
+        {
+          "id": "acceptance.static-checks-pass|python-focused|G1|R1",
+          "acceptanceRequirementId": "acceptance.static-checks-pass",
+          "runnerProfileId": "python-focused",
+          "capability": "G1",
+          "risk": "R1",
+          "resolvedObligationId": "qtb.python.independent-smoke",
+          "expected": "resolved"
+        },
+        {
+          "id": "acceptance.adversarial-pass|rust-incremental|G1|R1",
+          "acceptanceRequirementId": "acceptance.adversarial-pass",
+          "runnerProfileId": "rust-incremental",
+          "capability": "G1",
+          "risk": "R1",
+          "resolvedObligationId": "qtb.rust-incremental.adversarial",
+          "expected": "resolved"
+        },
+        {
+          "id": "acceptance.cold-build-pass|rust-cold|G1|R2",
+          "acceptanceRequirementId": "acceptance.cold-build-pass",
+          "runnerProfileId": "rust-cold",
+          "capability": "G1",
+          "risk": "R2",
+          "resolvedObligationId": "qtb.rust-cold.existing-tests",
+          "expected": "resolved"
+        },
+        {
+          "id": "acceptance.browser-flow-pass|playwright-focused|G1|R2",
+          "acceptanceRequirementId": "acceptance.browser-flow-pass",
+          "runnerProfileId": "playwright-focused",
+          "capability": "G1",
+          "risk": "R2",
+          "resolvedObligationId": "qtb.playwright.existing-tests",
+          "expected": "resolved"
+        },
+        {
+          "id": "acceptance.no-mutation|g0-evidence-only|G0|R0",
+          "acceptanceRequirementId": "acceptance.no-mutation",
+          "runnerProfileId": "g0-evidence-only",
+          "capability": "G0",
+          "risk": "R0",
+          "resolvedObligationId": "qtb.g0.no-mutation-attestation",
+          "expected": "resolved"
+        },
+        {
+          "id": "acceptance.ledger-consistent|g0-evidence-only|G0|R0",
+          "acceptanceRequirementId": "acceptance.ledger-consistent",
+          "runnerProfileId": "g0-evidence-only",
+          "capability": "G0",
+          "risk": "R0",
+          "resolvedObligationId": "qtb.g0.identity-ledger-smoke",
+          "expected": "resolved"
+        },
+        {
+          "id": "acceptance.tests-pass|g0-evidence-only|G0|R0",
+          "acceptanceRequirementId": "acceptance.tests-pass",
+          "runnerProfileId": "g0-evidence-only",
+          "capability": "G0",
+          "risk": "R0",
+          "resolvedObligationId": null,
+          "expected": "blocked:acceptance-requirement-unmapped"
+        },
+        {
+          "id": "acceptance.browser-flow-pass|js-ts-focused|G1|R1",
+          "acceptanceRequirementId": "acceptance.browser-flow-pass",
+          "runnerProfileId": "js-ts-focused",
+          "capability": "G1",
+          "risk": "R1",
+          "resolvedObligationId": null,
+          "expected": "blocked:acceptance-requirement-unmapped"
+        },
+        {
+          "id": "unknown.acceptance|js-ts-focused|G1|R1",
+          "acceptanceRequirementId": "unknown.acceptance",
+          "runnerProfileId": "js-ts-focused",
+          "capability": "G1",
+          "risk": "R1",
+          "resolvedObligationId": null,
+          "expected": "blocked:acceptance-requirement-unmapped"
+        },
+        {
+          "id": "acceptance.tests-pass|js-ts-focused|G0|R1",
+          "acceptanceRequirementId": "acceptance.tests-pass",
+          "runnerProfileId": "js-ts-focused",
+          "capability": "G0",
+          "risk": "R1",
+          "resolvedObligationId": null,
+          "expected": "blocked:acceptance-requirement-unmapped"
+        },
+        {
+          "id": "acceptance.tests-pass|playwright-focused|G1|R1",
+          "acceptanceRequirementId": "acceptance.tests-pass",
+          "runnerProfileId": "playwright-focused",
+          "capability": "G1",
+          "risk": "R1",
+          "resolvedObligationId": null,
+          "expected": "blocked:acceptance-requirement-unmapped"
+        }
+      ]
+    },
+    {
+      "id": "mapping-mutants",
+      "type": "adversarial",
+      "cases": [
+        {
+          "id": "dropped-risk",
+          "mutation": "drop-risk",
+          "probeRisk": "R1",
+          "probeCapability": "G1",
+          "probeExpectedObligationId": null,
+          "expected": "blocked"
+        },
+        {
+          "id": "added-risk",
+          "mutation": "add-risk",
+          "probeRisk": "R2",
+          "probeCapability": "G1",
+          "probeExpectedObligationId": "qtb.js-ts.existing-tests",
+          "expected": "blocked"
+        },
+        {
+          "id": "changed-disposition",
+          "mutation": "change-disposition",
+          "probeRisk": "R1",
+          "probeCapability": "G1",
+          "probeExpectedObligationId": null,
+          "expected": "blocked"
+        },
+        {
+          "id": "changed-obligation",
+          "mutation": "change-obligation",
+          "probeRisk": "R1",
+          "probeCapability": "G1",
+          "probeExpectedObligationId": "qtb.mutant.obligation",
+          "expected": "blocked"
+        },
+        {
+          "id": "zero-mapping",
+          "mutation": "zero-mapping",
+          "probeRisk": "R1",
+          "probeCapability": "G1",
+          "probeExpectedObligationId": null,
+          "expected": "blocked"
+        },
+        {
+          "id": "multiple-mapping",
+          "mutation": "multiple-mapping",
+          "probeRisk": "R1",
+          "probeCapability": "G1",
+          "probeExpectedObligationId": null,
+          "expected": "blocked"
+        },
+        {
+          "id": "conflicting-mapping",
+          "mutation": "conflicting-mapping",
+          "probeRisk": "R1",
+          "probeCapability": "G1",
+          "probeExpectedObligationId": null,
+          "expected": "blocked"
+        },
+        {
+          "id": "incompatible-capability",
+          "mutation": "incompatible-capability",
+          "probeRisk": "R1",
+          "probeCapability": "G1",
+          "probeExpectedObligationId": null,
+          "expected": "blocked"
+        }
+      ]
+    },
+    {
+      "id": "phase-a-authorization",
+      "type": "authorization",
+      "phase1Authorized": false,
+      "expected": "false"
+    }
+  ],
+  "invariants": [
+    "Every profile budget records bootstrap, collection, execution, evidence flush, and shutdown separately.",
+    "Every phase soft and hard boundary has -1, equality, and +1 cases.",
+    "Mandatory obligations remain visible when a deadline is crossed.",
+    "Optional work stops at equality and mandatory work is never dropped.",
+    "Restart deadlines never move later."
+  ]
+}

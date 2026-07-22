@@ -1,0 +1,124 @@
+{
+  "id": "gajae-code-mutation-capabilities",
+  "schemaVersion": "mutation-capabilities/v1",
+  "capabilityPolicyId": "gajae-code-mutation-capabilities",
+  "defaultDisposition": "unsupported",
+  "defaultDecision": "BLOCK",
+  "capabilityLevels": {
+    "G0": { "name": "read-only", "allowsMutation": false },
+    "G1": { "name": "local-single-regular-file", "allowsMutation": true, "scope": "one regular file" },
+    "G2": { "name": "local-multi-regular-file", "allowsMutation": false, "scope": "multiple paths", "proven": false },
+    "G3": { "name": "privileged-or-external", "allowsMutation": false, "scope": "external, privileged, or non-file state", "proven": false }
+  },
+  "confirmationLevels": {
+    "C0": { "name": "no-confirmation", "requiresConfirmation": false },
+    "C1": { "name": "explicit-confirmation", "requiresConfirmation": true },
+    "C2": { "name": "approval-and-audit", "requiresConfirmation": true, "requiresApproval": true, "requiresAudit": true }
+  },
+  "typedSurfaceAdapters": [
+    {
+      "id": "local-regular-file",
+      "surface": "local",
+      "adapterType": "RegularFileAdapter",
+      "pathKind": "regular-file",
+      "capability": "G1",
+      "confirmation": "C1",
+      "disposition": "supported",
+      "decision": "ALLOW"
+    },
+    {
+      "id": "archive",
+      "surface": "archive",
+      "adapterType": "ArchiveAdapter",
+      "pathKind": "archive-entry",
+      "capability": "G3",
+      "confirmation": "C2",
+      "disposition": "unsupported",
+      "decision": "BLOCK"
+    },
+    {
+      "id": "sqlite",
+      "surface": "sqlite",
+      "adapterType": "SqliteAdapter",
+      "pathKind": "database-row",
+      "capability": "G3",
+      "confirmation": "C2",
+      "disposition": "unsupported",
+      "decision": "BLOCK"
+    },
+    {
+      "id": "internal-url",
+      "surface": "internal-url",
+      "adapterType": "InternalUrlAdapter",
+      "pathKind": "internal-resource",
+      "capability": "G3",
+      "confirmation": "C2",
+      "disposition": "unsupported",
+      "decision": "BLOCK"
+    },
+    {
+      "id": "conflict",
+      "surface": "conflict",
+      "adapterType": "ConflictAdapter",
+      "pathKind": "conflict-reference",
+      "capability": "G3",
+      "confirmation": "C2",
+      "disposition": "unsupported",
+      "decision": "BLOCK"
+    },
+    {
+      "id": "acp-bridge",
+      "surface": "acp-bridge",
+      "adapterType": "AcpBridgeAdapter",
+      "pathKind": "client-owned-file",
+      "capability": "G3",
+      "confirmation": "C2",
+      "disposition": "unsupported",
+      "decision": "BLOCK"
+    },
+    {
+      "id": "notebook",
+      "surface": "notebook",
+      "adapterType": "NotebookAdapter",
+      "pathKind": "notebook-document",
+      "capability": "G3",
+      "confirmation": "C2",
+      "disposition": "unsupported",
+      "decision": "BLOCK"
+    },
+    {
+      "id": "special",
+      "surface": "special",
+      "adapterType": "SpecialFileAdapter",
+      "pathKind": "device, fifo, socket, symlink, or unknown",
+      "capability": "G3",
+      "confirmation": "C2",
+      "disposition": "unsupported",
+      "decision": "BLOCK"
+    }
+  ],
+  "operationMatrix": [
+    { "id": "local-create", "surface": "local", "operation": "create", "scope": "single", "fileKind": "regular", "capability": "G1", "confirmation": "C1", "disposition": "supported", "decision": "ALLOW" },
+    { "id": "local-overwrite", "surface": "local", "operation": "overwrite", "scope": "single", "fileKind": "regular", "capability": "G1", "confirmation": "C1", "disposition": "supported", "decision": "ALLOW" },
+    { "id": "local-edit", "surface": "local", "operation": "edit", "scope": "single", "fileKind": "regular", "capability": "G1", "confirmation": "C1", "disposition": "supported", "decision": "ALLOW" },
+    { "id": "local-rewrite", "surface": "local", "operation": "rewrite", "scope": "single", "fileKind": "regular", "capability": "G1", "confirmation": "C1", "disposition": "supported", "decision": "ALLOW" },
+    { "id": "local-rename", "surface": "local", "operation": "rename", "scope": "single", "fileKind": "regular", "capability": "G1", "confirmation": "C1", "disposition": "supported", "decision": "ALLOW" },
+    { "id": "local-copy", "surface": "local", "operation": "copy", "scope": "single", "fileKind": "regular", "capability": "G1", "confirmation": "C1", "disposition": "supported", "decision": "ALLOW" },
+    { "id": "local-unlink", "surface": "local", "operation": "unlink", "scope": "single", "fileKind": "regular", "capability": "G1", "confirmation": "C1", "disposition": "supported", "decision": "ALLOW" },
+    { "id": "multi-file-unproven", "surface": "local", "operation": "any", "scope": "multiple", "fileKind": "regular", "capability": "G2", "confirmation": "C2", "disposition": "unsupported", "decision": "BLOCK", "reason": "multi-file atomicity and rollback are unproven" },
+    { "id": "archive-any", "surface": "archive", "operation": "any", "scope": "any", "fileKind": "archive-entry", "capability": "G3", "confirmation": "C2", "disposition": "unsupported", "decision": "BLOCK" },
+    { "id": "sqlite-any", "surface": "sqlite", "operation": "any", "scope": "any", "fileKind": "database-row", "capability": "G3", "confirmation": "C2", "disposition": "unsupported", "decision": "BLOCK" },
+    { "id": "internal-any", "surface": "internal-url", "operation": "any", "scope": "any", "fileKind": "internal-resource", "capability": "G3", "confirmation": "C2", "disposition": "unsupported", "decision": "BLOCK" },
+    { "id": "conflict-any", "surface": "conflict", "operation": "any", "scope": "any", "fileKind": "conflict-reference", "capability": "G3", "confirmation": "C2", "disposition": "unsupported", "decision": "BLOCK" },
+    { "id": "acp-any", "surface": "acp-bridge", "operation": "any", "scope": "any", "fileKind": "client-owned-file", "capability": "G3", "confirmation": "C2", "disposition": "unsupported", "decision": "BLOCK" },
+    { "id": "notebook-any", "surface": "notebook", "operation": "any", "scope": "any", "fileKind": "notebook-document", "capability": "G3", "confirmation": "C2", "disposition": "unsupported", "decision": "BLOCK" },
+    { "id": "special-any", "surface": "special", "operation": "any", "scope": "any", "fileKind": "unknown-special", "capability": "G3", "confirmation": "C2", "disposition": "unsupported", "decision": "BLOCK" },
+    { "id": "unknown", "surface": "unknown", "operation": "unknown", "scope": "unknown", "fileKind": "unknown", "capability": "G3", "confirmation": "C2", "disposition": "unsupported", "decision": "BLOCK" }
+  ],
+  "invariants": [
+    "Only a proven local single regular-file operation is supported in Phase 0.",
+    "Every unknown or unclassified mutation is unsupported and blocked.",
+    "Confirmation never upgrades an unsupported capability to supported.",
+    "No archive, SQLite, internal URL, conflict, ACP bridge, notebook, special-file, or unproven multi-file operation is supported."
+  ]
+}

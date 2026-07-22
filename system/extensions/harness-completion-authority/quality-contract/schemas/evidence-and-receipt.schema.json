@@ -1,0 +1,876 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gajae.dev/quality-contract/schemas/evidence-and-receipt.schema.json",
+  "title": "Phase 0 evidence and receipt contract",
+  "type": "object",
+  "unevaluatedProperties": false,
+  "oneOf": [
+    {
+      "$ref": "#/$defs/snapshot"
+    },
+    {
+      "$ref": "#/$defs/evidence"
+    },
+    {
+      "$ref": "#/$defs/receipt"
+    },
+    {
+      "$ref": "#/$defs/exception"
+    },
+    {
+      "$ref": "#/$defs/suspicion"
+    },
+    {
+      "$ref": "#/$defs/audit"
+    },
+    {
+      "$ref": "#/$defs/checkpoint"
+    },
+    {
+      "$ref": "#/$defs/metrics"
+    },
+    {
+      "$ref": "#/$defs/adjudication"
+    }
+  ],
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{0,127}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signerId",
+        "keyId",
+        "algorithm",
+        "signatureHash"
+      ],
+      "properties": {
+        "signerId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "keyId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "algorithm": {
+          "type": "string",
+          "enum": [
+            "ed25519",
+            "hmac-sha256"
+          ]
+        },
+        "signatureHash": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "signatureGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "threshold",
+        "signatures"
+      ],
+      "properties": {
+        "threshold": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "signatures": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/signature"
+          }
+        }
+      }
+    },
+    "rootTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transitionId",
+        "transitionKind",
+        "previousRootHash",
+        "nextRootHash",
+        "signatureGroup"
+      ],
+      "properties": {
+        "transitionId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "transitionKind": {
+          "type": "string",
+          "enum": [
+            "GENESIS",
+            "ROTATE",
+            "REVOKE"
+          ]
+        },
+        "previousRootHash": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nextRootHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "signatureGroup": {
+          "$ref": "#/$defs/signatureGroup"
+        }
+      }
+    },
+    "envelope": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "$schema",
+        "objectType",
+        "objectId",
+        "issuedAt",
+        "rootTransition",
+        "signatureGroup"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "pattern": "^0\\.[0-9]+\\.[0-9]+$"
+        },
+        "$schema": {
+          "type": "string",
+          "const": "https://json-schema.org/draft/2020-12/schema"
+        },
+        "objectType": {
+          "type": "string"
+        },
+        "objectId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "issuedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "rootTransition": {
+          "$ref": "#/$defs/rootTransition"
+        },
+        "signatureGroup": {
+          "$ref": "#/$defs/signatureGroup"
+        }
+      }
+    },
+    "canonicalBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hashDomain",
+        "canonicalEnvelopeHash"
+      ],
+      "properties": {
+        "hashDomain": {
+          "type": "string",
+          "enum": [
+            "gajae.quality.receipt.v1",
+            "gajae.quality.evidence.v1",
+            "gajae.quality.envelope.v1"
+          ]
+        },
+        "canonicalEnvelopeHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "canonicalization": {
+          "type": "string",
+          "const": "JCS-RFC8785"
+        }
+      }
+    },
+    "snapshotPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshotSymlink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target"],
+      "properties": {
+        "target": { "type": "string", "minLength": 1 }
+      }
+    },
+    "snapshotGitlink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commitHash"],
+      "properties": {
+        "commitHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "snapshotSubmodule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "url", "commitHash"],
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "url": { "type": "string", "minLength": 1 },
+        "commitHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "snapshotRename": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fromPath", "similarity"],
+      "properties": {
+        "fromPath": { "type": "string", "minLength": 1 },
+        "similarity": { "type": "integer", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "snapshotGeneratedProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generated", "generatorId", "generatorHash", "sourceHash"],
+      "properties": {
+        "generated": { "type": "boolean" },
+        "generatorId": { "$ref": "#/$defs/identifier" },
+        "generatorHash": { "$ref": "#/$defs/hash" },
+        "sourceHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "snapshotEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path", "type", "hash", "length", "mode", "symlink", "gitlink", "submodule",
+        "rename", "generatedProvenance"
+      ],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "enum": ["file", "directory", "symlink", "gitlink", "submodule"] },
+        "hash": { "$ref": "#/$defs/hash" },
+        "length": { "type": "integer", "minimum": 0 },
+        "mode": { "type": "string", "pattern": "^[0-7]{3,6}$" },
+        "symlink": {
+          "anyOf": [
+            { "$ref": "#/$defs/snapshotSymlink" },
+            { "type": "null" }
+          ]
+        },
+        "gitlink": {
+          "anyOf": [
+            { "$ref": "#/$defs/snapshotGitlink" },
+            { "type": "null" }
+          ]
+        },
+        "submodule": {
+          "anyOf": [
+            { "$ref": "#/$defs/snapshotSubmodule" },
+            { "type": "null" }
+          ]
+        },
+        "rename": {
+          "anyOf": [
+            { "$ref": "#/$defs/snapshotRename" },
+            { "type": "null" }
+          ]
+        },
+        "generatedProvenance": { "$ref": "#/$defs/snapshotGeneratedProvenance" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "symlink" } } },
+          "then": { "required": ["symlink"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "gitlink" } } },
+          "then": { "required": ["gitlink"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "submodule" } } },
+          "then": { "required": ["submodule"] }
+        }
+      ]
+    },
+    "snapshotInventoryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["include", "exclude", "ordering", "followSymlinks"],
+      "properties": {
+        "include": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "exclude": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "ordering": { "type": "string", "const": "lexicographic-path" },
+        "followSymlinks": { "type": "boolean", "const": false }
+      }
+    },
+    "snapshot": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "type": "object",
+          "required": [
+            "objectType", "snapshotHash", "capturedAt", "sourceId", "stateHash", "physicalRoot",
+            "treeHash", "worktreeHash", "baseHash", "headHash", "mutationEpoch", "inventoryPolicy", "entries"
+          ],
+          "properties": {
+            "objectType": { "const": "Snapshot" },
+            "snapshotHash": { "$ref": "#/$defs/hash" },
+            "capturedAt": { "$ref": "#/$defs/timestamp" },
+            "sourceId": { "$ref": "#/$defs/identifier" },
+            "stateHash": { "$ref": "#/$defs/hash" },
+            "physicalRoot": { "type": "string", "minLength": 1 },
+            "treeHash": { "$ref": "#/$defs/hash" },
+            "worktreeHash": { "$ref": "#/$defs/hash" },
+            "baseHash": { "$ref": "#/$defs/hash" },
+            "headHash": { "$ref": "#/$defs/hash" },
+            "mutationEpoch": { "type": "integer", "minimum": 0 },
+            "inventoryPolicy": { "$ref": "#/$defs/snapshotInventoryPolicy" },
+            "entries": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/snapshotEntry" }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "evidence": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "evidenceType",
+            "subjectId",
+            "payloadHash",
+            "observedAt",
+            "hashDomain",
+            "canonicalEnvelopeHash"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "Evidence"
+            },
+            "evidenceType": {
+              "type": "string",
+              "enum": [
+                "LOG",
+                "TRACE",
+                "SNAPSHOT",
+                "ATTESTATION",
+                "RECEIPT"
+              ]
+            },
+            "subjectId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "payloadHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "observedAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "sourceId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "hashDomain": {
+              "type": "string",
+              "const": "gajae.quality.evidence.v1"
+            },
+            "canonicalEnvelopeHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "canonicalization": {
+              "type": "string",
+              "const": "JCS-RFC8785"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "receipt": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "receiptFor",
+            "evidenceHash",
+            "accepted",
+            "processedAt",
+            "hashDomain",
+            "canonicalEnvelopeHash",
+            "evidenceCount",
+            "evidenceMerkleRoot"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "Receipt"
+            },
+            "receiptFor": {
+              "$ref": "#/$defs/identifier"
+            },
+            "evidenceHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "accepted": {
+              "type": "boolean"
+            },
+            "processedAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "rejectionCode": {
+              "type": "string",
+              "minLength": 1
+            },
+            "hashDomain": {
+              "type": "string",
+              "const": "gajae.quality.receipt.v1"
+            },
+            "canonicalEnvelopeHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "canonicalization": {
+              "type": "string",
+              "const": "JCS-RFC8785"
+            },
+            "evidenceCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "evidenceMerkleRoot": {
+              "$ref": "#/$defs/hash"
+            },
+            "evidenceIds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/identifier"
+              },
+              "uniqueItems": true
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "accepted": {
+                    "const": true
+                  }
+                }
+              },
+              "then": {
+                "not": {
+                  "required": [
+                    "rejectionCode"
+                  ]
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "accepted": {
+                    "const": false
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "rejectionCode"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "exception": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "code",
+            "message",
+            "severity",
+            "raisedAt"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "Exception"
+            },
+            "code": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_.-]{1,63}$"
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            },
+            "severity": {
+              "type": "string",
+              "enum": [
+                "INFO",
+                "WARN",
+                "ERROR",
+                "FATAL"
+              ]
+            },
+            "raisedAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "causeHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "subjectId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "scopeHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "maxUses": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "expiresAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "revoked": {
+              "type": "boolean"
+            },
+            "approvedBy": {
+              "$ref": "#/$defs/identifier"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "suspicion": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "subjectId",
+            "score",
+            "indicators",
+            "evaluatedAt"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "Suspicion"
+            },
+            "subjectId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "indicators": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "evaluatedAt": {
+              "$ref": "#/$defs/timestamp"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "audit": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "action",
+            "actorId",
+            "result",
+            "recordedAt"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "Audit"
+            },
+            "action": {
+              "type": "string",
+              "minLength": 1
+            },
+            "actorId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "result": {
+              "type": "string",
+              "enum": [
+                "ALLOW",
+                "DENY",
+                "ERROR"
+              ]
+            },
+            "recordedAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "targetId": {
+              "$ref": "#/$defs/identifier"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "checkpoint": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "sequence",
+            "stateHash",
+            "createdAt"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "Checkpoint"
+            },
+            "sequence": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "stateHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "createdAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "parentHash": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/hash"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "metrics": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "windowStart",
+            "windowEnd",
+            "counters",
+            "projectId",
+            "riskLevel",
+            "checkpointId",
+            "profileId",
+            "stage",
+            "rootSequence",
+            "trustSequence"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "Metrics"
+            },
+            "windowStart": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "windowEnd": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "counters": {
+              "type": "object",
+              "patternProperties": {
+                "^[A-Za-z][A-Za-z0-9_.:-]{0,63}$": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false,
+              "minProperties": 1
+            },
+            "projectId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "riskLevel": {
+              "type": "string",
+              "enum": [
+                "R0",
+                "R1",
+                "R2",
+                "R3"
+              ]
+            },
+            "checkpointId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "profileId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "stage": {
+              "$ref": "#/$defs/identifier"
+            },
+            "rootSequence": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "trustSequence": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "adjudication": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "subjectId",
+            "decision",
+            "rationale",
+            "evidenceIds",
+            "decidedAt"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "Adjudication"
+            },
+            "subjectId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "decision": {
+              "type": "string",
+              "enum": [
+                "CLEAR",
+                "WATCH",
+                "REJECT",
+                "ESCALATE"
+              ]
+            },
+            "rationale": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reasonCode": {
+              "type": "string",
+              "enum": [
+                "QUALITY_CLEAR",
+                "QUALITY_WATCH_EXCEPTION",
+                "QUALITY_REJECT",
+                "QUALITY_ESCALATE"
+              ]
+            },
+            "evidenceIds": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/identifier"
+              },
+              "uniqueItems": true
+            },
+            "evidenceCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "evidenceMerkleRoot": {
+              "$ref": "#/$defs/hash"
+            },
+            "decidedAt": {
+              "$ref": "#/$defs/timestamp"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "decision": {
+                    "const": "CLEAR"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "reasonCode": {
+                    "const": "QUALITY_CLEAR"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "decision": {
+                    "const": "WATCH"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "reasonCode": {
+                    "const": "QUALITY_WATCH_EXCEPTION"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

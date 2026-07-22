@@ -1,0 +1,110 @@
+{
+  "id": "gajae-quality-harness-ingress",
+  "schemaVersion": "harness-ingress-contract/v1",
+  "protocol": "qtb-hook-v1",
+  "wire": {
+    "transport": {
+      "macos": "unix-domain-socket",
+      "linux": "unix-domain-socket",
+      "windows": "named-pipe",
+      "unsupportedDisposition": "not_enforcing"
+    },
+    "framePrefix": "QTB1",
+    "lengthEncoding": "U32BE",
+    "payload": "one JCS-RFC8785 harness_observation envelope",
+    "minimumPayloadBytes": 1,
+    "maximumPayloadBytes": 65536,
+    "reject": ["eof-before-length", "trailing-bytes", "multiple-observations", "invalid-utf8", "invalid-json", "jcs-mismatch", "over-limit", "duplicate-json-key"]
+  },
+  "authentication": {
+    "algorithm": "hmac-sha256",
+    "domain": "gajae:quality-contract:qtb:hook-auth:v1",
+    "installationScoped": true,
+    "peerCredentialsRequired": true,
+    "keyIdRequired": true,
+    "nonceEncoding": "128-bit-lowercase-hex",
+    "nonceReplayProtection": "durable-persisted-unique",
+    "expiryUnit": "utc-ms",
+    "unsignedProjection": ["endpointId", "producerPrincipal", "keyId", "nonce", "expiryUtcMs", "hookObservationHash"],
+    "macInput": "QTB_HASH(domain, unsignedProjection)",
+    "failureDisposition": "reject_and_source_degraded"
+  },
+  "request": {
+    "oneObservationPerRequest": true,
+    "requiredEnvelope": ["endpointId", "producerPrincipal", "keyId", "nonce", "expiryUtcMs", "hookObservationHash", "observation", "mac"],
+    "readDeadlineMs": 2000,
+    "writeDeadlineMs": 2000,
+    "softAdmissionDeadlineMs": 500,
+    "hardAdmissionDeadlineMs": 2000
+  },
+  "ack": {
+    "emittedAfter": "inbox_and_coordinator_action_commit",
+    "framePrefix": "QTB1",
+    "requiredFields": ["inboxId", "receiverVersion", "coordinatorSequence", "observationHash", "disposition", "committedAtUtcMs", "receiverMac"],
+    "dispositions": ["accepted", "duplicate", "rejected", "gap", "processed"],
+    "macDomain": "gajae:quality-contract:qtb:hook-ack:v1",
+    "staleOrMissingDisposition": "source_degraded",
+    "producerCannotSelfAcknowledge": true
+  },
+  "inbox": {
+    "receiverIsOnlySqliteWriter": true,
+    "transaction": "BEGIN IMMEDIATE",
+    "requiredFields": ["inboxId", "producerPrincipal", "keyId", "nonce", "receivedWallUtcMs", "receivedBootId", "observationBytes", "observationHash", "authResult", "sourceCapability", "status", "coordinatorSequence", "softCrossed", "hardCrossed"],
+    "statuses": ["accepted", "duplicate", "rejected", "gap", "processed"],
+    "uniqueKeys": ["producerPrincipal", "keyId", "nonce"],
+    "commitBeforeAck": true,
+    "restartSafe": true,
+    "memoryOnlyDisposition": "shadow_ephemeral_not_enforcing"
+  },
+  "configuration": {
+    "qualityCommand": "gjc quality-hook-enqueue",
+    "managedMarker": "gjc-quality-observer-v1",
+    "statusMessage": "GJC quality event enqueue",
+    "timeoutSeconds": 2,
+    "codex": {
+      "owner": "packages/coding-agent/src/hooks/codex-native-hooks-config.ts",
+      "path": "~/.codex/hooks.json",
+      "events": ["SubagentStop", "Stop"],
+      "handler": { "type": "command", "command": "gjc quality-hook-enqueue --harness codex --protocol qtb-hook-v1 --managed-marker gjc-quality-observer-v1", "statusMessage": "GJC quality event enqueue", "timeout": 2 },
+      "matcher": null,
+      "preserveExistingSkillStopTimeoutSeconds": 30
+    },
+    "claudeCode": {
+      "owner": "packages/coding-agent/src/hooks/claude-quality-hooks-config.ts",
+      "path": "~/.claude/settings.json",
+      "events": ["TaskCompleted", "SubagentStop", "Stop"],
+      "handler": { "type": "command", "command": "gjc", "args": ["quality-hook-enqueue", "--harness", "claude-code", "--protocol", "qtb-hook-v1", "--managed-marker", "gjc-quality-observer-v1"], "statusMessage": "GJC quality event enqueue", "timeout": 2 },
+      "matcher": null
+    }
+  },
+  "mergePolicy": {
+    "strictJsonParse": true,
+    "malformedDisposition": "refuse_byte_for_byte",
+    "rootAndHooksMustBeObjects": true,
+    "touchedEventsMustBeArrays": true,
+    "entriesMustContainHooksArrays": true,
+    "preserveUnknownKeys": true,
+    "preserveOrderAndPermissions": true,
+    "exactQualityHandlerDetection": true,
+    "markerAmbiguityDisposition": "status_failure_no_write_or_removal",
+    "dedupe": "collapse_exact_quality_handlers_per_host_and_event_to_one_front_entry",
+    "uninstall": "remove_exact_quality_handlers_only; remove_empty_enclosing_entry_and_event",
+    "policyOrTrustSuppression": "observation_gap_not_enforcing",
+    "atomicWrite": ["sibling_mode_0600_temp", "fsync_file", "atomic_rename", "fsync_parent", "reread_structural_verify"]
+  },
+  "versionNegotiation": {
+    "supportedProtocols": ["qtb-hook-v1"],
+    "requiredRequestProtocol": "qtb-hook-v1",
+    "unknownProtocolDisposition": "reject",
+    "downgradeDisposition": "reject",
+    "receiverVersion": "qtb-receiver-v1"
+  },
+  "authority": {
+    "hooksOnlyEnqueue": true,
+    "hooksNeverRunVerification": true,
+    "hooksNeverClaimLease": true,
+    "hooksNeverEmitReceipt": true,
+    "hooksNeverSeal": true,
+    "phase1Authorized": false
+  }
+}

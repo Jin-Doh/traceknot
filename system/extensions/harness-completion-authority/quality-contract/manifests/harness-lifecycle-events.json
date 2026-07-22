@@ -1,0 +1,100 @@
+{
+  "id": "gajae-quality-harness-lifecycle-events",
+  "schemaVersion": "harness-lifecycle-events/v1",
+  "description": "Closed normalization map for native harness observations. Source events are observations only; the coordinator owns identity, order, time, reconciliation, seal, lease, and results.",
+  "canonicalization": "JCS-RFC8785",
+  "sources": [
+    {
+      "sourceHarness": "claude-code",
+      "officialSource": "quality-contract/evidence/official/claude-code-hooks.v1.json",
+      "officialUrl": "https://code.claude.com/docs/en/hooks",
+      "sourceVersion": "hooks-v1",
+      "capabilityProfileId": "claude-code-observation-only",
+      "disposition": "observation_only",
+      "authoritativeCursor": false,
+      "completeCensus": false,
+      "events": [
+        { "sourceEvent": "TaskCompleted", "kind": "task_completed", "payloadProjection": ["task_id", "task_subject", "task_description", "teammate_name", "team_name"] },
+        { "sourceEvent": "SubagentStop", "kind": "actor_terminal", "payloadProjection": ["agent_id", "agent_transcript_path", "stop_hook_active"] },
+        { "sourceEvent": "Stop", "kind": "turn_terminal_observed", "payloadProjection": ["stop_hook_active"] }
+      ]
+    },
+    {
+      "sourceHarness": "codex",
+      "officialSource": "quality-contract/evidence/official/openai-codex-hooks.v1.json",
+      "officialUrl": "https://developers.openai.com/codex/hooks",
+      "sourceVersion": "hooks-v1",
+      "capabilityProfileId": "codex-hooks-observation-only",
+      "disposition": "observation_only",
+      "authoritativeCursor": false,
+      "completeCensus": false,
+      "events": [
+        { "sourceEvent": "UserPromptSubmit", "kind": "actor_started", "payloadProjection": ["prompt", "cwd"] },
+        { "sourceEvent": "Stop", "kind": "turn_terminal_observed", "payloadProjection": ["cwd", "last_assistant_message"] },
+        { "sourceEvent": "SubagentStop", "kind": "actor_terminal", "payloadProjection": ["cwd", "agent_id"] }
+      ]
+    },
+    {
+      "sourceHarness": "codex-app-server",
+      "officialSource": "quality-contract/evidence/official/openai-codex-app-server.v1.json",
+      "officialUrl": "https://developers.openai.com/codex/app-server",
+      "sourceVersion": "app-server-v1",
+      "capabilityProfileId": "codex-app-server-observation-only",
+      "disposition": "observation_only",
+      "authoritativeCursor": false,
+      "completeCensus": false,
+      "events": [
+        { "sourceEvent": "turn/started", "kind": "actor_started", "payloadProjection": ["threadId", "turnId"] },
+        { "sourceEvent": "turn/completed", "kind": "turn_terminal_observed", "payloadProjection": ["threadId", "turnId", "status"] },
+        { "sourceEvent": "item/completed", "kind": "task_completed", "payloadProjection": ["threadId", "turnId", "itemId", "itemType"] }
+      ]
+    },
+    {
+      "sourceHarness": "gajaecode",
+      "officialSource": "internal-phase0-contract",
+      "officialUrl": null,
+      "sourceVersion": "durable-local-v1",
+      "capabilityProfileId": "gajaecode-durable-local-v1",
+      "disposition": "shadow_only_until_conformance",
+      "authoritativeCursor": true,
+      "completeCensus": true,
+      "events": [
+        { "sourceEvent": "root_completion_candidate", "kind": "root_completion_observed", "payloadProjection": ["rootObjectiveId", "rootSessionId"] },
+        { "sourceEvent": "main_settle_started", "kind": "main_settle_observed", "payloadProjection": ["rootSessionId"] },
+        { "sourceEvent": "main_settled", "kind": "main_settle_observed", "payloadProjection": ["rootSessionId"] },
+        { "sourceEvent": "actor_started", "kind": "actor_started", "payloadProjection": ["actorId", "actorKind"] },
+        { "sourceEvent": "actor_queued", "kind": "actor_queued", "payloadProjection": ["actorId", "actorKind"] },
+        { "sourceEvent": "actor_paused", "kind": "actor_paused", "payloadProjection": ["actorId", "requiredTaskId"] },
+        { "sourceEvent": "actor_terminal", "kind": "actor_terminal", "payloadProjection": ["actorId", "status"] },
+        { "sourceEvent": "task_opened", "kind": "task_opened", "payloadProjection": ["taskId", "required", "actorId"] },
+        { "sourceEvent": "task_completed", "kind": "task_completed", "payloadProjection": ["taskId", "actorId"] },
+        { "sourceEvent": "task_reopened", "kind": "task_reopened", "payloadProjection": ["taskId", "actorId"] },
+        { "sourceEvent": "delivery_queued", "kind": "delivery_queued", "payloadProjection": ["deliveryId", "jobId"] },
+        { "sourceEvent": "delivery_started", "kind": "delivery_started", "payloadProjection": ["deliveryId", "jobId"] },
+        { "sourceEvent": "delivery_acked", "kind": "delivery_acked", "payloadProjection": ["deliveryId", "jobId"] },
+        { "sourceEvent": "delivery_dead_lettered", "kind": "delivery_dead_lettered", "payloadProjection": ["deliveryId", "jobId"] },
+        { "sourceEvent": "mutation_observed", "kind": "mutation_observed", "payloadProjection": ["mutationEpoch"] },
+        { "sourceEvent": "mutation_scan_overflow", "kind": "mutation_scan_overflow", "payloadProjection": [] },
+        { "sourceEvent": "turn_terminal_observed", "kind": "turn_terminal_observed", "payloadProjection": [] },
+        { "sourceEvent": "source_health", "kind": "source_health", "payloadProjection": ["sourceKey", "health"] },
+        { "sourceEvent": "abort_observed", "kind": "abort_observed", "payloadProjection": ["reason"] }
+      ]
+    }
+  ],
+  "normalization": {
+    "objectType": "harness_observation",
+    "requiredFields": ["schemaVersion", "objectType", "observationId", "sourceHarness", "sourceVersion", "adapterVersion", "sourceEvent", "projectLocator", "kind", "boundedPayload", "provenanceHash"],
+    "sourceOnlyFields": ["observationId", "sourceHarness", "sourceVersion", "adapterVersion", "sourceEvent", "sourceOccurrenceId", "sourceCursor", "sourceWallUtcMs", "projectLocator", "rootSessionLocator", "nativeActorId", "nativeTaskId", "nativeDeliveryId", "kind", "boundedPayload", "provenanceHash"],
+    "forbiddenFields": ["projectId", "rootObjectiveId", "physicalRootHash", "candidateGeneration", "mutationEpoch", "coordinatorSequence", "coordinatorBootId", "persistedWallUtcMs", "persistedMonoMs", "reconciliation", "seal", "lease", "result", "receipt", "terminalDecision"],
+    "unknownFieldDisposition": "reject",
+    "nativeTimesAreProvenanceOnly": true,
+    "singleEventDisposition": "observation_only"
+  },
+  "authority": {
+    "coordinatorObjectType": "quiescence_action",
+    "coordinatorOnlyActions": ["source_snapshot_reconciled", "candidate_sealed", "lease_claimed", "lease_recovered", "lease_committed", "verification_result_committed", "terminal_binding_committed"],
+    "terminalEventsNeverSealOrVerify": ["TaskCompleted", "SubagentStop", "Stop", "turn/completed", "turn_terminal_observed", "actor_terminal", "agent_end"],
+    "sealRequires": ["trusted_root_candidate", "trusted_main_settle", "zero_derived_ledger_counts", "zero_source_gaps", "zero_dead_letters", "stable_mutation_epoch", "quiet_window_2000_single_or_5000_multi"],
+    "phase1Authorized": false
+  }
+}

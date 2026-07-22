@@ -1,0 +1,30 @@
+# Test completion report
+
+Report the QA decision independently from harness task completion.
+
+## Required sections
+
+1. Target snapshot and change scope.
+2. Test basis and derived acceptance criteria.
+3. Initial and residual product risks.
+4. Test conditions and selected techniques.
+5. Mandatory and optional obligations.
+6. Entry-criteria deviations.
+7. Exact commands and scenarios executed.
+8. Evidence counts, artifacts, and producer independence.
+9. Basis, risk, condition, and obligation coverage with uncovered IDs.
+10. Defects by severity and status.
+11. Accepted exceptions with owner and expiry.
+12. Untested scope, unavailable evidence, and residual risk.
+13. Final QA verdict and rationale.
+14. Separate harness completion status when the host supplies it.
+
+## Verdict precedence
+
+1. `FAIL`: failed mandatory obligation or unaccepted material defect.
+2. `BLOCKED`: mandatory prerequisite or capability unavailable.
+3. `INCOMPLETE`: mandatory obligation lacks a terminal result.
+4. `PASS_WITH_ACCEPTED_RISK`: all mandatory obligations pass and every remaining material risk has valid acceptance.
+5. `PASS`: all mandatory obligations pass with no remaining unaccepted material risk.
+
+Do not summarize a mixed result as PASS. Mark claims not established by direct evidence as inference.

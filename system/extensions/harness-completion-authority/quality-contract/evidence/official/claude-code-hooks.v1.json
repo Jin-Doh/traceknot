@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schemaVersion": "official-source-evidence/v1",
+  "recordType": "OfficialSourceEvidence",
+  "recordId": "claude-code-hooks-v1",
+  "source": {
+    "publisher": "Anthropic",
+    "title": "Claude Code Hooks reference",
+    "url": "https://code.claude.com/docs/en/hooks",
+    "sourceKind": "official-documentation"
+  },
+  "review": {
+    "reviewId": "qtb-a0-official-review-2026-07-16",
+    "reviewedAt": "2026-07-16T00:00:00Z",
+    "reviewerId": "gajae-quality-contract-review",
+    "method": "manual-document-review"
+  },
+  "runtimePolicy": {
+    "refetchAllowed": false,
+    "verificationMode": "pinned-bytes-only"
+  },
+  "excerpts": [
+    {
+      "excerptId": "hook-lifecycle",
+      "locator": "#hook-lifecycle",
+      "text": "Hooks fire at specific points during a Claude Code session.",
+      "encoding": "UTF-8",
+      "lineEnding": "LF",
+      "excerptSha256": "707cbc45580317f64835f7cafae5627cc669c065f07375330bed31d515432dbb"
+    },
+    {
+      "excerptId": "subagent-stop-event",
+      "locator": "#hook-lifecycle:event-table:SubagentStop",
+      "text": "SubagentStop | When a subagent finishes",
+      "encoding": "UTF-8",
+      "lineEnding": "LF",
+      "excerptSha256": "a972699a9d3a3b68d324251190fae99d5237dafa3928c2d5746778fa0d320962"
+    },
+    {
+      "excerptId": "task-completed-event",
+      "locator": "#hook-lifecycle:event-table:TaskCompleted",
+      "text": "TaskCompleted | When a task is being marked as completed",
+      "encoding": "UTF-8",
+      "lineEnding": "LF",
+      "excerptSha256": "32f24d9e4ca1fc1ed98053b5fafde66b66ecac29a98d004b077e7cfa86be4ff1"
+    },
+    {
+      "excerptId": "stop-event",
+      "locator": "#hook-lifecycle:event-table:Stop",
+      "text": "Stop | When Claude finishes responding",
+      "encoding": "UTF-8",
+      "lineEnding": "LF",
+      "excerptSha256": "92235c300d7579fb94b40ab4bde22e9553eb37af9d34a6df024a860fbf16bf05"
+    }
+  ],
+  "conclusions": [
+    {
+      "conclusionId": "external-events-do-not-prove-global-join",
+      "statement": "Claude Code lifecycle hook events are external observations and do not establish a GJC global join or authorize verification by themselves.",
+      "globalJoinEstablished": false,
+      "disposition": "observation-only",
+      "evidenceExcerptIds": [
+        "hook-lifecycle",
+        "subagent-stop-event",
+        "task-completed-event",
+        "stop-event"
+      ],
+      "frozen": true
+    }
+  ]
+}

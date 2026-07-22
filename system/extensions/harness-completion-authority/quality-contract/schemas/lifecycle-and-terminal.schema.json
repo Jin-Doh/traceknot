@@ -1,0 +1,707 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gajae.dev/quality-contract/schemas/lifecycle-and-terminal.schema.json",
+  "title": "Phase 0 lifecycle and terminal contract",
+  "type": "object",
+  "unevaluatedProperties": false,
+  "oneOf": [
+    {
+      "$ref": "#/$defs/terminalOwner"
+    },
+    {
+      "$ref": "#/$defs/terminalPair"
+    },
+    {
+      "$ref": "#/$defs/timers"
+    },
+    {
+      "$ref": "#/$defs/drain"
+    },
+    {
+      "$ref": "#/$defs/start"
+    },
+    {
+      "$ref": "#/$defs/invocation"
+    },
+    {
+      "$ref": "#/$defs/recovery"
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{0,127}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signerId",
+        "keyId",
+        "algorithm",
+        "signatureHash"
+      ],
+      "properties": {
+        "signerId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "keyId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "algorithm": {
+          "type": "string",
+          "enum": [
+            "ed25519",
+            "hmac-sha256"
+          ]
+        },
+        "signatureHash": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "signatureGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "threshold",
+        "signatures"
+      ],
+      "properties": {
+        "threshold": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "signatures": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/signature"
+          }
+        }
+      }
+    },
+    "rootTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transitionId",
+        "transitionKind",
+        "previousRootHash",
+        "nextRootHash",
+        "signatureGroup"
+      ],
+      "properties": {
+        "transitionId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "transitionKind": {
+          "type": "string",
+          "enum": [
+            "GENESIS",
+            "ROTATE",
+            "REVOKE"
+          ]
+        },
+        "previousRootHash": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nextRootHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "signatureGroup": {
+          "$ref": "#/$defs/signatureGroup"
+        }
+      }
+    },
+    "envelope": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "$schema",
+        "objectType",
+        "objectId",
+        "issuedAt",
+        "rootTransition",
+        "signatureGroup"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "pattern": "^0\\.[0-9]+\\.[0-9]+$"
+        },
+        "$schema": {
+          "type": "string",
+          "const": "https://json-schema.org/draft/2020-12/schema"
+        },
+        "objectType": {
+          "type": "string"
+        },
+        "objectId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "issuedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "rootTransition": {
+          "$ref": "#/$defs/rootTransition"
+        },
+        "signatureGroup": {
+          "$ref": "#/$defs/signatureGroup"
+        }
+      }
+    },
+    "terminalState": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "status", "reason", "reasonCode", "changedAt", "receiptHash"],
+          "properties": {
+            "state": { "const": "CLEAR" },
+            "status": { "const": "CLEAR" },
+            "reason": { "type": "string", "minLength": 1 },
+            "reasonCode": { "const": "QUALITY_CLEAR" },
+            "changedAt": { "$ref": "#/$defs/timestamp" },
+            "receiptHash": { "$ref": "#/$defs/hash" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "status", "reason", "reasonCode", "changedAt", "watchUntil", "receiptHash"],
+          "properties": {
+            "state": { "const": "WATCH" },
+            "status": { "const": "WATCH" },
+            "reason": { "type": "string", "minLength": 1 },
+            "reasonCode": { "const": "QUALITY_WATCH_EXCEPTION" },
+            "changedAt": { "$ref": "#/$defs/timestamp" },
+            "watchUntil": { "$ref": "#/$defs/timestamp" },
+            "receiptHash": { "$ref": "#/$defs/hash" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "status", "reason", "reasonCode", "changedAt", "receiptHash"],
+          "properties": {
+            "state": { "const": "CLEAR-WATCH" },
+            "status": { "const": "verified_success" },
+            "reason": { "const": "clear_watch_receipt" },
+            "reasonCode": { "const": "QUALITY_CLEAR" },
+            "changedAt": { "$ref": "#/$defs/timestamp" },
+            "receiptHash": { "$ref": "#/$defs/hash" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "status", "reason", "reasonCode", "changedAt"],
+          "properties": {
+            "state": { "const": "FAILED" },
+            "status": { "const": "failed" },
+            "reason": {
+              "type": "string",
+              "enum": ["pre_agent", "provider", "scheduler", "watchdog", "global_deadline"]
+            },
+            "reasonCode": { "const": "TERMINAL_FAILED" },
+            "changedAt": { "$ref": "#/$defs/timestamp" }
+          },
+          "not": { "required": ["receiptHash"] }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "status", "reason", "reasonCode", "changedAt"],
+          "properties": {
+            "state": { "const": "CANCELLED" },
+            "status": { "const": "cancelled" },
+            "reason": { "type": "string", "enum": ["user_abort", "dispose"] },
+            "reasonCode": { "const": "TERMINAL_CANCELLED" },
+            "changedAt": { "$ref": "#/$defs/timestamp" }
+          },
+          "not": { "required": ["receiptHash"] }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "status", "reason", "reasonCode", "changedAt"],
+          "properties": {
+            "state": { "const": "BLOCKED" },
+            "status": { "const": "blocked" },
+            "reason": {
+              "type": "string",
+              "enum": ["policy", "snapshot", "trust", "capability", "quality_timeout"]
+            },
+            "reasonCode": { "const": "TERMINAL_BLOCKED" },
+            "changedAt": { "$ref": "#/$defs/timestamp" }
+          },
+          "not": { "required": ["receiptHash"] }
+        }
+      ]
+    },
+    "terminalIdentity": {
+      "type": "object",
+      "required": ["sessionId", "promptGeneration", "terminalId", "status", "reasonCode"],
+      "properties": {
+        "sessionId": { "$ref": "#/$defs/identifier" },
+        "promptGeneration": { "type": "integer", "minimum": 0 },
+        "terminalId": { "$ref": "#/$defs/identifier" },
+        "status": {
+          "type": "string",
+          "enum": ["CLEAR", "WATCH", "verified_success", "failed", "cancelled", "blocked"]
+        },
+        "reasonCode": {
+          "type": "string",
+          "enum": [
+            "QUALITY_CLEAR", "QUALITY_WATCH_EXCEPTION", "TERMINAL_FAILED",
+            "TERMINAL_CANCELLED", "TERMINAL_BLOCKED"
+          ]
+        },
+        "receiptHash": { "$ref": "#/$defs/hash" }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": { "enum": ["CLEAR", "WATCH", "verified_success"] }
+            }
+          },
+          "then": { "required": ["receiptHash"] }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": { "enum": ["failed", "cancelled", "blocked"] }
+            }
+          },
+          "then": { "not": { "required": ["receiptHash"] } }
+        }
+      ]
+    },
+    "terminalOwner": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "$ref": "#/$defs/terminalIdentity"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "ownerId",
+            "leaseId",
+            "leaseExpiresAt",
+            "terminalState"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "TerminalOwner"
+            },
+            "ownerId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "leaseId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "leaseExpiresAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "terminalState": {
+              "$ref": "#/$defs/terminalState"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "terminalPair": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "$ref": "#/$defs/terminalIdentity"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "pairId",
+            "primaryId",
+            "secondaryId",
+            "activeId",
+            "terminalState"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "TerminalPair"
+            },
+            "pairId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "primaryId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "secondaryId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "activeId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "terminalState": {
+              "$ref": "#/$defs/terminalState"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "timers": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "timerId",
+            "cancellationEpoch",
+            "wallDeadlineUtcMs",
+            "originBootId",
+            "monoAtPersistMs",
+            "wallAtPersistMs",
+            "originUncertaintyBoundMs",
+            "startupTimeoutMs",
+            "invocationTimeoutMs",
+            "drainTimeoutMs",
+            "recoveryTimeoutMs"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "Timers"
+            },
+            "timerId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "cancellationEpoch": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "wallDeadlineUtcMs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "originBootId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "monoAtPersistMs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "wallAtPersistMs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "originUncertaintyBoundMs": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "startupTimeoutMs": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "invocationTimeoutMs": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "drainTimeoutMs": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "recoveryTimeoutMs": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "drain": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "drainId",
+            "ownerId",
+            "requestedAt",
+            "deadlineAt",
+            "mode"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "Drain"
+            },
+            "drainId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "ownerId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "requestedAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "deadlineAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "GRACEFUL",
+                "IMMEDIATE"
+              ]
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "start": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "startId",
+            "ownerId",
+            "requestedAt",
+            "startupDeadlineAt",
+            "adapterId"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "Start"
+            },
+            "startId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "ownerId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "requestedAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "startupDeadlineAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "adapterId": {
+              "$ref": "#/$defs/identifier"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "invocation": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "invocationId",
+            "ownerId",
+            "startedAt",
+            "operation",
+            "requestHash",
+            "claimId",
+            "headHash",
+            "epoch",
+            "principalId",
+            "nonceHash",
+            "outboxId",
+            "archiveId"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "Invocation"
+            },
+            "invocationId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "ownerId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "startedAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "operation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "requestHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "responseHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "claimId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "headHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "epoch": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "principalId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "nonceHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "outboxId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "archiveId": {
+              "$ref": "#/$defs/identifier"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "recovery": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "recoveryId",
+            "ownerId",
+            "trigger",
+            "startedAt",
+            "recoveryDeadlineAt",
+            "originalPhysicalWriteSeq",
+            "recoveryOfSeq",
+            "recoveryAttempt",
+            "inputFileVersion",
+            "claimId",
+            "claimantPrincipal",
+            "invocationId",
+            "status",
+            "disposition"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "Recovery"
+            },
+            "recoveryId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "ownerId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "trigger": {
+              "type": "string",
+              "enum": [
+                "TIMEOUT",
+                "CRASH",
+                "LOST_LEASE",
+                "MANUAL"
+              ]
+            },
+            "startedAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "recoveryDeadlineAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "fromStateHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "originalPhysicalWriteSeq": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "recoveryOfSeq": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "recoveryAttempt": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3
+            },
+            "inputFileVersion": {
+              "$ref": "#/$defs/hash"
+            },
+            "claimId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "claimantPrincipal": {
+              "$ref": "#/$defs/identifier"
+            },
+            "invocationId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "RUNNING",
+                "SUCCEEDED",
+                "FAILED",
+                "ABORTED"
+              ]
+            },
+            "disposition": {
+              "type": "string",
+              "enum": [
+                "RETRY",
+                "COMMIT",
+                "ABORT",
+                "BLOCK"
+              ]
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

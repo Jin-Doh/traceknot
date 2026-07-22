@@ -1,0 +1,2418 @@
+{
+  "modelVersion": "phase-0-revision-14",
+  "deterministic": true,
+  "bounded": true,
+  "evidence": {
+    "sameScriptRegeneration": "reproducibility-only; not independent producer evidence"
+  },
+  "exploration": {
+    "lifecycle": {
+      "states": 1304,
+      "transitions": 1966,
+      "terminalReachable": true
+    },
+    "storage": {
+      "states": 5000,
+      "transitions": 25186
+    }
+  },
+  "exploredStates": 6304,
+  "exploredTransitions": 27152,
+  "adversarialBoundaryCases": [
+    "lifecycle/duplicate-ack-event",
+    "lifecycle/receipt-mismatch-is-stale",
+    "lifecycle/stale-terminal-is-audit-noop",
+    "lifecycle/publish-ack-restart-stale-callback",
+    "lifecycle/stale-recovery-callback-is-audit-noop",
+    "lifecycle/duplicate-publish-and-ack-events",
+    "lifecycle/stable-timer-same-boot",
+    "lifecycle/stable-timer-changed-boot-uncertainty",
+    "lifecycle/stable-timer-wall-clock-rollback-bounded",
+    "lifecycle/early-timer-callback-does-not-fire",
+    "lifecycle/exact-timer-callback-fires-once",
+    "lifecycle/repeated-timer-callback-is-idempotent",
+    "lifecycle/cancelled-timer-callback-is-noop",
+    "storage/duplicate-recovery-cas-audit",
+    "storage/fsync-failure-no-fabricated-evidence",
+    "storage/exdev-failure-no-fabricated-evidence",
+    "storage/exdev-unlink-failure-no-fabricated-evidence",
+    "storage/unrecoverable-disposition-blocks-slot",
+    "storage/same-slot-recovery-attempt-limit",
+    "storage/claim-expiry-boundary",
+    "mutation/bounded-liveness-oracle-rejects",
+    "mutation/terminal-pair-oracle-rejects",
+    "mutation/cas-first-winner-oracle-rejects",
+    "mutation/fifo-order-oracle-rejects",
+    "mutation/outbox-identity-oracle-rejects",
+    "mutation/future-version-oracle-rejects",
+    "mutation/same-slot-recovery-oracle-rejects",
+    "mutation/observed-operation-evidence-oracle-rejects",
+    "quiescence/duplicate-obligation-rejected",
+    "quiescence/duplicate-evidence-rejected",
+    "quiescence/stale-commit-fenced"
+  ],
+  "caseCount": 570,
+  "passed": 570,
+  "failed": 0,
+  "cases": [
+    {
+      "name": "lifecycle/pair-flush-requires-both-acks",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/pair-flush-archives-and-releases",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/reordered-pair-acks",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/duplicate-ack-event",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/full-pair-queues-successor",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/two-prompt-reordered-ack-crash-trace",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/verified-success-requires-receipt",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/clear-requires-real-receipt",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/receipt-mismatch-is-stale",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/fifo-head-before-successor",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/manual-retry-continuation-lease",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/abort-vs-clear-first-cas",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/clear-loses-after-abort-cas",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/stale-terminal-is-audit-noop",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/crash-restart-preserves-start-outbox",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/provider-start-requires-published-outbox",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/lost-effect-recovery-reuses-invocation",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/publish-ack-restart-stale-callback",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/stale-recovery-callback-is-audit-noop",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/duplicate-publish-and-ack-events",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/stable-timer-same-boot",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/stable-timer-changed-boot-uncertainty",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/stable-timer-wall-clock-rollback-bounded",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/early-timer-callback-does-not-fire",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/exact-timer-callback-fires-once",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/repeated-timer-callback-is-idempotent",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/cancelled-timer-callback-is-noop",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/guard-supported",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/guard-unsupported",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/guard-unknown-fails-closed",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/owner-key-generation-scoped",
+      "passed": true
+    },
+    {
+      "name": "lifecycle/bounded-reachable-exploration",
+      "passed": true,
+      "details": "{\"states\":1304,\"transitions\":1966}"
+    },
+    {
+      "name": "storage/R10-noop-then-B11-commit",
+      "passed": true
+    },
+    {
+      "name": "storage/prequeued-A-B-progress-v0-v1-v2",
+      "passed": true
+    },
+    {
+      "name": "storage/partial-move-recovered-commit",
+      "passed": true
+    },
+    {
+      "name": "storage/duplicate-recovery-cas-audit",
+      "passed": true
+    },
+    {
+      "name": "storage/blocked-successor",
+      "passed": true
+    },
+    {
+      "name": "storage/deferred-rewrite-does-not-reserve-version",
+      "passed": true
+    },
+    {
+      "name": "storage/crash-restart-enters-same-slot-recovery",
+      "passed": true
+    },
+    {
+      "name": "storage/same-fs-move-directory-fsync-evidence",
+      "passed": true
+    },
+    {
+      "name": "storage/sync-fsync-order",
+      "passed": true
+    },
+    {
+      "name": "storage/exdev-copy-unlink-directory-fsync",
+      "passed": true
+    },
+    {
+      "name": "storage/exdev-phase-order",
+      "passed": true
+    },
+    {
+      "name": "storage/exdev-source-unlink-order",
+      "passed": true
+    },
+    {
+      "name": "storage/fsync-failure-no-fabricated-evidence",
+      "passed": true
+    },
+    {
+      "name": "storage/exdev-failure-no-fabricated-evidence",
+      "passed": true
+    },
+    {
+      "name": "storage/exdev-unlink-failure-no-fabricated-evidence",
+      "passed": true
+    },
+    {
+      "name": "storage/unrecoverable-disposition-blocks-slot",
+      "passed": true
+    },
+    {
+      "name": "storage/same-slot-recovery-attempt-limit",
+      "passed": true
+    },
+    {
+      "name": "storage/claim-expiry-boundary",
+      "passed": true
+    },
+    {
+      "name": "storage/no-future-version-reservation",
+      "passed": true
+    },
+    {
+      "name": "storage/bounded-reachable-exploration",
+      "passed": true,
+      "details": "{\"states\":5000,\"transitions\":25186}"
+    },
+    {
+      "name": "storage/reachable-exdev-commit-with-unlink",
+      "passed": true
+    },
+    {
+      "name": "invariant/bounded_liveness",
+      "passed": true,
+      "details": "reachable states=1304, transitions=1966"
+    },
+    {
+      "name": "invariant/terminal_pair_exactly_once",
+      "passed": true,
+      "details": "reachable states=1304, transitions=1966"
+    },
+    {
+      "name": "invariant/terminal_receipt_identity",
+      "passed": true,
+      "details": "reachable states=1304, transitions=1966"
+    },
+    {
+      "name": "invariant/fifo_pair_drain",
+      "passed": true,
+      "details": "reachable states=1304, transitions=1966"
+    },
+    {
+      "name": "invariant/fifo",
+      "passed": true,
+      "details": "reachable states=1304, transitions=1966"
+    },
+    {
+      "name": "invariant/cas_first_winner",
+      "passed": true,
+      "details": "reachable states=1304, transitions=1966"
+    },
+    {
+      "name": "invariant/outbox_invocation_identity",
+      "passed": true,
+      "details": "reachable states=1304, transitions=1966"
+    },
+    {
+      "name": "invariant/no_future_version_reservation",
+      "passed": true,
+      "details": "reachable states=5000, transitions=25186"
+    },
+    {
+      "name": "invariant/queued_head_rebases_version",
+      "passed": true,
+      "details": "reachable states=5000, transitions=25186"
+    },
+    {
+      "name": "invariant/same_slot_recovery",
+      "passed": true,
+      "details": "reachable states=5000, transitions=25186"
+    },
+    {
+      "name": "invariant/observed_operation_evidence",
+      "passed": true,
+      "details": "reachable states=5000, transitions=25186"
+    },
+    {
+      "name": "invariant/exdev_source_unlink_order",
+      "passed": true,
+      "details": "reachable states=5000, transitions=25186"
+    },
+    {
+      "name": "mutation/bounded-liveness-oracle-rejects",
+      "passed": true,
+      "details": "removed reachable states and transitions"
+    },
+    {
+      "name": "mutation/terminal-pair-oracle-rejects",
+      "passed": true,
+      "details": "removed pair flush from a terminalizing transition"
+    },
+    {
+      "name": "mutation/cas-first-winner-oracle-rejects",
+      "passed": true,
+      "details": "perturbed terminal transition result"
+    },
+    {
+      "name": "mutation/fifo-order-oracle-rejects",
+      "passed": true,
+      "details": "duplicated a reachable admission epoch"
+    },
+    {
+      "name": "mutation/outbox-identity-oracle-rejects",
+      "passed": true,
+      "details": "removed invocation identity from an outbox result"
+    },
+    {
+      "name": "mutation/future-version-oracle-rejects",
+      "passed": true,
+      "details": "lowered file version below a committed output"
+    },
+    {
+      "name": "mutation/same-slot-recovery-oracle-rejects",
+      "passed": true,
+      "details": "changed recovery ownership to another physical sequence"
+    },
+    {
+      "name": "mutation/observed-operation-evidence-oracle-rejects",
+      "passed": true,
+      "details": "replaced observed directory-fsync evidence"
+    },
+    {
+      "name": "quiescence/phase-a-remains-unauthorized",
+      "passed": true
+    },
+    {
+      "name": "quiescence/risk-budget-row-count",
+      "passed": true
+    },
+    {
+      "name": "quiescence/risk-row-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/risk-row-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/risk-row-R2-non-gui",
+      "passed": true
+    },
+    {
+      "name": "quiescence/risk-row-R2-gui",
+      "passed": true
+    },
+    {
+      "name": "quiescence/risk-row-R3-local",
+      "passed": true
+    },
+    {
+      "name": "quiescence/risk-budget-rows-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/policy-risk-row-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/policy-risk-row-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/policy-risk-row-R2-non-gui",
+      "passed": true
+    },
+    {
+      "name": "quiescence/policy-risk-row-R2-gui",
+      "passed": true
+    },
+    {
+      "name": "quiescence/policy-risk-row-R3-local",
+      "passed": true
+    },
+    {
+      "name": "quiescence/runner-profile-count",
+      "passed": true
+    },
+    {
+      "name": "quiescence/runner-row-js-ts-focused",
+      "passed": true
+    },
+    {
+      "name": "quiescence/runner-row-python-focused",
+      "passed": true
+    },
+    {
+      "name": "quiescence/runner-row-rust-incremental",
+      "passed": true
+    },
+    {
+      "name": "quiescence/runner-row-rust-cold",
+      "passed": true
+    },
+    {
+      "name": "quiescence/runner-row-playwright-focused",
+      "passed": true
+    },
+    {
+      "name": "quiescence/runner-row-g0-evidence-only",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R0-queueSlaMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R0-queueSlaMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R0-queueSlaMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R0-riskSoftMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R0-riskSoftMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R0-riskSoftMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R0-riskHardMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R0-riskHardMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R0-riskHardMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R0-globalCompletionMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R0-globalCompletionMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R0-globalCompletionMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R1-queueSlaMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R1-queueSlaMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R1-queueSlaMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R1-riskSoftMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R1-riskSoftMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R1-riskSoftMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R1-riskHardMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R1-riskHardMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R1-riskHardMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R1-globalCompletionMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R1-globalCompletionMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R1-globalCompletionMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-non-gui-queueSlaMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-non-gui-queueSlaMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-non-gui-queueSlaMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-non-gui-riskSoftMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-non-gui-riskSoftMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-non-gui-riskSoftMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-non-gui-riskHardMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-non-gui-riskHardMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-non-gui-riskHardMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-non-gui-globalCompletionMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-non-gui-globalCompletionMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-non-gui-globalCompletionMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-gui-queueSlaMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-gui-queueSlaMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-gui-queueSlaMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-gui-riskSoftMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-gui-riskSoftMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-gui-riskSoftMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-gui-riskHardMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-gui-riskHardMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-gui-riskHardMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-gui-globalCompletionMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-gui-globalCompletionMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R2-gui-globalCompletionMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R3-local-queueSlaMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R3-local-queueSlaMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R3-local-queueSlaMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R3-local-riskSoftMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R3-local-riskSoftMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R3-local-riskSoftMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R3-local-riskHardMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R3-local-riskHardMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R3-local-riskHardMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R3-local-globalCompletionMs-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R3-local-globalCompletionMs-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/budget-boundary-R3-local-globalCompletionMs-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-bootstrap-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-bootstrap-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-bootstrap-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-bootstrap-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-bootstrap-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-bootstrap-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-collection-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-collection-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-collection-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-collection-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-collection-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-collection-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-execution-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-execution-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-execution-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-execution-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-execution-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-execution-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-evidenceFlush-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-evidenceFlush-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-evidenceFlush-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-evidenceFlush-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-evidenceFlush-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-evidenceFlush-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-shutdown-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-shutdown-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-shutdown-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-shutdown-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-shutdown-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-g0-evidence-only-shutdown-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-bootstrap-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-bootstrap-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-bootstrap-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-bootstrap-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-bootstrap-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-bootstrap-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-collection-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-collection-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-collection-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-collection-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-collection-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-collection-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-execution-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-execution-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-execution-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-execution-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-execution-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-execution-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-evidenceFlush-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-evidenceFlush-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-evidenceFlush-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-evidenceFlush-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-evidenceFlush-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-evidenceFlush-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-shutdown-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-shutdown-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-shutdown-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-shutdown-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-shutdown-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-js-ts-focused-shutdown-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-bootstrap-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-bootstrap-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-bootstrap-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-bootstrap-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-bootstrap-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-bootstrap-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-collection-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-collection-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-collection-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-collection-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-collection-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-collection-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-execution-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-execution-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-execution-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-execution-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-execution-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-execution-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-evidenceFlush-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-evidenceFlush-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-evidenceFlush-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-evidenceFlush-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-evidenceFlush-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-evidenceFlush-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-shutdown-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-shutdown-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-shutdown-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-shutdown-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-shutdown-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-python-focused-shutdown-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-bootstrap-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-bootstrap-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-bootstrap-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-bootstrap-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-bootstrap-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-bootstrap-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-collection-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-collection-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-collection-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-collection-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-collection-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-collection-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-execution-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-execution-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-execution-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-execution-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-execution-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-execution-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-evidenceFlush-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-evidenceFlush-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-evidenceFlush-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-evidenceFlush-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-evidenceFlush-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-evidenceFlush-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-shutdown-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-shutdown-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-shutdown-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-shutdown-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-shutdown-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-incremental-shutdown-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-bootstrap-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-bootstrap-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-bootstrap-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-bootstrap-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-bootstrap-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-bootstrap-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-collection-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-collection-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-collection-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-collection-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-collection-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-collection-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-execution-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-execution-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-execution-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-execution-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-execution-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-execution-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-evidenceFlush-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-evidenceFlush-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-evidenceFlush-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-evidenceFlush-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-evidenceFlush-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-evidenceFlush-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-shutdown-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-shutdown-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-shutdown-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-shutdown-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-shutdown-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-rust-cold-shutdown-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-bootstrap-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-bootstrap-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-bootstrap-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-bootstrap-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-bootstrap-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-bootstrap-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-collection-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-collection-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-collection-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-collection-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-collection-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-collection-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-execution-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-execution-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-execution-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-execution-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-execution-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-execution-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-evidenceFlush-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-evidenceFlush-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-evidenceFlush-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-evidenceFlush-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-evidenceFlush-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-evidenceFlush-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-shutdown-soft-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-shutdown-soft-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-shutdown-soft-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-shutdown-hard-before",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-shutdown-hard-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/boundary-playwright-focused-shutdown-hard-after",
+      "passed": true
+    },
+    {
+      "name": "quiescence/phase-formulas-governed",
+      "passed": true
+    },
+    {
+      "name": "quiescence/phase-hard-clamped-to-work",
+      "passed": true
+    },
+    {
+      "name": "quiescence/flush-reserve-formula",
+      "passed": true
+    },
+    {
+      "name": "quiescence/retention-governed",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-row-shape",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-row-count-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.tests-pass-g0-evidence-only-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.tests-pass-g0-evidence-only-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.tests-pass-g0-evidence-only-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.tests-pass-g0-evidence-only-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.static-checks-pass-g0-evidence-only-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.adversarial-pass-g0-evidence-only-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.adversarial-pass-g0-evidence-only-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.adversarial-pass-g0-evidence-only-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.adversarial-pass-g0-evidence-only-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.sealed-snapshot-g0-evidence-only-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.sealed-snapshot-g0-evidence-only-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.sealed-snapshot-g0-evidence-only-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.sealed-snapshot-g0-evidence-only-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-g0-evidence-only-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-g0-evidence-only-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-g0-evidence-only-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-g0-evidence-only-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-g0-evidence-only-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-g0-evidence-only-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-g0-evidence-only-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-g0-evidence-only-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-g0-evidence-only-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.ledger-consistent-g0-evidence-only-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.unspecified-smoke-g0-evidence-only-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.tests-pass-js-ts-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.tests-pass-js-ts-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.static-checks-pass-js-ts-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.static-checks-pass-js-ts-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.adversarial-pass-js-ts-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.adversarial-pass-js-ts-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.sealed-snapshot-js-ts-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.sealed-snapshot-js-ts-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-js-ts-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-js-ts-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-js-ts-focused-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-js-ts-focused-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-js-ts-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-js-ts-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-js-ts-focused-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-js-ts-focused-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-js-ts-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-js-ts-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-js-ts-focused-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-js-ts-focused-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.ledger-consistent-js-ts-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.ledger-consistent-js-ts-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.unspecified-smoke-js-ts-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.unspecified-smoke-js-ts-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.tests-pass-python-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.tests-pass-python-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.static-checks-pass-python-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.static-checks-pass-python-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.adversarial-pass-python-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.adversarial-pass-python-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.sealed-snapshot-python-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.sealed-snapshot-python-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-python-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-python-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-python-focused-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-python-focused-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-python-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-python-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-python-focused-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-python-focused-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-python-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-python-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-python-focused-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-python-focused-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.ledger-consistent-python-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.ledger-consistent-python-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.unspecified-smoke-python-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.unspecified-smoke-python-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.tests-pass-rust-incremental-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.tests-pass-rust-incremental-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.static-checks-pass-rust-incremental-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.static-checks-pass-rust-incremental-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.adversarial-pass-rust-incremental-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.adversarial-pass-rust-incremental-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.sealed-snapshot-rust-incremental-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.sealed-snapshot-rust-incremental-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-rust-incremental-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-rust-incremental-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-rust-incremental-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-rust-incremental-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-rust-incremental-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-rust-incremental-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-rust-incremental-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-rust-incremental-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-rust-incremental-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-rust-incremental-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-rust-incremental-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-rust-incremental-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.ledger-consistent-rust-incremental-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.ledger-consistent-rust-incremental-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.unspecified-smoke-rust-incremental-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.unspecified-smoke-rust-incremental-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.tests-pass-rust-cold-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.tests-pass-rust-cold-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.static-checks-pass-rust-cold-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.static-checks-pass-rust-cold-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.adversarial-pass-rust-cold-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.adversarial-pass-rust-cold-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.sealed-snapshot-rust-cold-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.sealed-snapshot-rust-cold-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-rust-cold-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-rust-cold-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-rust-cold-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-rust-cold-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-rust-cold-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-rust-cold-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-rust-cold-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-rust-cold-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-rust-cold-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-rust-cold-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.ledger-consistent-rust-cold-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.ledger-consistent-rust-cold-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.unspecified-smoke-rust-cold-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.unspecified-smoke-rust-cold-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.tests-pass-playwright-focused-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.static-checks-pass-playwright-focused-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.adversarial-pass-playwright-focused-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.sealed-snapshot-playwright-focused-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.browser-flow-pass-playwright-focused-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-playwright-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-playwright-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-playwright-focused-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.cold-build-pass-playwright-focused-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-playwright-focused-R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-playwright-focused-R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-playwright-focused-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.no-mutation-playwright-focused-R3",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.ledger-consistent-playwright-focused-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-acceptance.unspecified-smoke-playwright-focused-R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-resolver-container-exactly-once",
+      "passed": true
+    },
+    {
+      "name": "acceptance-resolver-case-count",
+      "passed": true
+    },
+    {
+      "name": "acceptance-resolver-case-ids-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-resolver-consumed-once-acceptance.tests-pass|js-ts-focused|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-id-acceptance.tests-pass|js-ts-focused|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-acceptance.tests-pass|js-ts-focused|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-resolver-consumed-once-acceptance.static-checks-pass|python-focused|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-id-acceptance.static-checks-pass|python-focused|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-acceptance.static-checks-pass|python-focused|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-resolver-consumed-once-acceptance.adversarial-pass|rust-incremental|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-id-acceptance.adversarial-pass|rust-incremental|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-acceptance.adversarial-pass|rust-incremental|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-resolver-consumed-once-acceptance.cold-build-pass|rust-cold|G1|R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-id-acceptance.cold-build-pass|rust-cold|G1|R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-acceptance.cold-build-pass|rust-cold|G1|R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-resolver-consumed-once-acceptance.browser-flow-pass|playwright-focused|G1|R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-id-acceptance.browser-flow-pass|playwright-focused|G1|R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-acceptance.browser-flow-pass|playwright-focused|G1|R2",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-resolver-consumed-once-acceptance.no-mutation|g0-evidence-only|G0|R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-id-acceptance.no-mutation|g0-evidence-only|G0|R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-acceptance.no-mutation|g0-evidence-only|G0|R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-resolver-consumed-once-acceptance.ledger-consistent|g0-evidence-only|G0|R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-id-acceptance.ledger-consistent|g0-evidence-only|G0|R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-acceptance.ledger-consistent|g0-evidence-only|G0|R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-resolver-consumed-once-acceptance.tests-pass|g0-evidence-only|G0|R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-id-acceptance.tests-pass|g0-evidence-only|G0|R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-acceptance.tests-pass|g0-evidence-only|G0|R0",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-resolver-consumed-once-acceptance.browser-flow-pass|js-ts-focused|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-id-acceptance.browser-flow-pass|js-ts-focused|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-acceptance.browser-flow-pass|js-ts-focused|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-resolver-consumed-once-unknown.acceptance|js-ts-focused|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-id-unknown.acceptance|js-ts-focused|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-unknown.acceptance|js-ts-focused|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-resolver-consumed-once-acceptance.tests-pass|js-ts-focused|G0|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-id-acceptance.tests-pass|js-ts-focused|G0|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-acceptance.tests-pass|js-ts-focused|G0|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-resolver-consumed-once-acceptance.tests-pass|playwright-focused|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-id-acceptance.tests-pass|playwright-focused|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-fixture-acceptance.tests-pass|playwright-focused|G1|R1",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-resolver-fixtures-consumed-exactly-once",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mapping-mutants-container-exactly-once",
+      "passed": true
+    },
+    {
+      "name": "mapping-mutants-case-count",
+      "passed": true
+    },
+    {
+      "name": "mapping-mutants-case-ids-exact",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mapping-mutants-consumed-once-dropped-risk",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-mutation-known-kind-dropped-risk",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-mutation-dropped-risk",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mapping-mutants-consumed-once-added-risk",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-mutation-known-kind-added-risk",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-mutation-added-risk",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mapping-mutants-consumed-once-changed-disposition",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-mutation-known-kind-changed-disposition",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-mutation-changed-disposition",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mapping-mutants-consumed-once-changed-obligation",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-mutation-known-kind-changed-obligation",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-mutation-changed-obligation",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mapping-mutants-consumed-once-zero-mapping",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-mutation-known-kind-zero-mapping",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-mutation-zero-mapping",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mapping-mutants-consumed-once-multiple-mapping",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-mutation-known-kind-multiple-mapping",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-mutation-multiple-mapping",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mapping-mutants-consumed-once-conflicting-mapping",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-mutation-known-kind-conflicting-mapping",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-mutation-conflicting-mapping",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mapping-mutants-consumed-once-incompatible-capability",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-mutation-known-kind-incompatible-capability",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-mutation-incompatible-capability",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mapping-mutants-fixtures-consumed-exactly-once",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-multiple-match-fails-closed",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-conflicting-match-fails-closed",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-unknown-zero-capability-fails-closed",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mandatory-manifest-js-ts-focused",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mandatory-manifest-python-focused",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mandatory-manifest-rust-incremental",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mandatory-manifest-rust-cold",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mandatory-manifest-playwright-focused",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mandatory-manifest-g0-evidence-only",
+      "passed": true
+    },
+    {
+      "name": "quiescence/manifest-dispositions",
+      "passed": true
+    },
+    {
+      "name": "quiescence/single-agent-quiet-window",
+      "passed": true
+    },
+    {
+      "name": "quiescence/candidate-and-one-fenced-lease",
+      "passed": true
+    },
+    {
+      "name": "quiescence/optional-obligation-rejected",
+      "passed": true
+    },
+    {
+      "name": "quiescence/duplicate-obligation-rejected",
+      "passed": true
+    },
+    {
+      "name": "quiescence/omitted-obligation-rejected",
+      "passed": true
+    },
+    {
+      "name": "quiescence/one-evidence-rejected",
+      "passed": true
+    },
+    {
+      "name": "quiescence/unrelated-evidence-rejected",
+      "passed": true
+    },
+    {
+      "name": "quiescence/duplicate-evidence-rejected",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mismatched-evidence-rejected",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mandatory-evidence-bridge-clear",
+      "passed": true
+    },
+    {
+      "name": "quiescence/stale-commit-fenced",
+      "passed": true
+    },
+    {
+      "name": "quiescence/multi-agent-five-second-window",
+      "passed": true
+    },
+    {
+      "name": "quiescence/source-forged-identity-rejected",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mutation-invalidates-generation",
+      "passed": true
+    },
+    {
+      "name": "quiescence/inclusive-deadline",
+      "passed": true
+    },
+    {
+      "name": "quiescence/restart-never-extends",
+      "passed": true
+    },
+    {
+      "name": "quiescence/risk-global-total",
+      "passed": true
+    },
+    {
+      "name": "quiescence/runner-phase-table",
+      "passed": true
+    },
+    {
+      "name": "quiescence/acceptance-exact-resolution",
+      "passed": true
+    },
+    {
+      "name": "quiescence/mandatory-omission-blocks",
+      "passed": true
+    }
+  ],
+  "invariants": [
+    "bounded_liveness",
+    "terminal_pair_exactly_once",
+    "terminal_receipt_identity",
+    "fifo_pair_drain",
+    "fifo",
+    "cas_first_winner",
+    "outbox_invocation_identity",
+    "no_future_version_reservation",
+    "queued_head_rebases_version",
+    "same_slot_recovery",
+    "observed_operation_evidence",
+    "exdev_source_unlink_order"
+  ],
+  "invariantCount": 12,
+  "mutationProbes": [
+    {
+      "name": "bounded-liveness",
+      "rejected": true,
+      "details": "removed reachable states and transitions"
+    },
+    {
+      "name": "terminal-pair",
+      "rejected": true,
+      "details": "removed pair flush from a terminalizing transition"
+    },
+    {
+      "name": "cas-first-winner",
+      "rejected": true,
+      "details": "perturbed terminal transition result"
+    },
+    {
+      "name": "fifo-order",
+      "rejected": true,
+      "details": "duplicated a reachable admission epoch"
+    },
+    {
+      "name": "outbox-identity",
+      "rejected": true,
+      "details": "removed invocation identity from an outbox result"
+    },
+    {
+      "name": "future-version",
+      "rejected": true,
+      "details": "lowered file version below a committed output"
+    },
+    {
+      "name": "same-slot-recovery",
+      "rejected": true,
+      "details": "changed recovery ownership to another physical sequence"
+    },
+    {
+      "name": "observed-operation-evidence",
+      "rejected": true,
+      "details": "replaced observed directory-fsync evidence"
+    }
+  ]
+}

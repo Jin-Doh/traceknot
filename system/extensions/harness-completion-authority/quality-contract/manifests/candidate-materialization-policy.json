@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "gajae-candidate-materialization-policy",
+  "schemaVersion": "candidate-materialization-policy/v1",
+  "policyType": "CandidateMaterializationPolicy",
+  "closed": true,
+  "hash": {
+    "algorithm": "sha256",
+    "canonicalization": "JCS-RFC8785",
+    "lengthFraming": "U64BE-domain-JCS-length"
+  },
+  "physicalRoot": {
+    "required": true,
+    "mustBeAbsolute": true,
+    "resolution": "realpath",
+    "mustBeDirectory": true,
+    "identity": ["device", "inode", "realpath"],
+    "capture": "before-and-after",
+    "rootTransition": "fail-closed",
+    "outsideRoot": "fail-closed"
+  },
+  "gitInventory": {
+    "required": true,
+    "trackedSource": "index-and-head",
+    "untrackedSource": "worktree-nonignored",
+    "ignoredSource": "excluded",
+    "ordering": "lexicographic-utf8-relative-path",
+    "pathEncoding": "UTF-8",
+    "relativeTo": "physicalRoot",
+    "status": "capture-and-bind",
+    "submodule": {
+      "representation": "gitlink",
+      "requireCommitHash": true,
+      "requireCheckoutState": true,
+      "requireClean": true,
+      "allowNestedTraversal": false,
+      "missingOrDirty": "fail-closed"
+    }
+  },
+  "inclusion": {
+    "trackedFiles": true,
+    "untrackedNonIgnoredFiles": true,
+    "directories": true,
+    "explicitGeneratedInputsOnly": true,
+    "generatedInputs": {
+      "mode": "allow-list",
+      "paths": []
+    }
+  },
+  "exclusions": {
+    "exactDirectories": [
+      ".git",
+      ".gjc",
+      "node_modules",
+      "tmp",
+      ".tmp",
+      "artifacts",
+      "benchmark-results"
+    ],
+    "exactPaths": [
+      "quality-contract/generated"
+    ],
+    "generatedOutputs": "excluded",
+    "unlistedExclusion": "fail-closed",
+    "excludedSymlinkTargets": "not-resolved"
+  },
+  "symlinks": {
+    "follow": false,
+    "resolveTargets": false,
+    "record": false,
+    "encounter": "fail-closed"
+  },
+  "specialFiles": {
+    "allowedTypes": ["regular-file", "directory", "gitlink"],
+    "fifo": "fail-closed",
+    "socket": "fail-closed",
+    "device": "fail-closed",
+    "other": "fail-closed",
+    "unreadable": "fail-closed"
+  },
+  "concurrentMutation": {
+    "requiredChecks": [
+      "root-identity-before-and-after",
+      "directory-entry-set-before-and-after",
+      "file-stat-before-and-after",
+      "file-bytes-hash-before-and-after",
+      "git-index-and-worktree-status-before-and-after",
+      "mutation-epoch-stable"
+    ],
+    "readMode": "open-no-follow",
+    "anyMismatch": "fail-closed",
+    "candidateEmission": "after-all-checks",
+    "partialInventory": "invalid"
+  },
+  "failureDisposition": {
+    "status": "BLOCK",
+    "candidate": "not-materialized",
+    "reason": "unknown-unreadable-unsupported-or-concurrently-mutated-input",
+    "retry": "new-materialization-attempt-only"
+  },
+  "phase1Authorized": false
+}

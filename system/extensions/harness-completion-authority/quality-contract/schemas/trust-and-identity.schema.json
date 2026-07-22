@@ -1,0 +1,826 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gajae.dev/quality-contract/schemas/trust-and-identity.schema.json",
+  "title": "Phase 0 trust and identity contract",
+  "type": "object",
+  "unevaluatedProperties": false,
+  "oneOf": [
+    {
+      "$ref": "#/$defs/root"
+    },
+    {
+      "$ref": "#/$defs/trust"
+    },
+    {
+      "$ref": "#/$defs/rootTransition"
+    },
+    {
+      "$ref": "#/$defs/serviceAttestation"
+    },
+    {
+      "$ref": "#/$defs/authorizationPolicy"
+    },
+    {
+      "$ref": "#/$defs/adapterManifest"
+    },
+    {
+      "$ref": "#/$defs/projectIdentity"
+    },
+    {
+      "$ref": "#/$defs/toolIdentity"
+    }
+  ],
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]{0,127}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signerId",
+        "keyId",
+        "algorithm",
+        "signatureHash"
+      ],
+      "properties": {
+        "signerId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "keyId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "algorithm": {
+          "type": "string",
+          "enum": [
+            "ed25519",
+            "hmac-sha256"
+          ]
+        },
+        "signatureHash": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "signatureGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "threshold",
+        "signatures"
+      ],
+      "properties": {
+        "threshold": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "signatures": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/signature"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "rootTransitionRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transitionId",
+        "transitionKind",
+        "previousRootHash",
+        "nextRootHash",
+        "signatureGroup"
+      ],
+      "properties": {
+        "transitionId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "transitionKind": {
+          "type": "string",
+          "enum": [
+            "GENESIS",
+            "ROTATE",
+            "REVOKE"
+          ]
+        },
+        "previousRootHash": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nextRootHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "signatureGroup": {
+          "$ref": "#/$defs/signatureGroup"
+        }
+      }
+    },
+    "envelope": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "$schema",
+        "objectType",
+        "objectId",
+        "issuedAt",
+        "rootTransition",
+        "signatureGroup"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "pattern": "^0\\.[0-9]+\\.[0-9]+$"
+        },
+        "$schema": {
+          "type": "string",
+          "const": "https://json-schema.org/draft/2020-12/schema"
+        },
+        "objectType": {
+          "type": "string"
+        },
+        "objectId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "issuedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "rootTransition": {
+          "$ref": "#/$defs/rootTransitionRef"
+        },
+        "signatureGroup": {
+          "$ref": "#/$defs/signatureGroup"
+        }
+      }
+    },
+    "root": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "rootEpoch",
+            "rootKeySet"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "Root"
+            },
+            "rootEpoch": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "rootKeySet": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/identifier"
+              }
+            },
+            "rootHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "trustSequence": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "trust": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "subjectId",
+            "trustLevel",
+            "capabilities"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "Trust"
+            },
+            "subjectId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "trustLevel": {
+              "type": "string",
+              "enum": [
+                "UNTRUSTED",
+                "PROVISIONAL",
+                "TRUSTED",
+                "REVOKED"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/identifier"
+              },
+              "uniqueItems": true
+            },
+            "trustSequence": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "previousTrustHash": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/hash"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "rootTransition": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "transitionId",
+            "transitionKind",
+            "previousRootHash",
+            "nextRootHash"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "RootTransition"
+            },
+            "transitionId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "transitionKind": {
+              "type": "string",
+              "enum": [
+                "GENESIS",
+                "ROTATE",
+                "REVOKE"
+              ]
+            },
+            "previousRootHash": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/hash"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "nextRootHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "rootEpoch": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "trustSequence": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "transitionKind": {
+                    "const": "GENESIS"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "previousRootHash": {
+                    "type": "null"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "transitionKind": {
+                    "enum": [
+                      "ROTATE",
+                      "REVOKE"
+                    ]
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "previousRootHash": {
+                    "$ref": "#/$defs/hash"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "serviceAttestation": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "serviceId",
+            "adapterId",
+            "measurementHash",
+            "attestedAt",
+            "nonce",
+            "principalId",
+            "keyId",
+            "executableDigest",
+            "deviceId",
+            "bootId",
+            "ipcPeer"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "ServiceAttestation"
+            },
+            "serviceId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "adapterId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "measurementHash": {
+              "$ref": "#/$defs/hash"
+            },
+            "attestedAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "nonce": {
+              "$ref": "#/$defs/hash"
+            },
+            "principalId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "keyId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "executableDigest": {
+              "$ref": "#/$defs/hash"
+            },
+            "deviceId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "bootId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "ipcPeer": {
+              "$ref": "#/$defs/identifier"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "authorizationPolicy": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "policyId",
+            "subjectId",
+            "effect",
+            "actions",
+            "resources",
+            "projectId",
+            "riskLevel",
+            "role",
+            "keyId",
+            "validFrom",
+            "validUntil",
+            "rootSequence",
+            "trustSequence"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "AuthorizationPolicy"
+            },
+            "policyId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "subjectId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "effect": {
+              "type": "string",
+              "enum": [
+                "ALLOW",
+                "DENY"
+              ]
+            },
+            "actions": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/identifier"
+              },
+              "uniqueItems": true
+            },
+            "resources": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "projectId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "riskLevel": {
+              "type": "string",
+              "enum": [
+                "R0",
+                "R1",
+                "R2",
+                "R3"
+              ]
+            },
+            "role": {
+              "$ref": "#/$defs/identifier"
+            },
+            "keyId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "validFrom": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "validUntil": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "rootSequence": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "trustSequence": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "adapterOwner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ownerId", "scope"],
+      "properties": {
+        "ownerId": { "$ref": "#/$defs/identifier" },
+        "scope": { "type": "string", "enum": ["project", "organization", "platform"] }
+      }
+    },
+    "adapterSigner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signerId", "keyId", "algorithm", "signatureHash"],
+      "properties": {
+        "signerId": { "$ref": "#/$defs/identifier" },
+        "keyId": { "$ref": "#/$defs/identifier" },
+        "algorithm": { "type": "string", "const": "ed25519" },
+        "signatureHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "adapterProject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId", "rootHash"],
+      "properties": {
+        "projectId": { "$ref": "#/$defs/identifier" },
+        "rootHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "adapterTool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolId", "version", "toolHash"],
+      "properties": {
+        "toolId": { "$ref": "#/$defs/identifier" },
+        "version": { "type": "string", "minLength": 1 },
+        "toolHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "adapterInterpreter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "executableHash"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "executableHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "adapterNetwork": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "allowlist"],
+      "properties": {
+        "mode": { "type": "string", "enum": ["disabled", "allowlist"] },
+        "allowlist": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "mode": { "const": "disabled" } } },
+          "then": { "properties": { "allowlist": { "type": "array", "maxItems": 0 } } }
+        }
+      ]
+    },
+    "adapterFixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fixtureId", "inputHash", "expectedOutputHash"],
+      "properties": {
+        "fixtureId": { "$ref": "#/$defs/identifier" },
+        "inputHash": { "$ref": "#/$defs/hash" },
+        "expectedOutputHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "adapterTimeout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startupMs", "invocationMs", "drainMs", "cleanupMs"],
+      "properties": {
+        "startupMs": { "type": "integer", "minimum": 1 },
+        "invocationMs": { "type": "integer", "minimum": 1 },
+        "drainMs": { "type": "integer", "minimum": 1 },
+        "cleanupMs": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "adapterOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "stdoutHash", "stderrHash", "resultHash"],
+      "properties": {
+        "format": { "type": "string", "enum": ["json", "text", "binary"] },
+        "stdoutHash": { "$ref": "#/$defs/hash" },
+        "stderrHash": { "$ref": "#/$defs/hash" },
+        "resultHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "adapterCleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "paths", "processes"],
+      "properties": {
+        "mode": { "type": "string", "enum": ["strict", "best-effort"] },
+        "paths": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "processes": { "type": "array", "items": { "$ref": "#/$defs/identifier" }, "uniqueItems": true }
+      }
+    },
+    "adapterRerun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxAttempts", "sameBytes", "sameEnvironment", "seed"],
+      "properties": {
+        "maxAttempts": { "type": "integer", "minimum": 1 },
+        "sameBytes": { "type": "boolean", "const": true },
+        "sameEnvironment": { "type": "boolean", "const": true },
+        "seed": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "adapterCommon": {
+      "type": "object",
+      "x-composition-fragment": true,
+      "required": [
+        "objectType", "adapterId", "version", "entrypoint", "manifestHash", "capabilities",
+        "owner", "signer", "project", "tool", "interpreter", "argv", "cwd", "env", "secrets",
+        "network", "fixture", "timeout", "output", "cleanup", "rerun"
+      ],
+      "properties": {
+        "objectType": { "const": "AdapterManifest" },
+        "adapterId": { "$ref": "#/$defs/identifier" },
+        "version": { "type": "string", "minLength": 1 },
+        "entrypoint": { "type": "string", "minLength": 1 },
+        "manifestHash": { "$ref": "#/$defs/hash" },
+        "capabilities": { "type": "array", "items": { "$ref": "#/$defs/identifier" }, "uniqueItems": true },
+        "owner": { "$ref": "#/$defs/adapterOwner" },
+        "signer": { "$ref": "#/$defs/adapterSigner" },
+        "project": { "$ref": "#/$defs/adapterProject" },
+        "tool": { "$ref": "#/$defs/adapterTool" },
+        "interpreter": { "$ref": "#/$defs/adapterInterpreter" },
+        "argv": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "cwd": { "type": "string", "minLength": 1 },
+        "env": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+          "additionalProperties": { "type": "string" }
+        },
+        "secrets": { "type": "array", "items": { "$ref": "#/$defs/identifier" }, "uniqueItems": true },
+        "network": { "$ref": "#/$defs/adapterNetwork" },
+        "fixture": { "$ref": "#/$defs/adapterFixture" },
+        "timeout": { "$ref": "#/$defs/adapterTimeout" },
+        "output": { "$ref": "#/$defs/adapterOutput" },
+        "cleanup": { "$ref": "#/$defs/adapterCleanup" },
+        "rerun": { "$ref": "#/$defs/adapterRerun" }
+      }
+    },
+    "adapterManifest": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        { "$ref": "#/$defs/adapterCommon" },
+        {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["surface", "surfaceIdentity"],
+              "properties": {
+                "surface": { "const": "provider" },
+                "surfaceIdentity": {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["providerId", "operation"],
+                  "properties": {
+                    "providerId": { "$ref": "#/$defs/identifier" },
+                    "operation": { "type": "string", "minLength": 1 }
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["surface", "surfaceIdentity"],
+              "properties": {
+                "surface": { "const": "pre_agent" },
+                "surfaceIdentity": {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["agentId", "operation"],
+                  "properties": {
+                    "agentId": { "$ref": "#/$defs/identifier" },
+                    "operation": { "type": "string", "minLength": 1 }
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["surface", "surfaceIdentity"],
+              "properties": {
+                "surface": { "const": "scheduler" },
+                "surfaceIdentity": {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["schedulerId", "operation"],
+                  "properties": {
+                    "schedulerId": { "$ref": "#/$defs/identifier" },
+                    "operation": { "type": "string", "minLength": 1 }
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["surface", "surfaceIdentity"],
+              "properties": {
+                "surface": { "const": "watchdog" },
+                "surfaceIdentity": {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["watchdogId", "operation"],
+                  "properties": {
+                    "watchdogId": { "$ref": "#/$defs/identifier" },
+                    "operation": { "type": "string", "minLength": 1 }
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["surface", "surfaceIdentity"],
+              "properties": {
+                "surface": { "const": "quality_gate" },
+                "surfaceIdentity": {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["gateId", "operation"],
+                  "properties": {
+                    "gateId": { "$ref": "#/$defs/identifier" },
+                    "operation": { "type": "string", "minLength": 1 }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "projectIdentity": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "projectId",
+            "repository",
+            "defaultBranch"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "ProjectIdentity"
+            },
+            "projectId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            },
+            "defaultBranch": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._/-]+$"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "toolIdentity": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelope"
+        },
+        {
+          "type": "object",
+          "required": [
+            "objectType",
+            "toolId",
+            "toolVersion",
+            "toolHash"
+          ],
+          "properties": {
+            "objectType": {
+              "const": "ToolIdentity"
+            },
+            "toolId": {
+              "$ref": "#/$defs/identifier"
+            },
+            "toolVersion": {
+              "type": "string",
+              "minLength": 1
+            },
+            "toolHash": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

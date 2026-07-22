@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gajae.dev/quality-contract/schemas/verification-command.schema.json",
+  "title": "Quiescence time-budget verification command",
+  "oneOf": [{}],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["commandId", "runnerProfileId", "platformIn", "argv", "cwd", "envPolicy", "expectedExitCodes", "producedEvidenceTypes", "artifactDeclarations", "estimatedMinMs", "commandManifestHash"],
+  "properties": {
+    "commandId": { "$ref": "#/$defs/identifier" },
+    "runnerProfileId": { "$ref": "#/$defs/identifier" },
+    "platformIn": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "enum": ["darwin", "linux", "win32"] }
+    },
+    "argv": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "cwd": { "const": "project-root" },
+    "envPolicy": { "$ref": "#/$defs/envPolicy" },
+    "expectedExitCodes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+    },
+    "producedEvidenceTypes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "enum": ["acceptance", "obligations", "outcome", "snapshot", "timing", "adversarial", "smoke", "tests"] }
+    },
+    "artifactDeclarations": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "estimatedMinMs": { "type": "integer", "minimum": 0 },
+    "commandManifestHash": { "$ref": "#/$defs/hash" }
+  },
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._:-]{0,127}$" },
+    "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "envPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inheritAllowlist", "set"],
+      "properties": {
+        "inheritAllowlist": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" }
+        },
+        "set": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[A-Z_][A-Z0-9_]*$" },
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactId", "relativePath", "mediaType", "required"],
+      "properties": {
+        "artifactId": { "$ref": "#/$defs/identifier" },
+        "relativePath": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\u0000).+$" },
+        "mediaType": { "type": "string", "minLength": 1 },
+        "required": { "type": "boolean" }
+      }
+    }
+  }
+}

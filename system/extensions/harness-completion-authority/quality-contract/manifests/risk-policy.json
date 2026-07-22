@@ -1,0 +1,536 @@
+{
+  "id": "gajae-code-risk-policy",
+  "schemaVersion": "risk/v1",
+  "policyId": "gajae-code-risk-policy",
+  "defaultDecision": "BLOCK",
+  "unknownRisk": "R3",
+  "riskLevels": [
+    "R0",
+    "R1",
+    "R2",
+    "R3"
+  ],
+  "verificationProfiles": {
+    "R0": {
+      "required": [
+        "existing-tests",
+        "independent-smoke"
+      ],
+      "receiptAuthority": "local-evidence"
+    },
+    "R1": {
+      "required": [
+        "existing-tests",
+        "independent-smoke"
+      ],
+      "receiptAuthority": "local-evidence"
+    },
+    "R2": {
+      "required": [
+        "sealed-snapshot",
+        "independent-adversarial-test"
+      ],
+      "receiptAuthority": "independent-verifier"
+    },
+    "R3": {
+      "required": [
+        "sealed-snapshot",
+        "independent-adversarial-test",
+        "broker-receipt",
+        "multi-approval",
+        "managed-ci"
+      ],
+      "receiptAuthority": "managed-broker"
+    }
+  },
+  "decisions": [
+    "ALLOW",
+    "REQUIRE_CONFIRMATION",
+    "REQUIRE_APPROVAL",
+    "BLOCK"
+  ],
+  "precedence": [
+    {
+      "rank": 0,
+      "id": "hard-r3",
+      "source": "hard-coded safety invariant",
+      "effect": "force",
+      "decision": "BLOCK",
+      "risk": "R3"
+    },
+    {
+      "rank": 1,
+      "id": "managed-minimum",
+      "source": "managed policy minimum",
+      "effect": "raise-only",
+      "minimumRisk": "R2"
+    },
+    {
+      "rank": 2,
+      "id": "approved-contract",
+      "source": "approved contract artifact",
+      "effect": "raise-only"
+    },
+    {
+      "rank": 3,
+      "id": "deterministic-detector",
+      "source": "deterministic detector",
+      "effect": "raise-only"
+    },
+    {
+      "rank": 4,
+      "id": "signed-organization-policy",
+      "source": "signed organization policy",
+      "effect": "raise-only"
+    },
+    {
+      "rank": 5,
+      "id": "project-hint",
+      "source": "project hint",
+      "effect": "raise-only",
+      "mayLower": false
+    },
+    {
+      "rank": 6,
+      "id": "unknown",
+      "source": "missing, malformed, or unsupported evidence",
+      "effect": "force",
+      "decision": "BLOCK",
+      "risk": "R3"
+    }
+  ],
+  "decisionTable": [
+    {
+      "id": "risk-hard-invariant",
+      "when": {
+        "hardInvariant": true
+      },
+      "result": {
+        "risk": "R3",
+        "decision": "BLOCK"
+      }
+    },
+    {
+      "id": "risk-unsupported",
+      "when": {
+        "unsupported": true
+      },
+      "result": {
+        "risk": "R3",
+        "decision": "BLOCK"
+      }
+    },
+    {
+      "id": "risk-unclassified",
+      "when": {
+        "classified": false
+      },
+      "result": {
+        "risk": "R3",
+        "decision": "BLOCK"
+      }
+    },
+    {
+      "id": "risk-managed-minimum",
+      "when": {
+        "managedMinimum": "R2"
+      },
+      "result": {
+        "risk": "R2",
+        "decision": "REQUIRE_APPROVAL"
+      }
+    },
+    {
+      "id": "risk-approved-contract",
+      "when": {
+        "approvedContract": true
+      },
+      "result": {
+        "risk": "R1",
+        "decision": "REQUIRE_CONFIRMATION"
+      }
+    },
+    {
+      "id": "risk-deterministic-detector",
+      "when": {
+        "detector": "deterministic"
+      },
+      "result": {
+        "risk": "R1",
+        "decision": "REQUIRE_CONFIRMATION"
+      }
+    },
+    {
+      "id": "risk-signed-policy",
+      "when": {
+        "signedOrganizationPolicy": true
+      },
+      "result": {
+        "risk": "R1",
+        "decision": "REQUIRE_CONFIRMATION"
+      }
+    },
+    {
+      "id": "risk-project-hint",
+      "when": {
+        "projectHint": true
+      },
+      "result": {
+        "effect": "raise-only"
+      }
+    },
+    {
+      "id": "risk-safe",
+      "when": {
+        "classified": true,
+        "risk": "R0"
+      },
+      "result": {
+        "risk": "R0",
+        "decision": "ALLOW"
+      }
+    }
+  ],
+  "mergeRule": {
+    "name": "max-risk-then-most-restrictive-decision",
+    "riskOrder": [
+      "R0",
+      "R1",
+      "R2",
+      "R3"
+    ],
+    "decisionOrder": [
+      "ALLOW",
+      "REQUIRE_CONFIRMATION",
+      "REQUIRE_APPROVAL",
+      "BLOCK"
+    ],
+    "unknownInputs": "BLOCK",
+    "projectHints": "can only increase risk or restrict decision"
+  },
+  "invariants": [
+    "No input may lower a previously selected risk or relax a decision.",
+    "Unknown, malformed, stale, or unsupported states resolve to R3/BLOCK.",
+    "A project hint is advisory and cannot authorize an operation.",
+    "The selected result is deterministic for the same ordered evidence set."
+  ],
+  "phase1Authorized": false,
+  "budgetPolicyVersion": "qtb-time-budget-v1",
+  "queueBudgetsMs": [
+    {
+      "risk": "R0",
+      "queueSlaMs": 15000,
+      "riskSoftMs": 30000,
+      "riskHardMs": 60000,
+      "globalCompletionMs": 75000
+    },
+    {
+      "risk": "R1",
+      "queueSlaMs": 30000,
+      "riskSoftMs": 120000,
+      "riskHardMs": 240000,
+      "globalCompletionMs": 270000
+    },
+    {
+      "risk": "R2",
+      "surfaceClass": "non-gui",
+      "queueSlaMs": 60000,
+      "riskSoftMs": 360000,
+      "riskHardMs": 720000,
+      "globalCompletionMs": 780000
+    },
+    {
+      "risk": "R2",
+      "surfaceClass": "gui",
+      "queueSlaMs": 60000,
+      "riskSoftMs": 600000,
+      "riskHardMs": 1080000,
+      "globalCompletionMs": 1140000
+    },
+    {
+      "risk": "R3",
+      "surfaceClass": "local",
+      "queueSlaMs": 120000,
+      "riskSoftMs": 600000,
+      "riskHardMs": 1200000,
+      "globalCompletionMs": 1320000
+    }
+  ],
+  "runnerBudgetsMs": [
+    {
+      "runnerProfileId": "js-ts-focused",
+      "bootstrap": {
+        "softMs": 10000,
+        "hardMs": 30000
+      },
+      "collection": {
+        "softMs": 10000,
+        "hardMs": 30000
+      },
+      "execution": {
+        "softMs": 60000,
+        "hardMs": 120000
+      },
+      "evidenceFlush": {
+        "softMs": 5000,
+        "hardMs": 15000
+      },
+      "shutdown": {
+        "softMs": 5000,
+        "hardMs": 15000
+      },
+      "total": {
+        "softMs": 90000,
+        "hardMs": 210000
+      }
+    },
+    {
+      "runnerProfileId": "python-focused",
+      "bootstrap": {
+        "softMs": 15000,
+        "hardMs": 45000
+      },
+      "collection": {
+        "softMs": 15000,
+        "hardMs": 45000
+      },
+      "execution": {
+        "softMs": 90000,
+        "hardMs": 240000
+      },
+      "evidenceFlush": {
+        "softMs": 10000,
+        "hardMs": 20000
+      },
+      "shutdown": {
+        "softMs": 5000,
+        "hardMs": 10000
+      },
+      "total": {
+        "softMs": 135000,
+        "hardMs": 360000
+      }
+    },
+    {
+      "runnerProfileId": "rust-incremental",
+      "bootstrap": {
+        "softMs": 90000,
+        "hardMs": 240000
+      },
+      "collection": {
+        "softMs": 15000,
+        "hardMs": 30000
+      },
+      "execution": {
+        "softMs": 120000,
+        "hardMs": 300000
+      },
+      "evidenceFlush": {
+        "softMs": 10000,
+        "hardMs": 20000
+      },
+      "shutdown": {
+        "softMs": 5000,
+        "hardMs": 10000
+      },
+      "total": {
+        "softMs": 240000,
+        "hardMs": 600000
+      }
+    },
+    {
+      "runnerProfileId": "rust-cold",
+      "bootstrap": {
+        "softMs": 360000,
+        "hardMs": 720000
+      },
+      "collection": {
+        "softMs": 15000,
+        "hardMs": 30000
+      },
+      "execution": {
+        "softMs": 195000,
+        "hardMs": 390000
+      },
+      "evidenceFlush": {
+        "softMs": 20000,
+        "hardMs": 40000
+      },
+      "shutdown": {
+        "softMs": 10000,
+        "hardMs": 20000
+      },
+      "total": {
+        "softMs": 600000,
+        "hardMs": 1200000
+      }
+    },
+    {
+      "runnerProfileId": "playwright-focused",
+      "bootstrap": {
+        "softMs": 65000,
+        "hardMs": 180000,
+        "components": {
+          "server": {
+            "softMs": 45000,
+            "hardMs": 120000
+          },
+          "browser": {
+            "softMs": 20000,
+            "hardMs": 60000
+          }
+        }
+      },
+      "collection": {
+        "softMs": 20000,
+        "hardMs": 60000
+      },
+      "execution": {
+        "softMs": 240000,
+        "hardMs": 480000
+      },
+      "evidenceFlush": {
+        "softMs": 20000,
+        "hardMs": 60000
+      },
+      "shutdown": {
+        "softMs": 10000,
+        "hardMs": 30000
+      },
+      "total": {
+        "softMs": 355000,
+        "hardMs": 810000
+      }
+    },
+    {
+      "runnerProfileId": "g0-evidence-only",
+      "bootstrap": {
+        "softMs": 0,
+        "hardMs": 1000
+      },
+      "collection": {
+        "softMs": 1000,
+        "hardMs": 2000
+      },
+      "execution": {
+        "softMs": 1000,
+        "hardMs": 2000
+      },
+      "evidenceFlush": {
+        "softMs": 1000,
+        "hardMs": 2000
+      },
+      "shutdown": {
+        "softMs": 1000,
+        "hardMs": 2000
+      },
+      "total": {
+        "softMs": 4000,
+        "hardMs": 9000
+      }
+    }
+  ],
+  "phaseDeadlinePolicy": {
+    "phaseOrder": [
+      "bootstrap",
+      "collection",
+      "execution",
+      "evidenceFlush",
+      "shutdown"
+    ],
+    "allDurationsIntegerMs": true,
+    "softFormula": "min(phaseStart + phaseSoftMs, optionalStopDeadline, workDeadline)",
+    "hardFormula": "min(phaseStart + phaseHardMs, workDeadline)",
+    "flushSoftFormula": "min(flushStart + flushSoftMs, flushHardDeadline)",
+    "flushHardFormula": "min(flushStart + flushHardMs, finalDeadline - shutdownHardMs)",
+    "shutdownSoftFormula": "min(shutdownStart + shutdownSoftMs, shutdownHardDeadline)",
+    "shutdownHardFormula": "min(shutdownStart + shutdownHardMs, finalDeadline)",
+    "boundary": "inclusive",
+    "admission": "now < deadline",
+    "crossing": "now >= deadline",
+    "hardTimeoutDisposition": "non-CLEAR",
+    "mandatoryNeverDropped": true,
+    "optionalStopAtEquality": true
+  },
+  "restartPolicy": {
+    "combinedUncertaintyMaxMs": 1000,
+    "remainingFormula": "clamp(0, configuredDuration, earliestDeadline - latestNow)",
+    "reconstructedDeadline": "min(persistedAbsoluteDeadline, currentWall + remaining, everyOuterCap)",
+    "neverMovesLater": true,
+    "lostChildDisposition": "cancel-reap-infrastructure-inconclusive"
+  },
+  "optionalStopPolicy": {
+    "optionalAdmission": "now < optionalStopDeadline and estimate fits strictly before workDeadline",
+    "equality": "stop-new-optional-work",
+    "runningOptional": "may-finish",
+    "mandatory": "continues-until-hard-policy",
+    "hardTimeout": "never-CLEAR"
+  },
+  "retentionPolicy": {
+    "mandatoryEvidence": "retain-durable-and-referenced",
+    "failedPartialRuns": {
+      "retainDays": 7
+    },
+    "importedEphemeral": {
+      "removeAfterAck": true
+    },
+    "crossRunCache": "forbidden"
+  },
+  "profileCompatibility": {
+    "g0-evidence-only": {
+      "capability": "G0",
+      "riskIn": [
+        "R0"
+      ]
+    },
+    "js-ts-focused": {
+      "capability": "G1",
+      "riskIn": [
+        "R0",
+        "R1"
+      ]
+    },
+    "python-focused": {
+      "capability": "G1",
+      "riskIn": [
+        "R0",
+        "R1"
+      ]
+    },
+    "rust-incremental": {
+      "capability": "G1",
+      "riskIn": [
+        "R0",
+        "R1"
+      ]
+    },
+    "rust-cold": {
+      "capability": "G1",
+      "riskIn": [
+        "R1",
+        "R2"
+      ]
+    },
+    "playwright-focused": {
+      "capability": "G1",
+      "riskIn": [
+        "R2"
+      ]
+    }
+  },
+  "requiredBoundaryBehavior": [
+    "-1 allows work/admission",
+    "exact crosses boundary",
+    "+1 crosses boundary",
+    "queue equality fails global_deadline when runner not started",
+    "global equality forbids start/recovery/commit",
+    "lease expiry equals global deadline",
+    "recovery cannot extend deadline"
+  ],
+  "globalCompletionFormula": "queueSlaMs + riskHardMs",
+  "effectiveSoftFormula": "min(runnerSoftTotalMs, riskSoftMs)",
+  "effectiveFinalHardFormula": "min(runnerHardTotalMs, riskHardMs, remainingGlobalMs)",
+  "reserveHardFormula": "evidenceFlushHardMs + shutdownHardMs",
+  "workDeadlineFormula": "runStart + effectiveWorkHardMs",
+  "finalDeadlineFormula": "runStart + effectiveFinalHardMs"
+}

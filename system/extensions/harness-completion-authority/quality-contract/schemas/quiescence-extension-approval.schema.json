@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gajae.dev/quality-contract/schemas/quiescence-extension-approval.schema.json",
+  "title": "Quiescence extension Phase A approval and freeze layers",
+  "type": "object",
+  "unevaluatedProperties": false,
+  "oneOf": [
+    { "$ref": "#/$defs/sourceInventory" },
+    { "$ref": "#/$defs/lockPayload" },
+    { "$ref": "#/$defs/signatureSet" },
+    { "$ref": "#/$defs/verificationReport" },
+    { "$ref": "#/$defs/approvalPayload" },
+    { "$ref": "#/$defs/approvalReceipt" },
+    { "$ref": "#/$defs/finalIndex" }
+  ],
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "path": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*\\\\)[^\\u0000]+$" },
+    "identifier": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._:-]{0,127}$" },
+    "bytes": { "type": "integer", "minimum": 0 },
+    "inventoryEntry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "bytes", "sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/path" },
+        "bytes": { "$ref": "#/$defs/bytes" },
+        "sha256": { "$ref": "#/$defs/hash" },
+        "canonicalSha256": { "$ref": "#/$defs/hash" },
+        "kind": { "type": "string", "enum": ["source", "generated", "schema", "manifest", "fixture", "model", "sql", "script", "official"] }
+      }
+    },
+    "baseAnchors": {
+      "type": "object", "additionalProperties": false,
+      "required": ["reportHash", "payloadHash", "pinHash"],
+      "properties": {
+        "reportHash": { "$ref": "#/$defs/hash" },
+        "payloadHash": { "$ref": "#/$defs/hash" },
+        "pinHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "extensionAnchors": {
+      "type": "object", "additionalProperties": false,
+      "required": ["payloadHash", "pinHash", "verificationReportHash"],
+      "properties": {
+        "payloadHash": { "$ref": "#/$defs/hash" },
+        "pinHash": { "$ref": "#/$defs/hash" },
+        "verificationReportHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "review": {
+      "type": "object", "additionalProperties": false,
+      "required": ["role", "runId", "stage", "stageN", "artifactSha256", "verdict"],
+      "properties": {
+        "role": { "type": "string", "enum": ["architect", "critic"] },
+        "runId": { "$ref": "#/$defs/identifier" },
+        "stage": { "type": "string", "minLength": 1 },
+        "stageN": { "type": "integer", "minimum": 1 },
+        "artifactSha256": { "$ref": "#/$defs/hash" },
+        "verdict": { "type": "string", "enum": ["APPROVE/CLEAR", "OKAY"] }
+      }
+    },
+    "issuer": {
+      "type": "object", "additionalProperties": false,
+      "required": ["principalId", "role", "keyId", "algorithm", "fixtureOnly"],
+      "properties": {
+        "principalId": { "$ref": "#/$defs/identifier" },
+        "role": { "const": "independent-contract-verifier" },
+        "keyId": { "$ref": "#/$defs/identifier" },
+        "algorithm": { "const": "hmac-sha256" },
+        "fixtureOnly": { "const": true }
+      }
+    },
+    "verifier": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sourceSha256", "command", "environment"],
+      "properties": {
+        "path": { "$ref": "#/$defs/path" },
+        "sourceSha256": { "$ref": "#/$defs/hash" },
+        "command": { "type": "string", "minLength": 1 },
+        "environment": { "type": "string", "minLength": 1 }
+      }
+    },
+    "signatureRecord": {
+      "type": "object", "additionalProperties": false,
+      "required": ["signerId", "keyId", "algorithm", "signatureHash"],
+      "properties": {
+        "signerId": { "$ref": "#/$defs/identifier" },
+        "keyId": { "$ref": "#/$defs/identifier" },
+        "algorithm": { "const": "hmac-sha256" },
+        "signatureHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "sourceInventory": {
+      "type": "object", "additionalProperties": false,
+      "required": ["format", "hashDomain", "phase1Authorized", "entries", "inventoryHash"],
+      "properties": {
+        "format": { "const": "quality-contract.quiescence-extension-source-inventory.v1" },
+        "hashDomain": { "const": "gajae:quality-contract:qtb:extension-source-inventory:v1" },
+        "phase1Authorized": { "const": false },
+        "entries": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/inventoryEntry" } },
+        "inventoryHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "lockPayload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["format", "lockVersion", "hashDomain", "phase1Authorized", "sourceInventoryHash", "basePhase0", "goldenVectors"],
+      "properties": {
+        "format": { "const": "quality-contract.quiescence-extension-lock-payload.v1" },
+        "lockVersion": { "type": "string", "minLength": 1 },
+        "hashDomain": { "const": "gajae:quality-contract:qtb:extension-lock-payload:v1" },
+        "phase1Authorized": { "const": false },
+        "sourceInventoryHash": { "$ref": "#/$defs/hash" },
+        "basePhase0": { "$ref": "#/$defs/baseAnchors" },
+        "goldenVectors": { "type": "array", "minItems": 2, "uniqueItems": true, "items": { "type": "object", "additionalProperties": false, "required": ["name", "inputHex", "outputHex"], "properties": { "name": { "type": "string", "minLength": 1 }, "inputHex": { "type": "string", "pattern": "^[a-f0-9]*$" }, "outputHex": { "type": "string", "pattern": "^[a-f0-9]+$" } } } }
+      }
+    },
+    "signatureSet": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "hashDomain", "payloadDigest", "threshold", "records"],
+      "properties": {
+        "version": { "const": "qtb-lock-signatures-v1" },
+        "hashDomain": { "const": "gajae:quality-contract:qtb:extension-lock-signature-set:v1" },
+        "payloadDigest": { "$ref": "#/$defs/hash" },
+        "threshold": { "type": "integer", "minimum": 1 },
+        "records": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/signatureRecord" } }
+      }
+    },
+    "verificationReport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["format", "hashDomain", "phase1Authorized", "passed", "failures", "entries", "reportHash"],
+      "properties": {
+        "format": { "const": "quality-contract.quiescence-extension-verification-report.v1" },
+        "hashDomain": { "const": "gajae:quality-contract:qtb:extension-verification-report:v1" },
+        "phase1Authorized": { "const": false },
+        "passed": { "const": true },
+        "failures": { "type": "array", "maxItems": 0 },
+        "entries": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/inventoryEntry" } },
+        "reportHash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "approvalPayload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["format", "contractVersion", "hashDomain", "decision", "phase1Authorized", "basePhase0", "extension", "reviewRecords", "artifactInventory", "verifier"],
+      "properties": {
+        "format": { "const": "quality-contract.quiescence-extension-approval-payload.v1" },
+        "contractVersion": { "type": "string", "minLength": 1 },
+        "hashDomain": { "const": "gajae:quality-contract:qtb:extension-approval-payload:v1" },
+        "decision": { "const": "APPROVE_PHASE0_EXTENSION_ONLY" },
+        "phase1Authorized": { "const": false },
+        "basePhase0": { "$ref": "#/$defs/baseAnchors" },
+        "extension": { "$ref": "#/$defs/extensionAnchors" },
+        "reviewRecords": { "type": "array", "minItems": 2, "uniqueItems": true, "items": { "$ref": "#/$defs/review" } },
+        "artifactInventory": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/inventoryEntry" } },
+        "verifier": { "$ref": "#/$defs/verifier" }
+      }
+    },
+    "approvalReceipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["format", "contractVersion", "hashDomain", "decision", "phase1Authorized", "payloadHash", "issuer", "issuedAtUtc", "canonicalPayloadSha256", "signature"],
+      "properties": {
+        "format": { "const": "quality-contract.quiescence-extension-approval-receipt.v1" },
+        "contractVersion": { "type": "string", "minLength": 1 },
+        "hashDomain": { "const": "gajae:quality-contract:qtb:extension-approval-receipt:v1" },
+        "decision": { "const": "APPROVE_PHASE0_EXTENSION_ONLY" },
+        "phase1Authorized": { "const": false },
+        "payloadHash": { "$ref": "#/$defs/hash" },
+        "issuer": { "$ref": "#/$defs/issuer" },
+        "issuedAtUtc": { "type": "string", "format": "date-time" },
+        "canonicalPayloadSha256": { "$ref": "#/$defs/hash" },
+        "signature": { "$ref": "#/$defs/signatureRecord" }
+      }
+    },
+    "finalIndex": {
+      "type": "object", "additionalProperties": false,
+      "required": ["format", "hashDomain", "phase1Authorized", "entries", "overallPass", "finalIndexHash"],
+      "properties": {
+        "format": { "const": "quality-contract.quiescence-extension-final-index.v1" },
+        "hashDomain": { "const": "gajae:quality-contract:qtb:extension-final-index:v1" },
+        "phase1Authorized": { "const": false },
+        "entries": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/inventoryEntry" } },
+        "overallPass": { "const": true },
+        "finalIndexHash": { "$ref": "#/$defs/hash" }
+      }
+    }
+  }
+}

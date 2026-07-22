@@ -1,0 +1,1325 @@
+{
+  "id": "gajae-code-verification-obligations",
+  "schemaVersion": "verification-obligations/v1",
+  "catalogVersion": "verification-obligations/v1",
+  "selectorGrammar": {
+    "wildcard": "missing-key-only",
+    "arrayMatch": "OR-within-clause",
+    "clauseJoin": "AND",
+    "emptyArrays": [
+      "coldTriggers",
+      "acceptanceRequirementIds"
+    ],
+    "noRegex": true,
+    "noNegation": true
+  },
+  "obligations": [
+    {
+      "obligationId": "qtb.g0.no-mutation-attestation",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G0"
+        ]
+      },
+      "mandatory": true,
+      "priority": "safety",
+      "runnerProfileId": "g0-evidence-only",
+      "commandId": null,
+      "commandManifestHash": null,
+      "evidenceProducerId": "producer.coordinator.mutation-attestation-v1",
+      "evidenceTypes": [
+        "acceptance"
+      ],
+      "dependencyIds": [],
+      "estimatedMinMs": 0,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "G0 trusted no-mutation attestation"
+    },
+    {
+      "obligationId": "qtb.g0.identity-ledger-smoke",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G0"
+        ]
+      },
+      "mandatory": true,
+      "priority": "acceptance",
+      "runnerProfileId": "g0-evidence-only",
+      "commandId": null,
+      "commandManifestHash": null,
+      "evidenceProducerId": "producer.independent.ledger-smoke-v1",
+      "evidenceTypes": [
+        "smoke"
+      ],
+      "dependencyIds": [],
+      "estimatedMinMs": 0,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "G0 independent identity-ledger smoke"
+    },
+    {
+      "obligationId": "qtb.js-ts.existing-tests",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1"
+        ],
+        "surfaceAny": [
+          "typescript",
+          "javascript"
+        ]
+      },
+      "mandatory": true,
+      "priority": "acceptance",
+      "runnerProfileId": "js-ts-focused",
+      "commandId": "cmd.js-ts.existing-tests",
+      "commandManifestHash": "1ccc150d34a913f1c7c667af76db0ce93cb42c96fc9d65e8e3ceebaebed8f4cd",
+      "evidenceProducerId": null,
+      "evidenceTypes": [
+        "tests"
+      ],
+      "dependencyIds": [],
+      "estimatedMinMs": 10000,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "profile existing tests"
+    },
+    {
+      "obligationId": "qtb.js-ts.independent-smoke",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1"
+        ],
+        "surfaceAny": [
+          "typescript",
+          "javascript"
+        ]
+      },
+      "mandatory": true,
+      "priority": "safety",
+      "runnerProfileId": "js-ts-focused",
+      "commandId": "cmd.js-ts.independent-smoke",
+      "commandManifestHash": "47a894cdc0948942481013438d0239c9273fb27980ec3ecefa610694d756b291",
+      "evidenceProducerId": null,
+      "evidenceTypes": [
+        "smoke"
+      ],
+      "dependencyIds": [],
+      "estimatedMinMs": 10000,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "profile independent smoke"
+    },
+    {
+      "obligationId": "qtb.js-ts.adversarial",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1"
+        ],
+        "surfaceAny": [
+          "typescript",
+          "javascript"
+        ]
+      },
+      "mandatory": true,
+      "priority": "regression",
+      "runnerProfileId": "js-ts-focused",
+      "commandId": "cmd.js-ts.adversarial",
+      "commandManifestHash": "739b9e4f158e8ec3a589fed9453ef41582c663f2d036325c08c7a7f5aa0185eb",
+      "evidenceProducerId": null,
+      "evidenceTypes": [
+        "adversarial"
+      ],
+      "dependencyIds": [
+        "qtb.js-ts.existing-tests"
+      ],
+      "estimatedMinMs": 10000,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "profile adversarial verification"
+    },
+    {
+      "obligationId": "qtb.python.existing-tests",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1"
+        ],
+        "surfaceAny": [
+          "python"
+        ]
+      },
+      "mandatory": true,
+      "priority": "acceptance",
+      "runnerProfileId": "python-focused",
+      "commandId": "cmd.python.existing-tests",
+      "commandManifestHash": "d82292ce7f89d1346d5425cd55721921e88b92abeedcc79fa094049feb5b93ee",
+      "evidenceProducerId": null,
+      "evidenceTypes": [
+        "tests"
+      ],
+      "dependencyIds": [],
+      "estimatedMinMs": 15000,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "profile existing tests"
+    },
+    {
+      "obligationId": "qtb.python.independent-smoke",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1"
+        ],
+        "surfaceAny": [
+          "python"
+        ]
+      },
+      "mandatory": true,
+      "priority": "safety",
+      "runnerProfileId": "python-focused",
+      "commandId": "cmd.python.independent-smoke",
+      "commandManifestHash": "22eb54010d1b22d7092652f5e43c296a8383acbc88364e928e61f6e4cbca84f0",
+      "evidenceProducerId": null,
+      "evidenceTypes": [
+        "smoke"
+      ],
+      "dependencyIds": [],
+      "estimatedMinMs": 15000,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "profile independent smoke"
+    },
+    {
+      "obligationId": "qtb.python.adversarial",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1"
+        ],
+        "surfaceAny": [
+          "python"
+        ]
+      },
+      "mandatory": true,
+      "priority": "regression",
+      "runnerProfileId": "python-focused",
+      "commandId": "cmd.python.adversarial",
+      "commandManifestHash": "c889acc4a57f28548dd2e7190f7a9281384ba7759a4c3b3dfeed586a0062691d",
+      "evidenceProducerId": null,
+      "evidenceTypes": [
+        "adversarial"
+      ],
+      "dependencyIds": [
+        "qtb.python.existing-tests"
+      ],
+      "estimatedMinMs": 15000,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "profile adversarial verification"
+    },
+    {
+      "obligationId": "qtb.rust-incremental.existing-tests",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1"
+        ],
+        "surfaceAny": [
+          "rust"
+        ]
+      },
+      "mandatory": true,
+      "priority": "acceptance",
+      "runnerProfileId": "rust-incremental",
+      "commandId": "cmd.rust-incremental.existing-tests",
+      "commandManifestHash": "f02046acd942847e6714c8101fb176e09c0b189f10ecf5a713488d02c3be367b",
+      "evidenceProducerId": null,
+      "evidenceTypes": [
+        "tests"
+      ],
+      "dependencyIds": [],
+      "estimatedMinMs": 15000,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "profile existing tests"
+    },
+    {
+      "obligationId": "qtb.rust-incremental.independent-smoke",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1"
+        ],
+        "surfaceAny": [
+          "rust"
+        ]
+      },
+      "mandatory": true,
+      "priority": "safety",
+      "runnerProfileId": "rust-incremental",
+      "commandId": "cmd.rust-incremental.independent-smoke",
+      "commandManifestHash": "44b8c8354af569e3a326ef15ae6148c8c3594152668074195aa67e89b3db11c1",
+      "evidenceProducerId": null,
+      "evidenceTypes": [
+        "smoke"
+      ],
+      "dependencyIds": [],
+      "estimatedMinMs": 15000,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "profile independent smoke"
+    },
+    {
+      "obligationId": "qtb.rust-incremental.adversarial",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1"
+        ],
+        "surfaceAny": [
+          "rust"
+        ]
+      },
+      "mandatory": true,
+      "priority": "regression",
+      "runnerProfileId": "rust-incremental",
+      "commandId": "cmd.rust-incremental.adversarial",
+      "commandManifestHash": "f6dfbff493f807add3250fd2bb7754267fdc6248eeb5ca7edd44b74137140885",
+      "evidenceProducerId": null,
+      "evidenceTypes": [
+        "adversarial"
+      ],
+      "dependencyIds": [
+        "qtb.rust-incremental.existing-tests"
+      ],
+      "estimatedMinMs": 15000,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "profile adversarial verification"
+    },
+    {
+      "obligationId": "qtb.rust-cold.existing-tests",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1"
+        ],
+        "surfaceAny": [
+          "rust"
+        ]
+      },
+      "mandatory": true,
+      "priority": "acceptance",
+      "runnerProfileId": "rust-cold",
+      "commandId": "cmd.rust-cold.existing-tests",
+      "commandManifestHash": "b766f2f21b53df8129213811e902994f73c9d591d295bb05411a8e49057e612c",
+      "evidenceProducerId": null,
+      "evidenceTypes": [
+        "tests"
+      ],
+      "dependencyIds": [],
+      "estimatedMinMs": 15000,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "profile existing tests"
+    },
+    {
+      "obligationId": "qtb.rust-cold.independent-smoke",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1"
+        ],
+        "surfaceAny": [
+          "rust"
+        ]
+      },
+      "mandatory": true,
+      "priority": "safety",
+      "runnerProfileId": "rust-cold",
+      "commandId": "cmd.rust-cold.independent-smoke",
+      "commandManifestHash": "0c1d79fab11c46e3d4a9ae4e4e0e8cb0f2f7ae447846607806832c74bf3a01cd",
+      "evidenceProducerId": null,
+      "evidenceTypes": [
+        "smoke"
+      ],
+      "dependencyIds": [],
+      "estimatedMinMs": 15000,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "profile independent smoke"
+    },
+    {
+      "obligationId": "qtb.rust-cold.adversarial",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1"
+        ],
+        "surfaceAny": [
+          "rust"
+        ]
+      },
+      "mandatory": true,
+      "priority": "regression",
+      "runnerProfileId": "rust-cold",
+      "commandId": "cmd.rust-cold.adversarial",
+      "commandManifestHash": "8bedca3e9052280112aaa0ba01dc497528559a58ebaf7af18a21ac09151ba0ac",
+      "evidenceProducerId": null,
+      "evidenceTypes": [
+        "adversarial"
+      ],
+      "dependencyIds": [
+        "qtb.rust-cold.existing-tests"
+      ],
+      "estimatedMinMs": 15000,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "profile adversarial verification"
+    },
+    {
+      "obligationId": "qtb.playwright.existing-tests",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1"
+        ],
+        "surfaceAny": [
+          "browser"
+        ]
+      },
+      "mandatory": true,
+      "priority": "acceptance",
+      "runnerProfileId": "playwright-focused",
+      "commandId": "cmd.playwright.existing-tests",
+      "commandManifestHash": "f4786586b344b508d4e2a5629f32a54692b3d9eed5f650c9d4c3e4984c817103",
+      "evidenceProducerId": null,
+      "evidenceTypes": [
+        "tests"
+      ],
+      "dependencyIds": [],
+      "estimatedMinMs": 20000,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "profile existing tests"
+    },
+    {
+      "obligationId": "qtb.playwright.independent-smoke",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1"
+        ],
+        "surfaceAny": [
+          "browser"
+        ]
+      },
+      "mandatory": true,
+      "priority": "safety",
+      "runnerProfileId": "playwright-focused",
+      "commandId": "cmd.playwright.independent-smoke",
+      "commandManifestHash": "0da48ad22c8cd8c42f213f4e4447254cfecebc121a889f696a8907907efcedea",
+      "evidenceProducerId": null,
+      "evidenceTypes": [
+        "smoke"
+      ],
+      "dependencyIds": [],
+      "estimatedMinMs": 20000,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "profile independent smoke"
+    },
+    {
+      "obligationId": "qtb.playwright.adversarial",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1"
+        ],
+        "surfaceAny": [
+          "browser"
+        ]
+      },
+      "mandatory": true,
+      "priority": "regression",
+      "runnerProfileId": "playwright-focused",
+      "commandId": "cmd.playwright.adversarial",
+      "commandManifestHash": "13398f7760acc91814f7bd4fa5f137269e32139c78efba62a134e5b8a2962a7b",
+      "evidenceProducerId": null,
+      "evidenceTypes": [
+        "adversarial"
+      ],
+      "dependencyIds": [
+        "qtb.playwright.existing-tests"
+      ],
+      "estimatedMinMs": 20000,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "profile adversarial verification"
+    },
+    {
+      "obligationId": "qtb.snapshot.sealed",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1",
+          "G2",
+          "G3"
+        ]
+      },
+      "mandatory": true,
+      "priority": "safety",
+      "runnerProfileId": "all-non-g0",
+      "commandId": null,
+      "commandManifestHash": null,
+      "evidenceProducerId": "producer.coordinator.snapshot-seal-v1",
+      "evidenceTypes": [
+        "snapshot"
+      ],
+      "dependencyIds": [],
+      "estimatedMinMs": 0,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "coordinator sealed snapshot"
+    },
+    {
+      "obligationId": "qtb.ledger.integrity",
+      "catalogVersion": "verification-obligations/v1",
+      "selector": {
+        "capabilityIn": [
+          "G1",
+          "G2",
+          "G3"
+        ]
+      },
+      "mandatory": true,
+      "priority": "safety",
+      "runnerProfileId": "all-non-g0",
+      "commandId": null,
+      "commandManifestHash": null,
+      "evidenceProducerId": "producer.independent.ledger-smoke-v1",
+      "evidenceTypes": [
+        "smoke"
+      ],
+      "dependencyIds": [],
+      "estimatedMinMs": 0,
+      "unsupportedDisposition": "supported",
+      "selectionReason": "independent ledger integrity"
+    }
+  ],
+  "runnerProfiles": [
+    "g0-evidence-only",
+    "js-ts-focused",
+    "python-focused",
+    "rust-incremental",
+    "rust-cold",
+    "playwright-focused"
+  ],
+  "phase0RequiredIdMappings": {
+    "existing-tests": {
+      "g0-evidence-only": "qtb.g0.no-mutation-attestation",
+      "js-ts-focused": "qtb.js-ts.existing-tests",
+      "python-focused": "qtb.python.existing-tests",
+      "rust-incremental": "qtb.rust-incremental.existing-tests",
+      "rust-cold": "qtb.rust-cold.existing-tests",
+      "playwright-focused": "qtb.playwright.existing-tests"
+    },
+    "independent-smoke": {
+      "g0-evidence-only": "qtb.g0.identity-ledger-smoke",
+      "js-ts-focused": "qtb.js-ts.independent-smoke",
+      "python-focused": "qtb.python.independent-smoke",
+      "rust-incremental": "qtb.rust-incremental.independent-smoke",
+      "rust-cold": "qtb.rust-cold.independent-smoke",
+      "playwright-focused": "qtb.playwright.independent-smoke"
+    },
+    "sealed-snapshot": {
+      "g0-evidence-only": null,
+      "js-ts-focused": "qtb.snapshot.sealed",
+      "python-focused": "qtb.snapshot.sealed",
+      "rust-incremental": "qtb.snapshot.sealed",
+      "rust-cold": "qtb.snapshot.sealed",
+      "playwright-focused": "qtb.snapshot.sealed"
+    },
+    "independent-adversarial-test": {
+      "g0-evidence-only": null,
+      "js-ts-focused": "qtb.js-ts.adversarial",
+      "python-focused": "qtb.python.adversarial",
+      "rust-incremental": "qtb.rust-incremental.adversarial",
+      "rust-cold": "qtb.rust-cold.adversarial",
+      "playwright-focused": "qtb.playwright.adversarial"
+    },
+    "broker-receipt": {
+      "g0-evidence-only": null,
+      "js-ts-focused": null,
+      "python-focused": null,
+      "rust-incremental": null,
+      "rust-cold": null,
+      "playwright-focused": null
+    },
+    "multi-approval": {
+      "g0-evidence-only": null,
+      "js-ts-focused": null,
+      "python-focused": null,
+      "rust-incremental": null,
+      "rust-cold": null,
+      "playwright-focused": null
+    },
+    "managed-ci": {
+      "g0-evidence-only": null,
+      "js-ts-focused": null,
+      "python-focused": null,
+      "rust-incremental": null,
+      "rust-cold": null,
+      "playwright-focused": null
+    }
+  },
+  "acceptanceResolver": {
+    "input": [
+      "acceptanceRequirementId",
+      "runnerProfileId",
+      "capability",
+      "risk"
+    ],
+    "rows": [
+      {
+        "acceptanceRequirementId": "acceptance.tests-pass",
+        "runnerProfileId": "g0-evidence-only",
+        "capability": "G0",
+        "risk": "R0",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.static-checks-pass",
+        "runnerProfileId": "g0-evidence-only",
+        "capability": "G0",
+        "risk": "R0",
+        "obligationId": "qtb.g0.identity-ledger-smoke",
+        "disposition": "supported",
+        "riskIn": [
+          "R0"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.adversarial-pass",
+        "runnerProfileId": "g0-evidence-only",
+        "capability": "G0",
+        "risk": "R0",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.sealed-snapshot",
+        "runnerProfileId": "g0-evidence-only",
+        "capability": "G0",
+        "risk": "R0",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.browser-flow-pass",
+        "runnerProfileId": "g0-evidence-only",
+        "capability": "G0",
+        "risk": "R0",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.cold-build-pass",
+        "runnerProfileId": "g0-evidence-only",
+        "capability": "G0",
+        "risk": "R0",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.no-mutation",
+        "runnerProfileId": "g0-evidence-only",
+        "capability": "G0",
+        "risk": "R0",
+        "obligationId": "qtb.g0.no-mutation-attestation",
+        "disposition": "supported",
+        "riskIn": [
+          "R0"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.ledger-consistent",
+        "runnerProfileId": "g0-evidence-only",
+        "capability": "G0",
+        "risk": "R0",
+        "obligationId": "qtb.g0.identity-ledger-smoke",
+        "disposition": "supported",
+        "riskIn": [
+          "R0"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.unspecified-smoke",
+        "runnerProfileId": "g0-evidence-only",
+        "capability": "G0",
+        "risk": "R0",
+        "obligationId": "qtb.g0.identity-ledger-smoke",
+        "disposition": "supported",
+        "riskIn": [
+          "R0"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.tests-pass",
+        "runnerProfileId": "js-ts-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.js-ts.existing-tests",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.static-checks-pass",
+        "runnerProfileId": "js-ts-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.js-ts.independent-smoke",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.adversarial-pass",
+        "runnerProfileId": "js-ts-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.js-ts.adversarial",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.sealed-snapshot",
+        "runnerProfileId": "js-ts-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.snapshot.sealed",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.browser-flow-pass",
+        "runnerProfileId": "js-ts-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.cold-build-pass",
+        "runnerProfileId": "js-ts-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.no-mutation",
+        "runnerProfileId": "js-ts-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.ledger-consistent",
+        "runnerProfileId": "js-ts-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.ledger.integrity",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.unspecified-smoke",
+        "runnerProfileId": "js-ts-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.js-ts.independent-smoke",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.tests-pass",
+        "runnerProfileId": "python-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.python.existing-tests",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.static-checks-pass",
+        "runnerProfileId": "python-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.python.independent-smoke",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.adversarial-pass",
+        "runnerProfileId": "python-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.python.adversarial",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.sealed-snapshot",
+        "runnerProfileId": "python-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.snapshot.sealed",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.browser-flow-pass",
+        "runnerProfileId": "python-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.cold-build-pass",
+        "runnerProfileId": "python-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.no-mutation",
+        "runnerProfileId": "python-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.ledger-consistent",
+        "runnerProfileId": "python-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.ledger.integrity",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.unspecified-smoke",
+        "runnerProfileId": "python-focused",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.python.independent-smoke",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.tests-pass",
+        "runnerProfileId": "rust-incremental",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.rust-incremental.existing-tests",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.static-checks-pass",
+        "runnerProfileId": "rust-incremental",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.rust-incremental.independent-smoke",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.adversarial-pass",
+        "runnerProfileId": "rust-incremental",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.rust-incremental.adversarial",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.sealed-snapshot",
+        "runnerProfileId": "rust-incremental",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.snapshot.sealed",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.browser-flow-pass",
+        "runnerProfileId": "rust-incremental",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.cold-build-pass",
+        "runnerProfileId": "rust-incremental",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.no-mutation",
+        "runnerProfileId": "rust-incremental",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.ledger-consistent",
+        "runnerProfileId": "rust-incremental",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.ledger.integrity",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.unspecified-smoke",
+        "runnerProfileId": "rust-incremental",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.rust-incremental.independent-smoke",
+        "disposition": "supported",
+        "riskIn": [
+          "R0",
+          "R1"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.tests-pass",
+        "runnerProfileId": "rust-cold",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.rust-cold.existing-tests",
+        "disposition": "supported",
+        "riskIn": [
+          "R1",
+          "R2"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.static-checks-pass",
+        "runnerProfileId": "rust-cold",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.rust-cold.independent-smoke",
+        "disposition": "supported",
+        "riskIn": [
+          "R1",
+          "R2"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.adversarial-pass",
+        "runnerProfileId": "rust-cold",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.rust-cold.adversarial",
+        "disposition": "supported",
+        "riskIn": [
+          "R1",
+          "R2"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.sealed-snapshot",
+        "runnerProfileId": "rust-cold",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.snapshot.sealed",
+        "disposition": "supported",
+        "riskIn": [
+          "R1",
+          "R2"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.browser-flow-pass",
+        "runnerProfileId": "rust-cold",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.cold-build-pass",
+        "runnerProfileId": "rust-cold",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.rust-cold.existing-tests",
+        "disposition": "supported",
+        "riskIn": [
+          "R1",
+          "R2"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.no-mutation",
+        "runnerProfileId": "rust-cold",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.ledger-consistent",
+        "runnerProfileId": "rust-cold",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.ledger.integrity",
+        "disposition": "supported",
+        "riskIn": [
+          "R1",
+          "R2"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.unspecified-smoke",
+        "runnerProfileId": "rust-cold",
+        "capability": "G1",
+        "risk": "R1",
+        "obligationId": "qtb.rust-cold.independent-smoke",
+        "disposition": "supported",
+        "riskIn": [
+          "R1",
+          "R2"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.tests-pass",
+        "runnerProfileId": "playwright-focused",
+        "capability": "G1",
+        "risk": "R2",
+        "obligationId": "qtb.playwright.existing-tests",
+        "disposition": "supported",
+        "riskIn": [
+          "R2"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.static-checks-pass",
+        "runnerProfileId": "playwright-focused",
+        "capability": "G1",
+        "risk": "R2",
+        "obligationId": "qtb.playwright.independent-smoke",
+        "disposition": "supported",
+        "riskIn": [
+          "R2"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.adversarial-pass",
+        "runnerProfileId": "playwright-focused",
+        "capability": "G1",
+        "risk": "R2",
+        "obligationId": "qtb.playwright.adversarial",
+        "disposition": "supported",
+        "riskIn": [
+          "R2"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.sealed-snapshot",
+        "runnerProfileId": "playwright-focused",
+        "capability": "G1",
+        "risk": "R2",
+        "obligationId": "qtb.snapshot.sealed",
+        "disposition": "supported",
+        "riskIn": [
+          "R2"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.browser-flow-pass",
+        "runnerProfileId": "playwright-focused",
+        "capability": "G1",
+        "risk": "R2",
+        "obligationId": "qtb.playwright.existing-tests",
+        "disposition": "supported",
+        "riskIn": [
+          "R2"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.cold-build-pass",
+        "runnerProfileId": "playwright-focused",
+        "capability": "G1",
+        "risk": "R2",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.no-mutation",
+        "runnerProfileId": "playwright-focused",
+        "capability": "G1",
+        "risk": "R2",
+        "obligationId": null,
+        "disposition": "unsupported",
+        "riskIn": [
+          "R0",
+          "R1",
+          "R2",
+          "R3"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.ledger-consistent",
+        "runnerProfileId": "playwright-focused",
+        "capability": "G1",
+        "risk": "R2",
+        "obligationId": "qtb.ledger.integrity",
+        "disposition": "supported",
+        "riskIn": [
+          "R2"
+        ]
+      },
+      {
+        "acceptanceRequirementId": "acceptance.unspecified-smoke",
+        "runnerProfileId": "playwright-focused",
+        "capability": "G1",
+        "risk": "R2",
+        "obligationId": "qtb.playwright.independent-smoke",
+        "disposition": "supported",
+        "riskIn": [
+          "R2"
+        ]
+      }
+    ],
+    "unknownDisposition": "blocked:acceptance-requirement-unmapped",
+    "zeroMatchDisposition": "blocked:acceptance-requirement-unmapped",
+    "multipleMatchDisposition": "blocked:acceptance-requirement-unmapped",
+    "hashConflictDisposition": "blocked:acceptance-requirement-unmapped",
+    "g0MinimumMandatoryObligations": 2,
+    "deterministicSort": [
+      "priority",
+      "obligationId"
+    ],
+    "incompatibleCapabilityDisposition": "blocked:acceptance-requirement-unmapped",
+    "conflictingCommandEvidenceDisposition": "blocked:acceptance-requirement-unmapped",
+    "matchFields": [
+      "acceptanceRequirementId",
+      "runnerProfileId",
+      "capability",
+      "riskIn"
+    ]
+  },
+  "invariants": [
+    "Every enforcing profile has at least two mandatory obligations.",
+    "Unknown, zero-match, multiple-match, capability-incompatible, or hash-conflicting acceptance IDs block.",
+    "Optional work may stop at the inclusive soft boundary; mandatory obligations are never dropped.",
+    "Evidence-only obligations never execute a command."
+  ],
+  "riskRequiredMappings": {
+    "R0": [
+      "existing-tests",
+      "independent-smoke"
+    ],
+    "R1": [
+      "existing-tests",
+      "independent-smoke"
+    ],
+    "R2": [
+      "sealed-snapshot",
+      "independent-adversarial-test"
+    ],
+    "R3": [
+      "sealed-snapshot",
+      "independent-adversarial-test",
+      "broker-receipt",
+      "multi-approval",
+      "managed-ci"
+    ]
+  },
+  "unsupportedRequiredIds": {
+    "g0-evidence-only": [
+      "sealed-snapshot",
+      "independent-adversarial-test",
+      "broker-receipt",
+      "multi-approval",
+      "managed-ci"
+    ],
+    "js-ts-focused": [
+      "broker-receipt",
+      "multi-approval",
+      "managed-ci"
+    ],
+    "python-focused": [
+      "broker-receipt",
+      "multi-approval",
+      "managed-ci"
+    ],
+    "rust-incremental": [
+      "broker-receipt",
+      "multi-approval",
+      "managed-ci"
+    ],
+    "rust-cold": [
+      "broker-receipt",
+      "multi-approval",
+      "managed-ci"
+    ],
+    "playwright-focused": [
+      "broker-receipt",
+      "multi-approval",
+      "managed-ci"
+    ]
+  }
+}

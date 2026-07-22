@@ -1,0 +1,104 @@
+{
+  "format": "quality-contract.callsite-audit-fixtures.v1",
+  "cases": [
+    {
+      "id": "alias-imported-write",
+      "source": "import { writeFile as save } from \"node:fs/promises\"; await save(path, data);",
+      "expected": [{ "method": "writeFile", "token": "save", "operationClass": "local.single.regular-file.write", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" }]
+    },
+    {
+      "id": "trusted-name-impostor",
+      "source": "import { writeFile as save } from \"fake-session-writer\"; await save(path, data);",
+      "expected": [{ "method": "writeFile", "token": "save", "operationClass": "local.single.regular-file.write", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" }]
+    },
+    {
+      "id": "similarly-named-package-impostor",
+      "source": "import * as adapter from \"@example/storage-writer\"; await adapter.writeFile(path, data);",
+      "expected": [{ "method": "writeFile", "token": "writeFile", "operationClass": "local.single.regular-file.write", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" }]
+    },
+    {
+      "id": "namespace-alias-optional-chain",
+      "source": "import * as nodeFs from \"node:fs/promises\"; await nodeFs?.writeFile(path, data);",
+      "expected": [{ "method": "writeFile", "token": "writeFile", "operationClass": "local.single.regular-file.write", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" }]
+    },
+    {
+      "id": "destructured-storage-write",
+      "source": "const { write: appendData } = storage; appendData(value);",
+      "expected": [{ "method": "write", "token": "appendData", "operationClass": "local.single.regular-file.write", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" }]
+    },
+    {
+      "id": "computed-literal-write",
+      "source": "const fs = require(\"node:fs\"); fs[\"writeFile\"](name, data);",
+      "expected": [{ "method": "writeFile", "token": "writeFile", "operationClass": "local.single.regular-file.write", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" }]
+    },
+    {
+      "id": "dynamic-computed-mutator",
+      "source": "const fs = require(\"node:fs\"); const key = getOperation(); fs[key](name, data);",
+      "expected": [{ "method": "fs[dynamic]", "token": "fs[key]", "operationClass": "unknown.dynamic-mutation", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" }]
+    },
+    {
+      "id": "indirect-storage-mutator",
+      "source": "const writer = storage.write; const operation = writer; operation(value);",
+      "expected": [{ "method": "write", "token": "operation", "operationClass": "local.single.regular-file.write", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" }]
+    },
+    {
+      "id": "known-read-only",
+      "source": "import { readFile as load } from \"node:fs/promises\"; await load(name);",
+      "expected": []
+    },
+    {
+      "id": "wrapper-callback",
+      "source": "import { writeFile } from \"node:fs/promises\"; const wrapped = (...args) => writeFile(...args); items.map(() => wrapped(path));",
+      "expected": [{ "method": "writeFile", "token": "writeFile", "operationClass": "local.single.regular-file.write", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" }]
+    },
+    {
+      "id": "raw-cp-and-truncate",
+      "source": "import { cp, cpSync, truncate, truncateSync } from \"node:fs\"; cp(source, target); cpSync(source, target); truncate(file, 1); truncateSync(file, 1);",
+      "expected": [
+        { "method": "cp", "token": "cp", "operationClass": "local.single.regular-file.copy", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" },
+        { "method": "cpSync", "token": "cpSync", "operationClass": "local.single.regular-file.copy", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" },
+        { "method": "truncate", "token": "truncate", "operationClass": "local.single.regular-file.write", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" },
+        { "method": "truncateSync", "token": "truncateSync", "operationClass": "local.single.regular-file.write", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" }
+      ]
+    },
+    {
+      "id": "raw-recursive-rm",
+      "source": "import { rm } from \"node:fs/promises\"; await rm(directory, { recursive: true, force: true });",
+      "expected": [{ "method": "rm", "token": "rm", "operationClass": "local.single.regular-file.unlink", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" }]
+    },
+    {
+      "id": "raw-directory-rename",
+      "source": "import { rename } from \"node:fs/promises\"; await rename(sourceDirectory, targetDirectory);",
+      "expected": [{ "method": "rename", "token": "rename", "operationClass": "local.single.regular-file.rename", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" }]
+    },
+    {
+      "id": "raw-directory-create",
+      "source": "import { mkdir } from \"node:fs/promises\"; await mkdir(directory, { recursive: true });",
+      "expected": [{ "method": "mkdir", "token": "mkdir", "operationClass": "local.directory.create", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" }]
+    },
+    {
+      "id": "raw-create-write-stream-forms",
+      "source": "import * as fs from \"node:fs\"; import { createWriteStream } from \"node:fs\"; import { createWriteStream as makeStream } from \"node:fs\"; const namespaceAlias = fs; namespaceAlias.createWriteStream(path); createWriteStream(path); const stream = makeStream(path); stream.write(data); const { createWriteStream: destructured } = fs; destructured(path);",
+      "expected": [
+        { "method": "createWriteStream", "token": "createWriteStream", "operationClass": "local.single.regular-file.write", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" },
+        { "method": "createWriteStream", "token": "createWriteStream", "operationClass": "local.single.regular-file.write", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" },
+        { "method": "createWriteStream", "token": "makeStream", "operationClass": "local.single.regular-file.write", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" },
+        { "method": "write", "token": "write", "operationClass": "local.single.regular-file.write", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" },
+        { "method": "createWriteStream", "token": "destructured", "operationClass": "local.single.regular-file.write", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" }
+      ]
+    },
+    {
+      "id": "unknown-receivers",
+      "source": "storage.write(path, data); client.remove(path);",
+      "expected": [
+        { "method": "write", "token": "write", "operationClass": "local.single.regular-file.write", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" },
+        { "method": "remove", "token": "remove", "operationClass": "local.single.regular-file.unlink", "surface": "unknown", "scope": "unknown", "policyDisposition": "unsupported", "decision": "BLOCK" }
+      ]
+    },
+    {
+      "id": "false-positive-substrings",
+      "source": "finishChatSpan(); finishChat(); extractHarmonyRemoved(); target.removeEventListener(listener); \"text\".replaceAll(\"x\", \"y\");",
+      "expected": []
+    }
+  ]
+}

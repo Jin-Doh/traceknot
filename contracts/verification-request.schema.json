@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quality-contract.dev/schemas/verification-request.v1.json",
+  "title": "Verification request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requestId", "project", "change", "testBasis"],
+  "properties": {
+    "schemaVersion": { "const": "verification-request/v1" },
+    "requestId": { "type": "string", "minLength": 1 },
+    "project": {
+      "type": "object", "additionalProperties": false,
+      "required": ["rootIdentity", "snapshotId"],
+      "properties": {
+        "rootIdentity": { "type": "string", "minLength": 1 },
+        "snapshotId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "change": {
+      "type": "object", "additionalProperties": false,
+      "required": ["summary", "paths"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1 },
+        "paths": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+      }
+    },
+    "testBasis": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "kind", "origin", "text"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["request", "requirement", "acceptance-criterion", "defect", "contract", "invariant", "policy"] },
+          "origin": { "enum": ["explicit", "derived"] },
+          "text": { "type": "string", "minLength": 1 },
+          "source": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

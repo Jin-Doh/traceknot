@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "phase-b-verification-matrix/v1",
+  "objectType": "PhaseBVerificationMatrix",
+  "phase1Authorized": false,
+  "wrapperPath": "quality-contract/scripts/run-phase-b-verification.ts",
+  "schemaPath": "quality-contract/schemas/phase-b-verification.schema.json",
+  "cwd": "repo-root",
+  "envPolicy": {
+    "fixed": { "TZ": "UTC", "LC_ALL": "C", "SOURCE_DATE_EPOCH": "0" },
+    "injected": "GJC_QTB_TEST_ARTIFACT_DIR",
+    "inheritedNames": []
+  },
+  "hashDomains": {
+    "command": "gajae:quality-contract:qtb:phase-b-command:v1",
+    "trace": "gajae:quality-contract:qtb:phase-b-trace:v1",
+    "contentInventory": "gajae:quality-contract:qtb:phase-b-content-inventory:v1",
+    "result": "gajae:quality-contract:qtb:phase-b-result:v1",
+    "finalInventory": "gajae:quality-contract:qtb:phase-b-final-inventory:v1"
+  },
+  "gates": [
+    { "gateId": "b1-unit", "argv": ["bun", "test", "packages/coding-agent/src/quality/quality-store.test.ts", "packages/coding-agent/src/quality/event-coordinator.test.ts"], "qualityTrace": true, "declaredArtifacts": ["artifacts/trace.json"], "futurePaths": ["packages/coding-agent/src/quality/quality-store.test.ts", "packages/coding-agent/src/quality/event-coordinator.test.ts"] },
+    { "gateId": "b2-gjc-integration", "argv": ["bun", "test", "packages/coding-agent/src/quality/gajae-code-observation.integration.test.ts"], "qualityTrace": true, "declaredArtifacts": ["artifacts/trace.json"], "futurePaths": ["packages/coding-agent/src/quality/gajae-code-observation.integration.test.ts"] },
+    { "gateId": "b3-hook-integration", "argv": ["bun", "test", "packages/coding-agent/src/quality/harness-hook.integration.test.ts"], "qualityTrace": true, "declaredArtifacts": ["artifacts/trace.json"], "futurePaths": ["packages/coding-agent/src/quality/harness-hook.integration.test.ts"] },
+    { "gateId": "b4-enforcement-e2e", "argv": ["bun", "test", "packages/coding-agent/src/quality/quality-enforcement.e2e.test.ts"], "qualityTrace": true, "declaredArtifacts": ["artifacts/trace.json"], "futurePaths": ["packages/coding-agent/src/quality/quality-enforcement.e2e.test.ts"] },
+    { "gateId": "coding-agent-types", "argv": ["bun", "--cwd=packages/coding-agent", "run", "check:types"], "qualityTrace": false, "declaredArtifacts": [], "futurePaths": [] },
+    { "gateId": "coding-agent-check", "argv": ["bun", "--cwd=packages/coding-agent", "run", "check"], "qualityTrace": false, "declaredArtifacts": [], "futurePaths": [] },
+    { "gateId": "coding-agent-regression", "argv": ["bun", "--cwd=packages/coding-agent", "test"], "qualityTrace": false, "declaredArtifacts": [], "futurePaths": [] },
+    { "gateId": "root-check-ts", "argv": ["bun", "run", "check:ts"], "qualityTrace": false, "declaredArtifacts": [], "futurePaths": [] },
+    { "gateId": "root-test-ts", "argv": ["bun", "run", "test:ts"], "qualityTrace": false, "declaredArtifacts": [], "futurePaths": [] }
+  ]
+}
