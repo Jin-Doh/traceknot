@@ -279,36 +279,22 @@ The expected workflow is:
 
 Requirements:
 
-- Bun
-- TypeScript available through `bun x tsc`
+- Bun 1.3.14
 
-Run the host-neutral core tests:
+Install the exact reviewed toolchain without lifecycle scripts, then run the same blocking gate used by GitHub Actions:
 
 ```bash
-bun test system/core/qa-core.test.ts
+bun install --frozen-lockfile --ignore-scripts
+bun run ci
 ```
 
-Run strict type checking:
+The gate runs the portable installer lifecycle, JSON and Draft 2020-12 schema validation, capability validation, prompt-injection risk classification, core tests, strict type checking, and whitespace checks. `high` and `critical` prompt-risk findings block the gate. Narrow, expiring exceptions require an owner, reason, mitigation, and exact line fingerprint in `security/prompt-injection-exceptions.json`.
+
+Run an individual core check while developing:
 
 ```bash
-bun x tsc --ignoreConfig --noEmit --strict \
-  --target ES2022 --module ESNext --moduleResolution Bundler \
-  system/core/qa-core.ts
-```
-
-Validate the canonical schemas:
-
-```bash
-bunx ajv-cli@5 compile --spec=draft2020 \
-  -s 'contracts/*.schema.json'
-```
-
-Validate the bundled capability records:
-
-```bash
-bunx ajv-cli@5 validate --spec=draft2020 \
-  -s contracts/capability.schema.json \
-  -d 'adapters/*/capability.json'
+bun run test
+bun run typecheck
 ```
 
 ## Verifying the completion-authority extension

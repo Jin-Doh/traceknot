@@ -1,0 +1,11 @@
+title = "Traceknot secret scanning"
+
+[allowlist]
+description = "Exact non-production fixture literals used by the frozen completion-authority verifier"
+regexTarget = "match"
+regexes = [
+  '''gajae-quality-contract-independent-verifier-development-fixture-v1''',
+  '''gajae-qtb-extension-development-fixture-v1''',
+  '''gajae-phase0-development-fixture-(?:alpha|beta)-v1''',
+  '''secret-token'''
+]

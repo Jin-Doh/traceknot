@@ -1,0 +1,17 @@
+* @Jin-Doh
+
+/.github/ @Jin-Doh
+/package.json @Jin-Doh
+/bun.lock @Jin-Doh
+/scripts/ci @Jin-Doh
+/scripts/audit-prompt-injection.ts @Jin-Doh
+/security/ @Jin-Doh
+/.gitleaks.toml @Jin-Doh
+/install.sh @Jin-Doh
+/uninstall.sh @Jin-Doh
+/tests/ @Jin-Doh
+/skill/ @Jin-Doh
+/contracts/ @Jin-Doh
+/adapters/ @Jin-Doh
+/system/core/ @Jin-Doh
+/system/extensions/harness-completion-authority/ @Jin-Doh

@@ -1,0 +1,121 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  correctness:
+    name: correctness
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+      - name: Run canonical gate
+        run: sh scripts/ci
+
+  secrets:
+    name: secrets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  workflow-security:
+    name: workflow-security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install checksum-pinned zizmor
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location \
+            --output "$RUNNER_TEMP/zizmor.tar.gz" \
+            https://github.com/zizmorcore/zizmor/releases/download/v1.28.0/zizmor-x86_64-unknown-linux-gnu.tar.gz
+          echo "e87b67160194884e375a46a12c57ccc904f762b53845f254fab7f17d98809c09  $RUNNER_TEMP/zizmor.tar.gz" \
+            | sha256sum --check
+          tar --extract --gzip --file "$RUNNER_TEMP/zizmor.tar.gz" --directory "$RUNNER_TEMP"
+      - name: Audit GitHub Actions
+        shell: bash
+        run: |
+          "$RUNNER_TEMP/zizmor" \
+            --persona=regular \
+            --no-online-audits \
+            --format=github \
+            .
+
+  dependency-review:
+    name: dependency-review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+
+  required:
+    name: required
+    if: always()
+    needs:
+      - correctness
+      - secrets
+      - workflow-security
+      - dependency-review
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions: {}
+    env:
+      CORRECTNESS_RESULT: ${{ needs.correctness.result }}
+      SECRETS_RESULT: ${{ needs.secrets.result }}
+      WORKFLOW_SECURITY_RESULT: ${{ needs.workflow-security.result }}
+      DEPENDENCY_REVIEW_RESULT: ${{ needs.dependency-review.result }}
+    steps:
+      - name: Require every applicable gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          for result in \
+            "$CORRECTNESS_RESULT" \
+            "$SECRETS_RESULT" \
+            "$WORKFLOW_SECURITY_RESULT"; do
+            test "$result" = success
+          done
+          test "$DEPENDENCY_REVIEW_RESULT" = success \
+            || test "$DEPENDENCY_REVIEW_RESULT" = skipped

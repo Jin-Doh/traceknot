@@ -287,36 +287,22 @@ Host-neutral TypeScript verdict resolver입니다. 다음을 거부하거나 비
 
 요구 사항:
 
-- Bun
-- `bun x tsc`로 접근 가능한 TypeScript
+- Bun 1.3.14
 
-Host-neutral core 테스트:
+검토된 도구 체인을 lifecycle script 없이 설치한 뒤 GitHub Actions와 동일한 필수 gate를 실행합니다.
 
 ```bash
-bun test system/core/qa-core.test.ts
+bun install --frozen-lockfile --ignore-scripts
+bun run ci
 ```
 
-Strict typecheck:
+이 gate는 portable installer lifecycle, JSON 및 Draft 2020-12 schema 검증, capability 검증, prompt-injection 위험 분류, core test, strict typecheck, 공백 검사를 실행합니다. `high`와 `critical` prompt-risk finding은 gate를 차단합니다. 예외는 범위를 좁히고 만료일을 지정해야 하며, `security/prompt-injection-exceptions.json`에 owner, reason, mitigation, 정확한 line fingerprint를 기록해야 합니다.
+
+개발 중 개별 core check를 실행하려면:
 
 ```bash
-bun x tsc --ignoreConfig --noEmit --strict \
-  --target ES2022 --module ESNext --moduleResolution Bundler \
-  system/core/qa-core.ts
-```
-
-Canonical schema 검증:
-
-```bash
-bunx ajv-cli@5 compile --spec=draft2020 \
-  -s 'contracts/*.schema.json'
-```
-
-Capability record 검증:
-
-```bash
-bunx ajv-cli@5 validate --spec=draft2020 \
-  -s contracts/capability.schema.json \
-  -d 'adapters/*/capability.json'
+bun run test
+bun run typecheck
 ```
 
 ## Completion-authority extension 검증
