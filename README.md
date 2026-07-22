@@ -24,7 +24,7 @@ Coding-agent harnesses already orchestrate agents, tools, jobs, retries, and lif
 | Observed jobs became idle | Global quiescence or absence of unobserved work |
 | Hook or app-server event fired | Deterministic QA verdict or completion authority |
 
-Traceknot supplies the missing test-process layer: traceability from basis through verdict, explicit evidence and independence requirements, defect and residual-risk handling, and deterministic verdict precedence. Every verdict is knotted to its evidence; lifecycle events remain observations, never proof by themselves.
+Traceknot supplies the missing test-process layer: traceability from basis through verdict, explicit evidence and independence requirements, defect and residual-risk handling, and deterministic verdict precedence. Each verdict remains linked to its declared evidence; lifecycle events are observations, not proof of verification.
 
 ## Status
 
@@ -37,9 +37,41 @@ Traceknot supplies the missing test-process layer: traceability from basis throu
 | Completion-authority contracts and models | Preserved as an optional extension |
 | Native OMP/Codex/Claude/OpenCode integration | Not implemented |
 | Phase B completion enforcement | Not authorized; `phase1Authorized: false` |
-| Installer, package registry release, and public CLI | Not implemented |
+| User-local installer and uninstaller | Implemented; registry release and public CLI are not implemented |
 
 The portable Skill and host-neutral core are usable now. Authoritative harness completion remains an explicitly separate integration project.
+
+## Install
+
+Clone the repository, then run the installer without `sudo`:
+
+```sh
+git clone https://github.com/Jin-Doh/traceknot.git
+cd traceknot
+./install.sh
+```
+
+The default destination is `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`. The installer copies the portable Skill, record schemas, capability manifests, host-neutral core, and GPL license. It does not install the optional completion-authority extension or register Traceknot with a specific harness.
+
+Point your harness's Skill loader at the installed `skill/` directory. To choose a different location, use an absolute path:
+
+```sh
+./install.sh --prefix "$HOME/tools/traceknot"
+```
+
+Re-running the command updates files owned by Traceknot and leaves unrelated files untouched. Preview changes with `./install.sh --dry-run`.
+
+## Uninstall
+
+Use the same prefix that was used during installation:
+
+```sh
+./uninstall.sh
+# or
+./uninstall.sh --prefix "$HOME/tools/traceknot"
+```
+
+The uninstaller reads the installation manifest and removes only files installed by Traceknot. `./uninstall.sh --dry-run` previews removals; running uninstall again is harmless.
 
 ## Architecture
 
@@ -82,8 +114,8 @@ flowchart TB
       QV[QA verdict and report]
     end
 
-    Harness -->|produces evidence using its own policy| QC
-    QC -->|returns QA verdict, never agent instructions| Harness
+    Harness -->|produces evidence using its own policy| TK
+    TK -->|returns QA verdict, never agent instructions| Harness
 ```
 
 Traceknot specifies evidence requirements and minimum independence. It never instructs a harness to create a particular subagent, use a particular model, or apply a particular concurrency policy.
@@ -144,6 +176,8 @@ The host-neutral core always emits `authoritative: false`. Only a separately int
 .
 ├── README.md
 ├── README.ko.md
+├── install.sh
+├── uninstall.sh
 ├── skill/
 │   ├── SKILL.md
 │   └── references/
@@ -204,7 +238,7 @@ This extension is optional and disabled by policy. Lifecycle events such as task
 
 ## Using the portable Skill
 
-Install or expose the contents of `skill/` using the Skill mechanism provided by your harness. The Skill itself has no runtime dependency on `system/`.
+Use `install.sh`, then point the harness's Skill loader at the installed `skill/` directory. The Skill itself has no runtime dependency on `system/`.
 
 The expected workflow is:
 
@@ -301,7 +335,6 @@ Current preserved verification evidence:
 Not yet ready for:
 
 - package-manager or Skill-registry distribution;
-- one-command installation;
 - native OMP, Codex, Claude Code, OpenCode, or GajaeCode adapters;
 - authoritative harness completion;
 - production signing or receipt authority.

@@ -10,7 +10,7 @@ Traceknot is an ISTQB-aligned QA framework for coding-agent harnesses. It turns 
 
 **Pronunciation:** TRACE-not.
 
-**One-line story:** Every verdict is knotted to its evidence—trace the knot, and the whole chain holds.
+**One-line story:** Every verdict is linked to its declared basis, obligations, and evidence.
 
 `Trace` names the framework's spine: bidirectional traceability from basis to verdict. `Knot` names the binding: evidence must match the declared obligation and snapshot. A knot can be missing, loose, or broken, so the name does not claim proof, defect absence, or completion authority.
 
@@ -34,28 +34,17 @@ Native coding-agent harnesses orchestrate agents, tools, jobs, retries, and life
 
 Traceknot supplies the missing test-process layer: traceability, evidence requirements, defect and residual-risk handling, deterministic verdict precedence, and an explicit boundary between QA verdict and harness completion.
 
-## Open-source category benchmark
+## Naming rationale
 
-The name and system follow patterns visible in durable developer-tool brands:
+The naming review compared Traceknot with Sigstore and in-toto to check whether the name described its mechanism without claiming an outcome.
 
-| Project | Transferable brand pattern |
-| --- | --- |
-| Open Policy Agent / OPA | Descriptive category name plus a compact operational shorthand |
-| Sigstore | One strong mechanism metaphor, literal tagline, composable subprojects |
-| in-toto | Name encodes end-to-end scope rather than claiming an outcome |
-| SLSA | Pronounceable technical identity backed by an explicit model |
-| OpenSSF Scorecard | Name maps directly to the report users receive |
-| Trivy | Short, distinctive name paired with a category-defining tagline |
-| Semgrep | Familiar developer vocabulary compressed into a memorable compound |
-| Testkube | Category anchor plus ecosystem context |
-
-The previous name, **Quality Contract**, was clear but generic, long in CLI contexts, difficult to search, and visually dependent on a generic document/checkmark motif. Traceknot keeps the contract's binding semantics while adding a distinctive compound, a concrete story, and a mark that can be recognized without the wordmark.
+**Quality Contract** was long in CLI contexts and difficult to distinguish in search. Traceknot keeps the evidence-binding idea in a shorter public name.
 
 ## Message hierarchy
 
 1. **Headline:** Evidence-bound QA for coding agents.
 2. **Proof structure:** Basis → risk → condition → obligation → evidence → defect → verdict.
-3. **Brand story:** Every verdict is knotted to its evidence.
+3. **Brand story:** Every verdict is linked to its declared evidence.
 4. **Differentiator:** Lifecycle events are observations, not proof.
 5. **Trust statement:** Deterministic, host-neutral, and non-authoritative by default.
 6. **Extension statement:** Harness completion authority requires an explicit, separately authorized integration.
@@ -128,8 +117,8 @@ Use flat color, strong contrast, geometric paths, and generous whitespace. Avoid
 
 ## Name decision and collision review
 
-The designer review considered descriptive, metaphorical, and coined alternatives. Candidates including Basanos, Veridict, Proofrail, Qualt, Assay, Assayer, AgentAssay, TieOut, Obligo, Qontract, and Plumbline were rejected after direct or adjacent software collisions. `Proofset` was rejected because *proof* contradicts the ISTQB principle that testing reveals defects but cannot establish their absence.
+The naming review compared descriptive, metaphorical, and coined alternatives, then checked direct collisions with existing software.
 
-Exact-name searches found no established Traceknot project, package, or company on GitHub, npm, or PyPI at review time. This is a product-positioning screen, not legal clearance. Before commercial use, perform trademark and domain review in the relevant jurisdictions and classes.
+A preliminary exact-name search of GitHub, npm, and PyPI found no direct collision. This is not legal clearance; commercial users must perform the relevant trademark and domain checks.
 
 The frozen completion-authority extension retains its existing `quality-contract` v1 wire identifiers and paths. Those identifiers are protocol compatibility surfaces, not the public masterbrand; changing them requires a separately versioned migration and regenerated signed evidence.

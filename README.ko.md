@@ -6,9 +6,9 @@
 
 [웹사이트](https://traceknot.kyungho.info) · [English documentation](README.md) · [브랜드 시스템](BRAND.ko.md)
 
-Traceknot(트레이스노트)은 OMP, Codex, Claude Code, OpenCode, GajaeCode 같은 코딩 에이전트 하네스를 위한 ISTQB 기반 증거 결속형 QA 프레임워크입니다. 휴대 가능한 테스트 프로세스 지침, 결정론적 QA 판정, 선택적 하네스 완료 권위를 분리합니다.
+Traceknot(트레이스노트)은 OMP, Codex, Claude Code, OpenCode, GajaeCode 같은 코딩 에이전트 하네스에서 사용할 수 있는 ISTQB 기반 QA 프레임워크입니다. 휴대형 테스트 절차, 결정론적 QA 판정, 선택적 하네스 완료 권한을 서로 분리합니다.
 
-이 체계는 **서브에이전트를 관리하지 않습니다.** 에이전트, 모델, task graph, 병렬성, retry, worktree, lifecycle과 최종 task 완료는 각 하네스가 소유합니다. Traceknot은 무엇을 검증해야 하는지, 어떤 evidence를 인정할지, defect와 residual risk를 어떻게 처리할지, QA verdict를 어떻게 결정할지를 정의합니다.
+이 체계는 **서브에이전트를 관리하지 않습니다.** 에이전트, 모델, 작업 그래프, 병렬 실행, 재시도, 작업 트리, 수명 주기, 최종 작업 완료는 각 하네스가 관리합니다. Traceknot은 검증 대상, 인정할 증거, 결함과 잔여 위험의 처리 방식, QA 판정 규칙을 정의합니다.
 
 > `QA PASS`는 선언된 test basis와 mandatory verification obligation이 통과했다는 뜻입니다. 모든 하네스 task, agent, job 또는 delivery가 완료됐다는 뜻이 아닙니다.
 
@@ -24,7 +24,7 @@ Traceknot(트레이스노트)은 OMP, Codex, Claude Code, OpenCode, GajaeCode �
 | 관찰된 job의 idle 전환 | 전역 quiescence 또는 미관찰 작업의 부재 |
 | hook 또는 app-server 이벤트 | 결정적 QA 판정 또는 완료 권한 |
 
-Traceknot은 기준에서 판정까지의 추적성, 명시적 증거·독립성 요건, 결함·잔여 위험 처리, 결정적 판정 우선순위를 제공합니다. 모든 판정은 증거에 매듭지어지며 lifecycle event 자체는 증명이 아니라 관찰로 남습니다.
+Traceknot은 테스트 기준에서 판정까지의 추적성, 증거와 독립성 요건, 결함과 잔여 위험 처리, 판정 우선순위를 정의합니다. 각 판정은 선언한 증거에 연결되며, 수명 주기 이벤트만으로는 검증을 입증할 수 없습니다.
 
 ## 현재 상태
 
@@ -37,9 +37,41 @@ Traceknot은 기준에서 판정까지의 추적성, 명시적 증거·독립성
 | Completion-authority 계약과 모델 | 선택적 extension으로 보존 |
 | OMP/Codex/Claude/OpenCode native 연동 | 미구현 |
 | Phase B completion enforcement | 미승인; `phase1Authorized: false` |
-| Installer, registry 배포 및 public CLI | 미구현 |
+| 사용자 영역 installer와 uninstaller | 구현 완료; registry 배포와 public CLI는 미구현 |
 
-Portable Skill과 host-neutral core는 현재 평가와 개발에 사용할 수 있습니다. Authoritative harness completion은 명시적으로 분리된 후속 integration 작업입니다.
+휴대형 Skill과 호스트 중립 코어는 지금 평가와 개발에 사용할 수 있습니다. 하네스 완료를 확정할 권한은 별도의 후속 통합이 필요합니다.
+
+## 설치
+
+저장소를 복제한 뒤 `sudo` 없이 installer를 실행합니다.
+
+```sh
+git clone https://github.com/Jin-Doh/traceknot.git
+cd traceknot
+./install.sh
+```
+
+기본 설치 경로는 `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`입니다. Portable Skill, record schema, capability manifest, host-neutral core, GPL 라이선스를 복사합니다. 선택 사항인 completion-authority extension은 설치하지 않으며, 특정 하네스에 Traceknot을 자동 등록하지도 않습니다.
+
+설치된 `skill/` 디렉터리를 하네스의 Skill loader에 연결하세요. 다른 경로에 설치하려면 절대 경로를 지정합니다.
+
+```sh
+./install.sh --prefix "$HOME/tools/traceknot"
+```
+
+같은 명령을 다시 실행하면 Traceknot이 소유한 파일만 갱신하고 다른 파일은 건드리지 않습니다. `./install.sh --dry-run`으로 변경 내용을 미리 확인할 수 있습니다.
+
+## 제거
+
+설치할 때 사용한 경로와 같은 경로를 지정합니다.
+
+```sh
+./uninstall.sh
+# 또는
+./uninstall.sh --prefix "$HOME/tools/traceknot"
+```
+
+Uninstaller는 설치 manifest를 읽고 Traceknot이 설치한 파일만 삭제합니다. `./uninstall.sh --dry-run`으로 삭제 대상을 미리 확인할 수 있으며, 이미 제거된 상태에서 다시 실행해도 오류가 발생하지 않습니다.
 
 ## 아키텍처
 
@@ -82,8 +114,8 @@ flowchart TB
       QV[QA verdict와 report]
     end
 
-    Harness -->|자체 정책으로 evidence 생산| QC
-    QC -->|agent 지시가 아닌 QA verdict 반환| Harness
+    Harness -->|자체 정책으로 evidence 생산| TK
+    TK -->|agent 지시가 아닌 QA verdict 반환| Harness
 ```
 
 Traceknot은 evidence requirement와 최소 independence 수준을 선언합니다. 특정 subagent 생성, 특정 모델 사용 또는 특정 병렬 정책을 하네스에 지시하지 않습니다.
@@ -144,6 +176,8 @@ Host-neutral core는 항상 `authoritative: false`를 출력합니다. 별도로
 .
 ├── README.md
 ├── README.ko.md
+├── install.sh
+├── uninstall.sh
 ├── skill/
 │   ├── SKILL.md
 │   └── references/
@@ -212,7 +246,7 @@ Host-neutral TypeScript verdict resolver입니다. 다음을 거부하거나 비
 
 ## Portable Skill 사용
 
-하네스가 제공하는 Skill 설치 방식으로 `skill/` 내용을 설치하거나 노출합니다. Skill 자체는 `system/`에 runtime dependency가 없습니다.
+`install.sh`를 실행한 뒤 설치된 `skill/` 디렉터리를 하네스의 Skill loader에 연결합니다. Skill 자체는 `system/`에 runtime dependency가 없습니다.
 
 예상 workflow:
 
@@ -309,7 +343,6 @@ Portable Skill 평가와 host-neutral QA core 개발에는 **후속 과제 조�
 아직 준비되지 않은 영역:
 
 - package manager 또는 Skill registry 배포
-- one-command 설치
 - OMP, Codex, Claude Code, OpenCode, GajaeCode native adapter
 - authoritative harness completion
 - production signing 또는 receipt authority

@@ -2,7 +2,7 @@
 
 > **코딩 에이전트를 위한 증거 결속형 QA.**
 
-Traceknot(트레이스노트)은 코딩 에이전트 하네스를 위한 ISTQB 정렬 QA 프레임워크입니다. 완료 주장을 테스트 기준, 제품 위험, 테스트 조건, 필수 의무, 스냅샷 결속 증거, 결함, 잔여 위험에 묶어 결정적 QA 판정으로 변환합니다.
+Traceknot(트레이스노트)은 코딩 에이전트 하네스를 위한, ISTQB 원칙에 맞춘 QA 프레임워크입니다. 테스트 기준, 제품 위험, 테스트 조건, 필수 의무, 스냅샷에 연결된 증거, 결함, 잔여 위험을 바탕으로 완료 주장을 결정론적 QA 판정으로 바꿉니다.
 
 [English brand guide](BRAND.md)
 
@@ -10,7 +10,7 @@ Traceknot(트레이스노트)은 코딩 에이전트 하네스를 위한 ISTQB �
 
 **발음:** TRACE-not, 트레이스노트.
 
-**한 문장 이야기:** 모든 판정은 증거에 매듭지어집니다. 매듭을 추적하면 전체 검증 체인이 드러납니다.
+**한 문장 이야기:** 모든 판정은 선언한 기준, 의무, 증거에 연결됩니다.
 
 `Trace`는 기준에서 판정까지 이어지는 양방향 추적성을, `knot`은 증거가 선언된 의무와 스냅샷에 결속되는 구조를 뜻합니다. 매듭은 누락되거나 느슨하거나 끊어질 수 있으므로 이 이름은 결함 부재, 절대적 증명, 완료 권한을 주장하지 않습니다.
 
@@ -18,7 +18,7 @@ Traceknot(트레이스노트)은 코딩 에이전트 하네스를 위한 ISTQB �
 
 **약속:** 동일한 테스트 기준, 의무, 증거, 결함에는 동일한 판정이 나옵니다.
 
-**경계:** Traceknot은 에이전트, 모델, 작업 그래프, 동시성, 재시도, worktree, lifecycle, 하네스 완료를 소유하지 않습니다. portable core는 비권위적입니다. 완료 권한은 별도로 승인해야 하는 비활성 기본값의 호스트 통합입니다.
+**경계:** Traceknot은 에이전트, 모델, 작업 그래프, 동시 실행, 재시도, 작업 트리, 수명 주기 또는 하네스 완료를 관리하지 않습니다. 휴대형 코어의 판정에는 하네스 완료 권한이 없습니다. 완료 권한은 기본적으로 비활성화되어 있으며, 호스트별 통합과 별도 승인이 있어야 사용할 수 있습니다.
 
 ## 이 프로젝트가 필요한 이유
 
@@ -34,26 +34,17 @@ Traceknot(트레이스노트)은 코딩 에이전트 하네스를 위한 ISTQB �
 
 Traceknot은 추적성, 증거 요건, 결함·잔여 위험 처리, 결정적 판정 우선순위, QA 판정과 하네스 완료의 명시적 경계를 제공합니다.
 
-## 유명 오픈소스 브랜드 비교
+## 이름을 정한 기준
 
-| 프로젝트 | 가져온 브랜드 원칙 |
-| --- | --- |
-| Open Policy Agent / OPA | 설명적인 범주명과 짧은 실행 이름의 결합 |
-| Sigstore | 하나의 강한 mechanism metaphor, 직설적 tagline, 조합 가능한 subproject |
-| in-toto | 결과를 과장하지 않고 end-to-end 범위를 이름에 반영 |
-| SLSA | 명시적 모델을 뒷받침하는 발음 가능한 기술 이름 |
-| OpenSSF Scorecard | 사용자가 받는 결과물과 프로젝트 이름의 직접 연결 |
-| Trivy | 짧고 구별되는 이름과 category-defining tagline |
-| Semgrep | 익숙한 개발자 용어를 결합한 기억하기 쉬운 compound |
-| Testkube | 테스트 범주와 ecosystem context의 결합 |
+이름 검토에서는 Traceknot이 동작 방식을 설명하면서도 결과를 과장하지 않는지 확인하기 위해 Sigstore, in-toto와 비교했습니다.
 
-이전 이름 **Quality Contract**는 명확했지만 일반적이고, CLI에서 길며, 검색 구별성이 낮고, 문서/checkmark라는 흔한 시각 motif에 의존했습니다. Traceknot은 계약의 결속 의미를 유지하면서 구별되는 compound, 한 문장 이야기, wordmark 없이도 인식 가능한 mark를 제공합니다.
+이전 이름 **Quality Contract**는 CLI에서 길고 검색 결과에서 구별하기 어려웠습니다. Traceknot은 증거를 판정에 연결한다는 뜻을 유지하면서 더 짧은 공개 이름을 사용합니다.
 
 ## 메시지 계층
 
 1. **헤드라인:** 코딩 에이전트를 위한 증거 결속형 QA.
 2. **검증 구조:** 기준 → 위험 → 조건 → 의무 → 증거 → 결함 → 판정.
-3. **브랜드 이야기:** 모든 판정은 증거에 매듭지어집니다.
+3. **브랜드 이야기:** 모든 판정은 선언한 증거에 연결됩니다.
 4. **차별점:** lifecycle event는 관찰이지 증명이 아닙니다.
 5. **신뢰 문장:** 결정적이고 호스트 중립적이며 기본값은 비권위적입니다.
 6. **확장 문장:** 하네스 완료 권한에는 명시적이고 별도로 승인된 통합이 필요합니다.
@@ -62,11 +53,11 @@ Traceknot은 추적성, 증거 요건, 결함·잔여 위험 처리, 결정적 �
 
 | 이름 | 역할 |
 | --- | --- |
-| **Traceknot Skill** | portable ISTQB 정렬 workflow와 저장소 탐색 가이드 |
-| **Traceknot Records** | 요청, 계획, 증거, 결함, 판정, capability용 closed JSON Schema 계약 |
-| **Traceknot Core** | 호스트 중립 결정적 coverage·판정 resolver |
+| **Traceknot Skill** | 휴대형 ISTQB 기반 작업 절차와 저장소 탐색 지침 |
+| **Traceknot Records** | 요청, 계획, 증거, 결함, 판정, 기능 선언에 사용하는 폐쇄형 JSON Schema 계약 |
+| **Traceknot Core** | 호스트 중립적인 결정론적 커버리지·판정 처리기 |
 | **Traceknot Protocol** | 표준 호스트 관찰·검증 경계 |
-| **Traceknot Adapter — _Host_** | 호스트 소유 capability 선언과 protocol mapping |
+| **Traceknot Adapter — _Host_** | 호스트가 소유하는 기능 선언과 프로토콜 연결 |
 | **Traceknot Completion-Authority Extension** | 선택적 lifecycle, quiescence, lease, receipt, 완료 권한; 기본 비활성 |
 
 CLI와 package에는 `traceknot`을 사용합니다. 공개 이름을 `TK`로 줄이지 않습니다. portable core를 gate, seal, authority, orchestrator라고 부르지 않습니다.
@@ -83,7 +74,7 @@ CLI와 package에는 `traceknot`을 사용합니다. 공개 이름을 `TK`로 �
 
 ![Traceknot mark](assets/traceknot-mark.svg)
 
-마크는 두 개의 연속 trace를 vermillion 판정점 주위의 매듭으로 조입니다. 6개 노드는 기준, 위험, 조건, 의무, 증거, 결함을 뜻합니다. 중앙 판정은 체인의 결과이지 전역 권위 주장이 아닙니다.
+마크는 두 개의 연속된 선이 주홍색 판정점을 둘러 매듭을 이루는 형태입니다. 여섯 개의 노드는 기준, 위험, 조건, 의무, 증거, 결함을 나타냅니다. 중앙점은 이 연결에서 나온 판정을 뜻하며, 하네스 전체에 대한 권한을 뜻하지 않습니다.
 
 | 토큰 | 색상 | 용도 |
 | --- | --- | --- |
@@ -99,8 +90,6 @@ CLI와 package에는 `traceknot`을 사용합니다. 공개 이름을 `TK`로 �
 
 ## 이름 결정과 충돌 조사
 
-Designer role과 함께 설명형, metaphor형, 조어형 후보를 검토했습니다. Basanos, Veridict, Proofrail, Qualt, Assay, Assayer, AgentAssay, TieOut, Obligo, Qontract, Plumbline은 직접 또는 인접 software 충돌로 제외했습니다. `Proofset`은 테스트가 결함의 부재를 증명할 수 없다는 ISTQB 원칙과 충돌해 제외했습니다.
+이름 검토에서는 설명형 이름, 은유형 이름, 조어를 비교하고 기존 소프트웨어와의 직접 충돌을 확인했습니다. GitHub, npm, PyPI의 예비 검색에서는 직접 충돌을 찾지 못했지만, 이는 법률 검토가 아닙니다. 상업적 사용 전에는 관련 상표와 도메인을 별도로 확인해야 합니다.
 
-검토 시점의 GitHub, npm, PyPI exact-name 검색에서는 확립된 Traceknot 프로젝트, package, company를 찾지 못했습니다. 이는 제품 포지셔닝 검토이며 법률 검토가 아닙니다. 상업적 사용 전에 관련 관할권과 상품류의 상표·도메인을 별도로 조사해야 합니다.
-
-동결된 completion-authority extension은 기존 `quality-contract` v1 wire identifier와 path를 유지합니다. 이는 공개 masterbrand가 아니라 protocol compatibility surface입니다. 변경하려면 별도 version migration과 signed evidence 재생성이 필요합니다.
+동결된 completion-authority extension에서는 기존 `quality-contract` v1 식별자와 경로를 유지해야 합니다. 이 식별자와 경로는 공개 브랜드명이 아니라 프로토콜 호환성 계약입니다. 변경하려면 별도 버전의 마이그레이션과 서명 증거 재생성이 필요합니다.
