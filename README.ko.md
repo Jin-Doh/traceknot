@@ -315,3 +315,7 @@ Portable Skill 평가와 host-neutral QA core 개발에는 **후속 과제 조�
 - production signing 또는 receipt authority
 
 다음 delivery milestone은 evidence-only 기본값을 약화하지 않으면서 배포 metadata와 하나의 runtime adapter를 추가하는 것입니다.
+
+## 라이선스
+
+Traceknot은 [GNU General Public License v3.0](LICENSE)에 따라 배포되는 자유 소프트웨어입니다.

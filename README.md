@@ -307,3 +307,7 @@ Not yet ready for:
 - production signing or receipt authority.
 
 The next delivery milestone should add distribution metadata and one runtime adapter without weakening the evidence-only default.
+
+## License
+
+Traceknot is free software licensed under the [GNU General Public License v3.0](LICENSE).
