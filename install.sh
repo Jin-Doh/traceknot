@@ -10,6 +10,8 @@ DRY_RUN=0
 PREFIX=
 BOOTSTRAP_TMP=
 MANIFEST_TMP=
+SKILLS_ROOT=
+REGISTRATION_PATH=
 
 cleanup() {
     if [ -n "$MANIFEST_TMP" ]; then
@@ -27,7 +29,7 @@ usage() {
     cat <<EOF
 Usage: $PROGRAM [--prefix DIR] [--dry-run]
 
-Install Traceknot into an XDG user data directory without sudo.
+Install Traceknot and register its Skill for OMP and Codex without sudo.
 
 Options:
   --prefix DIR       install into DIR instead of the default
@@ -36,6 +38,8 @@ Options:
   --help, -h         show this help
 
 Default prefix: \${XDG_DATA_HOME:-\$HOME/.local/share}/traceknot
+Default Skill registration: \$HOME/.agents/skills/traceknot
+Set TRACEKNOT_SKILLS_ROOT to override the Agent Skills directory.
 Remote installs download the source archive for TRACEKNOT_REF (default: main).
 Set TRACEKNOT_REF to a tag or commit to pin the installed revision.
 EOF
@@ -162,6 +166,13 @@ if [ -z "$PREFIX" ]; then
     PREFIX=${XDG_DATA_HOME:-"$HOME/.local/share"}/traceknot
 fi
 
+[ -n "${HOME:-}" ] || fail 'HOME is required to register the Traceknot Skill'
+SKILLS_ROOT=${TRACEKNOT_SKILLS_ROOT:-"$HOME/.agents/skills"}
+case "$SKILLS_ROOT" in
+    /*) ;;
+    *) fail "Agent Skills directory must be an absolute path: $SKILLS_ROOT" ;;
+esac
+
 case "$PREFIX" in
     /*) ;;
     *) fail "destination must be an absolute path: $PREFIX" ;;
@@ -184,6 +195,10 @@ fi
 
 source_is_complete "$SOURCE_ROOT" || fail 'Traceknot source is incomplete'
 
+SKILLS_ROOT_CANON=$(canonical_path "$SKILLS_ROOT") || fail "cannot resolve Agent Skills directory: $SKILLS_ROOT"
+[ "$SKILLS_ROOT_CANON" != "/" ] || fail 'refusing to register a Skill in filesystem root'
+REGISTRATION_PATH=$SKILLS_ROOT_CANON/traceknot
+
 MANIFEST="$PREFIX_CANON/$MANIFEST_NAME"
 if [ -L "$MANIFEST" ]; then
     fail "refusing symlink manifest: $MANIFEST"
@@ -191,6 +206,14 @@ fi
 if [ -e "$MANIFEST" ]; then
     [ -f "$MANIFEST" ] || fail "manifest is not a regular file: $MANIFEST"
     [ "$(sed -n '1p' "$MANIFEST")" = 'traceknot-install/v1' ] || fail "refusing unrelated manifest: $MANIFEST"
+fi
+
+if [ -L "$REGISTRATION_PATH" ]; then
+    command -v readlink >/dev/null 2>&1 || fail 'readlink is required to verify the existing Skill registration'
+    [ "$(readlink "$REGISTRATION_PATH")" = "$PREFIX_CANON/skill" ] ||
+        fail "refusing unrelated Skill registration: $REGISTRATION_PATH"
+elif [ -e "$REGISTRATION_PATH" ]; then
+    fail "refusing to overwrite unowned Skill registration: $REGISTRATION_PATH"
 fi
 
 PREVIOUS_MANIFEST=0
@@ -257,6 +280,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
 $(find "$SOURCE_ROOT/$component" -type f -print)
 EOF
     done
+    printf '  register %s -> %s/skill\n' "$REGISTRATION_PATH" "$PREFIX_CANON"
     exit 0
 fi
 
@@ -293,6 +317,19 @@ $(find "$SOURCE_ROOT/$component" -type f -print)
 EOF
 done
 
+if [ ! -L "$REGISTRATION_PATH" ]; then
+    if [ -L "$SKILLS_ROOT" ]; then
+        fail "refusing symlink Agent Skills directory: $SKILLS_ROOT"
+    fi
+    mkdir -p "$SKILLS_ROOT_CANON"
+    SKILLS_ROOT_CANON=$(canonical_path "$SKILLS_ROOT_CANON") ||
+        fail 'cannot resolve Agent Skills directory after creation'
+    REGISTRATION_PATH=$SKILLS_ROOT_CANON/traceknot
+    [ ! -e "$REGISTRATION_PATH" ] && [ ! -L "$REGISTRATION_PATH" ] ||
+        fail "Skill registration appeared during installation: $REGISTRATION_PATH"
+    ln -s "$PREFIX_CANON/skill" "$REGISTRATION_PATH"
+fi
+
 mv "$MANIFEST_TMP" "$PREFIX_CANON/$MANIFEST_NAME"
 MANIFEST_TMP=
-printf 'Installed Traceknot to %s\n' "$PREFIX_CANON"
+printf 'Installed Traceknot to %s and registered %s\n' "$PREFIX_CANON" "$REGISTRATION_PATH"

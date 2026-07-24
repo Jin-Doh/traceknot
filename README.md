@@ -49,7 +49,7 @@ Install the current `main` revision without cloning the repository:
 curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh
 ```
 
-The script downloads the matching source archive over HTTPS, then installs without `sudo`. The default destination is `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`.
+The script downloads the matching source archive over HTTPS, then installs without `sudo`. The default destination is `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`; the portable Skill is registered at `$HOME/.agents/skills/traceknot`, where OMP and Codex discover it.
 
 To install a fixed tag or commit, use the same revision in the script URL and `TRACEKNOT_REF`:
 
@@ -59,7 +59,7 @@ curl -fsSL "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/i
   | TRACEKNOT_REF="$TRACEKNOT_REF" sh
 ```
 
-The installer copies the portable Skill, record schemas, capability manifests, host-neutral core, and GPL license. It does not install the optional completion-authority extension or register Traceknot with a specific harness. Point the harness's Skill loader at the installed `skill/` directory.
+The installer copies the portable Skill, record schemas, capability manifests, host-neutral core, and GPL license. It registers the Skill for OMP and Codex through the shared Agent Skills directory. It does not install the optional completion-authority extension.
 
 Use an absolute prefix to change the destination:
 
@@ -68,7 +68,7 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh \
   | sh -s -- --prefix "$HOME/tools/traceknot"
 ```
 
-Pass `--dry-run` the same way to preview writes. Re-running the installer updates files owned by Traceknot and leaves unrelated files untouched.
+Pass `--dry-run` the same way to preview writes. Re-running the installer updates files owned by Traceknot and leaves unrelated files untouched. Set `TRACEKNOT_SKILLS_ROOT` to an absolute directory only when the shared Agent Skills location must be overridden.
 
 If you prefer to inspect the script before running it, download it first or install from a clone:
 
@@ -93,7 +93,7 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
   | sh -s -- --prefix "$HOME/tools/traceknot"
 ```
 
-The uninstaller reads the installation manifest and removes only files installed by Traceknot. Pass `--dry-run` to preview removals; running uninstall again is harmless. A cloned repository can use `./uninstall.sh` instead.
+The uninstaller reads the installation manifest, removes only files installed by Traceknot, and removes the shared Skill registration only when it still points to that installation. Pass `--dry-run` to preview removals; running uninstall again is harmless. Use the same `TRACEKNOT_SKILLS_ROOT` override used during installation. A cloned repository can use `./uninstall.sh` instead.
 
 ## Architecture
 
