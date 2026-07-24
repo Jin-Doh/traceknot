@@ -49,7 +49,7 @@ Traceknot은 테스트 기준에서 판정까지의 추적성, 증거와 독립�
 curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh
 ```
 
-Script는 HTTPS로 같은 revision의 source archive를 내려받고 `sudo` 없이 설치합니다. 기본 설치 경로는 `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`입니다.
+Script는 HTTPS로 같은 revision의 source archive를 내려받고 `sudo` 없이 설치합니다. 기본 설치 경로는 `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`이며, portable Skill은 OMP와 Codex가 검색하는 `$HOME/.agents/skills/traceknot`에 등록됩니다.
 
 특정 tag나 commit을 고정하려면 script URL과 `TRACEKNOT_REF`에 같은 revision을 사용합니다.
 
@@ -59,7 +59,7 @@ curl -fsSL "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/i
   | TRACEKNOT_REF="$TRACEKNOT_REF" sh
 ```
 
-Installer는 portable Skill, record schema, capability manifest, host-neutral core, GPL 라이선스를 복사합니다. 선택 사항인 completion-authority extension은 설치하지 않으며, 특정 하네스에 Traceknot을 자동 등록하지도 않습니다. 설치된 `skill/` 디렉터리를 하네스의 Skill loader에 연결하세요.
+Installer는 portable Skill, record schema, capability manifest, host-neutral core, GPL 라이선스를 복사하고 공용 Agent Skills 디렉터리를 통해 OMP와 Codex에 Skill을 등록합니다. 선택 사항인 completion-authority extension은 설치하지 않습니다.
 
 설치 경로를 바꾸려면 절대 경로를 지정합니다.
 
@@ -68,7 +68,7 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh \
   | sh -s -- --prefix "$HOME/tools/traceknot"
 ```
 
-같은 방식으로 `--dry-run`을 전달하면 복사 대상을 미리 확인할 수 있습니다. Installer를 다시 실행하면 Traceknot이 소유한 파일만 갱신하고 다른 파일은 건드리지 않습니다.
+같은 방식으로 `--dry-run`을 전달하면 복사 대상을 미리 확인할 수 있습니다. Installer를 다시 실행하면 Traceknot이 소유한 파일만 갱신하고 다른 파일은 건드리지 않습니다. 공용 Agent Skills 경로를 변경해야 할 때만 `TRACEKNOT_SKILLS_ROOT`에 절대 경로를 지정합니다.
 
 실행 전에 script를 검토하려면 먼저 파일로 내려받거나 저장소를 복제해서 실행합니다.
 
@@ -93,7 +93,7 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
   | sh -s -- --prefix "$HOME/tools/traceknot"
 ```
 
-Uninstaller는 설치 manifest를 읽고 Traceknot이 설치한 파일만 삭제합니다. `--dry-run`으로 삭제 대상을 미리 확인할 수 있으며, 이미 제거된 상태에서 다시 실행해도 오류가 발생하지 않습니다. 저장소를 복제한 경우에는 `./uninstall.sh`를 사용할 수 있습니다.
+Uninstaller는 설치 manifest를 읽어 Traceknot이 설치한 파일만 삭제하며, 공용 Skill 등록이 해당 설치를 계속 가리킬 때만 그 등록을 제거합니다. `--dry-run`으로 삭제 대상을 미리 확인할 수 있으며, 이미 제거된 상태에서 다시 실행해도 오류가 발생하지 않습니다. 설치 시 `TRACEKNOT_SKILLS_ROOT`를 지정했다면 제거 시에도 같은 값을 사용합니다. 저장소를 복제한 경우에는 `./uninstall.sh`를 사용할 수 있습니다.
 
 ## 아키텍처
 

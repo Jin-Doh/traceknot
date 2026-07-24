@@ -15,12 +15,15 @@ esac
 MANIFEST_NAME=.traceknot-install-manifest
 DRY_RUN=0
 PREFIX=
+SKILLS_ROOT=
+REGISTRATION_PATH=
+REGISTRATION_OWNED=0
 
 usage() {
     cat <<EOF
 Usage: $PROGRAM [--prefix DIR] [--dry-run]
 
-Remove files previously installed by Traceknot without sudo.
+Remove files and the OMP/Codex Skill registration installed by Traceknot.
 
 Options:
   --prefix DIR       uninstall from DIR instead of the default
@@ -29,6 +32,8 @@ Options:
   --help, -h         show this help
 
 Default prefix: \${XDG_DATA_HOME:-\$HOME/.local/share}/traceknot
+Default Skill registration: \$HOME/.agents/skills/traceknot
+Set TRACEKNOT_SKILLS_ROOT to override the Agent Skills directory.
 EOF
 }
 
@@ -134,6 +139,13 @@ if [ -z "$PREFIX" ]; then
     PREFIX=${XDG_DATA_HOME:-"$HOME/.local/share"}/traceknot
 fi
 
+[ -n "${HOME:-}" ] || fail 'HOME is required to locate the Traceknot Skill registration'
+SKILLS_ROOT=${TRACEKNOT_SKILLS_ROOT:-"$HOME/.agents/skills"}
+case "$SKILLS_ROOT" in
+    /*) ;;
+    *) fail "Agent Skills directory must be an absolute path: $SKILLS_ROOT" ;;
+esac
+
 case "$PREFIX" in
     /*) ;;
     *) fail "destination must be an absolute path: $PREFIX" ;;
@@ -163,6 +175,16 @@ fi
 [ -f "$MANIFEST" ] || fail "manifest is not a regular file: $MANIFEST"
 [ "$(sed -n '1p' "$MANIFEST")" = 'traceknot-install/v1' ] || fail "refusing unrelated manifest: $MANIFEST"
 
+SKILLS_ROOT_CANON=$(canonical_path "$SKILLS_ROOT") || fail "cannot resolve Agent Skills directory: $SKILLS_ROOT"
+[ "$SKILLS_ROOT_CANON" != "/" ] || fail 'refusing to inspect a Skill registration in filesystem root'
+REGISTRATION_PATH=$SKILLS_ROOT_CANON/traceknot
+if [ -L "$REGISTRATION_PATH" ]; then
+    command -v readlink >/dev/null 2>&1 || fail 'readlink is required to verify the Skill registration'
+    if [ "$(readlink "$REGISTRATION_PATH")" = "$PREFIX_CANON/skill" ]; then
+        REGISTRATION_OWNED=1
+    fi
+fi
+
 # Validate every entry before deleting any file, so a malformed manifest is harmless.
 while IFS= read -r manifest_entry; do
     [ -n "$manifest_entry" ] || fail 'manifest contains an empty entry'
@@ -179,7 +201,14 @@ if [ "$DRY_RUN" -eq 1 ]; then
 $(sed -n '2,$p' "$MANIFEST")
 EOF
     printf '  remove %s\n' "$MANIFEST"
+    if [ "$REGISTRATION_OWNED" -eq 1 ]; then
+        printf '  remove Skill registration %s\n' "$REGISTRATION_PATH"
+    fi
     exit 0
+fi
+
+if [ "$REGISTRATION_OWNED" -eq 1 ]; then
+    rm -f "$REGISTRATION_PATH"
 fi
 
 while IFS= read -r manifest_entry; do
@@ -191,4 +220,4 @@ done <<EOF
 $(sed -n '2,$p' "$MANIFEST")
 EOF
 rm -f "$MANIFEST"
-printf 'Uninstalled Traceknot from %s\n' "$PREFIX_CANON"
+printf 'Uninstalled Traceknot from %s and removed its owned Skill registration\n' "$PREFIX_CANON"
