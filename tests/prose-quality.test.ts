@@ -873,4 +873,16 @@ describe("rewrite preservation gate", () => {
     const report = verifyPreservation("The range is 10%–20%.", "The range is 10 %–20 %.");
     expect(report.failures.some((failure) => failure.category === "number" || failure.category === "protected-context")).toBe(false);
   });
+
+  test("preserves currency codes on compound operands", () => {
+    const report = verifyPreservation("The budget is 10 USD–20 USD.", "The budget is 10 USD/20 USD.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("preserves every separator in multipart dates and times", () => {
+    expect(verifyPreservation("The time is 12:30:45.", "The time is 12:30/45.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(verifyPreservation("Published 2026/07/27.", "Published 2026/07:27.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
 });
