@@ -626,4 +626,40 @@ describe("rewrite preservation gate", () => {
     const after = "[foo\\]]: docs/new.md";
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "link-destination" }));
   });
+
+  test("preserves formal Korean normative endings", () => {
+    const report = verifyPreservation("복구 절차를 수행해야 합니다.", "복구 절차를 수행할 수 있습니다.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+  });
+
+  test("preserves Unicode numeric signs", () => {
+    expect(verifyPreservation("허용 오차는 ±5입니다.", "허용 오차는 5입니다.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(verifyPreservation("변화량은 −5입니다.", "변화량은 5입니다.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("binds multiword limit labels to numeric values", () => {
+    const before = "Use at least 1 item, but at most 2 items.";
+    const after = "Use at most 1 item, but at least 2 items.";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
+
+  test("recognizes sentence ends before Markdown closers", () => {
+    const before = "The optional appendix provides **background.** Version 1.2 remains supported.";
+    const after = "The supplementary appendix provides **background.** Version 1.2 remains supported.";
+    expect(verifyPreservation(before, after).status).toBe("PASS");
+  });
+
+  test("rejects unescaped opening brackets in reference labels", () => {
+    const report = verifyPreservation("[foo[bar]: docs/old.md", "[foo[bar]: docs/new.md");
+    expect(report.failures.some((failure) => failure.category === "link-destination")).toBe(false);
+  });
+
+  test("keeps inline-HTML paragraphs eligible for lazy quoting", () => {
+    const before = "> <em>Quoted opening</em>\nLazy quoted continuation.";
+    const after = "> <em>Quoted opening</em>\nChanged quoted continuation.";
+    expect(extractProse(before)).not.toContain("Lazy quoted continuation.");
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
+  });
 });

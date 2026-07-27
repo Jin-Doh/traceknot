@@ -236,8 +236,14 @@ function markdownIndentedCodeBlocks(text: string): string[] {
   return blocks;
 }
 
+function startsHtmlBlock(line: string): boolean {
+  return /^<(?:!--|[?]|![A-Z]|\[CDATA\[|\/?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|\/?>))/i.test(line.trimStart());
+}
+
 function startsInterruptingMarkdownBlock(line: string): boolean {
-  return /^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|(?:[-+*]|\d+[.)])[ \t]+|`{3,}|~{3,}|(?:\*\s*){3,}$|(?:-\s*){3,}$|(?:_\s*){3,}$|<)/.test(line.trimEnd());
+  const trimmed = line.trimEnd();
+  return /^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|(?:[-+*]|\d+[.)])[ \t]+|`{3,}|~{3,}|(?:\*\s*){3,}$|(?:-\s*){3,}$|(?:_\s*){3,}$)/.test(trimmed)
+    || startsHtmlBlock(trimmed);
 }
 
 function blockquoteContent(line: string): string | null {
@@ -498,7 +504,7 @@ function markdownLinkDestinations(text: string): string[] {
     }
     if (!closed) cursor = start + 2;
   }
-  for (const match of text.matchAll(/^[ \t]{0,3}\[(?:\\.|[^\]\\])+\]:[ \t]*(?:\r?\n[ \t]+)?(?:<([^>\n]+)>|(\S+))/gm)) {
+  for (const match of text.matchAll(/^[ \t]{0,3}\[(?:\\.|[^\\\[\]])+\]:[ \t]*(?:\r?\n[ \t]+)?(?:<([^>\n]+)>|(\S+))/gm)) {
     destinations.push(match[1] ?? match[2] ?? "");
   }
   return destinations;
@@ -526,8 +532,8 @@ function standaloneUrls(text: string): string[] {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["number", /\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])(?:[+-]?[$€£¥₩]|[$€£¥₩][+-]?|[+-]?)\d+(?:[.,]\d+)*(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
-    ["normative", /\b(?:MUST|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+된다|해야\s+한다|할\s+수\s+있다)/gi],
+    ["number", /\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)\d+(?:[.,]\d+)*(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
+    ["normative", /\b(?:MUST|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+(?:된다|됩니다)|해야\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))/gi],
   ];
   const values = new Map<string, { category: string; count: number }>();
   for (const [category, pattern] of categories) {
@@ -584,8 +590,18 @@ function protectedValues(text: string): Map<string, { category: string; count: n
 const CLAIM_LABELS = new Set([
   "minimum", "maximum", "min", "max", "lower", "upper", "before", "after", "previous", "next", "start", "end", "initial", "final",
   "increase", "decrease", "enabled", "disabled", "allowed", "forbidden", "required", "optional", "success", "failure",
+  "at-least", "at-most", "no-less-than", "no-more-than",
   "최소", "최대", "하한", "상한", "이전", "이후", "시작", "종료", "초기", "최종", "증가", "감소", "활성", "비활성", "허용", "금지", "필수", "선택", "성공", "실패",
 ]);
+
+function claimLabels(value: string): string[] {
+  const normalized = value.toLowerCase()
+    .replace(/\bat\s+least\b/g, "at-least")
+    .replace(/\bat\s+most\b/g, "at-most")
+    .replace(/\bno\s+less\s+than\b/g, "no-less-than")
+    .replace(/\bno\s+more\s+than\b/g, "no-more-than");
+  return (normalized.match(/[\p{L}\p{N}_-]+/gu) ?? []).map(normalizeClaimLabel).filter(Boolean);
+}
 
 function normalizeClaimLabel(token: string): string {
   const lower = token.toLowerCase();
@@ -598,7 +614,7 @@ function normalizeClaimLabel(token: string): string {
 
 function lastClaimBoundary(text: string): number {
   let boundary = -1;
-  for (const match of text.matchAll(/[,;:\n]|[.!?](?=\s|$)/g)) boundary = match.index;
+  for (const match of text.matchAll(/[,;:\n]|[.!?](?=[*_~)\]}>'"]*(?:\s|$))/g)) boundary = match.index;
   return boundary;
 }
 
@@ -606,11 +622,11 @@ function claimLabel(text: string, index: number, valueLength: number): string {
   const leftText = text.slice(0, index);
   const leftBoundary = lastClaimBoundary(leftText);
   const rightText = text.slice(index + valueLength);
-  const rightBoundaryMatch = rightText.match(/[,;:\n]|[.!?](?=\s|$)/);
+  const rightBoundaryMatch = rightText.match(/[,;:\n]|[.!?](?=[*_~)\]}>'"]*(?:\s|$))/);
   const leftClause = leftText.slice(leftBoundary + 1);
   const rightClause = rightText.slice(0, rightBoundaryMatch?.index ?? rightText.length);
-  const leftLabels = (leftClause.match(/[\p{L}\p{N}_-]+/gu) ?? []).map(normalizeClaimLabel).filter(Boolean);
-  const rightLabels = (rightClause.match(/[\p{L}\p{N}_-]+/gu) ?? []).map(normalizeClaimLabel).filter(Boolean);
+  const leftLabels = claimLabels(leftClause);
+  const rightLabels = claimLabels(rightClause);
   const left = leftLabels.at(-1) ?? "";
   const right = rightLabels[0] ?? "";
   if (!left) return right;
