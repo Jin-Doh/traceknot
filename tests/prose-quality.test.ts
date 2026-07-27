@@ -1307,4 +1307,22 @@ describe("rewrite preservation gate", () => {
     const after = "Port 80 will be assigned to backend, while port 443 will be assigned to frontend";
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
   });
+
+  test("treats inline q elements as quotations", () => {
+    const before = "<q>Original attributed wording remains here</q>";
+    const after = "<q>Changed attributed wording remains here</q>";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
+    expect(extractProse(before)).not.toContain("Original attributed");
+  });
+
+  test("binds weekdays to numeric dates", () => {
+    expect(verifyPreservation("Release is Monday, 2026-07-27.", "Release is Tuesday, 2026-07-27.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("binds perfect passive assignments to endpoints", () => {
+    const before = "Port 80 has been assigned to frontend, while port 443 has been assigned to backend";
+    const after = "Port 80 has been assigned to backend, while port 443 has been assigned to frontend";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
 });

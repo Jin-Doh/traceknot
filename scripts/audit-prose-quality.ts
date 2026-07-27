@@ -335,7 +335,7 @@ function htmlBlockquotes(text: string): string[] {
   const blocks: string[] = [];
   let depth = 0;
   let start = -1;
-  for (const match of text.matchAll(/<\/?blockquote\b[^>]*>/gi)) {
+  for (const match of text.matchAll(/<\/?(?:blockquote|q)\b[^>]*>/gi)) {
     if (!match[0].startsWith("</")) {
       if (depth === 0) start = match.index;
       depth += 1;
@@ -700,6 +700,7 @@ function protectedValues(text: string): Map<string, { category: string; count: n
     ["number", /(?<![\w.])\d+(?:\s*[/:]\s*\d+){2,}(?!\w|\.\d)/g],
     ["number", /\b(?:USD|EUR|GBP|JPY|KRW)\s+(?:\d+(?:[.,]\d+)*|\.\d+)(?:\s+(?:thousand|million|billion|trillion))?\b/gi],
     ["number", /(?<![\w.])(?:\d+(?:[.,]\d+)*|\.\d+)\s+(?:[KMGTPE]i?B|[KMGTPE]?bps|bytes?|bits?)\b/gi],
+    ["number", /\b(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?),?\s+\d{4}[-/]\d{1,2}[-/]\d{1,2}\b/gi],
     ["number", /\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4}\b/gi],
     ["number", /\b(?:(?:(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?),?\s+)?(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:(?:,\s*|\s+)\d{4})?|(?:(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?),?\s+)?\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)(?:\s+\d{4})?)\b/gi],
     ["number", /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|trillion)(?:[\s-]+(?:(?:and)[\s-]+)?(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|trillion))*\b(?=\s+(?:retries?|attempts?|items?|users?|deployments?|records?|files?|requests?|seconds?|minutes?|hours?|days?|weeks?|months?|years?|bytes?|bits?))|(?:한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)(?=\s*(?:개|명|건|회|번|원|년|월|일|시간|분|초|대|권|장|마리|곳|배))/gi],
@@ -819,7 +820,7 @@ function claimLabel(text: string, index: number, valueLength: number, bindSubjec
     const localClause = leftClause.split(/\b(?:while|whereas|and|but)\b/i).at(-1) ?? leftClause;
     const words = localClause.match(/[\p{L}_][\p{L}\p{N}_-]*/gu) ?? [];
     const relationSubject = localClause.match(/(?:^|\s)(?:the\s+|a\s+|an\s+)?([\p{L}_][\p{L}\p{N}_-]*)\s+(?:listens?|runs?|serves?|uses?|routes?|maps?|connects?|belongs?)\b/iu)?.[1]?.toLowerCase();
-    const object = rightClause.match(/^\s*(?:(?:serves?|routes?|maps?|connects?|belongs?)\s+(?:to\s+)?|(?:(?:is|are|was|were)|will\s+be)\s+(?:assigned|mapped|routed|connected)\s+to\s+(?:the\s+|a\s+|an\s+)?)([\p{L}_][\p{L}\p{N}_-]*)/iu)?.[1]?.toLowerCase();
+    const object = rightClause.match(/^\s*(?:(?:serves?|routes?|maps?|connects?|belongs?)\s+(?:to\s+)?|(?:(?:is|are|was|were)|will\s+be|(?:has|have|had)\s+been)\s+(?:assigned|mapped|routed|connected)\s+to\s+(?:the\s+|a\s+|an\s+)?)([\p{L}_][\p{L}\p{N}_-]*)/iu)?.[1]?.toLowerCase();
     const subject = relationSubject
       ?? (object ? (words.find((word) => !/^(?:the|a|an)$/i.test(word)) ?? "").toLowerCase() : (words.find((word) => /^[A-Z][A-Z0-9_-]+$/.test(word)) ?? "").toLowerCase());
     return object ? `${subject}->${object}` : subject;
