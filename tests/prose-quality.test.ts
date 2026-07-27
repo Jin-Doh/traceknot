@@ -29,6 +29,21 @@ describe("published prose extraction and locale selection", () => {
     expect(prose).not.toContain("quoted material");
   });
 
+  test("keeps source line numbers after protected multiline regions", () => {
+    const source = [
+      "---",
+      "title: Hidden",
+      "---",
+      "```text",
+      "hidden code",
+      "```",
+      "",
+      "이 작업은 할 수 있을 것으로 보인다. 한국어 설명을 충분히 덧붙여 언어를 올바르게 판별한다.",
+    ].join("\n");
+    const report = analyzeProse(source);
+    expect(report.findings).toContainEqual(expect.objectContaining({ ruleId: "KO-G-001", line: 8 }));
+  });
+
   test("distinguishes Korean, English, mixed, and unknown prose", () => {
     expect(detectLocale("한국어로 작성한 자연스러운 문장입니다. 설명을 조금 더 붙입니다.")).toBe("ko");
     expect(detectLocale("This is a natural English paragraph with enough letters to classify.")).toBe("en");
@@ -90,5 +105,26 @@ describe("rewrite preservation gate", () => {
     const base = "one two three four five six seven eight nine ten";
     expect(verifyPreservation(base, "one two three four five six seven alpha beta ten", 0.2, 0.5).status).toBe("WARN");
     expect(verifyPreservation(base, "one two alpha beta gamma delta epsilon zeta eta theta", 0.2, 0.5).status).toBe("FAIL");
+  });
+
+  test("counts inserted prose and rejects unbounded scope expansion", () => {
+    const base = "one two three four five six seven eight nine ten";
+    const expanded = `${base} alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon`;
+    expect(verifyPreservation(base, expanded, 0.3, 0.5).status).toBe("FAIL");
+    expect(verifyPreservation("", "entirely new publication prose", 0.3, 0.5).status).toBe("FAIL");
+  });
+
+  test("rejects newly introduced protected values", () => {
+    const report = verifyPreservation("The release remains stable.", "The release remains stable at https://example.com for version 2.0.");
+    expect(report.status).toBe("FAIL");
+    expect(new Set(report.failures.map((failure) => failure.category))).toEqual(new Set(["url", "number"]));
+    expect(report.failures.every((failure) => failure.expectedCount === 0 && failure.actualCount > 0)).toBe(true);
+  });
+
+  test("preserves direct and block quotations exactly", () => {
+    const direct = verifyPreservation('The report says “Keep this exact quote.” End.', 'The report says “Change this quote.” End.');
+    const block = verifyPreservation("> Keep this block quote.\n\nCommentary.", "> Change this block quote.\n\nCommentary.");
+    expect(direct.failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
+    expect(block.failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
   });
 });

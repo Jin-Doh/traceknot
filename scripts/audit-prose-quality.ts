@@ -100,10 +100,14 @@ function clonePattern(pattern: RegExp): RegExp {
   return new RegExp(pattern.source, pattern.flags);
 }
 
+function maskContentPreservingLines(value: string): string {
+  return value.replace(/[^\n]/g, " ");
+}
+
 export function extractProse(markdown: string): string {
-  let prose = markdown.replace(/^---\n[\s\S]*?\n---\n/, "");
-  prose = prose.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, "");
-  prose = prose.replace(/^>.*$/gm, "");
+  let prose = markdown.replace(/^---\n[\s\S]*?\n---\n/, maskContentPreservingLines);
+  prose = prose.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, maskContentPreservingLines);
+  prose = prose.replace(/^>.*$/gm, maskContentPreservingLines);
   prose = prose.replace(/`[^`\n]+`/g, "");
   prose = prose.replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1");
   prose = prose.replace(/<https?:\/\/[^>]+>|https?:\/\/\S+/g, "");
@@ -220,10 +224,15 @@ function tokenChangeRate(before: string, after: string): number {
   const left = tokenCounts(before);
   const right = tokenCounts(after);
   let common = 0;
-  let total = 0;
-  for (const count of left.values()) total += count;
-  for (const [token, count] of right) common += Math.min(count, left.get(token) ?? 0);
-  return total === 0 ? 0 : Math.round(Math.max(0, 1 - common / total) * 1_000_000) / 1_000_000;
+  let leftTotal = 0;
+  let rightTotal = 0;
+  for (const count of left.values()) leftTotal += count;
+  for (const [token, count] of right) {
+    rightTotal += count;
+    common += Math.min(count, left.get(token) ?? 0);
+  }
+  const combinedTotal = leftTotal + rightTotal;
+  return combinedTotal === 0 ? 0 : Math.round((1 - (2 * common) / combinedTotal) * 1_000_000) / 1_000_000;
 }
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
@@ -234,6 +243,8 @@ function protectedValues(text: string): Map<string, { category: string; count: n
     ["url", /https?:\/\/[^\s)>]+/g],
     ["number", /\b\d+(?:[.,]\d+)*(?:%|[A-Za-z]+)?\b/g],
     ["normative", /\b(?:MUST|SHOULD|MAY|must|should|may)\b|(?:해서는 안 된다|해야 한다|할 수 있다)/g],
+    ["quotation", /^>.*(?:\n>.*)*/gm],
+    ["quotation", /“[^”\n]+”|"[^"\n]+"/g],
   ];
   const values = new Map<string, { category: string; count: number }>();
   for (const [category, pattern] of categories) {
@@ -253,11 +264,15 @@ export function verifyPreservation(before: string, after: string, maxChangeRate 
   const failures: PreservationFailure[] = [];
   let protectedTotal = 0;
   let protectedPreserved = 0;
-  for (const [key, item] of expected) {
-    protectedTotal += item.count;
-    const actualCount = actual.get(key)?.count ?? 0;
-    protectedPreserved += Math.min(item.count, actualCount);
-    if (actualCount !== item.count) failures.push({ category: item.category, valueHash: hash(key), expectedCount: item.count, actualCount });
+  const keys = new Set([...expected.keys(), ...actual.keys()]);
+  for (const key of keys) {
+    const expectedItem = expected.get(key);
+    const actualItem = actual.get(key);
+    const expectedCount = expectedItem?.count ?? 0;
+    const actualCount = actualItem?.count ?? 0;
+    protectedTotal += expectedCount;
+    protectedPreserved += Math.min(expectedCount, actualCount);
+    if (actualCount !== expectedCount) failures.push({ category: expectedItem?.category ?? actualItem?.category ?? "unknown", valueHash: hash(key), expectedCount, actualCount });
   }
   const changeRate = tokenChangeRate(before, after);
   const status = failures.length > 0 || changeRate >= rejectChangeRate ? "FAIL" : changeRate >= maxChangeRate ? "WARN" : "PASS";
