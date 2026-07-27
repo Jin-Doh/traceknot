@@ -1258,4 +1258,14 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation("다섯 번 재시도를 허용합니다.", "여섯 번 재시도를 허용합니다.").failures)
       .toContainEqual(expect.objectContaining({ category: "number" }));
   });
+
+  test("preserves conjunctions in compound spelled-out quantities", () => {
+    expect(verifyPreservation("The system allows one hundred and five retries.", "The system allows two hundred and five retries.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("matches negation after simple copulas", () => {
+    expect(verifyPreservation("Authentication is not permitted.", "Authentication is not prohibited.").failures)
+      .toContainEqual(expect.objectContaining({ category: "normative" }));
+  });
 });
