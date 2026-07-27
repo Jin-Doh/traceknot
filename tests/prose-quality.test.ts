@@ -662,4 +662,22 @@ describe("rewrite preservation gate", () => {
     expect(extractProse(before)).not.toContain("Lazy quoted continuation.");
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
   });
+
+  test("preserves curly single-quoted passages", () => {
+    const before = "The guide states ‘minimum release 1.2’ for deployment.";
+    const after = "The guide states ‘maximum release 1.2’ for deployment.";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
+  });
+
+  test("preserves leading-decimal values", () => {
+    const report = verifyPreservation("The ratio is .5 for this release.", "The ratio is .6 for this release.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("protects raw script and style blocks as code", () => {
+    const before = "<script>const oldName = 1;</script>\n<style>.old-name { color: red; }</style>";
+    const after = "<script>const newName = 1;</script>\n<style>.new-name { color: red; }</style>";
+    expect(extractProse(before)).not.toContain("oldName");
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
+  });
 });
