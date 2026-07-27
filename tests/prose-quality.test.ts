@@ -885,4 +885,23 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation("Published 2026/07/27.", "Published 2026/07:27.").failures)
       .toContainEqual(expect.objectContaining({ category: "number" }));
   });
+
+  test("preserves meridiem markers with times", () => {
+    expect(verifyPreservation("Maintenance starts at 12:30 PM.", "Maintenance starts at 12:30 AM.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("preserves prerelease and build version suffixes", () => {
+    expect(verifyPreservation("Deploy v1.2.3-beta.1.", "Deploy v1.2.3-rc.1.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(verifyPreservation("Deploy v1.2.3+build.1.", "Deploy v1.2.3+build.2.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("protects unterminated raw code blocks through EOF", () => {
+    const before = "<script>\nconst oldCode = 1;";
+    const after = "<script>\nconst newCode = 1;";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
+    expect(extractProse(before)).not.toContain("oldCode");
+  });
 });
