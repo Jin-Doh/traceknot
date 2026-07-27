@@ -195,6 +195,12 @@ function indentationColumns(value: string): number {
   return visualColumns(value.match(/^[ \t]*/)?.[0] ?? "");
 }
 
+function endsParagraphBeforeIndentedCode(line: string): boolean {
+  const trimmed = line.trimEnd();
+  return /^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|(?:\*\s*){3,}$|(?:-\s*){3,}$|(?:_\s*){3,}$)/.test(trimmed)
+    || startsHtmlBlock(trimmed);
+}
+
 function markdownIndentedCodeBlocks(text: string): string[] {
   const lines = text.match(/[^\n]*(?:\n|$)/g)?.filter((line) => line.length > 0) ?? [];
   const blocks: string[] = [];
@@ -214,7 +220,8 @@ function markdownIndentedCodeBlocks(text: string): string[] {
     }
     if (/^\S/.test(line)) listCodeIndent = null;
     const requiredIndent = listCodeIndent ?? 4;
-    const codeIndent = previousBlank && indentationColumns(line) >= requiredIndent;
+    const followsNonParagraphBlock = index > 0 && endsParagraphBeforeIndentedCode(lines[index - 1]);
+    const codeIndent = (previousBlank || followsNonParagraphBlock) && indentationColumns(line) >= requiredIndent;
     if (!codeIndent) {
       previousBlank = false;
       continue;
@@ -537,7 +544,10 @@ function standaloneUrls(text: string): string[] {
 }
 
 function normalizeNumericValue(value: string): string {
-  const compact = value.replace(/\s+/g, " ").replace(/^([<>]=?|[≤≥])\s*/, "$1");
+  const compact = value
+    .replace(/\s+/g, " ")
+    .replace(/^([<>]=?|[≤≥])\s*/, "$1")
+    .replace(/\s*([-–—/:])\s*/g, "$1");
   return compact.replace(
     /(\d)\s*(°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)$/i,
     "$1 $2",
@@ -546,7 +556,7 @@ function normalizeNumericValue(value: string): string {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["number", /\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])(?:(?:[<>]=?|[≤≥])\s*)?(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
+    ["number", /(?<![\w.])(?:\d+(?:\.\d+)?\s*[-–—/:]\s*\d+(?:\.\d+)?)\b|\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])(?:(?:[<>]=?|[≤≥])\s*)?(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
     ["normative", /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+(?:된다|됩니다)|해야\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))/gi],
   ];
   const values = new Map<string, { category: string; count: number }>();
@@ -608,13 +618,14 @@ const CLAIM_LABELS = new Set([
   "최소", "최대", "하한", "상한", "이전", "이후", "시작", "종료", "초기", "최종", "증가", "감소", "활성", "비활성", "허용", "금지", "필수", "선택", "성공", "실패",
 ]);
 
-function claimLabels(value: string): string[] {
-  const normalized = value.toLowerCase()
-    .replace(/\bat\s+least\b/g, "at-least")
-    .replace(/\bat\s+most\b/g, "at-most")
-    .replace(/\bno\s+less\s+than\b/g, "no-less-than")
-    .replace(/\bno\s+more\s+than\b/g, "no-more-than");
-  return (normalized.match(/[\p{L}\p{N}_-]+/gu) ?? []).map(normalizeClaimLabel).filter(Boolean);
+function claimLabels(value: string): Array<{ label: string; index: number; end: number }> {
+  const labels: Array<{ label: string; index: number; end: number }> = [];
+  const pattern = /\bat\s+least\b|\bat\s+most\b|\bno\s+less\s+than\b|\bno\s+more\s+than\b|[\p{L}\p{N}_-]+/gu;
+  for (const match of value.matchAll(pattern)) {
+    const label = normalizeClaimLabel(match[0].toLowerCase().replace(/\s+/g, "-"));
+    if (label) labels.push({ label, index: match.index, end: match.index + match[0].length });
+  }
+  return labels;
 }
 
 function normalizeClaimLabel(token: string): string {
@@ -641,13 +652,13 @@ function claimLabel(text: string, index: number, valueLength: number): string {
   const rightClause = rightText.slice(0, rightBoundaryMatch?.index ?? rightText.length);
   const leftLabels = claimLabels(leftClause);
   const rightLabels = claimLabels(rightClause);
-  const left = leftLabels.at(-1) ?? "";
-  const right = rightLabels[0] ?? "";
-  if (!left) return right;
-  if (!right) return left;
-  const leftDistance = leftClause.length - leftClause.toLowerCase().lastIndexOf(left);
-  const rightDistance = rightClause.toLowerCase().indexOf(right);
-  return leftDistance <= rightDistance ? left : right;
+  const left = leftLabels.at(-1);
+  const right = rightLabels[0];
+  if (!left) return right?.label ?? "";
+  if (!right) return left.label;
+  const leftDistance = leftClause.length - left.end;
+  const rightDistance = right.index;
+  return leftDistance <= rightDistance ? left.label : right.label;
 }
 
 function findProtectedOccurrence(text: string, value: string, category: string, cursor: number): number {

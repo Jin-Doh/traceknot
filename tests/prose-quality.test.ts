@@ -715,4 +715,22 @@ describe("rewrite preservation gate", () => {
     const report = verifyPreservation("The package weighs 5kg.", "The package weighs 5 kg.");
     expect(report.failures.some((failure) => failure.category === "number" || failure.category === "protected-context")).toBe(false);
   });
+
+  test("preserves numeric range, ratio, and time separators", () => {
+    const report = verifyPreservation("The accepted retry range is 1–5.", "The accepted retry range is 1/5.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("retains source offsets for canonicalized claim labels", () => {
+    const before = "At least 1 is required, and at most 2 is required.";
+    const after = "At most 1 is required, and at least 2 is required.";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
+
+  test("recognizes indented code after headings without blank lines", () => {
+    const before = "# Example\n    traceknot verify";
+    const after = "# Example\n    traceknot delete";
+    expect(extractProse(before)).not.toContain("traceknot verify");
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
+  });
 });
