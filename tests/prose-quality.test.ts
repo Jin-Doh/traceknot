@@ -1055,4 +1055,25 @@ describe("rewrite preservation gate", () => {
     expect(output).toContain("posts/example.md:");
     expect(output).toContain("EN-");
   });
+
+  test("recognizes fences on list marker lines", () => {
+    const before = "- ```sh\n  traceknot verify\n  ```\nVisible publication prose.";
+    const after = "- ```sh\n  traceknot delete\n  ```\nVisible publication prose.";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
+    expect(extractProse(before)).not.toContain("traceknot verify");
+    expect(extractProse(before)).toContain("Visible publication prose.");
+  });
+
+  test("excludes raw HTML blockquotes from style analysis", () => {
+    const quote = "<blockquote>In today's rapidly evolving landscape, this underscores the importance of transformative potential.</blockquote>\nVisible prose.";
+    expect(extractProse(quote)).not.toContain("rapidly evolving");
+    expect(analyzeProse(quote, ["en"]).findings).toEqual([]);
+  });
+
+  test("protects yearless textual dates", () => {
+    expect(verifyPreservation("Release is July 27.", "Release is August 27.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(verifyPreservation("Release is 27 July.", "Release is 27 August.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
 });
