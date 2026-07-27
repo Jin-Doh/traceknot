@@ -316,4 +316,18 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("FAIL");
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
   });
+
+  test("preserves normative negation across flexible whitespace", () => {
+    const spaced = verifyPreservation("Operators MUST  NOT delete records.", "Operators MUST delete records.");
+    const wrapped = verifyPreservation("Operators MUST\nNOT delete records.", "Operators MUST delete records.");
+    expect(spaced.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+    expect(wrapped.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+  });
+
+  test("stops lazy blockquotes at interrupting Markdown blocks", () => {
+    const prose = extractProse("> Quoted opening\n# Published heading\nOrdinary publication prose.");
+    expect(prose).not.toContain("Quoted opening");
+    expect(prose).toContain("Published heading");
+    expect(prose).toContain("Ordinary publication prose");
+  });
 });

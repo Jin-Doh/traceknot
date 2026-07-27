@@ -127,13 +127,22 @@ function markdownFencedBlocks(text: string): string[] {
   return blocks;
 }
 
+function startsInterruptingMarkdownBlock(line: string): boolean {
+  return /^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|(?:[-+*]|\d+[.)])[ \t]+|`{3,}|~{3,}|(?:\*\s*){3,}$|(?:-\s*){3,}$|(?:_\s*){3,}$|<)/.test(line.trimEnd());
+}
+
 function markdownBlockquotes(text: string): string[] {
   const lines = text.match(/[^\n]*(?:\n|$)/g)?.filter((line) => line.length > 0) ?? [];
   const blocks: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
     if (!/^[ \t]{0,3}>/.test(lines[index])) continue;
     let end = index;
-    while (end + 1 < lines.length && !/^[ \t]*(?:\n|$)/.test(lines[end + 1])) end += 1;
+    while (end + 1 < lines.length) {
+      const next = lines[end + 1];
+      if (/^[ \t]*(?:\n|$)/.test(next)) break;
+      if (!/^[ \t]{0,3}>/.test(next) && startsInterruptingMarkdownBlock(next)) break;
+      end += 1;
+    }
     blocks.push(lines.slice(index, end + 1).join(""));
     index = end;
   }
@@ -338,7 +347,7 @@ function protectedValues(text: string): Map<string, { category: string; count: n
     ["inline-code", /(`+)(?!`)[\s\S]*?\1(?!`)/g],
     ["url", /https?:\/\/[^\s)>]+/g],
     ["number", /\bv\d+(?:\.\d+)+\b|(?<![\w.])[+-]?\d+(?:[.,]\d+)*(?:%|[A-Za-z]+\b|\b)/g],
-    ["normative", /\b(?:MUST|SHOULD|MAY)(?: NOT)?\b|(?:해서는 안 된다|해야 한다|할 수 있다)/gi],
+    ["normative", /\b(?:MUST|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는 안 된다|해야 한다|할 수 있다)/gi],
     ["quotation", /“[^”]+”|"[^"]+"/g],
   ];
   const values = new Map<string, { category: string; count: number }>();
