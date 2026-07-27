@@ -768,4 +768,23 @@ describe("rewrite preservation gate", () => {
     expect(extractProse(before)).not.toContain("traceknot verify");
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
   });
+
+  test("recognizes hyphenated Setext heading underlines", () => {
+    const before = "Example\n-\n    traceknot verify";
+    const after = "Example\n-\n    traceknot delete";
+    expect(extractProse(before)).not.toContain("traceknot verify");
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
+  });
+
+  test("disables lazy quoting after indented code blocks", () => {
+    const before = ">     traceknot verify\nOrdinary publication prose.";
+    const after = ">     traceknot verify\nNatural publication prose.";
+    expect(extractProse(before)).toContain("Ordinary publication prose.");
+    expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "quotation")).toBe(false);
+  });
+
+  test("preserves spelled-out measurement units", () => {
+    const report = verifyPreservation("The timeout is 5 minutes.", "The timeout is 5 hours.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
 });
