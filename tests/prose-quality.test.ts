@@ -1296,4 +1296,15 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation("오 회 재시도를 허용합니다.", "육 회 재시도를 허용합니다.").failures)
       .toContainEqual(expect.objectContaining({ category: "number" }));
   });
+
+  test("protects object data destinations", () => {
+    expect(verifyPreservation("<object data=docs/stable.pdf></object>", "<object data=docs/beta.pdf></object>").failures)
+      .toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
+
+  test("binds future passive assignments to endpoints", () => {
+    const before = "Port 80 will be assigned to frontend, while port 443 will be assigned to backend";
+    const after = "Port 80 will be assigned to backend, while port 443 will be assigned to frontend";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
 });
