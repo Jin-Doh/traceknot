@@ -966,4 +966,16 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation("Throughput is 10 Gbps–20 Gbps.", "Throughput is 10 Gbps/20 Gbps.").failures)
       .toContainEqual(expect.objectContaining({ category: "number" }));
   });
+
+  test("binds magnitude words to protected numbers", () => {
+    expect(verifyPreservation("Budget is $5 million.", "Budget is $5 billion.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("tracks list context across intervening paragraphs", () => {
+    const before = "- Example\n\n  Here is the command:\n\n    ```sh\n    traceknot verify";
+    const after = "- Example\n\n  Here is the command:\n\n    ```sh\n    traceknot delete";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
+    expect(extractProse(before)).not.toContain("traceknot verify");
+  });
 });
