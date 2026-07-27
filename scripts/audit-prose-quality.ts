@@ -107,11 +107,11 @@ function maskContentPreservingLines(value: string): string {
 
 export function extractProse(markdown: string): string {
   let prose = markdown.replace(/^---\n[\s\S]*?\n---\n/, maskContentPreservingLines);
-  prose = prose.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$/gm, maskContentPreservingLines);
+  prose = prose.replace(/^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]{0,3}\1[ \t]*$/gm, maskContentPreservingLines);
   prose = prose.replace(/(?:^(?: {4}|\t).*(?:\n|$))+/gm, maskContentPreservingLines);
   prose = prose.replace(/^>.*$/gm, maskContentPreservingLines);
   prose = prose.replace(/“[^”]+”|"[^"]+"/g, maskContentPreservingLines);
-  prose = prose.replace(/`[^`\n]+`/g, "");
+  prose = prose.replace(/(`+)(?!`)[\s\S]*?\1(?!`)/g, maskContentPreservingLines);
   prose = prose.replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1");
   prose = prose.replace(/<https?:\/\/[^>]+>|https?:\/\/\S+/g, "");
   prose = prose.replace(/^\s*[-*+]\s*$/gm, "");
@@ -227,34 +227,35 @@ export function scanRepository(root: string, config: Config = DEFAULT_CONFIG): P
   };
 }
 
-function ngramCounts(tokens: string[], width: 1 | 2): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (let index = 0; index <= tokens.length - width; index += 1) {
-    const token = width === 1 ? tokens[index] : `${tokens[index]}\u0000${tokens[index + 1]}`;
-    counts.set(token, (counts.get(token) ?? 0) + 1);
+function sequenceEditDistance(left: string[], right: string[]): number {
+  const maximum = left.length + right.length;
+  if (maximum === 0) return 0;
+  const offset = maximum;
+  const frontier = new Int32Array((2 * maximum) + 1);
+  for (let distance = 0; distance <= maximum; distance += 1) {
+    for (let diagonal = -distance; diagonal <= distance; diagonal += 2) {
+      const index = offset + diagonal;
+      let horizontal: number;
+      if (diagonal === -distance || (diagonal !== distance && frontier[index - 1] < frontier[index + 1])) horizontal = frontier[index + 1];
+      else horizontal = frontier[index - 1] + 1;
+      let vertical = horizontal - diagonal;
+      while (horizontal < left.length && vertical < right.length && left[horizontal] === right[vertical]) {
+        horizontal += 1;
+        vertical += 1;
+      }
+      frontier[index] = horizontal;
+      if (horizontal >= left.length && vertical >= right.length) return distance;
+    }
   }
-  return counts;
-}
-
-function multisetDiceDistance(left: Map<string, number>, right: Map<string, number>): number {
-  let common = 0;
-  let leftTotal = 0;
-  let rightTotal = 0;
-  for (const count of left.values()) leftTotal += count;
-  for (const [token, count] of right) {
-    rightTotal += count;
-    common += Math.min(count, left.get(token) ?? 0);
-  }
-  const combinedTotal = leftTotal + rightTotal;
-  return combinedTotal === 0 ? 0 : 1 - (2 * common) / combinedTotal;
+  return maximum;
 }
 
 function tokenChangeRate(before: string, after: string): number {
   const leftTokens = before.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [];
   const rightTokens = after.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [];
-  const unigramDistance = multisetDiceDistance(ngramCounts(leftTokens, 1), ngramCounts(rightTokens, 1));
-  const bigramDistance = multisetDiceDistance(ngramCounts(leftTokens, 2), ngramCounts(rightTokens, 2));
-  return Math.round(Math.max(unigramDistance, bigramDistance) * 1_000_000) / 1_000_000;
+  const combinedTotal = leftTokens.length + rightTokens.length;
+  const distance = sequenceEditDistance(leftTokens, rightTokens);
+  return combinedTotal === 0 ? 0 : Math.round((distance / combinedTotal) * 1_000_000) / 1_000_000;
 }
 
 function markdownLinkDestinations(text: string): string[] {
@@ -294,10 +295,10 @@ function markdownLinkDestinations(text: string): string[] {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["code-block", /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$|(?:^(?: {4}|\t).*(?:\n|$))+/gm],
-    ["inline-code", /`[^`\n]+`/g],
+    ["code-block", /^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]{0,3}\1[ \t]*$|(?:^(?: {4}|\t).*(?:\n|$))+/gm],
+    ["inline-code", /(`+)(?!`)[\s\S]*?\1(?!`)/g],
     ["url", /https?:\/\/[^\s)>]+/g],
-    ["number", /\b\d+(?:[.,]\d+)*%|\b\d+(?:[.,]\d+)*(?:[A-Za-z]+)?\b/g],
+    ["number", /\bv\d+(?:\.\d+)+\b|\b\d+(?:[.,]\d+)*%|\b\d+(?:[.,]\d+)*(?:[A-Za-z]+)?\b/g],
     ["normative", /\b(?:MUST|SHOULD|MAY|must|should|may)\b|(?:해서는 안 된다|해야 한다|할 수 있다)/g],
     ["quotation", /^>.*(?:\n>.*)*/gm],
     ["quotation", /“[^”]+”|"[^"]+"/g],

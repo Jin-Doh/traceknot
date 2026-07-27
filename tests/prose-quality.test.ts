@@ -141,7 +141,7 @@ describe("rewrite preservation gate", () => {
   const original = "Install version 1.3.14 from [the guide](https://example.com/guide). You MUST run `traceknot --dry-run`.\n```sh\ntraceknot verify\n```";
 
   test("passes a local rewrite that preserves protected content", () => {
-    const rewritten = "Use [the guide](https://example.com/guide) to install version 1.3.14. You MUST run `traceknot --dry-run`.\n```sh\ntraceknot verify\n```";
+    const rewritten = "Install version 1.3.14 using [the guide](https://example.com/guide). You MUST run `traceknot --dry-run`.\n```sh\ntraceknot verify\n```";
     const report = verifyPreservation(original, rewritten);
     expect(report.status).toBe("PASS");
     expect(report.protectedPreserved).toBe(report.protectedTotal);
@@ -224,5 +224,36 @@ describe("rewrite preservation gate", () => {
     const report = verifyPreservation(before, after);
     expect(report.status).toBe("FAIL");
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
+
+  test("counts reordered long blocks with a full sequence comparison", () => {
+    const blocks = ["alpha", "beta", "gamma", "delta"].map((prefix) =>
+      Array.from({ length: 25 }, (_, index) => `${prefix}${index}`).join(" "),
+    );
+    const before = blocks.join("\n\n");
+    const after = [blocks[2], blocks[3], blocks[0], blocks[1]].join("\n\n");
+    expect(verifyPreservation(before, after, 0.3, 0.5).status).toBe("FAIL");
+  });
+
+  test("preserves prefixed semantic versions as whole values", () => {
+    const report = verifyPreservation("The supported release is v1.2.3 for this deployment.", "The supported release is v2.2.3 for this deployment.");
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("preserves multi-backtick inline code spans", () => {
+    const before = "Use ``printf `one` now`` safely in this workflow.";
+    const after = "Use ``printf `two` now`` safely in this workflow.";
+    const report = verifyPreservation(before, after);
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "inline-code" }));
+  });
+
+  test("protects fenced code indented up to three spaces", () => {
+    const before = ["   ```sh", "traceknot verify", "   ```"].join("\n");
+    const after = ["   ```sh", "traceknot delete", "   ```"].join("\n");
+    const report = verifyPreservation(before, after);
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
   });
 });
