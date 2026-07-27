@@ -155,6 +155,16 @@ function markdownInlineCodeSpans(text: string): string[] {
   return spans;
 }
 
+function visualColumns(value: string): number {
+  let columns = 0;
+  for (const character of value) columns = character === "\t" ? columns + (4 - (columns % 4)) : columns + 1;
+  return columns;
+}
+
+function indentationColumns(value: string): number {
+  return visualColumns(value.match(/^[ \t]*/)?.[0] ?? "");
+}
+
 function markdownIndentedCodeBlocks(text: string): string[] {
   const lines = text.match(/[^\n]*(?:\n|$)/g)?.filter((line) => line.length > 0) ?? [];
   const blocks: string[] = [];
@@ -168,14 +178,13 @@ function markdownIndentedCodeBlocks(text: string): string[] {
     }
     const listMarker = line.match(/^( {0,3})([-+*]|\d+[.)])([ \t]+)/);
     if (listMarker) {
-      listCodeIndent = listMarker[1].length + listMarker[2].length + listMarker[3].length + 4;
+      listCodeIndent = visualColumns(`${listMarker[1]}${listMarker[2]}${listMarker[3]}`) + 4;
       previousBlank = false;
       continue;
     }
     if (/^\S/.test(line)) listCodeIndent = null;
-    const spaces = line.match(/^ */)?.[0].length ?? 0;
     const requiredIndent = listCodeIndent ?? 4;
-    const codeIndent = previousBlank && (line.startsWith("\t") || spaces >= requiredIndent);
+    const codeIndent = previousBlank && indentationColumns(line) >= requiredIndent;
     if (!codeIndent) {
       previousBlank = false;
       continue;
@@ -187,8 +196,7 @@ function markdownIndentedCodeBlocks(text: string): string[] {
         end += 1;
         continue;
       }
-      const nextSpaces = next.match(/^ */)?.[0].length ?? 0;
-      if (!next.startsWith("\t") && nextSpaces < requiredIndent) break;
+      if (indentationColumns(next) < requiredIndent) break;
       end += 1;
     }
     blocks.push(lines.slice(index, end + 1).join(""));
@@ -248,7 +256,7 @@ export function extractProse(markdown: string): string {
   prose = prose.replace(/“[^”]+”|"[^"]+"/g, maskContentPreservingLines);
   for (const span of markdownInlineCodeSpans(prose)) prose = prose.replace(span, maskContentPreservingLines);
   prose = prose.replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1");
-  prose = prose.replace(/<https?:\/\/[^>]+>|https?:\/\/\S+/g, "");
+  prose = prose.replace(/<(?:(?:[A-Za-z][A-Za-z0-9+.-]*:[^>\s]+)|(?:[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}))>|https?:\/\/\S+/g, "");
   prose = prose.replace(/^\s*[-*+]\s*$/gm, "");
   return prose;
 }
@@ -443,9 +451,9 @@ function markdownLinkDestinations(text: string): string[] {
 
 function standaloneUrls(text: string): string[] {
   const urls: string[] = [];
-  const withoutAutolinks = text.replace(/<((?:https?):\/\/[^>\s]+)>/g, (_match, url: string) => {
-    urls.push(url);
-    return " ".repeat(url.length + 2);
+  const withoutAutolinks = text.replace(/<((?:[A-Za-z][A-Za-z0-9+.-]*:[^>\s]+)|(?:[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}))>/g, (_match, destination: string) => {
+    urls.push(destination);
+    return " ".repeat(destination.length + 2);
   });
   for (const match of withoutAutolinks.matchAll(/https?:\/\/[^\s<>"']+/g)) {
     let value = match[0];
@@ -463,7 +471,7 @@ function standaloneUrls(text: string): string[] {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["number", /\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])[$€£¥₩]?[+-]?\d+(?:[.,]\d+)*(?:\s+(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
+    ["number", /\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])[$€£¥₩]?[+-]?\d+(?:[.,]\d+)*(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
     ["normative", /\b(?:MUST|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+된다|해야\s+한다|할\s+수\s+있다)/gi],
     ["quotation", /“[^”]+”|"[^"]+"/g],
   ];

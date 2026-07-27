@@ -489,4 +489,24 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("FAIL");
     expect(report.tokenChangeRate).toBe(0.5);
   });
+
+  test("preserves email and non-HTTP URI autolinks", () => {
+    const email = verifyPreservation("Contact <support@example.com> for help.", "Contact <sales@example.com> for help.");
+    const mailto = verifyPreservation("Contact <mailto:support@example.com> for help.", "Contact <mailto:sales@example.com> for help.");
+    expect(email.failures).toContainEqual(expect.objectContaining({ category: "url" }));
+    expect(mailto.failures).toContainEqual(expect.objectContaining({ category: "url" }));
+  });
+
+  test("preserves whitespace-separated Korean counters", () => {
+    const report = verifyPreservation("참석자는 5 개 좌석을 사용한다.", "참석자는 5 명 좌석을 사용한다.");
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("expands tabs before classifying ordered-list code", () => {
+    const before = "10. Item\n\n\tTabbed continuation remains prose.";
+    const after = "10. Item\n\n\tNatural continuation remains prose.";
+    expect(extractProse(before)).toContain("Tabbed continuation remains prose.");
+    expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "code-block")).toBe(false);
+  });
 });
