@@ -1142,4 +1142,27 @@ describe("rewrite preservation gate", () => {
     expect(extractProse(markdown)).not.toContain("traceknot verify");
     expect(extractProse(markdown)).toContain("Visible publication prose.");
   });
+
+  test("binds numeric facts to their local subjects", () => {
+    const before = "HTTP listens on port 80. HTTPS listens on port 443.";
+    const after = "HTTPS listens on port 80. HTTP listens on port 443.";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
+
+  test("routes substantial minority-language prose through mixed rules", () => {
+    const korean = "한국어게시문서내용".repeat(22);
+    const english = "In today's rapidly evolving landscape, this underscores the importance. ".repeat(2);
+    expect((korean.match(/[가-힣]/g) ?? []).length).toBeGreaterThan(150);
+    expect((english.match(/[A-Za-z]/g) ?? []).length).toBeGreaterThan(85);
+    expect(detectLocale(`${korean}\n${english}`)).toBe("mixed");
+    expect(analyzeProse(`${korean}\n${english}`).findings.some((finding) => finding.ruleId === "EN-D-001")).toBe(true);
+  });
+
+  test("prints preservation failures in text reports", () => {
+    const preservation = verifyPreservation("Deploy v1.2.3.", "Deploy v2.0.0.");
+    const output = formatTextReport(createPreservationQualityReport(preservation, "blocking"));
+    expect(output).toContain("preservation token-change-rate");
+    expect(output).toContain("preservation number");
+    expect(output).toContain("expected 1 actual 0");
+  });
 });

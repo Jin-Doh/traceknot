@@ -383,9 +383,9 @@ export function detectLocale(text: string): Locale {
   const english = (text.match(/[A-Za-z]/g) ?? []).length;
   const total = korean + english;
   if (total === 0) return "unknown";
+  if (korean >= 20 && english >= 20) return "mixed";
   if (korean / total >= 0.6) return "ko";
   if (english / total >= 0.8) return "en";
-  if (korean >= 20 && english >= 20) return "mixed";
   return korean > english ? "ko" : "en";
 }
 
@@ -671,6 +671,7 @@ function normalizeNumericValue(value: string): string {
   const compact = value
     .replace(/\s+/g, " ")
     .replace(/^([<>]=?|[≤≥=≠])\s*/, "$1")
+
     .replace(/\s*([-–—/:])\s*/g, "$1")
     .replace(/\s*([<>]=?|[≤≥=≠])$/, " $1");
   return compact.replace(
@@ -678,6 +679,7 @@ function normalizeNumericValue(value: string): string {
     "$1 $2",
   );
 }
+
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
@@ -800,6 +802,7 @@ function claimLabel(text: string, index: number, valueLength: number): string {
   const rightLabels = claimLabels(rightClause);
   const left = leftLabels.at(-1);
   const right = rightLabels[0];
+  if (!left && !right) return (leftClause.match(/\b[A-Z][A-Z0-9_-]{1,}\b/g)?.at(-1) ?? "").toLowerCase();
   if (!left) return right?.label ?? "";
   if (!right) return left.label;
   const leftDistance = leftClause.length - left.end;
@@ -926,6 +929,10 @@ export function formatTextReport(report: ProseQualityReport): string {
   const lines = [`Prose quality: ${report.status}; ${report.summary.checked} checked, ${report.summary.passed} passed, ${report.summary.warned} warned, ${report.summary.failed} failed, ${report.summary.skipped} skipped.`];
   for (const file of report.files) {
     for (const finding of file.findings) lines.push(`${file.path}:${finding.line} ${finding.severity} ${finding.ruleId} ${finding.description} (${finding.count})`);
+  }
+  if (report.preservation) {
+    lines.push(`preservation token-change-rate ${report.preservation.tokenChangeRate}; ${report.preservation.protectedPreserved}/${report.preservation.protectedTotal} protected values preserved`);
+    for (const failure of report.preservation.failures) lines.push(`preservation ${failure.category} ${failure.valueHash} expected ${failure.expectedCount} actual ${failure.actualCount}`);
   }
   return lines.join("\n");
 }
