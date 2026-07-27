@@ -756,4 +756,16 @@ describe("rewrite preservation gate", () => {
     expect(extractProse(before)).toContain("Ordinary publication prose.");
     expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "quotation")).toBe(false);
   });
+
+  test("matches complete dates before generic numeric pairs", () => {
+    const report = verifyPreservation("Published on 2026-07-27.", "Published on 2026-07/27.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("recognizes indented code after Setext headings", () => {
+    const before = "Example\n=======\n    traceknot verify";
+    const after = "Example\n=======\n    traceknot delete";
+    expect(extractProse(before)).not.toContain("traceknot verify");
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
+  });
 });

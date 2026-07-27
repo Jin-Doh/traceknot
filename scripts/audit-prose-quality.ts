@@ -197,7 +197,7 @@ function indentationColumns(value: string): number {
 
 function endsParagraphBeforeIndentedCode(line: string): boolean {
   const trimmed = line.trimEnd();
-  return /^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|(?:\*\s*){3,}$|(?:-\s*){3,}$|(?:_\s*){3,}$)/.test(trimmed)
+  return /^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|=+\s*$|(?:\*\s*){3,}$|(?:-\s*){3,}$|(?:_\s*){3,}$)/.test(trimmed)
     || startsHtmlBlock(trimmed);
 }
 
@@ -558,7 +558,7 @@ function normalizeNumericValue(value: string): string {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["number", /(?<![\w.])(?:\d+(?:\.\d+)?(?:[eE][+−-]?\d+)?\s*[-–—/:]\s*\d+(?:\.\d+)?(?:[eE][+−-]?\d+)?)\b|\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])(?:(?:[<>]=?|[≤≥=≠])\s*)?(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
+    ["number", /\b\d{4}-\d{2}-\d{2}\b|(?<![\w.])(?:\d+(?:\.\d+)?(?:[eE][+−-]?\d+)?\s*[-–—/:]\s*\d+(?:\.\d+)?(?:[eE][+−-]?\d+)?)\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])(?:(?:[<>]=?|[≤≥=≠])\s*)?(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
     ["normative", /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+(?:된다|됩니다)|해야\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))/gi],
   ];
   const values = new Map<string, { category: string; count: number }>();
