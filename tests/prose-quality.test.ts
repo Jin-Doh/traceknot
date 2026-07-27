@@ -794,4 +794,15 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation("The range is 1,000–2,000.", "The ratio is 1,000/2,000.").failures)
       .toContainEqual(expect.objectContaining({ category: "number" }));
   });
+
+  test("parses angle-bracket link destinations as a unit", () => {
+    const before = "[guide](<docs/old)path>)";
+    const after = "[guide](<docs/old)new>)";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
+
+  test("recognizes uncontracted Korean obligations", () => {
+    const report = verifyPreservation("서비스는 기록을 보존하여야 한다.", "서비스는 기록을 보존할 수 있다.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+  });
 });
