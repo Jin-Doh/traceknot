@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { analyzeProse, detectLocale, extractProse, loadConfig, scanRepository, verifyPreservation, type Config } from "../scripts/audit-prose-quality";
@@ -103,6 +103,30 @@ describe("published prose extraction and locale selection", () => {
     };
     expect(scanRepository(root, base).summary.checked).toBe(2);
     expect(scanRepository(root, { ...base, include: ["docs/**/*.md"] }).summary.checked).toBe(1);
+  });
+
+  test("skips directory symlinks without following cycles", () => {
+    const root = mkdtempSync(join(tmpdir(), "traceknot-prose-symlink-"));
+    writeFileSync(join(root, "README.md"), "English publication prose remains available while a directory cycle is ignored.");
+    symlinkSync(root, join(root, "loop"), "dir");
+    const config: Config = {
+      schemaVersion: "prose-quality-config/v1",
+      enabled: true,
+      mode: "advisory",
+      locales: ["en"],
+      include: ["**/*.md"],
+      exclude: [],
+      minimumProseCharacters: 1,
+      maxChangeRate: 0.3,
+      rejectChangeRate: 0.5,
+    };
+    expect(scanRepository(root, config).summary.checked).toBe(1);
+  });
+
+  test("excludes blockquotes indented up to three spaces", () => {
+    const prose = extractProse("   > In today's rapidly evolving landscape, this underscores the importance of quoted words.\n\nOrdinary prose.");
+    expect(prose).not.toContain("rapidly evolving landscape");
+    expect(prose).toContain("Ordinary prose.");
   });
 });
 
@@ -255,5 +279,19 @@ describe("rewrite preservation gate", () => {
     const report = verifyPreservation(before, after);
     expect(report.status).toBe("FAIL");
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
+  });
+
+  test("preserves signs as part of numeric values", () => {
+    const report = verifyPreservation("The measured change is -5 across this stable sample.", "The measured change is 5 across this stable sample.");
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("preserves reference-style link destinations", () => {
+    const before = "Read the [guide][setup] before publishing.\n\n[setup]: docs/start.md";
+    const after = "Read the [guide][setup] before publishing.\n\n[setup]: docs/quick.md";
+    const report = verifyPreservation(before, after);
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "link-destination" }));
   });
 });

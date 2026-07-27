@@ -1,6 +1,6 @@
 import Ajv2020 from "ajv/dist/2020.js";
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
 
 export type Locale = "ko" | "en" | "mixed" | "unknown";
@@ -109,7 +109,7 @@ export function extractProse(markdown: string): string {
   let prose = markdown.replace(/^---\n[\s\S]*?\n---\n/, maskContentPreservingLines);
   prose = prose.replace(/^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]{0,3}\1[ \t]*$/gm, maskContentPreservingLines);
   prose = prose.replace(/(?:^(?: {4}|\t).*(?:\n|$))+/gm, maskContentPreservingLines);
-  prose = prose.replace(/^>.*$/gm, maskContentPreservingLines);
+  prose = prose.replace(/^[ \t]{0,3}>.*$/gm, maskContentPreservingLines);
   prose = prose.replace(/“[^”]+”|"[^"]+"/g, maskContentPreservingLines);
   prose = prose.replace(/(`+)(?!`)[\s\S]*?\1(?!`)/g, maskContentPreservingLines);
   prose = prose.replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1");
@@ -176,7 +176,8 @@ function collectMarkdown(root: string): string[] {
     for (const entry of readdirSync(directory)) {
       if (entry === ".git" || entry === "node_modules" || entry === ".sisyphus") continue;
       const path = resolve(directory, entry);
-      const stat = statSync(path);
+      const stat = lstatSync(path);
+      if (stat.isSymbolicLink()) continue;
       if (stat.isDirectory()) visit(path);
       else if (extname(entry) === ".md") files.push(path);
     }
@@ -290,6 +291,9 @@ function markdownLinkDestinations(text: string): string[] {
     }
     if (!closed) cursor = start + 2;
   }
+  for (const match of text.matchAll(/^[ \t]{0,3}\[[^\]]+\]:[ \t]*(?:<([^>\n]+)>|(\S+))/gm)) {
+    destinations.push(match[1] ?? match[2] ?? "");
+  }
   return destinations;
 }
 
@@ -298,9 +302,9 @@ function protectedValues(text: string): Map<string, { category: string; count: n
     ["code-block", /^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]{0,3}\1[ \t]*$|(?:^(?: {4}|\t).*(?:\n|$))+/gm],
     ["inline-code", /(`+)(?!`)[\s\S]*?\1(?!`)/g],
     ["url", /https?:\/\/[^\s)>]+/g],
-    ["number", /\bv\d+(?:\.\d+)+\b|\b\d+(?:[.,]\d+)*%|\b\d+(?:[.,]\d+)*(?:[A-Za-z]+)?\b/g],
+    ["number", /\bv\d+(?:\.\d+)+\b|(?<![\w.])[+-]?\d+(?:[.,]\d+)*(?:%|[A-Za-z]+\b|\b)/g],
     ["normative", /\b(?:MUST|SHOULD|MAY|must|should|may)\b|(?:해서는 안 된다|해야 한다|할 수 있다)/g],
-    ["quotation", /^>.*(?:\n>.*)*/gm],
+    ["quotation", /^[ \t]{0,3}>.*(?:\n[ \t]{0,3}>.*)*/gm],
     ["quotation", /“[^”]+”|"[^"]+"/g],
   ];
   const values = new Map<string, { category: string; count: number }>();
