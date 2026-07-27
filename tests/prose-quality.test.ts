@@ -1165,4 +1165,19 @@ describe("rewrite preservation gate", () => {
     expect(output).toContain("preservation number");
     expect(output).toContain("expected 1 actual 0");
   });
+
+  test("protects URL attributes beyond anchor hrefs", () => {
+    expect(verifyPreservation("<img src='images/stable.png'>", "<img src='images/beta.png'>").failures)
+      .toContainEqual(expect.objectContaining({ category: "link-destination" }));
+    expect(verifyPreservation("<img src=images/stable.png>", "<img src=images/beta.png>").failures)
+      .toContainEqual(expect.objectContaining({ category: "link-destination" }));
+    expect(verifyPreservation('<source srcset="small.png 1x, large.png 2x">', '<source srcset="small.png 1x, huge.png 2x">').failures)
+      .toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
+
+  test("binds lowercase subjects to numeric facts", () => {
+    const before = "frontend listens on port 80 while backend listens on port 443";
+    const after = "backend listens on port 80 while frontend listens on port 443";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
 });

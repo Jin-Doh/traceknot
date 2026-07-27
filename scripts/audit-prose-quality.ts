@@ -609,6 +609,12 @@ function markdownLinkDestinations(text: string): string[] {
     const destination = href[1] ?? href[2] ?? href[3] ?? "";
     destinations.push(`html:${label}=>${destination}`);
   }
+  for (const tag of text.matchAll(/<[A-Za-z][A-Za-z0-9:-]*(?:[^>"']|"[^"]*"|'[^']*')*>/g)) {
+    for (const attribute of tag[0].matchAll(/(?:^|\s)(href|src|srcset|action|poster)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi)) {
+      const value = attribute[2] ?? attribute[3] ?? attribute[4] ?? "";
+      destinations.push(`attr:${attribute[1].toLowerCase()}=>${value}`);
+    }
+  }
   const definitions = new Map<string, string>();
   for (const match of text.matchAll(/^[ \t]{0,3}\[((?:\\.|[^\\\[\]])+)\]:[ \t]*(?:\r?\n[ \t]+)?(?:<([^>\n]+)>|(\S+))/gm)) {
     definitions.set(match[1].trim().replace(/\s+/g, " ").toLowerCase(), match[2] ?? match[3] ?? "");
@@ -791,7 +797,7 @@ function lastClaimBoundary(text: string): number {
   return boundary;
 }
 
-function claimLabel(text: string, index: number, valueLength: number): string {
+function claimLabel(text: string, index: number, valueLength: number, bindSubject = false): string {
   const leftText = text.slice(0, index);
   const leftBoundary = lastClaimBoundary(leftText);
   const rightText = text.slice(index + valueLength);
@@ -802,7 +808,10 @@ function claimLabel(text: string, index: number, valueLength: number): string {
   const rightLabels = claimLabels(rightClause);
   const left = leftLabels.at(-1);
   const right = rightLabels[0];
-  if (!left && !right) return (leftClause.match(/\b[A-Z][A-Z0-9_-]{1,}\b/g)?.at(-1) ?? "").toLowerCase();
+  if (!left && !right && bindSubject) {
+    const localClause = leftClause.split(/\b(?:while|whereas|and|but)\b/i).at(-1) ?? leftClause;
+    return (localClause.match(/[\p{L}_][\p{L}\p{N}_-]*/u)?.[0] ?? "").toLowerCase();
+  }
   if (!left) return right?.label ?? "";
   if (!right) return left.label;
   const leftDistance = leftClause.length - left.end;
@@ -847,7 +856,7 @@ function protectedValueBindings(text: string, values: Map<string, { category: st
     for (let count = 0; count < item.count; count += 1) {
       const index = findProtectedOccurrence(searchText, value, category, cursor);
       if (index < 0) break;
-      occurrences.push({ index, binding: `${key}\u0002${claimLabel(searchText, index, value.length)}` });
+      occurrences.push({ index, binding: `${key}\u0002${claimLabel(searchText, index, value.length, category === "number")}` });
       cursor = index + Math.max(value.length, 1);
     }
   }
