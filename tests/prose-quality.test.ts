@@ -1219,4 +1219,32 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation("The system allows one hundred retries.", "The system allows two hundred retries.").failures)
       .toContainEqual(expect.objectContaining({ category: "number" }));
   });
+
+  test("skips articles when binding numeric subjects", () => {
+    const before = "The frontend listens on port 80 while the backend listens on port 443";
+    const after = "The backend listens on port 80 while the frontend listens on port 443";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
+
+  test("protects teen and tens quantities", () => {
+    expect(verifyPreservation("The system allows twenty retries.", "The system allows thirty retries.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(verifyPreservation("The system allows thirteen retries.", "The system allows nineteen retries.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("protects predicates through negated auxiliary chains", () => {
+    expect(verifyPreservation("Authentication will not be required.", "Authentication will not be optional.").failures)
+      .toContainEqual(expect.objectContaining({ category: "normative" }));
+    expect(verifyPreservation("Access has not been prohibited.", "Access has not been allowed.").failures)
+      .toContainEqual(expect.objectContaining({ category: "normative" }));
+  });
+
+  test("protects straight-single-quoted passages", () => {
+    const before = "'Original attributed wording remains here'";
+    const after = "'Changed attributed wording remains here'";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
+    expect(extractProse(before)).not.toContain("Original attributed");
+    expect(extractProse("It's ordinary publication prose.")).toContain("It's ordinary publication prose.");
+  });
 });
