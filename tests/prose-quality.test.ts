@@ -1118,4 +1118,16 @@ describe("rewrite preservation gate", () => {
     const after = "[beta](docs/stable.md) and [stable](docs/beta.md)";
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "link-destination" }));
   });
+
+  test("binds raw HTML anchor text to its href", () => {
+    const before = '<a href="docs/stable.md">stable</a> and <a href="docs/beta.md">beta</a>';
+    const after = '<a href="docs/stable.md">beta</a> and <a href="docs/beta.md">stable</a>';
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
+
+  test("binds declarative obligations to their clauses", () => {
+    const before = "Operators are required to retain records, while guests are optional participants.";
+    const after = "Guests are required to retain records, while operators are optional participants.";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+  });
 });

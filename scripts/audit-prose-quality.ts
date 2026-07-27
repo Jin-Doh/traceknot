@@ -601,6 +601,13 @@ function markdownLinkDestinations(text: string): string[] {
     const match = tag[0].match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i);
     if (match) destinations.push(match[1] ?? match[2] ?? match[3] ?? "");
   }
+  for (const match of text.matchAll(/(<a\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/a\s*>/gi)) {
+    const href = match[1].match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i);
+    if (!href) continue;
+    const label = match[2].replace(/<[^>]+>/g, " ").trim().replace(/\s+/g, " ").toLowerCase();
+    const destination = href[1] ?? href[2] ?? href[3] ?? "";
+    destinations.push(`html:${label}=>${destination}`);
+  }
   const definitions = new Map<string, string>();
   for (const match of text.matchAll(/^[ \t]{0,3}\[((?:\\.|[^\\\[\]])+)\]:[ \t]*(?:\r?\n[ \t]+)?(?:<([^>\n]+)>|(\S+))/gm)) {
     definitions.set(match[1].trim().replace(/\s+/g, " ").toLowerCase(), match[2] ?? match[3] ?? "");
@@ -648,12 +655,13 @@ function standaloneUrls(text: string): string[] {
 
 function normativeClauses(text: string): string[] {
   const clauses: string[] = [];
-  const pattern = /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b/gi;
+  const pattern = /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|\b(?:is|are|was|were)\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|(?:(?:(?:해서는|하여서는|하면|한다면)\s+안\s+(?:된다|됩니다))|(?:해야|하여야)\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))/gi;
   for (const match of text.matchAll(pattern)) {
     const left = Math.max(text.lastIndexOf(".", match.index), text.lastIndexOf(";", match.index), text.lastIndexOf(",", match.index)) + 1;
     const candidates = [text.indexOf(".", match.index), text.indexOf(";", match.index), text.indexOf(",", match.index)].filter((index) => index >= 0);
     const right = candidates.length > 0 ? Math.min(...candidates) : text.length;
-    clauses.push(text.slice(left, right).trim().replace(/\s+/g, " "));
+    const clause = text.slice(left, right).trim().replace(/\s+/g, " ");
+    if (!/^(?:(?:and|or)\s+)?(?:at\s+(?:least|most)|minimum|maximum|before|after)\b/i.test(clause)) clauses.push(clause);
   }
   return clauses;
 }
