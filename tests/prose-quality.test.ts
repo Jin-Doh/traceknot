@@ -567,4 +567,20 @@ describe("rewrite preservation gate", () => {
     const prose = extractProse("```invalid`info\nFormulaic publication prose follows.");
     expect(prose).toContain("Formulaic publication prose follows.");
   });
+
+  test("binds short numeric values at exact boundaries", () => {
+    const before = "The minimum release is 10, while the maximum release is 1.";
+    const after = "The minimum release is 10, while the minimum release is 1.";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
+
+  test("preserves signs before currency symbols", () => {
+    const report = verifyPreservation("The adjustment is -$5.", "The adjustment is +$5.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("ignores escaped Markdown closing brackets", () => {
+    const report = verifyPreservation("The notation [marker\\](old) is explained.", "The notation [marker\\](new) is explained.");
+    expect(report.failures.some((failure) => failure.category === "link-destination")).toBe(false);
+  });
 });

@@ -463,7 +463,7 @@ function markdownLinkDestinations(text: string): string[] {
   while (cursor < text.length) {
     const start = text.indexOf("](", cursor);
     if (start < 0) break;
-    if (!hasOpeningLinkBracket(text, start)) {
+    if (isEscaped(text, start) || !hasOpeningLinkBracket(text, start)) {
       cursor = start + 2;
       continue;
     }
@@ -521,7 +521,7 @@ function standaloneUrls(text: string): string[] {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["number", /\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])[$€£¥₩]?[+-]?\d+(?:[.,]\d+)*(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
+    ["number", /\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])(?:[+-]?[$€£¥₩]|[$€£¥₩][+-]?|[+-]?)\d+(?:[.,]\d+)*(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
     ["normative", /\b(?:MUST|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+된다|해야\s+한다|할\s+수\s+있다)/gi],
   ];
   const values = new Map<string, { category: string; count: number }>();
@@ -598,15 +598,31 @@ function claimLabel(text: string, index: number, valueLength: number): string {
     ?? "";
 }
 
+function findProtectedOccurrence(text: string, value: string, category: string, cursor: number): number {
+  let index = text.indexOf(value, cursor);
+  while (index >= 0 && category === "number") {
+    const before = text[index - 1] ?? "";
+    const after = text[index + value.length] ?? "";
+    const beforeInvalid = /[\p{N}_]/u.test(before)
+      || (before === "." && /[\p{N}]/u.test(text[index - 2] ?? ""));
+    const afterInvalid = /[\p{N}_]/u.test(after)
+      || (after === "." && /[\p{N}]/u.test(text[index + value.length + 1] ?? ""));
+    if (!beforeInvalid && !afterInvalid) break;
+    index = text.indexOf(value, index + 1);
+  }
+  return index;
+}
+
 function protectedValueBindings(text: string, values: Map<string, { category: string; count: number }>): string[] {
   const normalizedText = text.replace(/\s+/g, " ");
   const occurrences: Array<{ index: number; binding: string }> = [];
   for (const [key, item] of values) {
     const separator = key.indexOf("\u0000");
+    const category = key.slice(0, separator);
     const value = key.slice(separator + 1).replace(/\s+/g, " ");
     let cursor = 0;
     for (let count = 0; count < item.count; count += 1) {
-      const index = normalizedText.indexOf(value, cursor);
+      const index = findProtectedOccurrence(normalizedText, value, category, cursor);
       if (index < 0) break;
       occurrences.push({ index, binding: `${key}\u0002${claimLabel(normalizedText, index, value.length)}` });
       cursor = index + Math.max(value.length, 1);
