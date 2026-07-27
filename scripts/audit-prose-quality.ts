@@ -109,7 +109,7 @@ function markdownFencedBlocks(text: string): string[] {
   const lines = text.match(/[^\n]*(?:\n|$)/g)?.filter((line) => line.length > 0) ?? [];
   const blocks: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
-    const opening = lines[index].match(/^([ \t]*)(?:(?:[-+*]|\d+[.)])[ \t]+)?(`{3,}|~{3,})/);
+    const opening = lines[index].match(/^([ \t]*)(?:((?:[-+*]|\d+[.)])[ \t]+))?(`{3,}|~{3,})/);
     if (!opening) continue;
     const openingIndent = indentationColumns(opening[1]);
     if (openingIndent > 3) {
@@ -126,8 +126,9 @@ function markdownFencedBlocks(text: string): string[] {
       }
       if (!nestedUnderList) continue;
     }
-    const delimiter = opening[2];
-    const closingIndentLimit = openingIndent > 3 ? openingIndent + 3 : 3;
+    const delimiter = opening[3];
+    const containerIndent = opening[2] ? visualColumns(`${opening[1]}${opening[2]}`) : openingIndent;
+    const closingIndentLimit = containerIndent > 3 || opening[2] ? containerIndent + 3 : 3;
     const marker = delimiter[0];
     if (marker === "`" && lines[index].slice(opening[0].length).includes("`")) continue;
     let end = lines.length - 1;
@@ -598,11 +599,11 @@ function markdownLinkDestinations(text: string): string[] {
     destinations.push(match[1] ?? match[2] ?? "");
   }
   for (const tag of text.matchAll(/<a\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
-    const match = tag[0].match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i);
+    const match = tag[0].match(/(?:^|\s)href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i);
     if (match) destinations.push(match[1] ?? match[2] ?? match[3] ?? "");
   }
   for (const match of text.matchAll(/(<a\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/a\s*>/gi)) {
-    const href = match[1].match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i);
+    const href = match[1].match(/(?:^|\s)href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i);
     if (!href) continue;
     const label = match[2].replace(/<[^>]+>/g, " ").trim().replace(/\s+/g, " ").toLowerCase();
     const destination = href[1] ?? href[2] ?? href[3] ?? "";

@@ -1130,4 +1130,16 @@ describe("rewrite preservation gate", () => {
     const after = "Guests are required to retain records, while operators are optional participants.";
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "normative" }));
   });
+
+  test("matches only real href attributes", () => {
+    const before = '<a data-href="tracking" href="docs/stable.md">stable</a>';
+    const after = '<a data-href="tracking" href="docs/beta.md">stable</a>';
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
+
+  test("accounts for nested marker width when closing fences", () => {
+    const markdown = "  - ```sh\n    traceknot verify\n    ```\nVisible publication prose.";
+    expect(extractProse(markdown)).not.toContain("traceknot verify");
+    expect(extractProse(markdown)).toContain("Visible publication prose.");
+  });
 });
