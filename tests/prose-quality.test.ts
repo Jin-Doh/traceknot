@@ -680,4 +680,39 @@ describe("rewrite preservation gate", () => {
     expect(extractProse(before)).not.toContain("oldName");
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
   });
+
+  test("preserves numeric comparison operators", () => {
+    expect(verifyPreservation("Batch size must be < 5.", "Batch size must be > 5.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(verifyPreservation("Batch size must be <= 5.", "Batch size must be >= 5.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("preserves exponential numeric literals", () => {
+    const report = verifyPreservation("The capacity is 1e3 records.", "The capacity is 2e3 records.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("preserves SHALL as a normative term", () => {
+    const report = verifyPreservation("The service SHALL retain records.", "The service can retain records.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+  });
+
+  test("protects destinations after multiline inline-link labels", () => {
+    const before = "[deployment\nguide](docs/old.md)";
+    const after = "[deployment\nguide](docs/new.md)";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
+
+  test("tracks nested list indentation for code classification", () => {
+    const before = "- Outer\n    - Nested\n\n        Nested prose remains visible.";
+    const after = "- Outer\n    - Nested\n\n        Natural nested prose remains visible.";
+    expect(extractProse(before)).toContain("Nested prose remains visible.");
+    expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "code-block")).toBe(false);
+  });
+
+  test("normalizes optional spacing before measurement units", () => {
+    const report = verifyPreservation("The package weighs 5kg.", "The package weighs 5 kg.");
+    expect(report.failures.some((failure) => failure.category === "number" || failure.category === "protected-context")).toBe(false);
+  });
 });

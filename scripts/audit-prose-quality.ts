@@ -206,7 +206,7 @@ function markdownIndentedCodeBlocks(text: string): string[] {
       previousBlank = true;
       continue;
     }
-    const listMarker = line.match(/^( {0,3})([-+*]|\d+[.)])([ \t]+)/);
+    const listMarker = line.match(/^([ \t]*)([-+*]|\d+[.)])([ \t]+)/);
     if (listMarker) {
       listCodeIndent = visualColumns(`${listMarker[1]}${listMarker[2]}${listMarker[3]}`) + 4;
       previousBlank = false;
@@ -457,7 +457,13 @@ function tokenChangeRate(before: string, after: string, rejectionThreshold: numb
 
 function hasOpeningLinkBracket(text: string, closingIndex: number): boolean {
   let nested = 0;
-  for (let index = closingIndex - 1; index >= 0 && text[index] !== "\n"; index -= 1) {
+  let lineBreaks = 0;
+  for (let index = closingIndex - 1; index >= 0; index -= 1) {
+    if (text[index] === "\n") {
+      lineBreaks += 1;
+      if (lineBreaks > 1) return false;
+      continue;
+    }
     if (isEscaped(text, index)) continue;
     if (text[index] === "]") nested += 1;
     else if (text[index] === "[") {
@@ -530,15 +536,23 @@ function standaloneUrls(text: string): string[] {
   return urls;
 }
 
+function normalizeNumericValue(value: string): string {
+  const compact = value.replace(/\s+/g, " ").replace(/^([<>]=?|[≤≥])\s*/, "$1");
+  return compact.replace(
+    /(\d)\s*(°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)$/i,
+    "$1 $2",
+  );
+}
+
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["number", /\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
-    ["normative", /\b(?:MUST|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+(?:된다|됩니다)|해야\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))/gi],
+    ["number", /\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])(?:(?:[<>]=?|[≤≥])\s*)?(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
+    ["normative", /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+(?:된다|됩니다)|해야\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))/gi],
   ];
   const values = new Map<string, { category: string; count: number }>();
   for (const [category, pattern] of categories) {
     for (const match of text.matchAll(pattern)) {
-      const value = category === "normative" || category === "number" ? match[0].replace(/\s+/g, " ") : match[0];
+      const value = category === "number" ? normalizeNumericValue(match[0]) : category === "normative" ? match[0].replace(/\s+/g, " ") : match[0];
       const key = `${category}\u0000${value}`;
       const current = values.get(key);
       values.set(key, { category, count: (current?.count ?? 0) + 1 });
@@ -651,18 +665,28 @@ function findProtectedOccurrence(text: string, value: string, category: string, 
   return index;
 }
 
+function normalizeNumericText(text: string): string {
+  return text
+    .replace(/([<>]=?|[≤≥])\s+(?=[+−±$€£¥₩-]?\d)/g, "$1")
+    .replace(
+      /(\d)\s*(?=°[CFK]|kg\b|g\b|mg\b|lb\b|oz\b|km\b|m\b|cm\b|mm\b|mi\b|ft\b|in\b|ms\b|s\b|h\b|USD\b|EUR\b|GBP\b|JPY\b|KRW\b|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)/gi,
+      "$1 ",
+    );
+}
+
 function protectedValueBindings(text: string, values: Map<string, { category: string; count: number }>): string[] {
   const normalizedText = text.replace(/\s+/g, " ");
   const occurrences: Array<{ index: number; binding: string }> = [];
   for (const [key, item] of values) {
     const separator = key.indexOf("\u0000");
     const category = key.slice(0, separator);
+    const searchText = category === "number" ? normalizeNumericText(normalizedText) : normalizedText;
     const value = key.slice(separator + 1).replace(/\s+/g, " ");
     let cursor = 0;
     for (let count = 0; count < item.count; count += 1) {
-      const index = findProtectedOccurrence(normalizedText, value, category, cursor);
+      const index = findProtectedOccurrence(searchText, value, category, cursor);
       if (index < 0) break;
-      occurrences.push({ index, binding: `${key}\u0002${claimLabel(normalizedText, index, value.length)}` });
+      occurrences.push({ index, binding: `${key}\u0002${claimLabel(searchText, index, value.length)}` });
       cursor = index + Math.max(value.length, 1);
     }
   }
