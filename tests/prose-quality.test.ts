@@ -805,4 +805,26 @@ describe("rewrite preservation gate", () => {
     const report = verifyPreservation("서비스는 기록을 보존하여야 한다.", "서비스는 기록을 보존할 수 있다.");
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
   });
+
+  test("recognizes uncontracted Korean prohibitions", () => {
+    const report = verifyPreservation("서비스는 기록을 공개하여서는 안 된다.", "서비스는 기록을 공개한다.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+  });
+
+  test("preserves separators between unit-bearing operands", () => {
+    const report = verifyPreservation("The accepted range is 10%–20%.", "The accepted ratio is 10%/20%.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("binds exactness qualifiers to numeric values", () => {
+    const report = verifyPreservation("The documented target is exactly 5 retries.", "The documented target is approximately 5 retries.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
+
+  test("treats nested blockquotes as non-paragraph blocks", () => {
+    const before = "> > Nested quotation.\nOrdinary publication prose.";
+    const after = "> > Nested quotation.\nNatural publication prose.";
+    expect(extractProse(before)).toContain("Ordinary publication prose.");
+    expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "quotation")).toBe(false);
+  });
 });
