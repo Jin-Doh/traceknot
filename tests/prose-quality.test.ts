@@ -1247,4 +1247,15 @@ describe("rewrite preservation gate", () => {
     expect(extractProse(before)).not.toContain("Original attributed");
     expect(extractProse("It's ordinary publication prose.")).toContain("It's ordinary publication prose.");
   });
+
+  test("binds passive numeric assignments to endpoints", () => {
+    const before = "Port 80 is assigned to frontend, while port 443 is assigned to backend";
+    const after = "Port 80 is assigned to backend, while port 443 is assigned to frontend";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
+
+  test("protects Korean quantities counted with 번", () => {
+    expect(verifyPreservation("다섯 번 재시도를 허용합니다.", "여섯 번 재시도를 허용합니다.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
 });
