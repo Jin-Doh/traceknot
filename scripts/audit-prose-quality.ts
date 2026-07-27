@@ -234,18 +234,26 @@ function startsInterruptingMarkdownBlock(line: string): boolean {
   return /^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|(?:[-+*]|\d+[.)])[ \t]+|`{3,}|~{3,}|(?:\*\s*){3,}$|(?:-\s*){3,}$|(?:_\s*){3,}$|<)/.test(line.trimEnd());
 }
 
+function blockquoteContent(line: string): string | null {
+  const match = line.match(/^([ \t]*)>[ \t]?/);
+  if (!match || indentationColumns(match[1]) > 3) return null;
+  return line.slice(match[0].length);
+}
+
 function markdownBlockquotes(text: string): string[] {
   const lines = text.match(/[^\n]*(?:\n|$)/g)?.filter((line) => line.length > 0) ?? [];
   const blocks: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
-    if (!/^[ \t]{0,3}>/.test(lines[index])) continue;
+    const openingContent = blockquoteContent(lines[index]);
+    if (openingContent === null) continue;
     let end = index;
-    let allowsLazyContinuation = !startsInterruptingMarkdownBlock(lines[index].replace(/^[ \t]{0,3}>[ \t]?/, ""));
+    let allowsLazyContinuation = !startsInterruptingMarkdownBlock(openingContent);
     while (end + 1 < lines.length) {
       const next = lines[end + 1];
       if (/^[ \t]*(?:\r?\n|$)/.test(next)) break;
-      if (/^[ \t]{0,3}>/.test(next)) {
-        allowsLazyContinuation = !startsInterruptingMarkdownBlock(next.replace(/^[ \t]{0,3}>[ \t]?/, ""));
+      const continuedContent = blockquoteContent(next);
+      if (continuedContent !== null) {
+        allowsLazyContinuation = !startsInterruptingMarkdownBlock(continuedContent);
         end += 1;
         continue;
       }
@@ -550,17 +558,17 @@ function protectedValues(text: string): Map<string, { category: string; count: n
   return values;
 }
 
-const CLAIM_CONTEXT_STOPWORDS = new Set([
-  "a", "an", "and", "as", "at", "be", "by", "for", "from", "in", "is", "of", "on", "or", "the", "to", "using", "while", "with",
+const CLAIM_LABELS = new Set([
+  "minimum", "maximum", "min", "max", "lower", "upper", "before", "after", "previous", "next", "start", "end", "initial", "final",
+  "increase", "decrease", "enabled", "disabled", "allowed", "forbidden", "required", "optional", "success", "failure",
+  "최소", "최대", "하한", "상한", "이전", "이후", "시작", "종료", "초기", "최종", "증가", "감소", "활성", "비활성", "허용", "금지", "필수", "선택", "성공", "실패",
 ]);
 
-function claimContext(text: string, index: number, valueLength: number): string {
-  const tokenPattern = /[\p{L}\p{N}_-]+/gu;
-  const contextTokens = (value: string): string[] =>
-    (value.match(tokenPattern) ?? []).filter((token) => !CLAIM_CONTEXT_STOPWORDS.has(token.toLowerCase()));
-  const before = contextTokens(text.slice(Math.max(0, index - 128), index)).slice(-4);
-  const after = contextTokens(text.slice(index + valueLength, index + valueLength + 128)).slice(0, 4);
-  return `${before.join(" ")}\u0002${after.join(" ")}`;
+function claimLabel(text: string, index: number, valueLength: number): string {
+  const tokens = (value: string): string[] => value.match(/[\p{L}\p{N}_-]+/gu)?.map((token) => token.toLowerCase()) ?? [];
+  const before = tokens(text.slice(Math.max(0, index - 96), index)).slice(-8).reverse().find((token) => CLAIM_LABELS.has(token));
+  if (before) return before;
+  return tokens(text.slice(index + valueLength, index + valueLength + 48)).slice(0, 3).find((token) => CLAIM_LABELS.has(token)) ?? "";
 }
 
 function protectedValueBindings(text: string, values: Map<string, { category: string; count: number }>): string[] {
@@ -573,7 +581,7 @@ function protectedValueBindings(text: string, values: Map<string, { category: st
     for (let count = 0; count < item.count; count += 1) {
       const index = normalizedText.indexOf(value, cursor);
       if (index < 0) break;
-      occurrences.push({ index, binding: `${key}\u0002${claimContext(normalizedText, index, value.length)}` });
+      occurrences.push({ index, binding: `${key}\u0002${claimLabel(normalizedText, index, value.length)}` });
       cursor = index + Math.max(value.length, 1);
     }
   }

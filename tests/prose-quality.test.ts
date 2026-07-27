@@ -539,4 +539,16 @@ describe("rewrite preservation gate", () => {
     const prose = extractProse("\t```not-a-fence\n\tcode\nFollowing publication prose.");
     expect(prose).toContain("Following publication prose.");
   });
+
+  test("allows non-label wording changes around protected values", () => {
+    const report = verifyPreservation("The supported version is 1.2.", "The compatible version is 1.2.");
+    expect(report.status).toBe("PASS");
+  });
+
+  test("does not parse tab-indented greater-than text as a blockquote", () => {
+    const before = "\t> command\nFollowing publication prose.";
+    const after = "\t> command\nNatural publication prose.";
+    expect(extractProse(before)).toContain("Following publication prose.");
+    expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "quotation")).toBe(false);
+  });
 });
