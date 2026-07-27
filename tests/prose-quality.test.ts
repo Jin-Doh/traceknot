@@ -904,4 +904,21 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
     expect(extractProse(before)).not.toContain("oldCode");
   });
+
+  test("preserves dotted meridiem markers", () => {
+    expect(verifyPreservation("Maintenance starts at 12:30 p.m.", "Maintenance starts at 12:30 a.m.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("preserves prereleases without a v prefix", () => {
+    expect(verifyPreservation("Deploy version 1.2.3-beta.1.", "Deploy version 1.2.3-rc.1.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("recognizes conditional Korean prohibitions", () => {
+    expect(verifyPreservation("서비스를 삭제하면 안 된다.", "서비스를 삭제해도 된다.").failures)
+      .toContainEqual(expect.objectContaining({ category: "normative" }));
+    expect(verifyPreservation("서비스를 삭제한다면 안 됩니다.", "서비스를 삭제해도 됩니다.").failures)
+      .toContainEqual(expect.objectContaining({ category: "normative" }));
+  });
 });
