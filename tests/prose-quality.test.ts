@@ -995,4 +995,33 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
     expect(extractProse(before)).not.toContain("traceknot verify");
   });
+
+  test("binds reference-use labels to destinations", () => {
+    const definitions = "\n\n[stable]: docs/stable.md\n[beta]: docs/beta.md";
+    expect(verifyPreservation(`[guide][stable]${definitions}`, `[guide][beta]${definitions}`).failures)
+      .toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
+
+  test("protects units on standalone storage and rate values", () => {
+    expect(verifyPreservation("Capacity is 5 MB.", "Capacity is 5 GB.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(verifyPreservation("Throughput is 5 Mbps.", "Throughput is 5 Gbps.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("binds prefix currency codes to numeric amounts", () => {
+    expect(verifyPreservation("Budget is USD 5 million.", "Budget is EUR 5 million.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("excludes HTML comments from prose analysis", () => {
+    const comment = "<!-- It is important to note that this underscores the importance of this. -->\nVisible publication prose.";
+    expect(extractProse(comment)).not.toContain("important");
+    expect(extractProse(comment)).toContain("Visible publication prose.");
+  });
+
+  test("binds weekday names to textual dates", () => {
+    expect(verifyPreservation("Release is Monday, July 27, 2026.", "Release is Tuesday, July 27, 2026.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
 });
