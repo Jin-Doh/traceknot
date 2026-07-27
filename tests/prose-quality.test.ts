@@ -294,4 +294,26 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("FAIL");
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "link-destination" }));
   });
+
+  test("preserves compound normative negation", () => {
+    const report = verifyPreservation("Operators MUST NOT delete this record during recovery.", "Operators MUST delete this record during recovery.");
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+  });
+
+  test("accepts closing fences longer than their opener", () => {
+    const before = ["~~~sh", "traceknot verify", "~~~~"].join("\n");
+    const after = ["~~~sh", "traceknot delete", "~~~~"].join("\n");
+    const report = verifyPreservation(before, after);
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
+  });
+
+  test("preserves lazy blockquote continuation lines", () => {
+    const before = "> Quoted opening\nlazy continuation remains quoted.\n\nCommentary.";
+    const after = "> Quoted opening\nchanged continuation remains quoted.\n\nCommentary.";
+    const report = verifyPreservation(before, after);
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
+  });
 });

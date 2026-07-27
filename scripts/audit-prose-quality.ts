@@ -105,11 +105,46 @@ function maskContentPreservingLines(value: string): string {
   return value.replace(/[^\n]/g, " ");
 }
 
+function markdownFencedBlocks(text: string): string[] {
+  const lines = text.match(/[^\n]*(?:\n|$)/g)?.filter((line) => line.length > 0) ?? [];
+  const blocks: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const opening = lines[index].match(/^[ \t]{0,3}(`{3,}|~{3,})/);
+    if (!opening) continue;
+    const delimiter = opening[1];
+    const marker = delimiter[0];
+    let end = lines.length - 1;
+    for (let candidate = index + 1; candidate < lines.length; candidate += 1) {
+      const closing = lines[candidate].match(/^[ \t]{0,3}(`+|~+)[ \t]*(?:\n|$)/);
+      if (closing && closing[1][0] === marker && closing[1].length >= delimiter.length) {
+        end = candidate;
+        break;
+      }
+    }
+    blocks.push(lines.slice(index, end + 1).join(""));
+    index = end;
+  }
+  return blocks;
+}
+
+function markdownBlockquotes(text: string): string[] {
+  const lines = text.match(/[^\n]*(?:\n|$)/g)?.filter((line) => line.length > 0) ?? [];
+  const blocks: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/^[ \t]{0,3}>/.test(lines[index])) continue;
+    let end = index;
+    while (end + 1 < lines.length && !/^[ \t]*(?:\n|$)/.test(lines[end + 1])) end += 1;
+    blocks.push(lines.slice(index, end + 1).join(""));
+    index = end;
+  }
+  return blocks;
+}
+
 export function extractProse(markdown: string): string {
   let prose = markdown.replace(/^---\n[\s\S]*?\n---\n/, maskContentPreservingLines);
-  prose = prose.replace(/^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]{0,3}\1[ \t]*$/gm, maskContentPreservingLines);
+  for (const block of markdownFencedBlocks(prose)) prose = prose.replace(block, maskContentPreservingLines);
   prose = prose.replace(/(?:^(?: {4}|\t).*(?:\n|$))+/gm, maskContentPreservingLines);
-  prose = prose.replace(/^[ \t]{0,3}>.*$/gm, maskContentPreservingLines);
+  for (const quote of markdownBlockquotes(prose)) prose = prose.replace(quote, maskContentPreservingLines);
   prose = prose.replace(/“[^”]+”|"[^"]+"/g, maskContentPreservingLines);
   prose = prose.replace(/(`+)(?!`)[\s\S]*?\1(?!`)/g, maskContentPreservingLines);
   prose = prose.replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1");
@@ -299,12 +334,11 @@ function markdownLinkDestinations(text: string): string[] {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["code-block", /^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]{0,3}\1[ \t]*$|(?:^(?: {4}|\t).*(?:\n|$))+/gm],
+    ["code-block", /(?:^(?: {4}|\t).*(?:\n|$))+/gm],
     ["inline-code", /(`+)(?!`)[\s\S]*?\1(?!`)/g],
     ["url", /https?:\/\/[^\s)>]+/g],
     ["number", /\bv\d+(?:\.\d+)+\b|(?<![\w.])[+-]?\d+(?:[.,]\d+)*(?:%|[A-Za-z]+\b|\b)/g],
-    ["normative", /\b(?:MUST|SHOULD|MAY|must|should|may)\b|(?:해서는 안 된다|해야 한다|할 수 있다)/g],
-    ["quotation", /^[ \t]{0,3}>.*(?:\n[ \t]{0,3}>.*)*/gm],
+    ["normative", /\b(?:MUST|SHOULD|MAY)(?: NOT)?\b|(?:해서는 안 된다|해야 한다|할 수 있다)/gi],
     ["quotation", /“[^”]+”|"[^"]+"/g],
   ];
   const values = new Map<string, { category: string; count: number }>();
@@ -320,6 +354,16 @@ function protectedValues(text: string): Map<string, { category: string; count: n
     const key = `link-destination\u0000${destination}`;
     const current = values.get(key);
     values.set(key, { category: "link-destination", count: (current?.count ?? 0) + 1 });
+  }
+  for (const block of markdownFencedBlocks(text)) {
+    const key = `code-block\u0000${block}`;
+    const current = values.get(key);
+    values.set(key, { category: "code-block", count: (current?.count ?? 0) + 1 });
+  }
+  for (const quote of markdownBlockquotes(text)) {
+    const key = `quotation\u0000${quote}`;
+    const current = values.get(key);
+    values.set(key, { category: "quotation", count: (current?.count ?? 0) + 1 });
   }
   return values;
 }
