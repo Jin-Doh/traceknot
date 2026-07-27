@@ -1280,4 +1280,20 @@ describe("rewrite preservation gate", () => {
     const after = "Port 80 is assigned to the backend, while port 443 is assigned to the frontend";
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
   });
+
+  test("binds nested reference-link text to its destination", () => {
+    const before = "[see [stable] guide][one] and [see [beta] guide][two]\n\n[one]: /stable\n[two]: /beta";
+    const after = "[see [beta] guide][one] and [see [stable] guide][two]\n\n[one]: /stable\n[two]: /beta";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
+
+  test("protects form override destinations", () => {
+    expect(verifyPreservation("<button formaction=actions/stable>Submit</button>", "<button formaction=actions/beta>Submit</button>").failures)
+      .toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
+
+  test("preserves Sino-Korean counter quantities", () => {
+    expect(verifyPreservation("오 회 재시도를 허용합니다.", "육 회 재시도를 허용합니다.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
 });
