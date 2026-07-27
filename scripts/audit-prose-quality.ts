@@ -107,10 +107,10 @@ function maskContentPreservingLines(value: string): string {
 
 export function extractProse(markdown: string): string {
   let prose = markdown.replace(/^---\n[\s\S]*?\n---\n/, maskContentPreservingLines);
-  prose = prose.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, maskContentPreservingLines);
+  prose = prose.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$/gm, maskContentPreservingLines);
   prose = prose.replace(/(?:^(?: {4}|\t).*(?:\n|$))+/gm, maskContentPreservingLines);
   prose = prose.replace(/^>.*$/gm, maskContentPreservingLines);
-  prose = prose.replace(/“[^”\n]+”|"[^"\n]+"/g, maskContentPreservingLines);
+  prose = prose.replace(/“[^”]+”|"[^"]+"/g, maskContentPreservingLines);
   prose = prose.replace(/`[^`\n]+`/g, "");
   prose = prose.replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1");
   prose = prose.replace(/<https?:\/\/[^>]+>|https?:\/\/\S+/g, "");
@@ -156,7 +156,13 @@ export function analyzeProse(markdown: string, allowedLocales: ReadonlyArray<"ko
 }
 
 function globPattern(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replaceAll("**", "\u0000").replaceAll("*", "[^/]*").replaceAll("\u0000", ".*");
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replaceAll("**/", "\u0000")
+    .replaceAll("**", "\u0001")
+    .replaceAll("*", "[^/]*")
+    .replaceAll("\u0000", "(?:.*/)?")
+    .replaceAll("\u0001", ".*");
   return new RegExp(`^${escaped}$`);
 }
 
@@ -245,14 +251,14 @@ function tokenChangeRate(before: string, after: string): number {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["code-block", /```[\s\S]*?```|~~~[\s\S]*?~~~|(?:^(?: {4}|\t).*(?:\n|$))+/gm],
+    ["code-block", /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$|(?:^(?: {4}|\t).*(?:\n|$))+/gm],
     ["inline-code", /`[^`\n]+`/g],
     ["link-destination", /\]\(([^)]+)\)/g],
     ["url", /https?:\/\/[^\s)>]+/g],
     ["number", /\b\d+(?:[.,]\d+)*(?:%|[A-Za-z]+)?\b/g],
     ["normative", /\b(?:MUST|SHOULD|MAY|must|should|may)\b|(?:해서는 안 된다|해야 한다|할 수 있다)/g],
     ["quotation", /^>.*(?:\n>.*)*/gm],
-    ["quotation", /“[^”\n]+”|"[^"\n]+"/g],
+    ["quotation", /“[^”]+”|"[^"]+"/g],
   ];
   const values = new Map<string, { category: string; count: number }>();
   for (const [category, pattern] of categories) {

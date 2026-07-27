@@ -29,22 +29,10 @@ An advisory style finding does not fail the repository gate. Scanner failure, ma
 
 ## Execution
 
-Run the configured repository audit:
+Require a host-advertised static analyzer or reviewer that can apply the configured language policy and, after remediation, compare the original and rewritten artifacts. The installed portable Skill contains the verification obligations but does not install an executable prose scanner or its runtime dependencies. If no suitable verifier is available for a mandatory obligation, report `BLOCKED`; never substitute the rewriting provider's self-report.
 
-```sh
-bun scripts/audit-prose-quality.ts --config prose-quality.config.json
-```
+The Traceknot source repository includes `scripts/audit-prose-quality.ts` as a reference implementation for maintaining that repository. Source-repository contributors can run it through the documented `bun run prose-quality` command. Other repositories and installed-Skill users must use a host-provided equivalent unless they deliberately adopt the reference implementation and its dependencies.
 
-Validate a remediation artifact without modifying either input:
-
-```sh
-bun scripts/audit-prose-quality.ts \
-  --config prose-quality.config.json \
-  --before path/to/original.md \
-  --after path/to/rewritten.md \
-  --format json
-```
-
-Bind the structured report to the target snapshot and relevant obligation as a static-analysis or test-result evidence artifact. An external rewriting skill's self-report is not independent evidence. Run preservation verification and the repository gate again on the rewritten snapshot.
+Bind the verifier's structured report to the target snapshot and relevant obligation as a static-analysis or test-result evidence artifact. Run preservation verification and the repository gate again on the rewritten snapshot.
 
 The Korean categories and preservation approach were informed by [epoko77-ai/im-not-ai](https://github.com/epoko77-ai/im-not-ai). Traceknot's scanner is an independent bilingual, deterministic verification boundary.

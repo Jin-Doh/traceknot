@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { analyzeProse, detectLocale, extractProse, loadConfig, scanRepository, verifyPreservation, type Config } from "../scripts/audit-prose-quality";
@@ -84,6 +84,26 @@ describe("published prose extraction and locale selection", () => {
     const report = scanRepository(root, config);
     expect(report.summary).toEqual({ checked: 0, passed: 0, warned: 0, failed: 0, skipped: 1 });
   });
+
+  test("matches globstars across zero or more directories", () => {
+    const root = mkdtempSync(join(tmpdir(), "traceknot-prose-glob-"));
+    mkdirSync(join(root, "docs"));
+    writeFileSync(join(root, "README.md"), "Root English publication prose is included by a leading globstar.");
+    writeFileSync(join(root, "docs", "guide.md"), "Direct child English publication prose is included by a nested globstar.");
+    const base: Config = {
+      schemaVersion: "prose-quality-config/v1",
+      enabled: true,
+      mode: "advisory",
+      locales: ["en"],
+      include: ["**/*.md"],
+      exclude: [],
+      minimumProseCharacters: 1,
+      maxChangeRate: 0.3,
+      rejectChangeRate: 0.5,
+    };
+    expect(scanRepository(root, base).summary.checked).toBe(2);
+    expect(scanRepository(root, { ...base, include: ["docs/**/*.md"] }).summary.checked).toBe(1);
+  });
 });
 
 describe("language-specific prose rules", () => {
@@ -165,6 +185,22 @@ describe("rewrite preservation gate", () => {
   test("protects four-space-indented Markdown code", () => {
     const before = "Run this command:\n\n    traceknot verify\n\nDone.";
     const after = "Run this command:\n\n    traceknot delete\n\nDone.";
+    const report = verifyPreservation(before, after);
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
+  });
+
+  test("protects direct quotations wrapped across lines", () => {
+    const before = "The report says “Keep this\nexact quotation.” End.";
+    const after = "The report says “Change this\nexact quotation.” End.";
+    const report = verifyPreservation(before, after);
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
+  });
+
+  test("matches the declared Markdown fence length", () => {
+    const before = ["````md", "```sh", "traceknot verify", "```", "````"].join("\n");
+    const after = ["````md", "```sh", "traceknot delete", "```", "````"].join("\n");
     const report = verifyPreservation(before, after);
     expect(report.status).toBe("FAIL");
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
