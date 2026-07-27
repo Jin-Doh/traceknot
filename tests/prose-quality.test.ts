@@ -1092,4 +1092,18 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation("Release is July 2026.", "Release is August 2026.").failures)
       .toContainEqual(expect.objectContaining({ category: "number" }));
   });
+
+  test("recognizes blockquotes on list marker lines", () => {
+    const before = "- > Original attributed text";
+    const after = "- > Changed attributed text";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
+    expect(extractProse(before)).not.toContain("Original attributed text");
+  });
+
+  test("parses nested raw HTML blockquotes to the outer close", () => {
+    const before = "<blockquote>Outer <blockquote>Inner</blockquote> original tail</blockquote>";
+    const after = "<blockquote>Outer <blockquote>Inner</blockquote> changed tail</blockquote>";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
+    expect(extractProse(before)).not.toContain("original tail");
+  });
 });

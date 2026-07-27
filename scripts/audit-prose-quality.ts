@@ -281,7 +281,7 @@ function startsInterruptingMarkdownBlock(line: string): boolean {
 }
 
 function blockquoteContent(line: string): string | null {
-  const match = line.match(/^([ \t]*)>[ \t]?/);
+  const match = line.match(/^([ \t]*)(?:(?:[-+*]|\d+[.)])[ \t]+)?>[ \t]?/);
   if (!match) return null;
   return line.slice(match[0].length);
 }
@@ -328,6 +328,26 @@ function markdownBlockquotes(text: string): string[] {
   return blocks;
 }
 
+function htmlBlockquotes(text: string): string[] {
+  const blocks: string[] = [];
+  let depth = 0;
+  let start = -1;
+  for (const match of text.matchAll(/<\/?blockquote\b[^>]*>/gi)) {
+    if (!match[0].startsWith("</")) {
+      if (depth === 0) start = match.index;
+      depth += 1;
+    } else if (depth > 0) {
+      depth -= 1;
+      if (depth === 0) {
+        blocks.push(text.slice(start, match.index + match[0].length));
+        start = -1;
+      }
+    }
+  }
+  if (depth > 0 && start >= 0) blocks.push(text.slice(start));
+  return blocks;
+}
+
 function htmlCodeSpans(text: string): Array<{ category: "code-block" | "inline-code"; value: string }> {
   const spans: Array<{ category: "code-block" | "inline-code"; value: string }> = [];
   let remaining = text;
@@ -348,7 +368,7 @@ export function extractProse(markdown: string): string {
   for (const block of markdownIndentedCodeBlocks(prose)) prose = prose.replace(block, maskContentPreservingLines);
   for (const span of htmlCodeSpans(prose)) prose = prose.replace(span.value, maskContentPreservingLines);
   for (const quote of markdownBlockquotes(prose)) prose = prose.replace(quote, maskContentPreservingLines);
-  for (const match of prose.matchAll(/<blockquote\b[^>]*>[\s\S]*?(?:<\/blockquote\s*>|$)/gi)) prose = prose.replace(match[0], maskContentPreservingLines);
+  for (const quote of htmlBlockquotes(prose)) prose = prose.replace(quote, maskContentPreservingLines);
   for (const quote of directQuotationSpans(prose)) prose = prose.replace(quote, maskContentPreservingLines);
   for (const span of markdownInlineCodeSpans(prose)) prose = prose.replace(span, maskContentPreservingLines);
   prose = prose.replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1");
@@ -694,8 +714,8 @@ function protectedValues(text: string): Map<string, { category: string; count: n
     const current = values.get(key);
     values.set(key, { category: "quotation", count: (current?.count ?? 0) + 1 });
   }
-  for (const match of text.matchAll(/<blockquote\b[^>]*>[\s\S]*?(?:<\/blockquote\s*>|$)/gi)) {
-    const key = `quotation\u0000${match[0]}`;
+  for (const quote of htmlBlockquotes(text)) {
+    const key = `quotation\u0000${quote}`;
     const current = values.get(key);
     values.set(key, { category: "quotation", count: (current?.count ?? 0) + 1 });
   }
