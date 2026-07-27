@@ -787,4 +787,11 @@ describe("rewrite preservation gate", () => {
     const report = verifyPreservation("The timeout is 5 minutes.", "The timeout is 5 hours.");
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
   });
+
+  test("preserves separators between fully formatted numeric operands", () => {
+    expect(verifyPreservation("The range is −5–−1.", "The ratio is −5/−1.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(verifyPreservation("The range is 1,000–2,000.", "The ratio is 1,000/2,000.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
 });
