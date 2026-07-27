@@ -417,6 +417,7 @@ function standaloneUrls(text: string): string[] {
       value = value.slice(0, -1);
       closings -= 1;
     }
+    value = value.replace(/[.,]+$/, "");
     if (value.length > 0) urls.push(value);
   }
   return urls;
@@ -424,14 +425,14 @@ function standaloneUrls(text: string): string[] {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["number", /\bv\d+(?:\.\d+)+\b|(?<![\w.])[$€£¥₩]?[+-]?\d+(?:[.,]\d+)*(?:\s+(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|%|[A-Za-z]+\b|\b)/g],
+    ["number", /\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])[$€£¥₩]?[+-]?\d+(?:[.,]\d+)*(?:\s+(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|%|[A-Za-z]+\b|\b)/g],
     ["normative", /\b(?:MUST|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+된다|해야\s+한다|할\s+수\s+있다)/gi],
     ["quotation", /“[^”]+”|"[^"]+"/g],
   ];
   const values = new Map<string, { category: string; count: number }>();
   for (const [category, pattern] of categories) {
     for (const match of text.matchAll(pattern)) {
-      const value = match[0];
+      const value = category === "normative" ? match[0].replace(/\s+/g, " ") : match[0];
       const key = `${category}\u0000${value}`;
       const current = values.get(key);
       values.set(key, { category, count: (current?.count ?? 0) + 1 });

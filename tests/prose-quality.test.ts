@@ -425,4 +425,20 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("FAIL");
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
   });
+
+  test("preserves hyphenated dates as complete values", () => {
+    const report = verifyPreservation("The release date is 2026-07-27 for this milestone.", "The release date is 2026-27-07 for this milestone.");
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("normalizes normative whitespace before comparison", () => {
+    const report = verifyPreservation("Operators MUST NOT delete records.", "Operators MUST\nNOT delete records.");
+    expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
+  });
+
+  test("excludes surrounding punctuation from bare URLs", () => {
+    const report = verifyPreservation("Read https://example.com.", "Read https://example.com,");
+    expect(report.failures.some((failure) => failure.category === "url")).toBe(false);
+  });
 });
