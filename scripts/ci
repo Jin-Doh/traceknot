@@ -28,6 +28,18 @@ done
 printf '%s\n' '==> prompt-injection risk'
 bun scripts/audit-prompt-injection.ts --threshold high
 
+printf '%s\n' '==> published prose quality'
+PROSE_REPORT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-prose.XXXXXX")
+PROSE_REPORT=$PROSE_REPORT_DIR/report.json
+trap 'rm -f "$PROSE_REPORT"; rmdir "$PROSE_REPORT_DIR"' EXIT HUP INT TERM
+bun x --no-install ajv validate --spec=draft2020 \
+    -s contracts/prose-quality-config.schema.json \
+    -d prose-quality.config.json
+bun scripts/audit-prose-quality.ts --config prose-quality.config.json --report "$PROSE_REPORT"
+bun x --no-install ajv validate --spec=draft2020 \
+    -s contracts/prose-quality-report.schema.json \
+    -d "$PROSE_REPORT"
+
 printf '%s\n' '==> tests and strict type checking'
 bun run test
 bun run typecheck
