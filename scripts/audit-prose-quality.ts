@@ -113,6 +113,7 @@ function markdownFencedBlocks(text: string): string[] {
     if (!opening || indentationColumns(opening[1]) > 3) continue;
     const delimiter = opening[2];
     const marker = delimiter[0];
+    if (marker === "`" && lines[index].slice(opening[0].length).includes("`")) continue;
     let end = lines.length - 1;
     for (let candidate = index + 1; candidate < lines.length; candidate += 1) {
       const closing = lines[candidate].match(/^([ \t]*)(`+|~+)[ \t]*(?:\r?\n|$)/);
@@ -443,12 +444,29 @@ function tokenChangeRate(before: string, after: string, rejectionThreshold: numb
   return distance === null ? rejectionThreshold : Math.round((distance / combinedTotal) * 1_000_000) / 1_000_000;
 }
 
+function hasOpeningLinkBracket(text: string, closingIndex: number): boolean {
+  let nested = 0;
+  for (let index = closingIndex - 1; index >= 0 && text[index] !== "\n"; index -= 1) {
+    if (isEscaped(text, index)) continue;
+    if (text[index] === "]") nested += 1;
+    else if (text[index] === "[") {
+      if (nested === 0) return true;
+      nested -= 1;
+    }
+  }
+  return false;
+}
+
 function markdownLinkDestinations(text: string): string[] {
   const destinations: string[] = [];
   let cursor = 0;
   while (cursor < text.length) {
     const start = text.indexOf("](", cursor);
     if (start < 0) break;
+    if (!hasOpeningLinkBracket(text, start)) {
+      cursor = start + 2;
+      continue;
+    }
     let depth = 1;
     let escaped = false;
     let closed = false;
@@ -564,11 +582,20 @@ const CLAIM_LABELS = new Set([
   "최소", "최대", "하한", "상한", "이전", "이후", "시작", "종료", "초기", "최종", "증가", "감소", "활성", "비활성", "허용", "금지", "필수", "선택", "성공", "실패",
 ]);
 
+function normalizeClaimLabel(token: string): string {
+  const lower = token.toLowerCase();
+  if (CLAIM_LABELS.has(lower)) return lower;
+  for (const label of CLAIM_LABELS) {
+    if (/[\uac00-\ud7a3]/.test(label) && lower.startsWith(label) && /^(?:은|는|이|가|을|를|의|에|에서|에게|으로|로|와|과|도|만|이고|이며)$/.test(lower.slice(label.length))) return label;
+  }
+  return "";
+}
+
 function claimLabel(text: string, index: number, valueLength: number): string {
-  const tokens = (value: string): string[] => value.match(/[\p{L}\p{N}_-]+/gu)?.map((token) => token.toLowerCase()) ?? [];
-  const before = tokens(text.slice(Math.max(0, index - 96), index)).slice(-8).reverse().find((token) => CLAIM_LABELS.has(token));
-  if (before) return before;
-  return tokens(text.slice(index + valueLength, index + valueLength + 48)).slice(0, 3).find((token) => CLAIM_LABELS.has(token)) ?? "";
+  const tokens = (value: string): string[] => value.match(/[\p{L}\p{N}_-]+/gu)?.map(normalizeClaimLabel).filter(Boolean) ?? [];
+  return tokens(text.slice(Math.max(0, index - 96), index)).slice(-8).reverse()[0]
+    ?? tokens(text.slice(index + valueLength, index + valueLength + 48)).slice(0, 3)[0]
+    ?? "";
 }
 
 function protectedValueBindings(text: string, values: Map<string, { category: string; count: number }>): string[] {

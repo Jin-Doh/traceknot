@@ -551,4 +551,20 @@ describe("rewrite preservation gate", () => {
     expect(extractProse(before)).toContain("Following publication prose.");
     expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "quotation")).toBe(false);
   });
+
+  test("recognizes Korean particles attached to claim labels", () => {
+    const before = "하한은 1.2이고 상한은 2.0이다.";
+    const after = "상한은 1.2이고 하한은 2.0이다.";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
+
+  test("does not protect destinations without opening link brackets", () => {
+    const report = verifyPreservation("The notation ](old) is explained here.", "The notation ](new) is explained here.");
+    expect(report.failures.some((failure) => failure.category === "link-destination")).toBe(false);
+  });
+
+  test("rejects backticks inside backtick fence info strings", () => {
+    const prose = extractProse("```invalid`info\nFormulaic publication prose follows.");
+    expect(prose).toContain("Formulaic publication prose follows.");
+  });
 });
