@@ -181,7 +181,16 @@ function markdownIndentedCodeBlocks(text: string): string[] {
       continue;
     }
     let end = index;
-    while (end + 1 < lines.length && (/^(?: {4}|\t)/.test(lines[end + 1]) || /^[ \t]*(?:\r?\n|$)/.test(lines[end + 1]))) end += 1;
+    while (end + 1 < lines.length) {
+      const next = lines[end + 1];
+      if (/^[ \t]*(?:\r?\n|$)/.test(next)) {
+        end += 1;
+        continue;
+      }
+      const nextSpaces = next.match(/^ */)?.[0].length ?? 0;
+      if (!next.startsWith("\t") && nextSpaces < requiredIndent) break;
+      end += 1;
+    }
     blocks.push(lines.slice(index, end + 1).join(""));
     previousBlank = /^[ \t]*(?:\r?\n|$)/.test(lines[end]);
     index = end;
@@ -425,7 +434,7 @@ function standaloneUrls(text: string): string[] {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["number", /\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])[$€£¥₩]?[+-]?\d+(?:[.,]\d+)*(?:\s+(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|%|[A-Za-z]+\b|\b)/g],
+    ["number", /\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])[$€£¥₩]?[+-]?\d+(?:[.,]\d+)*(?:\s+(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
     ["normative", /\b(?:MUST|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+된다|해야\s+한다|할\s+수\s+있다)/gi],
     ["quotation", /“[^”]+”|"[^"]+"/g],
   ];

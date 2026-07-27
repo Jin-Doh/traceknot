@@ -441,4 +441,17 @@ describe("rewrite preservation gate", () => {
     const report = verifyPreservation("Read https://example.com.", "Read https://example.com,");
     expect(report.failures.some((failure) => failure.category === "url")).toBe(false);
   });
+
+  test("uses list-relative indentation for code continuations", () => {
+    const before = "10. Item\n\n        traceknot verify\n\n      Six-space list prose.";
+    const after = "10. Item\n\n        traceknot verify\n\n      Natural list prose.";
+    expect(extractProse(before)).toContain("Six-space list prose.");
+    expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "code-block")).toBe(false);
+  });
+
+  test("preserves Korean counters with numeric values", () => {
+    const report = verifyPreservation("참석자는 5개 좌석을 사용한다.", "참석자는 5명 좌석을 사용한다.");
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
 });
