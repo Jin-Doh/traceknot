@@ -978,4 +978,21 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
     expect(extractProse(before)).not.toContain("traceknot verify");
   });
+
+  test("protects declarative English obligations", () => {
+    expect(verifyPreservation("Operators are required to preserve audit records.", "Operators are permitted to preserve audit records.").failures)
+      .toContainEqual(expect.objectContaining({ category: "normative" }));
+  });
+
+  test("preserves HTML blockquote content", () => {
+    expect(verifyPreservation("<blockquote>Original attributed text.</blockquote>", "<blockquote>Changed attributed text.</blockquote>").failures)
+      .toContainEqual(expect.objectContaining({ category: "quotation" }));
+  });
+
+  test("restores outer list indentation after nested lists", () => {
+    const before = "- Outer\n  - Inner\n  Outer paragraph.\n\n      traceknot verify";
+    const after = "- Outer\n  - Inner\n  Outer paragraph.\n\n      traceknot delete";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
+    expect(extractProse(before)).not.toContain("traceknot verify");
+  });
 });

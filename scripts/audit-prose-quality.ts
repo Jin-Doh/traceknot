@@ -224,7 +224,7 @@ function endsParagraphBeforeIndentedCode(line: string): boolean {
 function markdownIndentedCodeBlocks(text: string): string[] {
   const lines = text.match(/[^\n]*(?:\n|$)/g)?.filter((line) => line.length > 0) ?? [];
   const blocks: string[] = [];
-  let listCodeIndent: number | null = null;
+  const listStack: Array<{ markerIndent: number; codeIndent: number }> = [];
   let previousBlank = true;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
@@ -234,12 +234,18 @@ function markdownIndentedCodeBlocks(text: string): string[] {
     }
     const listMarker = line.match(/^([ \t]*)([-+*]|\d+[.)])([ \t]+)/);
     if (listMarker) {
-      listCodeIndent = visualColumns(`${listMarker[1]}${listMarker[2]}${listMarker[3]}`) + 4;
+      const markerIndent = indentationColumns(listMarker[1]);
+      while (listStack.length > 0 && listStack.at(-1)!.markerIndent >= markerIndent) listStack.pop();
+      listStack.push({
+        markerIndent,
+        codeIndent: visualColumns(`${listMarker[1]}${listMarker[2]}${listMarker[3]}`) + 4,
+      });
       previousBlank = false;
       continue;
     }
-    if (/^\S/.test(line)) listCodeIndent = null;
-    const requiredIndent = listCodeIndent ?? 4;
+    const lineIndent = indentationColumns(line);
+    while (listStack.length > 0 && lineIndent <= listStack.at(-1)!.markerIndent) listStack.pop();
+    const requiredIndent = listStack.at(-1)?.codeIndent ?? 4;
     const followsNonParagraphBlock = index > 0 && endsParagraphBeforeIndentedCode(lines[index - 1]);
     const codeIndent = (previousBlank || followsNonParagraphBlock) && indentationColumns(line) >= requiredIndent;
     if (!codeIndent) {
@@ -596,7 +602,7 @@ function protectedValues(text: string): Map<string, { category: string; count: n
     ["number", /\b(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:,\s*|\s+)\d{4}|\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4})\b/gi],
     ["number", /(?<![\w.])(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s*(?:%|°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|[KMGTPE]i?B|[KMGTPE]?bps|bytes?|bits?|thousand|million|billion|trillion|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))?\s*[-–—/:]\s*(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s*(?:%|°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|[KMGTPE]i?B|[KMGTPE]?bps|bytes?|bits?|thousand|million|billion|trillion|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))?(?!\w|\.\d)/gi],
     ["number", /\b\d{4}-\d{2}-\d{2}\b|(?<![\w.])(?:(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?\s*[-–—/:]\s*(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?)\b|\bv?\d+(?:\.\d+)+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?\b|(?<![\w.])(?:(?:[<>]=?|[≤≥=≠])\s*)?(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|thousand|million|billion|trillion)\b|(?:%|°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
-    ["normative", /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|(?:(?:(?:해서는|하여서는|하면|한다면)\s+안\s+(?:된다|됩니다))|(?:해야|하여야)\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))/gi],
+    ["normative", /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|\b(?:is|are|was|were)\s+(?:required|prohibited|forbidden|permitted|allowed)\s+to\b|(?:(?:(?:해서는|하여서는|하면|한다면)\s+안\s+(?:된다|됩니다))|(?:해야|하여야)\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))/gi],
   ];
   const values = new Map<string, { category: string; count: number }>();
   for (const [category, pattern] of categories) {
@@ -644,6 +650,11 @@ function protectedValues(text: string): Map<string, { category: string; count: n
   }
   for (const quote of markdownBlockquotes(text)) {
     const key = `quotation\u0000${quote}`;
+    const current = values.get(key);
+    values.set(key, { category: "quotation", count: (current?.count ?? 0) + 1 });
+  }
+  for (const match of text.matchAll(/<blockquote\b[^>]*>[\s\S]*?(?:<\/blockquote\s*>|$)/gi)) {
+    const key = `quotation\u0000${match[0]}`;
     const current = values.get(key);
     values.set(key, { category: "quotation", count: (current?.count ?? 0) + 1 });
   }
