@@ -509,4 +509,12 @@ describe("rewrite preservation gate", () => {
     expect(extractProse(before)).toContain("Tabbed continuation remains prose.");
     expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "code-block")).toBe(false);
   });
+
+  test("binds protected values to their factual order", () => {
+    const before = "The minimum release is 1.2, while the maximum release is 2.0 for supported deployments.";
+    const after = "The minimum release is 2.0, while the maximum release is 1.2 for supported deployments.";
+    const report = verifyPreservation(before, after);
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "protected-order" }));
+  });
 });

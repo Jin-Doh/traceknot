@@ -522,6 +522,24 @@ function protectedValues(text: string): Map<string, { category: string; count: n
   return values;
 }
 
+function protectedValueOrder(text: string, values: Map<string, { category: string; count: number }>): string[] {
+  const normalizedText = text.replace(/\s+/g, " ");
+  const occurrences: Array<{ index: number; key: string }> = [];
+  for (const [key, item] of values) {
+    const separator = key.indexOf("\u0000");
+    const value = key.slice(separator + 1).replace(/\s+/g, " ");
+    let cursor = 0;
+    for (let count = 0; count < item.count; count += 1) {
+      const index = normalizedText.indexOf(value, cursor);
+      if (index < 0) break;
+      occurrences.push({ index, key });
+      cursor = index + Math.max(value.length, 1);
+    }
+  }
+  occurrences.sort((left, right) => left.index - right.index || left.key.localeCompare(right.key));
+  return occurrences.map((occurrence) => occurrence.key);
+}
+
 export function verifyPreservation(before: string, after: string, maxChangeRate = 0.3, rejectChangeRate = 0.5): PreservationReport {
   const expected = protectedValues(before);
   const actual = protectedValues(after);
@@ -537,6 +555,18 @@ export function verifyPreservation(before: string, after: string, maxChangeRate 
     protectedTotal += expectedCount;
     protectedPreserved += Math.min(expectedCount, actualCount);
     if (actualCount !== expectedCount) failures.push({ category: expectedItem?.category ?? actualItem?.category ?? "unknown", valueHash: hash(key), expectedCount, actualCount });
+  }
+  if (failures.length === 0) {
+    const expectedOrder = protectedValueOrder(before, expected);
+    const actualOrder = protectedValueOrder(after, actual);
+    if (JSON.stringify(expectedOrder) !== JSON.stringify(actualOrder)) {
+      failures.push({
+        category: "protected-order",
+        valueHash: hash(`${expectedOrder.join("\u0001")}\u0000${actualOrder.join("\u0001")}`),
+        expectedCount: expectedOrder.length,
+        actualCount: actualOrder.length,
+      });
+    }
   }
   const changeRate = tokenChangeRate(before, after, rejectChangeRate);
   const status = failures.length > 0 || changeRate >= rejectChangeRate ? "FAIL" : changeRate >= maxChangeRate ? "WARN" : "PASS";
