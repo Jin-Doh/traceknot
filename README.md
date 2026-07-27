@@ -41,6 +41,18 @@ Traceknot supplies the missing test-process layer: traceability from basis throu
 
 The portable Skill and host-neutral core are usable now. Authoritative harness completion remains an explicitly separate integration project.
 
+## Published prose quality gate
+
+The canonical gate audits configured Korean and English publication prose for repeated formulaic structures, inflated stock phrases, excessive transitions, and related readability risks. It evaluates prose quality, not whether a human or an AI authored the text. Markdown frontmatter, code, direct quotes, inline code, links, and URLs are excluded from style analysis.
+
+```sh
+bun run prose-quality
+```
+
+`prose-quality.config.json` selects publication paths, languages, minimum prose length, and advisory or blocking behavior. The repository starts in `advisory` mode: findings are reported without turning style heuristics into an authorship claim. A separate before/after mode verifies that rewrites preserve code, links, URLs, numbers, and normative terms; protected-content changes or a token change rate of 50% or more fail that check. A rewriting skill is remediation, not verification: its output must be checked again against a new snapshot.
+
+The Korean rule categories and preservation model were informed by [epoko77-ai/im-not-ai](https://github.com/epoko77-ai/im-not-ai). Traceknot implements its own deterministic, bilingual audit boundary and does not treat an external skill's self-report as QA evidence by itself.
+
 ## Install
 
 Install the current `main` revision without cloning the repository:

@@ -41,6 +41,18 @@ Traceknot은 테스트 기준에서 판정까지의 추적성, 증거와 독립�
 
 휴대형 Skill과 호스트 중립 코어는 지금 평가와 개발에 사용할 수 있습니다. 하네스 완료를 확정할 권한은 별도의 후속 통합이 필요합니다.
 
+## 게시 목적 산문 품질 게이트
+
+Canonical gate는 설정된 한국어·영어 게시 산문에서 기계적으로 반복되는 구조, 과장된 상투구, 과도한 접속 표현 등 가독성 위험을 검사합니다. 작성자가 사람인지 AI인지를 판정하지 않습니다. Markdown frontmatter, 코드, 직접 인용, inline code, 링크와 URL은 문체 분석에서 제외합니다.
+
+```sh
+bun run prose-quality
+```
+
+`prose-quality.config.json`에서 게시 경로, 언어, 최소 산문 길이, advisory 또는 blocking 동작을 지정합니다. 저장소 기본값은 `advisory`입니다. 문체 finding은 보고하지만 작성 주체 판정으로 확대하지 않습니다. 별도의 before/after 모드는 윤문 과정에서 코드, 링크, URL, 수치, 의무 표현이 보존됐는지 확인합니다. 보호 내용이 바뀌거나 token 변경률이 50% 이상이면 실패합니다. 윤문 스킬은 remediation 수단이지 검증자가 아니므로, 결과를 새 snapshot에서 다시 검사해야 합니다.
+
+한국어 규칙 범주와 보존 모델은 [epoko77-ai/im-not-ai](https://github.com/epoko77-ai/im-not-ai)를 참고했습니다. Traceknot은 독립적인 결정적 한·영 검사 경계를 구현하며, 외부 스킬의 자체 보고만으로 QA 증거를 충족하지 않습니다.
+
 ## 설치
 
 저장소를 복제하지 않고 현재 `main` revision을 설치할 수 있습니다.
