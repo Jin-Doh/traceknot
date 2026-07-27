@@ -921,4 +921,23 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation("서비스를 삭제한다면 안 됩니다.", "서비스를 삭제해도 됩니다.").failures)
       .toContainEqual(expect.objectContaining({ category: "normative" }));
   });
+
+  test("preserves hour-only meridiem times", () => {
+    expect(verifyPreservation("Maintenance starts at 12 PM.", "Maintenance starts at 12 AM.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("preserves separators between storage-size operands", () => {
+    expect(verifyPreservation("Storage is 10 MB–20 MB.", "Storage is 10 MB/20 MB.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(verifyPreservation("Storage is 10 MiB–20 MiB.", "Storage is 10 MiB/20 MiB.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("recognizes unterminated fenced blocks nested in lists", () => {
+    const before = "- Example\n\n    ```sh\n    traceknot verify";
+    const after = "- Example\n\n    ```sh\n    traceknot delete";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
+    expect(extractProse(before)).not.toContain("traceknot verify");
+  });
 });
