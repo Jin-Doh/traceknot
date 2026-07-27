@@ -259,7 +259,7 @@ function markdownBlockquotes(text: string): string[] {
       if (/^[ \t]*(?:\r?\n|$)/.test(next)) break;
       const continuedContent = blockquoteContent(next);
       if (continuedContent !== null) {
-        allowsLazyContinuation = !startsInterruptingMarkdownBlock(continuedContent);
+        allowsLazyContinuation = continuedContent.trim().length > 0 && !startsInterruptingMarkdownBlock(continuedContent);
         end += 1;
         continue;
       }
@@ -498,7 +498,7 @@ function markdownLinkDestinations(text: string): string[] {
     }
     if (!closed) cursor = start + 2;
   }
-  for (const match of text.matchAll(/^[ \t]{0,3}\[[^\]]+\]:[ \t]*(?:\r?\n[ \t]+)?(?:<([^>\n]+)>|(\S+))/gm)) {
+  for (const match of text.matchAll(/^[ \t]{0,3}\[(?:\\.|[^\]\\])+\]:[ \t]*(?:\r?\n[ \t]+)?(?:<([^>\n]+)>|(\S+))/gm)) {
     destinations.push(match[1] ?? match[2] ?? "");
   }
   return destinations;
@@ -596,11 +596,17 @@ function normalizeClaimLabel(token: string): string {
   return "";
 }
 
+function lastClaimBoundary(text: string): number {
+  let boundary = -1;
+  for (const match of text.matchAll(/[,;:\n]|[.!?](?=\s|$)/g)) boundary = match.index;
+  return boundary;
+}
+
 function claimLabel(text: string, index: number, valueLength: number): string {
   const leftText = text.slice(0, index);
-  const leftBoundary = Math.max(leftText.lastIndexOf(","), leftText.lastIndexOf(";"), leftText.lastIndexOf(":"), leftText.lastIndexOf("\n"));
+  const leftBoundary = lastClaimBoundary(leftText);
   const rightText = text.slice(index + valueLength);
-  const rightBoundaryMatch = rightText.match(/[,;:\n]/);
+  const rightBoundaryMatch = rightText.match(/[,;:\n]|[.!?](?=\s|$)/);
   const leftClause = leftText.slice(leftBoundary + 1);
   const rightClause = rightText.slice(0, rightBoundaryMatch?.index ?? rightText.length);
   const leftLabels = (leftClause.match(/[\p{L}\p{N}_-]+/gu) ?? []).map(normalizeClaimLabel).filter(Boolean);

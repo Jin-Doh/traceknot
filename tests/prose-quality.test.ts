@@ -607,4 +607,23 @@ describe("rewrite preservation gate", () => {
     expect(extractProse(before)).toContain("old");
     expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "inline-code")).toBe(false);
   });
+
+  test("stops lazy blockquote continuation after blank quote lines", () => {
+    const before = "> quoted\n>\nOrdinary publication prose.";
+    const after = "> quoted\n>\nNatural publication prose.";
+    expect(extractProse(before)).toContain("Ordinary publication prose.");
+    expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "quotation")).toBe(false);
+  });
+
+  test("stops claim-label lookup at sentence boundaries", () => {
+    const before = "The optional appendix provides background. Version 1.2 remains supported.";
+    const after = "The supplementary appendix provides background. Version 1.2 remains supported.";
+    expect(verifyPreservation(before, after).status).toBe("PASS");
+  });
+
+  test("protects reference destinations with escaped label brackets", () => {
+    const before = "[foo\\]]: docs/old.md";
+    const after = "[foo\\]]: docs/new.md";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
 });
