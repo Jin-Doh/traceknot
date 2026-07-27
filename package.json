@@ -13,6 +13,7 @@
   "devDependencies": {
     "@babel/parser": "8.0.4",
     "@types/bun": "1.3.14",
+    "ajv": "8.20.0",
     "ajv-cli": "5.0.0",
     "typescript": "7.0.2"
   }

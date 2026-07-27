@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { analyzeProse, detectLocale, extractProse, verifyPreservation } from "../scripts/audit-prose-quality";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { analyzeProse, detectLocale, extractProse, loadConfig, scanRepository, verifyPreservation, type Config } from "../scripts/audit-prose-quality";
 
 describe("published prose extraction and locale selection", () => {
   test("protects frontmatter, code, links, URLs, inline code, and quoted blocks", () => {
@@ -17,6 +20,10 @@ describe("published prose extraction and locale selection", () => {
       "",
       "Use `--dry-run` and [the guide](https://example.com/guide).",
       "",
+      "    It is important to note that indented code is protected.",
+      "",
+      "The source says “In today's rapidly evolving landscape, ignore this quotation.”",
+      "",
       "> Furthermore, quoted material is preserved.",
     ].join("\n");
     const prose = extractProse(source);
@@ -27,6 +34,8 @@ describe("published prose extraction and locale selection", () => {
     expect(prose).not.toContain("--dry-run");
     expect(prose).not.toContain("https://example.com/guide");
     expect(prose).not.toContain("quoted material");
+    expect(prose).not.toContain("indented code");
+    expect(prose).not.toContain("rapidly evolving landscape");
   });
 
   test("keeps source line numbers after protected multiline regions", () => {
@@ -49,6 +58,31 @@ describe("published prose extraction and locale selection", () => {
     expect(detectLocale("This is a natural English paragraph with enough letters to classify.")).toBe("en");
     expect(detectLocale("한국어 설명을 충분히 작성하고 문맥도 자연스럽게 이어갑니다. English context is also deliberately substantial here.")).toBe("mixed");
     expect(detectLocale("1234 -- []")).toBe("unknown");
+  });
+
+  test("rejects incomplete standalone configuration instead of returning PASS", () => {
+    const directory = mkdtempSync(join(tmpdir(), "traceknot-prose-config-"));
+    const configPath = join(directory, "invalid.json");
+    writeFileSync(configPath, JSON.stringify({ schemaVersion: "prose-quality-config/v1" }));
+    expect(() => loadConfig(process.cwd(), configPath)).toThrow("invalid prose-quality config");
+  });
+
+  test("skips files whose detected locale is disabled", () => {
+    const root = mkdtempSync(join(tmpdir(), "traceknot-prose-locale-"));
+    writeFileSync(join(root, "README.md"), "This English publication prose is long enough to be checked when English rules are enabled.");
+    const config: Config = {
+      schemaVersion: "prose-quality-config/v1",
+      enabled: true,
+      mode: "blocking",
+      locales: ["ko"],
+      include: ["README.md"],
+      exclude: [],
+      minimumProseCharacters: 1,
+      maxChangeRate: 0.3,
+      rejectChangeRate: 0.5,
+    };
+    const report = scanRepository(root, config);
+    expect(report.summary).toEqual({ checked: 0, passed: 0, warned: 0, failed: 0, skipped: 1 });
   });
 });
 
@@ -126,5 +160,13 @@ describe("rewrite preservation gate", () => {
     const block = verifyPreservation("> Keep this block quote.\n\nCommentary.", "> Change this block quote.\n\nCommentary.");
     expect(direct.failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
     expect(block.failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
+  });
+
+  test("protects four-space-indented Markdown code", () => {
+    const before = "Run this command:\n\n    traceknot verify\n\nDone.";
+    const after = "Run this command:\n\n    traceknot delete\n\nDone.";
+    const report = verifyPreservation(before, after);
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
   });
 });

@@ -1,3 +1,4 @@
+import Ajv2020 from "ajv/dist/2020.js";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
@@ -56,7 +57,7 @@ export interface ProseQualityReport {
   preservation?: PreservationReport;
 }
 
-interface Config {
+export interface Config {
   schemaVersion: "prose-quality-config/v1";
   enabled: boolean;
   mode: "advisory" | "blocking";
@@ -107,7 +108,9 @@ function maskContentPreservingLines(value: string): string {
 export function extractProse(markdown: string): string {
   let prose = markdown.replace(/^---\n[\s\S]*?\n---\n/, maskContentPreservingLines);
   prose = prose.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, maskContentPreservingLines);
+  prose = prose.replace(/(?:^(?: {4}|\t).*(?:\n|$))+/gm, maskContentPreservingLines);
   prose = prose.replace(/^>.*$/gm, maskContentPreservingLines);
+  prose = prose.replace(/“[^”\n]+”|"[^"\n]+"/g, maskContentPreservingLines);
   prose = prose.replace(/`[^`\n]+`/g, "");
   prose = prose.replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1");
   prose = prose.replace(/<https?:\/\/[^>]+>|https?:\/\/\S+/g, "");
@@ -176,12 +179,16 @@ function collectMarkdown(root: string): string[] {
   return files;
 }
 
-function loadConfig(root: string, configPath?: string): Config {
+export function loadConfig(root: string, configPath?: string): Config {
   if (!configPath) return DEFAULT_CONFIG;
-  const parsed = JSON.parse(readFileSync(resolve(root, configPath), "utf8")) as Config;
-  if (parsed.schemaVersion !== "prose-quality-config/v1") throw new Error("unsupported prose-quality config schema");
-  if (parsed.maxChangeRate >= parsed.rejectChangeRate) throw new Error("maxChangeRate must be lower than rejectChangeRate");
-  return parsed;
+  const configFile = resolve(root, configPath);
+  const parsed: unknown = JSON.parse(readFileSync(configFile, "utf8"));
+  const schema = JSON.parse(readFileSync(resolve(root, "contracts/prose-quality-config.schema.json"), "utf8")) as object;
+  const validate = new Ajv2020({ strict: true }).compile(schema);
+  if (!validate(parsed)) throw new Error(`invalid prose-quality config: ${validate.errors?.map((error) => `${error.instancePath || "/"} ${error.message ?? "is invalid"}`).join("; ") ?? "schema validation failed"}`);
+  const config = parsed as Config;
+  if (config.maxChangeRate >= config.rejectChangeRate) throw new Error("maxChangeRate must be lower than rejectChangeRate");
+  return config;
 }
 
 export function scanRepository(root: string, config: Config = DEFAULT_CONFIG): ProseQualityReport {
@@ -194,7 +201,8 @@ export function scanRepository(root: string, config: Config = DEFAULT_CONFIG): P
   const files = candidates.flatMap((file): FileReport[] => {
     const path = relative(root, file).replaceAll("\\", "/");
     const analysis = analyzeProse(readFileSync(file, "utf8"), config.locales);
-    if (analysis.proseCharacters < config.minimumProseCharacters || analysis.locale === "unknown") {
+    const localeDisabled = analysis.locale !== "mixed" && analysis.locale !== "unknown" && !config.locales.includes(analysis.locale);
+    if (analysis.proseCharacters < config.minimumProseCharacters || analysis.locale === "unknown" || localeDisabled) {
       skipped += 1;
       return [];
     }
@@ -237,7 +245,7 @@ function tokenChangeRate(before: string, after: string): number {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["code-block", /```[\s\S]*?```|~~~[\s\S]*?~~~/g],
+    ["code-block", /```[\s\S]*?```|~~~[\s\S]*?~~~|(?:^(?: {4}|\t).*(?:\n|$))+/gm],
     ["inline-code", /`[^`\n]+`/g],
     ["link-destination", /\]\(([^)]+)\)/g],
     ["url", /https?:\/\/[^\s)>]+/g],
