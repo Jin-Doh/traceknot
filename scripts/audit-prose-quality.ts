@@ -180,7 +180,7 @@ function directQuotationSpans(text: string): string[] {
       while (start >= 0 && (isEscaped(text, start) || (opening === "\"" && isNumericUnitQuote(text, start)))) start = text.indexOf(opening, start + 1);
       if (start < 0) break;
       let end = text.indexOf(closing, start + 1);
-      while (end >= 0 && (isEscaped(text, end) || (closing === "\"" && isNumericUnitQuote(text, end)))) end = text.indexOf(closing, end + 1);
+      while (end >= 0 && isEscaped(text, end)) end = text.indexOf(closing, end + 1);
       if (end < 0) break;
       spans.push(text.slice(start, end + 1));
       cursor = end + 1;
@@ -796,6 +796,23 @@ export function parseArguments(argv: string[]): Arguments {
   return options;
 }
 
+export function createPreservationQualityReport(preservation: PreservationReport, mode: Config["mode"]): ProseQualityReport {
+  return {
+    schemaVersion: "prose-quality-report/v1",
+    mode,
+    status: preservation.status,
+    files: [],
+    summary: {
+      checked: 1,
+      passed: preservation.status === "PASS" ? 1 : 0,
+      warned: preservation.status === "WARN" ? 1 : 0,
+      failed: preservation.status === "FAIL" ? 1 : 0,
+      skipped: 0,
+    },
+    preservation,
+  };
+}
+
 if (import.meta.main) {
   try {
     const options = parseArguments(process.argv.slice(2));
@@ -803,7 +820,7 @@ if (import.meta.main) {
     let report: ProseQualityReport;
     if (options.before && options.after) {
       const preservation = verifyPreservation(readFileSync(resolve(options.root, options.before), "utf8"), readFileSync(resolve(options.root, options.after), "utf8"), config.maxChangeRate, config.rejectChangeRate);
-      report = { schemaVersion: "prose-quality-report/v1", mode: config.mode, status: preservation.status, files: [], summary: { checked: 0, passed: 0, warned: 0, failed: preservation.status === "FAIL" ? 1 : 0, skipped: 0 }, preservation };
+      report = createPreservationQualityReport(preservation, config.mode);
     } else report = scanRepository(options.root, config);
     const serialized = JSON.stringify(report, null, 2);
     if (options.report) writeFileSync(resolve(options.root, options.report), `${serialized}\n`);

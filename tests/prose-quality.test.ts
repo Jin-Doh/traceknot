@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { analyzeProse, detectLocale, extractProse, loadConfig, parseArguments, scanRepository, verifyPreservation, type Config } from "../scripts/audit-prose-quality";
+import { analyzeProse, createPreservationQualityReport, detectLocale, extractProse, loadConfig, parseArguments, scanRepository, verifyPreservation, type Config } from "../scripts/audit-prose-quality";
 
 describe("published prose extraction and locale selection", () => {
   test("protects frontmatter, code, links, URLs, inline code, and quoted blocks", () => {
@@ -845,5 +845,21 @@ describe("rewrite preservation gate", () => {
     const after = 'Use 5" new boards and 6" wide boards.';
     expect(extractProse(before)).toContain("old boards");
     expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "quotation")).toBe(false);
+  });
+
+  test("treats digit-final quotes as closing quotation delimiters", () => {
+    const before = 'The report says "Version 5" for supported deployments.';
+    const after = 'The report says "Release 5" for supported deployments.';
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
+  });
+
+  test("counts preservation runs in report summaries", () => {
+    const base = { tokenChangeRate: 0, protectedTotal: 0, protectedPreserved: 0, failures: [] };
+    expect(createPreservationQualityReport({ ...base, status: "PASS" }, "advisory").summary)
+      .toEqual({ checked: 1, passed: 1, warned: 0, failed: 0, skipped: 0 });
+    expect(createPreservationQualityReport({ ...base, status: "WARN" }, "advisory").summary)
+      .toEqual({ checked: 1, passed: 0, warned: 1, failed: 0, skipped: 0 });
+    expect(createPreservationQualityReport({ ...base, status: "FAIL" }, "blocking").summary)
+      .toEqual({ checked: 1, passed: 0, warned: 0, failed: 1, skipped: 0 });
   });
 });
