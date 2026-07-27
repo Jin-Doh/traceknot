@@ -940,4 +940,16 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
     expect(extractProse(before)).not.toContain("traceknot verify");
   });
+
+  test("binds timezone designators to protected times", () => {
+    expect(verifyPreservation("Maintenance starts at 12:30 UTC.", "Maintenance starts at 12:30 EST.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("rejects over-indented top-level fence closers", () => {
+    const before = "   ```js\nconst first = 1;\n    ```\nconst oldCode = 2;\n```";
+    const after = "   ```js\nconst first = 1;\n    ```\nconst newCode = 2;\n```";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
+    expect(extractProse(before)).not.toContain("oldCode");
+  });
 });

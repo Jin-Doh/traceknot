@@ -124,12 +124,13 @@ function markdownFencedBlocks(text: string): string[] {
       if (!nestedUnderList) continue;
     }
     const delimiter = opening[2];
+    const closingIndentLimit = openingIndent > 3 ? openingIndent + 3 : 3;
     const marker = delimiter[0];
     if (marker === "`" && lines[index].slice(opening[0].length).includes("`")) continue;
     let end = lines.length - 1;
     for (let candidate = index + 1; candidate < lines.length; candidate += 1) {
       const closing = lines[candidate].match(/^([ \t]*)(`+|~+)[ \t]*(?:\r?\n|$)/);
-      if (closing && indentationColumns(closing[1]) <= openingIndent + 3 && closing[2][0] === marker && closing[2].length >= delimiter.length) {
+      if (closing && indentationColumns(closing[1]) <= closingIndentLimit && closing[2][0] === marker && closing[2].length >= delimiter.length) {
         end = candidate;
         break;
       }
@@ -587,6 +588,7 @@ function protectedValues(text: string): Map<string, { category: string; count: n
   const categories: Array<[string, RegExp]> = [
     ["number", /(?<![\w.])(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s*(?:%|°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))?\s*(?:[<>]=?|[≤≥=≠])(?![=<>])/g],
     ["number", /(?<![\w.])\d{1,2}(?:\s*:\s*\d{2}(?:\s*:\s*\d{2})?)?\s*(?:[AP]\.?M\.?)(?!\w)/gi],
+    ["number", /(?<![\w.])\d{1,2}\s*:\s*\d{2}(?:\s*:\s*\d{2})?\s+(?:UTC|GMT|[A-Z]{2,5})(?:[+-]\d{1,2}(?::?\d{2})?)?\b/g],
     ["number", /(?<![\w.])\d+(?:\s*[/:]\s*\d+){2,}(?!\w|\.\d)/g],
     ["number", /(?<![\w.])(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s*(?:%|°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|[KMGTPE]i?B|bytes?|bits?|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))?\s*[-–—/:]\s*(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s*(?:%|°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|[KMGTPE]i?B|bytes?|bits?|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))?(?!\w|\.\d)/gi],
     ["number", /\b\d{4}-\d{2}-\d{2}\b|(?<![\w.])(?:(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?\s*[-–—/:]\s*(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?)\b|\bv?\d+(?:\.\d+)+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?\b|(?<![\w.])(?:(?:[<>]=?|[≤≥=≠])\s*)?(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent)\b|(?:%|°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
