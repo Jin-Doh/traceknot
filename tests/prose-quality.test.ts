@@ -205,4 +205,24 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("FAIL");
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
   });
+
+  test("counts token reordering as a structural rewrite", () => {
+    const before = "one two three four five six seven eight nine ten";
+    const after = "ten nine eight seven six five four three two one";
+    expect(verifyPreservation(before, after, 0.3, 0.5).status).toBe("FAIL");
+  });
+
+  test("preserves percentage markers with numeric values", () => {
+    const report = verifyPreservation("Coverage remains at 50% for this release.", "Coverage remains at 50 for this release.");
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("captures balanced parentheses in Markdown link destinations", () => {
+    const before = "Read the [guide](docs/setup(v1).md) before publishing.";
+    const after = "Read the [guide](docs/setup(v1).txt) before publishing.";
+    const report = verifyPreservation(before, after);
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
 });

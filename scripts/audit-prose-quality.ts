@@ -227,16 +227,16 @@ export function scanRepository(root: string, config: Config = DEFAULT_CONFIG): P
   };
 }
 
-function tokenCounts(text: string): Map<string, number> {
-  const tokens = text.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [];
+function ngramCounts(tokens: string[], width: 1 | 2): Map<string, number> {
   const counts = new Map<string, number>();
-  for (const token of tokens) counts.set(token, (counts.get(token) ?? 0) + 1);
+  for (let index = 0; index <= tokens.length - width; index += 1) {
+    const token = width === 1 ? tokens[index] : `${tokens[index]}\u0000${tokens[index + 1]}`;
+    counts.set(token, (counts.get(token) ?? 0) + 1);
+  }
   return counts;
 }
 
-function tokenChangeRate(before: string, after: string): number {
-  const left = tokenCounts(before);
-  const right = tokenCounts(after);
+function multisetDiceDistance(left: Map<string, number>, right: Map<string, number>): number {
   let common = 0;
   let leftTotal = 0;
   let rightTotal = 0;
@@ -246,16 +246,58 @@ function tokenChangeRate(before: string, after: string): number {
     common += Math.min(count, left.get(token) ?? 0);
   }
   const combinedTotal = leftTotal + rightTotal;
-  return combinedTotal === 0 ? 0 : Math.round((1 - (2 * common) / combinedTotal) * 1_000_000) / 1_000_000;
+  return combinedTotal === 0 ? 0 : 1 - (2 * common) / combinedTotal;
+}
+
+function tokenChangeRate(before: string, after: string): number {
+  const leftTokens = before.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [];
+  const rightTokens = after.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [];
+  const unigramDistance = multisetDiceDistance(ngramCounts(leftTokens, 1), ngramCounts(rightTokens, 1));
+  const bigramDistance = multisetDiceDistance(ngramCounts(leftTokens, 2), ngramCounts(rightTokens, 2));
+  return Math.round(Math.max(unigramDistance, bigramDistance) * 1_000_000) / 1_000_000;
+}
+
+function markdownLinkDestinations(text: string): string[] {
+  const destinations: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const start = text.indexOf("](", cursor);
+    if (start < 0) break;
+    let depth = 1;
+    let escaped = false;
+    let closed = false;
+    for (let index = start + 2; index < text.length; index += 1) {
+      const character = text[index];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (character === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (character === "(") depth += 1;
+      else if (character === ")") {
+        depth -= 1;
+        if (depth === 0) {
+          destinations.push(text.slice(start + 2, index));
+          cursor = index + 1;
+          closed = true;
+          break;
+        }
+      }
+    }
+    if (!closed) cursor = start + 2;
+  }
+  return destinations;
 }
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
     ["code-block", /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$|(?:^(?: {4}|\t).*(?:\n|$))+/gm],
     ["inline-code", /`[^`\n]+`/g],
-    ["link-destination", /\]\(([^)]+)\)/g],
     ["url", /https?:\/\/[^\s)>]+/g],
-    ["number", /\b\d+(?:[.,]\d+)*(?:%|[A-Za-z]+)?\b/g],
+    ["number", /\b\d+(?:[.,]\d+)*%|\b\d+(?:[.,]\d+)*(?:[A-Za-z]+)?\b/g],
     ["normative", /\b(?:MUST|SHOULD|MAY|must|should|may)\b|(?:해서는 안 된다|해야 한다|할 수 있다)/g],
     ["quotation", /^>.*(?:\n>.*)*/gm],
     ["quotation", /“[^”]+”|"[^"]+"/g],
@@ -263,11 +305,16 @@ function protectedValues(text: string): Map<string, { category: string; count: n
   const values = new Map<string, { category: string; count: number }>();
   for (const [category, pattern] of categories) {
     for (const match of text.matchAll(pattern)) {
-      const value = category === "link-destination" ? match[1] ?? match[0] : match[0];
+      const value = match[0];
       const key = `${category}\u0000${value}`;
       const current = values.get(key);
       values.set(key, { category, count: (current?.count ?? 0) + 1 });
     }
+  }
+  for (const destination of markdownLinkDestinations(text)) {
+    const key = `link-destination\u0000${destination}`;
+    const current = values.get(key);
+    values.set(key, { category: "link-destination", count: (current?.count ?? 0) + 1 });
   }
   return values;
 }
