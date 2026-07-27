@@ -282,7 +282,7 @@ function startsInterruptingMarkdownBlock(line: string): boolean {
 
 function blockquoteContent(line: string): string | null {
   const match = line.match(/^([ \t]*)>[ \t]?/);
-  if (!match || indentationColumns(match[1]) > 3) return null;
+  if (!match) return null;
   return line.slice(match[0].length);
 }
 
@@ -291,6 +291,20 @@ function markdownBlockquotes(text: string): string[] {
   const blocks: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
     const openingContent = blockquoteContent(lines[index]);
+    const openingIndent = indentationColumns(lines[index]);
+    if (openingIndent > 3) {
+      let nestedUnderList = false;
+      for (let ancestor = index - 1; ancestor >= 0; ancestor -= 1) {
+        if (lines[ancestor].trim().length === 0) continue;
+        const listItem = lines[ancestor].match(/^([ ]*)(?:[-+*]|\d+[.)])[ \t]+/);
+        if (listItem && indentationColumns(listItem[1]) < openingIndent) {
+          nestedUnderList = true;
+          break;
+        }
+        if (indentationColumns(lines[ancestor]) === 0) break;
+      }
+      if (!nestedUnderList) continue;
+    }
     if (openingContent === null) continue;
     let end = index;
     let allowsLazyContinuation = !startsInterruptingMarkdownBlock(openingContent);
@@ -568,6 +582,11 @@ function markdownLinkDestinations(text: string): string[] {
     const destination = definitions.get(label);
     if (destination) destinations.push(`ref:${label}=>${destination}`);
   }
+  for (const match of text.matchAll(/(?<!!)(?<!\])\[([^\]]+)\](?![\[(]:)/g)) {
+    const label = match[1].trim().replace(/\s+/g, " ").toLowerCase();
+    const destination = definitions.get(label);
+    if (destination) destinations.push(`ref:${label}=>${destination}`);
+  }
   return destinations;
 }
 
@@ -607,7 +626,7 @@ function protectedValues(text: string): Map<string, { category: string; count: n
   const categories: Array<[string, RegExp]> = [
     ["number", /(?<![\w.])(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s*(?:%|°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))?\s*(?:[<>]=?|[≤≥=≠])(?![=<>])/g],
     ["number", /(?<![\w.])\d{1,2}(?:\s*:\s*\d{2}(?:\s*:\s*\d{2})?)?\s*(?:[AP]\.?M\.?)(?!\w)/gi],
-    ["number", /(?<![\w.])\d{1,2}\s*:\s*\d{2}(?:\s*:\s*\d{2})?\s+(?:UTC|GMT|[A-Z]{2,5})(?:[+-]\d{1,2}(?::?\d{2})?)?\b/g],
+    ["number", /(?<![\w.])\d{1,2}(?:\s*:\s*\d{2}(?:\s*:\s*\d{2})?)?\s+(?:UTC|GMT|[A-Z]{2,5})(?:[+-]\d{1,2}(?::?\d{2})?)?\b/g],
     ["number", /(?<![\w.])\d+(?:\s*[/:]\s*\d+){2,}(?!\w|\.\d)/g],
     ["number", /\b(?:USD|EUR|GBP|JPY|KRW)\s+(?:\d+(?:[.,]\d+)*|\.\d+)(?:\s+(?:thousand|million|billion|trillion))?\b/gi],
     ["number", /(?<![\w.])(?:\d+(?:[.,]\d+)*|\.\d+)\s+(?:[KMGTPE]i?B|[KMGTPE]?bps|bytes?|bits?)\b/gi],
@@ -840,6 +859,14 @@ export function parseArguments(argv: string[]): Arguments {
   return options;
 }
 
+export function formatTextReport(report: ProseQualityReport): string {
+  const lines = [`Prose quality: ${report.status}; ${report.summary.checked} checked, ${report.summary.passed} passed, ${report.summary.warned} warned, ${report.summary.failed} failed, ${report.summary.skipped} skipped.`];
+  for (const file of report.files) {
+    for (const finding of file.findings) lines.push(`${file.path}:${finding.line} ${finding.severity} ${finding.ruleId} ${finding.description} (${finding.count})`);
+  }
+  return lines.join("\n");
+}
+
 export function createPreservationQualityReport(preservation: PreservationReport, mode: Config["mode"]): ProseQualityReport {
   return {
     schemaVersion: "prose-quality-report/v1",
@@ -869,7 +896,7 @@ if (import.meta.main) {
     const serialized = JSON.stringify(report, null, 2);
     if (options.report) writeFileSync(resolve(options.root, options.report), `${serialized}\n`);
     if (options.format === "json") console.log(serialized);
-    else console.log(`Prose quality: ${report.status}; ${report.summary.checked} checked, ${report.summary.passed} passed, ${report.summary.warned} warned, ${report.summary.failed} failed, ${report.summary.skipped} skipped.`);
+    else console.log(formatTextReport(report));
     process.exitCode = report.status === "FAIL" ? 1 : report.status === "BLOCKED" ? 2 : 0;
   } catch (error) {
     console.error(`prose-quality scanner: ${error instanceof Error ? error.message : String(error)}`);

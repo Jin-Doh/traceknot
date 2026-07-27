@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { analyzeProse, createPreservationQualityReport, detectLocale, extractProse, loadConfig, parseArguments, scanRepository, verifyPreservation, type Config } from "../scripts/audit-prose-quality";
+import { analyzeProse, createPreservationQualityReport, detectLocale, extractProse, formatTextReport, loadConfig, parseArguments, scanRepository, verifyPreservation, type Config } from "../scripts/audit-prose-quality";
 
 describe("published prose extraction and locale selection", () => {
   test("protects frontmatter, code, links, URLs, inline code, and quoted blocks", () => {
@@ -1023,5 +1023,36 @@ describe("rewrite preservation gate", () => {
   test("binds weekday names to textual dates", () => {
     expect(verifyPreservation("Release is Monday, July 27, 2026.", "Release is Tuesday, July 27, 2026.").failures)
       .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("binds shortcut references to destinations", () => {
+    const definitions = "\n\n[stable]: docs/stable.md\n[beta]: docs/beta.md";
+    expect(verifyPreservation(`[stable]${definitions}`, `[beta]${definitions}`).failures)
+      .toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
+
+  test("recognizes blockquotes nested under list containers", () => {
+    const before = "- Evidence\n\n    > Original attributed text";
+    const after = "- Evidence\n\n    > Changed attributed text";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
+    expect(extractProse(before)).not.toContain("Original attributed text");
+  });
+
+  test("binds timezone designators to hour-only times", () => {
+    expect(verifyPreservation("Maintenance starts at 12 UTC.", "Maintenance starts at 12 EST.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("prints individual findings in text reports", () => {
+    const report = { path: "posts/example.md", ...analyzeProse("In today's rapidly evolving landscape, teams change. This underscores the importance of a transformative potential for every organization.", ["en"]) };
+    const output = formatTextReport({
+      schemaVersion: "prose-quality-report/v1",
+      mode: "advisory",
+      status: report.status,
+      files: [report],
+      summary: { checked: 1, passed: 0, warned: 1, failed: 0, skipped: 0 },
+    });
+    expect(output).toContain("posts/example.md:");
+    expect(output).toContain("EN-");
   });
 });
