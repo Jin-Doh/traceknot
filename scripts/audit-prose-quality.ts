@@ -132,7 +132,8 @@ function markdownInlineCodeSpans(text: string): string[] {
   const spans: string[] = [];
   let cursor = 0;
   while (cursor < text.length) {
-    const start = text.indexOf("`", cursor);
+    let start = text.indexOf("`", cursor);
+    while (start >= 0 && isEscaped(text, start)) start = text.indexOf("`", start + 1);
     if (start < 0) break;
     let openingLength = 1;
     while (text[start + openingLength] === "`") openingLength += 1;
@@ -141,6 +142,10 @@ function markdownInlineCodeSpans(text: string): string[] {
     while (candidate < text.length) {
       candidate = text.indexOf("`", candidate);
       if (candidate < 0) break;
+      if (isEscaped(text, candidate)) {
+        candidate += 1;
+        continue;
+      }
       let closingLength = 1;
       while (text[candidate + closingLength] === "`") closingLength += 1;
       if (closingLength === openingLength) {
@@ -493,7 +498,7 @@ function markdownLinkDestinations(text: string): string[] {
     }
     if (!closed) cursor = start + 2;
   }
-  for (const match of text.matchAll(/^[ \t]{0,3}\[[^\]]+\]:[ \t]*(?:<([^>\n]+)>|(\S+))/gm)) {
+  for (const match of text.matchAll(/^[ \t]{0,3}\[[^\]]+\]:[ \t]*(?:\r?\n[ \t]+)?(?:<([^>\n]+)>|(\S+))/gm)) {
     destinations.push(match[1] ?? match[2] ?? "");
   }
   return destinations;
@@ -521,7 +526,7 @@ function standaloneUrls(text: string): string[] {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["number", /\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])(?:[+-]?[$€£¥₩]|[$€£¥₩][+-]?|[+-]?)\d+(?:[.,]\d+)*(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
+    ["number", /\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])(?:[+-]?[$€£¥₩]|[$€£¥₩][+-]?|[+-]?)\d+(?:[.,]\d+)*(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
     ["normative", /\b(?:MUST|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+된다|해야\s+한다|할\s+수\s+있다)/gi],
   ];
   const values = new Map<string, { category: string; count: number }>();
@@ -592,10 +597,21 @@ function normalizeClaimLabel(token: string): string {
 }
 
 function claimLabel(text: string, index: number, valueLength: number): string {
-  const tokens = (value: string): string[] => value.match(/[\p{L}\p{N}_-]+/gu)?.map(normalizeClaimLabel).filter(Boolean) ?? [];
-  return tokens(text.slice(Math.max(0, index - 96), index)).slice(-8).reverse()[0]
-    ?? tokens(text.slice(index + valueLength, index + valueLength + 48)).slice(0, 3)[0]
-    ?? "";
+  const leftText = text.slice(0, index);
+  const leftBoundary = Math.max(leftText.lastIndexOf(","), leftText.lastIndexOf(";"), leftText.lastIndexOf(":"), leftText.lastIndexOf("\n"));
+  const rightText = text.slice(index + valueLength);
+  const rightBoundaryMatch = rightText.match(/[,;:\n]/);
+  const leftClause = leftText.slice(leftBoundary + 1);
+  const rightClause = rightText.slice(0, rightBoundaryMatch?.index ?? rightText.length);
+  const leftLabels = (leftClause.match(/[\p{L}\p{N}_-]+/gu) ?? []).map(normalizeClaimLabel).filter(Boolean);
+  const rightLabels = (rightClause.match(/[\p{L}\p{N}_-]+/gu) ?? []).map(normalizeClaimLabel).filter(Boolean);
+  const left = leftLabels.at(-1) ?? "";
+  const right = rightLabels[0] ?? "";
+  if (!left) return right;
+  if (!right) return left;
+  const leftDistance = leftClause.length - leftClause.toLowerCase().lastIndexOf(left);
+  const rightDistance = rightClause.toLowerCase().indexOf(right);
+  return leftDistance <= rightDistance ? left : right;
 }
 
 function findProtectedOccurrence(text: string, value: string, category: string, cursor: number): number {

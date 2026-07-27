@@ -583,4 +583,28 @@ describe("rewrite preservation gate", () => {
     const report = verifyPreservation("The notation [marker\\](old) is explained.", "The notation [marker\\](new) is explained.");
     expect(report.failures.some((failure) => failure.category === "link-destination")).toBe(false);
   });
+
+  test("binds postfix claim labels within their local clause", () => {
+    const before = "Release 1.2 is minimum, while release 2.0 is maximum.";
+    const after = "Release 1.2 is minimum, while release 2.0 is minimum.";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
+
+  test("protects multiline reference-link destinations", () => {
+    const before = "[guide][setup]\n\n[setup]:\n  docs/old.md";
+    const after = "[guide][setup]\n\n[setup]:\n  docs/new.md";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
+
+  test("preserves degree-prefixed temperature units", () => {
+    const report = verifyPreservation("The target is 5°C.", "The target is 5°F.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("ignores escaped inline-code delimiters", () => {
+    const before = "The literal \\`old\\` marker is prose.";
+    const after = "The literal \\`new\\` marker is prose.";
+    expect(extractProse(before)).toContain("old");
+    expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "inline-code")).toBe(false);
+  });
 });
