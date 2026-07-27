@@ -1207,4 +1207,16 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
     expect(extractProse(before)).not.toContain("lazy continuation");
   });
+
+  test("computes list indentation from complete ordered markers", () => {
+    const before = "1234. > Original text\n      lazy continuation";
+    const after = "1234. > Original text\n      changed continuation";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
+    expect(extractProse(before)).not.toContain("lazy continuation");
+  });
+
+  test("preserves complete compound spelled-out quantities", () => {
+    expect(verifyPreservation("The system allows one hundred retries.", "The system allows two hundred retries.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
 });
