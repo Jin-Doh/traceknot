@@ -622,9 +622,10 @@ function markdownLinkDestinations(text: string): string[] {
     definitions.set(match[1].trim().replace(/\s+/g, " ").toLowerCase(), match[2] ?? match[3] ?? "");
   }
   for (const match of text.matchAll(/!?\[([^\]]+)\]\[([^\]]*)\]/g)) {
+    const visible = match[1].trim().replace(/\s+/g, " ").toLowerCase();
     const label = (match[2] || match[1]).trim().replace(/\s+/g, " ").toLowerCase();
     const destination = definitions.get(label);
-    if (destination) destinations.push(`ref:${label}=>${destination}`);
+    if (destination) destinations.push(`ref:${visible}=>${label}=>${destination}`);
   }
   for (let boundary = text.indexOf("]["); boundary >= 0; boundary = text.indexOf("][", boundary + 2)) {
     if (!hasOpeningLinkBracket(text, boundary)) continue;
@@ -815,7 +816,7 @@ function claimLabel(text: string, index: number, valueLength: number, bindSubjec
     const localClause = leftClause.split(/\b(?:while|whereas|and|but)\b/i).at(-1) ?? leftClause;
     const words = localClause.match(/[\p{L}_][\p{L}\p{N}_-]*/gu) ?? [];
     const relationSubject = localClause.match(/(?:^|\s)(?:the\s+|a\s+|an\s+)?([\p{L}_][\p{L}\p{N}_-]*)\s+(?:listens?|runs?|serves?|uses?|routes?|maps?|connects?|belongs?)\b/iu)?.[1]?.toLowerCase();
-    const object = rightClause.match(/^\s*(?:(?:serves?|routes?|maps?|connects?|belongs?)\s+(?:to\s+)?|(?:is|are|was|were)\s+(?:assigned|mapped|routed|connected)\s+to\s+)([\p{L}_][\p{L}\p{N}_-]*)/iu)?.[1]?.toLowerCase();
+    const object = rightClause.match(/^\s*(?:(?:serves?|routes?|maps?|connects?|belongs?)\s+(?:to\s+)?|(?:is|are|was|were)\s+(?:assigned|mapped|routed|connected)\s+to\s+(?:the\s+|a\s+|an\s+)?)([\p{L}_][\p{L}\p{N}_-]*)/iu)?.[1]?.toLowerCase();
     const subject = relationSubject
       ?? (object ? (words.find((word) => !/^(?:the|a|an)$/i.test(word)) ?? "").toLowerCase() : (words.find((word) => /^[A-Z][A-Z0-9_-]+$/.test(word)) ?? "").toLowerCase());
     return object ? `${subject}->${object}` : subject;

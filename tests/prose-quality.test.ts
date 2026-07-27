@@ -1268,4 +1268,16 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation("Authentication is not permitted.", "Authentication is not prohibited.").failures)
       .toContainEqual(expect.objectContaining({ category: "normative" }));
   });
+
+  test("binds reference-link text to its destination", () => {
+    const before = "[stable guide][one] and [beta guide][two]\n\n[one]: /stable\n[two]: /beta";
+    const after = "[beta guide][one] and [stable guide][two]\n\n[one]: /stable\n[two]: /beta";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
+
+  test("skips articles before passive assignment targets", () => {
+    const before = "Port 80 is assigned to the frontend, while port 443 is assigned to the backend";
+    const after = "Port 80 is assigned to the backend, while port 443 is assigned to the frontend";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
 });
