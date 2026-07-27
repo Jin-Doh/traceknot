@@ -862,4 +862,15 @@ describe("rewrite preservation gate", () => {
     expect(createPreservationQualityReport({ ...base, status: "FAIL" }, "blocking").summary)
       .toEqual({ checked: 1, passed: 0, warned: 0, failed: 1, skipped: 0 });
   });
+
+  test("scans quoted HTML attributes before locating href", () => {
+    const before = "<a title='open > closed' href='docs/old.md'>Guide</a>";
+    const after = "<a title='open > closed' href='docs/new.md'>Guide</a>";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
+
+  test("normalizes units on both compound operands", () => {
+    const report = verifyPreservation("The range is 10%–20%.", "The range is 10 %–20 %.");
+    expect(report.failures.some((failure) => failure.category === "number" || failure.category === "protected-context")).toBe(false);
+  });
 });
