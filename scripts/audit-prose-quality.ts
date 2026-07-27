@@ -127,6 +127,56 @@ function markdownFencedBlocks(text: string): string[] {
   return blocks;
 }
 
+function markdownInlineCodeSpans(text: string): string[] {
+  const spans: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const start = text.indexOf("`", cursor);
+    if (start < 0) break;
+    let openingLength = 1;
+    while (text[start + openingLength] === "`") openingLength += 1;
+    let candidate = start + openingLength;
+    let closed = false;
+    while (candidate < text.length) {
+      candidate = text.indexOf("`", candidate);
+      if (candidate < 0) break;
+      let closingLength = 1;
+      while (text[candidate + closingLength] === "`") closingLength += 1;
+      if (closingLength === openingLength) {
+        spans.push(text.slice(start, candidate + closingLength));
+        cursor = candidate + closingLength;
+        closed = true;
+        break;
+      }
+      candidate += closingLength;
+    }
+    if (!closed) cursor = start + openingLength;
+  }
+  return spans;
+}
+
+function markdownIndentedCodeBlocks(text: string): string[] {
+  const lines = text.match(/[^\n]*(?:\n|$)/g)?.filter((line) => line.length > 0) ?? [];
+  const blocks: string[] = [];
+  let listContext = false;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^[ \t]{0,3}(?:[-+*]|\d+[.)])[ \t]+/.test(line)) {
+      listContext = true;
+      continue;
+    }
+    if (/^\S/.test(line)) listContext = false;
+    const spaces = line.match(/^ */)?.[0].length ?? 0;
+    const codeIndent = line.startsWith("\t") || spaces >= (listContext ? 6 : 4);
+    if (!codeIndent) continue;
+    let end = index;
+    while (end + 1 < lines.length && (/^(?: {4}|\t)/.test(lines[end + 1]) || /^[ \t]*(?:\r?\n|$)/.test(lines[end + 1]))) end += 1;
+    blocks.push(lines.slice(index, end + 1).join(""));
+    index = end;
+  }
+  return blocks;
+}
+
 function startsInterruptingMarkdownBlock(line: string): boolean {
   return /^[ \t]{0,3}(?:#{1,6}(?:[ \t]|$)|(?:[-+*]|\d+[.)])[ \t]+|`{3,}|~{3,}|(?:\*\s*){3,}$|(?:-\s*){3,}$|(?:_\s*){3,}$|<)/.test(line.trimEnd());
 }
@@ -150,12 +200,12 @@ function markdownBlockquotes(text: string): string[] {
 }
 
 export function extractProse(markdown: string): string {
-  let prose = markdown.replace(/^---\n[\s\S]*?\n---\n/, maskContentPreservingLines);
+  let prose = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, maskContentPreservingLines);
   for (const block of markdownFencedBlocks(prose)) prose = prose.replace(block, maskContentPreservingLines);
-  prose = prose.replace(/(?:^(?: {4}|\t).*(?:\n|$))+/gm, maskContentPreservingLines);
+  for (const block of markdownIndentedCodeBlocks(prose)) prose = prose.replace(block, maskContentPreservingLines);
   for (const quote of markdownBlockquotes(prose)) prose = prose.replace(quote, maskContentPreservingLines);
   prose = prose.replace(/“[^”]+”|"[^"]+"/g, maskContentPreservingLines);
-  prose = prose.replace(/(`+)(?!`)[\s\S]*?\1(?!`)/g, maskContentPreservingLines);
+  for (const span of markdownInlineCodeSpans(prose)) prose = prose.replace(span, maskContentPreservingLines);
   prose = prose.replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1");
   prose = prose.replace(/<https?:\/\/[^>]+>|https?:\/\/\S+/g, "");
   prose = prose.replace(/^\s*[-*+]\s*$/gm, "");
@@ -345,7 +395,7 @@ function standaloneUrls(text: string): string[] {
   const urls: string[] = [];
   for (const match of text.matchAll(/https?:\/\/[^\s<>"']+/g)) {
     let value = match[0].replace(/[.,;:!?]+$/, "");
-    let openings = (value.match(/\(/g) ?? []).length;
+    const openings = (value.match(/\(/g) ?? []).length;
     let closings = (value.match(/\)/g) ?? []).length;
     while (value.endsWith(")") && closings > openings) {
       value = value.slice(0, -1);
@@ -358,8 +408,6 @@ function standaloneUrls(text: string): string[] {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["code-block", /(?:^(?: {4}|\t).*(?:\n|$))+/gm],
-    ["inline-code", /(`+)(?!`)[\s\S]*?\1(?!`)/g],
     ["number", /\bv\d+(?:\.\d+)+\b|(?<![\w.])[+-]?\d+(?:[.,]\d+)*(?:%|[A-Za-z]+\b|\b)/g],
     ["normative", /\b(?:MUST|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+된다|해야\s+한다|할\s+수\s+있다)/gi],
     ["quotation", /“[^”]+”|"[^"]+"/g],
@@ -377,6 +425,16 @@ function protectedValues(text: string): Map<string, { category: string; count: n
     const key = `url\u0000${url}`;
     const current = values.get(key);
     values.set(key, { category: "url", count: (current?.count ?? 0) + 1 });
+  }
+  for (const span of markdownInlineCodeSpans(text)) {
+    const key = `inline-code\u0000${span}`;
+    const current = values.get(key);
+    values.set(key, { category: "inline-code", count: (current?.count ?? 0) + 1 });
+  }
+  for (const block of markdownIndentedCodeBlocks(text)) {
+    const key = `code-block\u0000${block}`;
+    const current = values.get(key);
+    values.set(key, { category: "code-block", count: (current?.count ?? 0) + 1 });
   }
   for (const destination of markdownLinkDestinations(text)) {
     const key = `link-destination\u0000${destination}`;

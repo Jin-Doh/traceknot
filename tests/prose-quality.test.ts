@@ -351,4 +351,27 @@ describe("rewrite preservation gate", () => {
     expect(extractProse(before)).toContain("Following publication prose.");
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
   });
+
+  test("requires exact-run inline-code closing delimiters", () => {
+    const before = "Use ``alpha ``` beta`` safely in this workflow.";
+    const after = "Use ``alpha ``` gamma`` safely in this workflow.";
+    const report = verifyPreservation(before, after);
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "inline-code" }));
+  });
+
+  test("does not classify list continuation prose as indented code", () => {
+    const before = "- Item\n    Ordinary continuation prose remains editable.";
+    const after = "- Item\n    Natural continuation prose remains editable.";
+    expect(extractProse(before)).toContain("Ordinary continuation prose");
+    expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "code-block")).toBe(false);
+  });
+
+  test("excludes CRLF frontmatter from style analysis", () => {
+    const source = "---\r\ntitle: In today's rapidly evolving landscape\r\ndescription: This underscores the importance of metadata\r\n---\r\nOrdinary publication prose.";
+    const prose = extractProse(source);
+    expect(prose).not.toContain("rapidly evolving landscape");
+    expect(prose).not.toContain("underscores the importance");
+    expect(prose).toContain("Ordinary publication prose.");
+  });
 });
