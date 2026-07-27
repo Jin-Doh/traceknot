@@ -330,4 +330,25 @@ describe("rewrite preservation gate", () => {
     expect(prose).toContain("Published heading");
     expect(prose).toContain("Ordinary publication prose");
   });
+
+  test("preserves Korean normative terms across flexible whitespace", () => {
+    const report = verifyPreservation("운영자는 삭제해서는\n안 된다. 이 규칙을 지킨다.", "운영자는 삭제해서는 된다. 이 규칙을 지킨다.");
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+  });
+
+  test("preserves complete standalone URLs with balanced parentheses", () => {
+    const before = "Read https://example.com/a(b)/old before continuing with the publication.";
+    const after = "Read https://example.com/a(b)/new before continuing with the publication.";
+    const report = verifyPreservation(before, after);
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "url" }));
+  });
+
+  test("recognizes CRLF fenced-code closers without masking following prose", () => {
+    const before = "```sh\r\ntraceknot verify\r\n```\r\nFollowing publication prose.";
+    const after = "```sh\r\ntraceknot delete\r\n```\r\nFollowing publication prose.";
+    expect(extractProse(before)).toContain("Following publication prose.");
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
+  });
 });

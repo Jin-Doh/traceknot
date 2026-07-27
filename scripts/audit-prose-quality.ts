@@ -115,7 +115,7 @@ function markdownFencedBlocks(text: string): string[] {
     const marker = delimiter[0];
     let end = lines.length - 1;
     for (let candidate = index + 1; candidate < lines.length; candidate += 1) {
-      const closing = lines[candidate].match(/^[ \t]{0,3}(`+|~+)[ \t]*(?:\n|$)/);
+      const closing = lines[candidate].match(/^[ \t]{0,3}(`+|~+)[ \t]*(?:\r?\n|$)/);
       if (closing && closing[1][0] === marker && closing[1].length >= delimiter.length) {
         end = candidate;
         break;
@@ -139,7 +139,7 @@ function markdownBlockquotes(text: string): string[] {
     let end = index;
     while (end + 1 < lines.length) {
       const next = lines[end + 1];
-      if (/^[ \t]*(?:\n|$)/.test(next)) break;
+      if (/^[ \t]*(?:\r?\n|$)/.test(next)) break;
       if (!/^[ \t]{0,3}>/.test(next) && startsInterruptingMarkdownBlock(next)) break;
       end += 1;
     }
@@ -341,13 +341,27 @@ function markdownLinkDestinations(text: string): string[] {
   return destinations;
 }
 
+function standaloneUrls(text: string): string[] {
+  const urls: string[] = [];
+  for (const match of text.matchAll(/https?:\/\/[^\s<>"']+/g)) {
+    let value = match[0].replace(/[.,;:!?]+$/, "");
+    let openings = (value.match(/\(/g) ?? []).length;
+    let closings = (value.match(/\)/g) ?? []).length;
+    while (value.endsWith(")") && closings > openings) {
+      value = value.slice(0, -1);
+      closings -= 1;
+    }
+    if (value.length > 0) urls.push(value);
+  }
+  return urls;
+}
+
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
     ["code-block", /(?:^(?: {4}|\t).*(?:\n|$))+/gm],
     ["inline-code", /(`+)(?!`)[\s\S]*?\1(?!`)/g],
-    ["url", /https?:\/\/[^\s)>]+/g],
     ["number", /\bv\d+(?:\.\d+)+\b|(?<![\w.])[+-]?\d+(?:[.,]\d+)*(?:%|[A-Za-z]+\b|\b)/g],
-    ["normative", /\b(?:MUST|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는 안 된다|해야 한다|할 수 있다)/gi],
+    ["normative", /\b(?:MUST|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+된다|해야\s+한다|할\s+수\s+있다)/gi],
     ["quotation", /“[^”]+”|"[^"]+"/g],
   ];
   const values = new Map<string, { category: string; count: number }>();
@@ -358,6 +372,11 @@ function protectedValues(text: string): Map<string, { category: string; count: n
       const current = values.get(key);
       values.set(key, { category, count: (current?.count ?? 0) + 1 });
     }
+  }
+  for (const url of standaloneUrls(text)) {
+    const key = `url\u0000${url}`;
+    const current = values.get(key);
+    values.set(key, { category: "url", count: (current?.count ?? 0) + 1 });
   }
   for (const destination of markdownLinkDestinations(text)) {
     const key = `link-destination\u0000${destination}`;
