@@ -1076,4 +1076,20 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation("Release is 27 July.", "Release is 27 August.").failures)
       .toContainEqual(expect.objectContaining({ category: "number" }));
   });
+
+  test("protects predicate obligations without an infinitive", () => {
+    expect(verifyPreservation("Authentication is required for deployments.", "Authentication is optional for deployments.").failures)
+      .toContainEqual(expect.objectContaining({ category: "normative" }));
+  });
+
+  test("parses nested brackets in reference-link text", () => {
+    const definitions = "\n\n[stable]: docs/stable.md\n[beta]: docs/beta.md";
+    expect(verifyPreservation(`[the [deployment] guide][stable]${definitions}`, `[the [deployment] guide][beta]${definitions}`).failures)
+      .toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
+
+  test("protects month-and-year textual dates", () => {
+    expect(verifyPreservation("Release is July 2026.", "Release is August 2026.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
 });
