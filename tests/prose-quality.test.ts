@@ -952,4 +952,18 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
     expect(extractProse(before)).not.toContain("oldCode");
   });
+
+  test("preserves month names in textual dates", () => {
+    expect(verifyPreservation("Release is July 27, 2026.", "Release is August 27, 2026.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(verifyPreservation("Release is 27 July 2026.", "Release is 27 August 2026.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("preserves separators between data-rate operands", () => {
+    expect(verifyPreservation("Throughput is 10 Mbps–20 Mbps.", "Throughput is 10 Mbps/20 Mbps.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(verifyPreservation("Throughput is 10 Gbps–20 Gbps.", "Throughput is 10 Gbps/20 Gbps.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
 });
