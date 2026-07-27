@@ -1180,4 +1180,31 @@ describe("rewrite preservation gate", () => {
     const after = "backend listens on port 80 while frontend listens on port 443";
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
   });
+
+  test("binds object-side subjects to numeric facts", () => {
+    const before = "Port 80 serves frontend, while port 443 serves backend.";
+    const after = "Port 80 serves backend, while port 443 serves frontend.";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
+
+  test("protects obligations containing intervening auxiliaries", () => {
+    expect(verifyPreservation("Authentication will be required for deployments.", "Authentication will be optional for deployments.").failures)
+      .toContainEqual(expect.objectContaining({ category: "normative" }));
+    expect(verifyPreservation("Access has been prohibited.", "Access has been allowed.").failures)
+      .toContainEqual(expect.objectContaining({ category: "normative" }));
+  });
+
+  test("preserves spelled-out numeric quantities", () => {
+    expect(verifyPreservation("The system allows five retries.", "The system allows six retries.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(verifyPreservation("시스템은 다섯 개를 허용한다.", "시스템은 여섯 개를 허용한다.").failures)
+      .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("keeps list-relative lazy blockquote continuations protected", () => {
+    const before = "- > Original attributed text\n    lazy continuation text";
+    const after = "- > Original attributed text\n    changed continuation text";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
+    expect(extractProse(before)).not.toContain("lazy continuation");
+  });
 });
