@@ -527,23 +527,27 @@ function tokenChangeRate(before: string, after: string, rejectionThreshold: numb
   return distance === null ? rejectionThreshold : Math.round((distance / combinedTotal) * 1_000_000) / 1_000_000;
 }
 
-function hasOpeningLinkBracket(text: string, closingIndex: number): boolean {
+function openingLinkBracketIndex(text: string, closingIndex: number): number {
   let nested = 0;
   let lineBreaks = 0;
   for (let index = closingIndex - 1; index >= 0; index -= 1) {
     if (text[index] === "\n") {
       lineBreaks += 1;
-      if (lineBreaks > 1) return false;
+      if (lineBreaks > 1) return -1;
       continue;
     }
     if (isEscaped(text, index)) continue;
     if (text[index] === "]") nested += 1;
     else if (text[index] === "[") {
-      if (nested === 0) return true;
+      if (nested === 0) return index;
       nested -= 1;
     }
   }
-  return false;
+  return -1;
+}
+
+function hasOpeningLinkBracket(text: string, closingIndex: number): boolean {
+  return openingLinkBracketIndex(text, closingIndex) >= 0;
 }
 
 function markdownLinkDestinations(text: string): string[] {
@@ -552,7 +556,8 @@ function markdownLinkDestinations(text: string): string[] {
   while (cursor < text.length) {
     const start = text.indexOf("](", cursor);
     if (start < 0) break;
-    if (isEscaped(text, start) || !hasOpeningLinkBracket(text, start)) {
+    const opening = openingLinkBracketIndex(text, start);
+    if (isEscaped(text, start) || opening < 0) {
       cursor = start + 2;
       continue;
     }
@@ -578,7 +583,9 @@ function markdownLinkDestinations(text: string): string[] {
       else if (character === ")") {
         depth -= 1;
         if (depth === 0) {
-          destinations.push(text.slice(start + 2, index));
+          const destination = text.slice(start + 2, index);
+          const label = text.slice(opening + 1, start).trim().replace(/\s+/g, " ").toLowerCase();
+          destinations.push(destination, `inline:${label}=>${destination}`);
           cursor = index + 1;
           closed = true;
           break;
@@ -639,6 +646,18 @@ function standaloneUrls(text: string): string[] {
   return urls;
 }
 
+function normativeClauses(text: string): string[] {
+  const clauses: string[] = [];
+  const pattern = /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b/gi;
+  for (const match of text.matchAll(pattern)) {
+    const left = Math.max(text.lastIndexOf(".", match.index), text.lastIndexOf(";", match.index), text.lastIndexOf(",", match.index)) + 1;
+    const candidates = [text.indexOf(".", match.index), text.indexOf(";", match.index), text.indexOf(",", match.index)].filter((index) => index >= 0);
+    const right = candidates.length > 0 ? Math.min(...candidates) : text.length;
+    clauses.push(text.slice(left, right).trim().replace(/\s+/g, " "));
+  }
+  return clauses;
+}
+
 function normalizeNumericValue(value: string): string {
   const compact = value
     .replace(/\s+/g, " ")
@@ -683,6 +702,11 @@ function protectedValues(text: string): Map<string, { category: string; count: n
     const key = `url\u0000${url}`;
     const current = values.get(key);
     values.set(key, { category: "url", count: (current?.count ?? 0) + 1 });
+  }
+  for (const clause of normativeClauses(text)) {
+    const key = `normative\u0000${clause}`;
+    const current = values.get(key);
+    values.set(key, { category: "normative", count: (current?.count ?? 0) + 1 });
   }
   for (const span of markdownInlineCodeSpans(text)) {
     const key = `inline-code\u0000${span}`;

@@ -1106,4 +1106,16 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
     expect(extractProse(before)).not.toContain("original tail");
   });
+
+  test("binds obligations to their subjects", () => {
+    const before = "Operators MUST preserve audit records, while guests MAY view them.";
+    const after = "Guests MUST preserve audit records, while operators MAY view them.";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+  });
+
+  test("binds inline-link text to its destination", () => {
+    const before = "[stable](docs/stable.md) and [beta](docs/beta.md)";
+    const after = "[beta](docs/stable.md) and [stable](docs/beta.md)";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
 });
