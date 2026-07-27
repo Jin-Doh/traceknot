@@ -406,4 +406,23 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("FAIL");
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
   });
+
+  test("preserves terminal punctuation inside angle-bracket autolinks", () => {
+    const report = verifyPreservation("Search at <https://example.com/search?> now.", "Search at <https://example.com/search!> now.");
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "url" }));
+  });
+
+  test("derives nested code indentation from ordered-list marker width", () => {
+    const before = "10. Item\n\n      Six-space continuation remains prose.";
+    const after = "10. Item\n\n      Natural continuation remains prose.";
+    expect(extractProse(before)).toContain("Six-space continuation remains prose.");
+    expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "code-block")).toBe(false);
+  });
+
+  test("preserves whitespace-separated measurement units", () => {
+    const report = verifyPreservation("The package weighs 5 kg for shipping.", "The package weighs 5 lb for shipping.");
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
 });

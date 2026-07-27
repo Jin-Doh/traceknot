@@ -158,7 +158,7 @@ function markdownInlineCodeSpans(text: string): string[] {
 function markdownIndentedCodeBlocks(text: string): string[] {
   const lines = text.match(/[^\n]*(?:\n|$)/g)?.filter((line) => line.length > 0) ?? [];
   const blocks: string[] = [];
-  let listContext = false;
+  let listCodeIndent: number | null = null;
   let previousBlank = true;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
@@ -166,14 +166,16 @@ function markdownIndentedCodeBlocks(text: string): string[] {
       previousBlank = true;
       continue;
     }
-    if (/^[ \t]{0,3}(?:[-+*]|\d+[.)])[ \t]+/.test(line)) {
-      listContext = true;
+    const listMarker = line.match(/^( {0,3})([-+*]|\d+[.)])([ \t]+)/);
+    if (listMarker) {
+      listCodeIndent = listMarker[1].length + listMarker[2].length + listMarker[3].length + 4;
       previousBlank = false;
       continue;
     }
-    if (/^\S/.test(line)) listContext = false;
+    if (/^\S/.test(line)) listCodeIndent = null;
     const spaces = line.match(/^ */)?.[0].length ?? 0;
-    const codeIndent = previousBlank && (line.startsWith("\t") || spaces >= (listContext ? 6 : 4));
+    const requiredIndent = listCodeIndent ?? 4;
+    const codeIndent = previousBlank && (line.startsWith("\t") || spaces >= requiredIndent);
     if (!codeIndent) {
       previousBlank = false;
       continue;
@@ -403,8 +405,12 @@ function markdownLinkDestinations(text: string): string[] {
 
 function standaloneUrls(text: string): string[] {
   const urls: string[] = [];
-  for (const match of text.matchAll(/https?:\/\/[^\s<>"']+/g)) {
-    let value = match[0].replace(/[.,;:!?]+$/, "");
+  const withoutAutolinks = text.replace(/<((?:https?):\/\/[^>\s]+)>/g, (_match, url: string) => {
+    urls.push(url);
+    return " ".repeat(url.length + 2);
+  });
+  for (const match of withoutAutolinks.matchAll(/https?:\/\/[^\s<>"']+/g)) {
+    let value = match[0];
     const openings = (value.match(/\(/g) ?? []).length;
     let closings = (value.match(/\)/g) ?? []).length;
     while (value.endsWith(")") && closings > openings) {
@@ -418,7 +424,7 @@ function standaloneUrls(text: string): string[] {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["number", /\bv\d+(?:\.\d+)+\b|(?<![\w.])[$€£¥₩]?[+-]?\d+(?:[.,]\d+)*(?:%|[A-Za-z]+\b|\b)/g],
+    ["number", /\bv\d+(?:\.\d+)+\b|(?<![\w.])[$€£¥₩]?[+-]?\d+(?:[.,]\d+)*(?:\s+(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|%|[A-Za-z]+\b|\b)/g],
     ["normative", /\b(?:MUST|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+된다|해야\s+한다|할\s+수\s+있다)/gi],
     ["quotation", /“[^”]+”|"[^"]+"/g],
   ];
