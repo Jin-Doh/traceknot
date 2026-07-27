@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { analyzeProse, detectLocale, extractProse, loadConfig, scanRepository, verifyPreservation, type Config } from "../scripts/audit-prose-quality";
+import { analyzeProse, detectLocale, extractProse, loadConfig, parseArguments, scanRepository, verifyPreservation, type Config } from "../scripts/audit-prose-quality";
 
 describe("published prose extraction and locale selection", () => {
   test("protects frontmatter, code, links, URLs, inline code, and quoted blocks", () => {
@@ -146,6 +146,20 @@ describe("published prose extraction and locale selection", () => {
     const report = scanRepository(root, config);
     expect(report.status).toBe("BLOCKED");
     expect(report.summary.checked).toBe(0);
+  });
+
+  test("rejects missing values for preservation CLI flags", () => {
+    expect(() => parseArguments(["--before"])).toThrow("--before requires a value");
+    expect(() => parseArguments(["--before", "--after", "rewritten.md"])).toThrow("--before requires a value");
+    expect(() => parseArguments(["--before", "original.md"])).toThrow("--before and --after must be supplied together");
+  });
+
+  test("excludes HTML code elements from style analysis", () => {
+    const source = "<pre><code>In today's rapidly evolving landscape</code></pre>\n<code>This underscores the importance of code.</code>\nOrdinary prose.";
+    const prose = extractProse(source);
+    expect(prose).not.toContain("rapidly evolving landscape");
+    expect(prose).not.toContain("underscores the importance");
+    expect(prose).toContain("Ordinary prose.");
   });
 });
 
@@ -453,5 +467,26 @@ describe("rewrite preservation gate", () => {
     const report = verifyPreservation("참석자는 5개 좌석을 사용한다.", "참석자는 5명 좌석을 사용한다.");
     expect(report.status).toBe("FAIL");
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("protects inline and block HTML code", () => {
+    const inline = verifyPreservation("<code>traceknot verify</code> remains stable.", "<code>traceknot delete</code> remains stable.");
+    const block = verifyPreservation("<pre><code>traceknot verify</code></pre>", "<pre><code>traceknot delete</code></pre>");
+    expect(inline.failures).toContainEqual(expect.objectContaining({ category: "inline-code" }));
+    expect(block.failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
+  });
+
+  test("does not extend lazy continuation after a quoted heading", () => {
+    const prose = extractProse("> # Quoted heading\nFollowing publication prose.");
+    expect(prose).not.toContain("Quoted heading");
+    expect(prose).toContain("Following publication prose.");
+  });
+
+  test("bounds disjoint edit-distance work at the rejection threshold", () => {
+    const before = Array.from({ length: 10_000 }, (_, index) => `left${index}`).join(" ");
+    const after = Array.from({ length: 10_000 }, (_, index) => `right${index}`).join(" ");
+    const report = verifyPreservation(before, after, 0.3, 0.5);
+    expect(report.status).toBe("FAIL");
+    expect(report.tokenChangeRate).toBe(0.5);
   });
 });

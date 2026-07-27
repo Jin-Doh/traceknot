@@ -208,10 +208,16 @@ function markdownBlockquotes(text: string): string[] {
   for (let index = 0; index < lines.length; index += 1) {
     if (!/^[ \t]{0,3}>/.test(lines[index])) continue;
     let end = index;
+    let allowsLazyContinuation = !startsInterruptingMarkdownBlock(lines[index].replace(/^[ \t]{0,3}>[ \t]?/, ""));
     while (end + 1 < lines.length) {
       const next = lines[end + 1];
       if (/^[ \t]*(?:\r?\n|$)/.test(next)) break;
-      if (!/^[ \t]{0,3}>/.test(next) && startsInterruptingMarkdownBlock(next)) break;
+      if (/^[ \t]{0,3}>/.test(next)) {
+        allowsLazyContinuation = !startsInterruptingMarkdownBlock(next.replace(/^[ \t]{0,3}>[ \t]?/, ""));
+        end += 1;
+        continue;
+      }
+      if (!allowsLazyContinuation || startsInterruptingMarkdownBlock(next)) break;
       end += 1;
     }
     blocks.push(lines.slice(index, end + 1).join(""));
@@ -220,10 +226,24 @@ function markdownBlockquotes(text: string): string[] {
   return blocks;
 }
 
+function htmlCodeSpans(text: string): Array<{ category: "code-block" | "inline-code"; value: string }> {
+  const spans: Array<{ category: "code-block" | "inline-code"; value: string }> = [];
+  let remaining = text;
+  for (const match of text.matchAll(/<pre\b[^>]*>[\s\S]*?<\/pre\s*>/gi)) {
+    spans.push({ category: "code-block", value: match[0] });
+    remaining = remaining.replace(match[0], " ".repeat(match[0].length));
+  }
+  for (const match of remaining.matchAll(/<code\b[^>]*>[\s\S]*?<\/code\s*>/gi)) {
+    spans.push({ category: "inline-code", value: match[0] });
+  }
+  return spans;
+}
+
 export function extractProse(markdown: string): string {
   let prose = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, maskContentPreservingLines);
   for (const block of markdownFencedBlocks(prose)) prose = prose.replace(block, maskContentPreservingLines);
   for (const block of markdownIndentedCodeBlocks(prose)) prose = prose.replace(block, maskContentPreservingLines);
+  for (const span of htmlCodeSpans(prose)) prose = prose.replace(span.value, maskContentPreservingLines);
   for (const quote of markdownBlockquotes(prose)) prose = prose.replace(quote, maskContentPreservingLines);
   prose = prose.replace(/“[^”]+”|"[^"]+"/g, maskContentPreservingLines);
   for (const span of markdownInlineCodeSpans(prose)) prose = prose.replace(span, maskContentPreservingLines);
@@ -343,12 +363,12 @@ export function scanRepository(root: string, config: Config = DEFAULT_CONFIG): P
   };
 }
 
-function sequenceEditDistance(left: string[], right: string[]): number {
+function sequenceEditDistance(left: string[], right: string[], maximumDistance: number): number | null {
   const maximum = left.length + right.length;
   if (maximum === 0) return 0;
   const offset = maximum;
   const frontier = new Int32Array((2 * maximum) + 1);
-  for (let distance = 0; distance <= maximum; distance += 1) {
+  for (let distance = 0; distance <= Math.min(maximum, maximumDistance); distance += 1) {
     for (let diagonal = -distance; diagonal <= distance; diagonal += 2) {
       const index = offset + diagonal;
       let horizontal: number;
@@ -363,15 +383,24 @@ function sequenceEditDistance(left: string[], right: string[]): number {
       if (horizontal >= left.length && vertical >= right.length) return distance;
     }
   }
-  return maximum;
+  return null;
 }
 
-function tokenChangeRate(before: string, after: string): number {
+function tokenChangeRate(before: string, after: string, rejectionThreshold: number): number {
   const leftTokens = before.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [];
   const rightTokens = after.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [];
   const combinedTotal = leftTokens.length + rightTokens.length;
-  const distance = sequenceEditDistance(leftTokens, rightTokens);
-  return combinedTotal === 0 ? 0 : Math.round((distance / combinedTotal) * 1_000_000) / 1_000_000;
+  if (combinedTotal === 0) return 0;
+  const maximumDistance = Math.ceil(rejectionThreshold * combinedTotal);
+  const leftCounts = new Map<string, number>();
+  const rightCounts = new Map<string, number>();
+  for (const token of leftTokens) leftCounts.set(token, (leftCounts.get(token) ?? 0) + 1);
+  for (const token of rightTokens) rightCounts.set(token, (rightCounts.get(token) ?? 0) + 1);
+  let common = 0;
+  for (const [token, count] of rightCounts) common += Math.min(count, leftCounts.get(token) ?? 0);
+  if (combinedTotal - (2 * common) >= maximumDistance) return rejectionThreshold;
+  const distance = sequenceEditDistance(leftTokens, rightTokens, maximumDistance);
+  return distance === null ? rejectionThreshold : Math.round((distance / combinedTotal) * 1_000_000) / 1_000_000;
 }
 
 function markdownLinkDestinations(text: string): string[] {
@@ -462,6 +491,11 @@ function protectedValues(text: string): Map<string, { category: string; count: n
     const current = values.get(key);
     values.set(key, { category: "code-block", count: (current?.count ?? 0) + 1 });
   }
+  for (const span of htmlCodeSpans(text)) {
+    const key = `${span.category}\u0000${span.value}`;
+    const current = values.get(key);
+    values.set(key, { category: span.category, count: (current?.count ?? 0) + 1 });
+  }
   for (const destination of markdownLinkDestinations(text)) {
     const key = `link-destination\u0000${destination}`;
     const current = values.get(key);
@@ -496,7 +530,7 @@ export function verifyPreservation(before: string, after: string, maxChangeRate 
     protectedPreserved += Math.min(expectedCount, actualCount);
     if (actualCount !== expectedCount) failures.push({ category: expectedItem?.category ?? actualItem?.category ?? "unknown", valueHash: hash(key), expectedCount, actualCount });
   }
-  const changeRate = tokenChangeRate(before, after);
+  const changeRate = tokenChangeRate(before, after, rejectChangeRate);
   const status = failures.length > 0 || changeRate >= rejectChangeRate ? "FAIL" : changeRate >= maxChangeRate ? "WARN" : "PASS";
   return { status, tokenChangeRate: changeRate, protectedTotal, protectedPreserved, failures };
 }
@@ -510,19 +544,25 @@ interface Arguments {
   after?: string;
 }
 
-function parseArguments(argv: string[]): Arguments {
+function requiredOptionValue(argv: string[], index: number, option: string): string {
+  const value = argv[index + 1];
+  if (!value || value.startsWith("--")) throw new Error(`${option} requires a value`);
+  return value;
+}
+
+export function parseArguments(argv: string[]): Arguments {
   const options: Arguments = { root: process.cwd(), format: "text" };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
-    if (argument === "--root") options.root = resolve(argv[++index] ?? "");
-    else if (argument === "--config") options.config = argv[++index];
+    if (argument === "--root") options.root = resolve(requiredOptionValue(argv, index++, argument));
+    else if (argument === "--config") options.config = requiredOptionValue(argv, index++, argument);
     else if (argument === "--format") {
-      const format = argv[++index];
-      if (format !== "text" && format !== "json") throw new Error(`invalid format: ${format ?? ""}`);
+      const format = requiredOptionValue(argv, index++, argument);
+      if (format !== "text" && format !== "json") throw new Error(`invalid format: ${format}`);
       options.format = format;
-    } else if (argument === "--report") options.report = argv[++index];
-    else if (argument === "--before") options.before = argv[++index];
-    else if (argument === "--after") options.after = argv[++index];
+    } else if (argument === "--report") options.report = requiredOptionValue(argv, index++, argument);
+    else if (argument === "--before") options.before = requiredOptionValue(argv, index++, argument);
+    else if (argument === "--after") options.after = requiredOptionValue(argv, index++, argument);
     else if (argument === "--help" || argument === "-h") {
       console.log("Usage: bun scripts/audit-prose-quality.ts [--root DIR] [--config FILE] [--format text|json] [--report FILE] [--before FILE --after FILE]");
       process.exit(0);
