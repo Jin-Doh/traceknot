@@ -167,16 +167,20 @@ function isEscaped(text: string, index: number): boolean {
   return backslashes % 2 === 1;
 }
 
+function isNumericUnitQuote(text: string, index: number): boolean {
+  return /\d/.test(text[index - 1] ?? "");
+}
+
 function directQuotationSpans(text: string): string[] {
   const spans: string[] = [];
   for (const [opening, closing] of [["\"", "\""], ["“", "”"], ["‘", "’"]] as const) {
     let cursor = 0;
     while (cursor < text.length) {
       let start = text.indexOf(opening, cursor);
-      while (start >= 0 && isEscaped(text, start)) start = text.indexOf(opening, start + 1);
+      while (start >= 0 && (isEscaped(text, start) || (opening === "\"" && isNumericUnitQuote(text, start)))) start = text.indexOf(opening, start + 1);
       if (start < 0) break;
       let end = text.indexOf(closing, start + 1);
-      while (end >= 0 && isEscaped(text, end)) end = text.indexOf(closing, end + 1);
+      while (end >= 0 && (isEscaped(text, end) || (closing === "\"" && isNumericUnitQuote(text, end)))) end = text.indexOf(closing, end + 1);
       if (end < 0) break;
       spans.push(text.slice(start, end + 1));
       cursor = end + 1;
@@ -528,6 +532,9 @@ function markdownLinkDestinations(text: string): string[] {
   for (const match of text.matchAll(/^[ \t]{0,3}\[(?:\\.|[^\\\[\]])+\]:[ \t]*(?:\r?\n[ \t]+)?(?:<([^>\n]+)>|(\S+))/gm)) {
     destinations.push(match[1] ?? match[2] ?? "");
   }
+  for (const match of text.matchAll(/<a\b[^>]*\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi)) {
+    destinations.push(match[1] ?? match[2] ?? match[3] ?? "");
+  }
   return destinations;
 }
 
@@ -555,7 +562,8 @@ function normalizeNumericValue(value: string): string {
   const compact = value
     .replace(/\s+/g, " ")
     .replace(/^([<>]=?|[≤≥=≠])\s*/, "$1")
-    .replace(/\s*([-–—/:])\s*/g, "$1");
+    .replace(/\s*([-–—/:])\s*/g, "$1")
+    .replace(/\s*([<>]=?|[≤≥=≠])$/, " $1");
   return compact.replace(
     /(\d)\s*(°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)$/i,
     "$1 $2",
@@ -564,6 +572,7 @@ function normalizeNumericValue(value: string): string {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
+    ["number", /(?<![\w.])(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s*(?:%|°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))?\s*(?:[<>]=?|[≤≥=≠])(?![=<>])/g],
     ["number", /(?<![\w.])(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s*(?:%|°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))?\s*[-–—/:]\s*(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s*(?:%|°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))?(?![\w.])/g],
     ["number", /\b\d{4}-\d{2}-\d{2}\b|(?<![\w.])(?:(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?\s*[-–—/:]\s*(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?)\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])(?:(?:[<>]=?|[≤≥=≠])\s*)?(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent)\b|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
     ["normative", /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|(?:(?:해서는|하여서는)\s+안\s+(?:된다|됩니다)|(?:해야|하여야)\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))/gi],
@@ -690,6 +699,7 @@ function findProtectedOccurrence(text: string, value: string, category: string, 
 function normalizeNumericText(text: string): string {
   return text
     .replace(/([<>]=?|[≤≥=≠])\s+(?=[+−±$€£¥₩-]?\d)/g, "$1")
+    .replace(/(\d)\s*([<>]=?|[≤≥=≠])(?=\s|$)/g, "$1 $2")
     .replace(
       /(\d)\s*(?=°[CFK]|kg\b|g\b|mg\b|lb\b|oz\b|km\b|m\b|cm\b|mm\b|mi\b|ft\b|in\b|ms\b|s\b|h\b|USD\b|EUR\b|GBP\b|JPY\b|KRW\b|seconds?\b|minutes?\b|hours?\b|days?\b|weeks?\b|months?\b|years?\b|percent\b|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)/gi,
       "$1 ",

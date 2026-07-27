@@ -827,4 +827,23 @@ describe("rewrite preservation gate", () => {
     expect(extractProse(before)).toContain("Ordinary publication prose.");
     expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "quotation")).toBe(false);
   });
+
+  test("protects postfix comparison operators", () => {
+    const report = verifyPreservation("Use 5 < retry_count.", "Use 5 > retry_count.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("protects raw-HTML link destinations", () => {
+    expect(verifyPreservation("<a href='docs/old.md'>Guide</a>", "<a href='docs/new.md'>Guide</a>").failures)
+      .toContainEqual(expect.objectContaining({ category: "link-destination" }));
+    expect(verifyPreservation("<a href=docs/old.md>Guide</a>", "<a href=docs/new.md>Guide</a>").failures)
+      .toContainEqual(expect.objectContaining({ category: "link-destination" }));
+  });
+
+  test("distinguishes inch marks from quotation delimiters", () => {
+    const before = 'Use 5" old boards and 6" wide boards.';
+    const after = 'Use 5" new boards and 6" wide boards.';
+    expect(extractProse(before)).toContain("old boards");
+    expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "quotation")).toBe(false);
+  });
 });
