@@ -71,7 +71,7 @@ curl -fsSL "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/i
   | TRACEKNOT_REF="$TRACEKNOT_REF" sh
 ```
 
-The installer copies the portable Skill, record schemas, capability manifests, host-neutral core, and GPL license. It registers the Skill for OMP and Codex through the shared Agent Skills directory. It does not install the optional completion-authority extension.
+The installer copies the portable Skill, record schemas, capability manifests, host-neutral core, and MIT license. It registers the Skill for OMP and Codex through the shared Agent Skills directory. It does not install the optional completion-authority extension.
 
 Use an absolute prefix to change the destination:
 
@@ -363,4 +363,4 @@ The next delivery milestone should add distribution metadata and one runtime ada
 
 ## License
 
-Traceknot is free software licensed under the [GNU General Public License v3.0](LICENSE).
+Traceknot is licensed under the [MIT License](LICENSE).

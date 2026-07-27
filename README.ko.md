@@ -71,7 +71,7 @@ curl -fsSL "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/i
   | TRACEKNOT_REF="$TRACEKNOT_REF" sh
 ```
 
-Installer는 portable Skill, record schema, capability manifest, host-neutral core, GPL 라이선스를 복사하고 공용 Agent Skills 디렉터리를 통해 OMP와 Codex에 Skill을 등록합니다. 선택 사항인 completion-authority extension은 설치하지 않습니다.
+Installer는 portable Skill, record schema, capability manifest, host-neutral core, MIT 라이선스를 복사하고 공용 Agent Skills 디렉터리를 통해 OMP와 Codex에 Skill을 등록합니다. 선택 사항인 completion-authority extension은 설치하지 않습니다.
 
 설치 경로를 바꾸려면 절대 경로를 지정합니다.
 
@@ -371,4 +371,4 @@ Portable Skill 평가와 host-neutral QA core 개발에는 **후속 과제 조�
 
 ## 라이선스
 
-Traceknot은 [GNU General Public License v3.0](LICENSE)에 따라 배포되는 자유 소프트웨어입니다.
+Traceknot은 [MIT License](LICENSE)에 따라 배포됩니다.
