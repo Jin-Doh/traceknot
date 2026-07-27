@@ -733,4 +733,27 @@ describe("rewrite preservation gate", () => {
     expect(extractProse(before)).not.toContain("traceknot verify");
     expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "code-block" }));
   });
+
+  test("preserves numeric equality operators", () => {
+    const report = verifyPreservation("Batch size = 5.", "Batch size ≠ 5.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("preserves separators between exponential values", () => {
+    const report = verifyPreservation("The range is 1e3–2e3.", "The ratio is 1e3/2e3.");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("binds less-than and greater-than claim labels", () => {
+    const before = "Use less than 5 retries and greater than 1 retry.";
+    const after = "Use greater than 5 retries and less than 1 retry.";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
+
+  test("keeps lazy continuation disabled inside non-paragraph quotes", () => {
+    const before = "> ```js\n> const x = 1;\nOrdinary publication prose.";
+    const after = "> ```js\n> const x = 1;\nNatural publication prose.";
+    expect(extractProse(before)).toContain("Ordinary publication prose.");
+    expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "quotation")).toBe(false);
+  });
 });

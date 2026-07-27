@@ -272,7 +272,9 @@ function markdownBlockquotes(text: string): string[] {
       if (/^[ \t]*(?:\r?\n|$)/.test(next)) break;
       const continuedContent = blockquoteContent(next);
       if (continuedContent !== null) {
-        allowsLazyContinuation = continuedContent.trim().length > 0 && !startsInterruptingMarkdownBlock(continuedContent);
+        allowsLazyContinuation = allowsLazyContinuation
+          && continuedContent.trim().length > 0
+          && !startsInterruptingMarkdownBlock(continuedContent);
         end += 1;
         continue;
       }
@@ -546,7 +548,7 @@ function standaloneUrls(text: string): string[] {
 function normalizeNumericValue(value: string): string {
   const compact = value
     .replace(/\s+/g, " ")
-    .replace(/^([<>]=?|[≤≥])\s*/, "$1")
+    .replace(/^([<>]=?|[≤≥=≠])\s*/, "$1")
     .replace(/\s*([-–—/:])\s*/g, "$1");
   return compact.replace(
     /(\d)\s*(°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)$/i,
@@ -556,7 +558,7 @@ function normalizeNumericValue(value: string): string {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["number", /(?<![\w.])(?:\d+(?:\.\d+)?\s*[-–—/:]\s*\d+(?:\.\d+)?)\b|\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])(?:(?:[<>]=?|[≤≥])\s*)?(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
+    ["number", /(?<![\w.])(?:\d+(?:\.\d+)?(?:[eE][+−-]?\d+)?\s*[-–—/:]\s*\d+(?:\.\d+)?(?:[eE][+−-]?\d+)?)\b|\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])(?:(?:[<>]=?|[≤≥=≠])\s*)?(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
     ["normative", /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+(?:된다|됩니다)|해야\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))/gi],
   ];
   const values = new Map<string, { category: string; count: number }>();
@@ -616,11 +618,12 @@ const CLAIM_LABELS = new Set([
   "increase", "decrease", "enabled", "disabled", "allowed", "forbidden", "required", "optional", "success", "failure",
   "at-least", "at-most", "no-less-than", "no-more-than",
   "최소", "최대", "하한", "상한", "이전", "이후", "시작", "종료", "초기", "최종", "증가", "감소", "활성", "비활성", "허용", "금지", "필수", "선택", "성공", "실패",
+  "less-than", "greater-than",
 ]);
 
 function claimLabels(value: string): Array<{ label: string; index: number; end: number }> {
   const labels: Array<{ label: string; index: number; end: number }> = [];
-  const pattern = /\bat\s+least\b|\bat\s+most\b|\bno\s+less\s+than\b|\bno\s+more\s+than\b|[\p{L}\p{N}_-]+/gu;
+  const pattern = /\bat\s+least\b|\bat\s+most\b|\bno\s+less\s+than\b|\bno\s+more\s+than\b|\bless\s+than\b|\bgreater\s+than\b|[\p{L}\p{N}_-]+/gu;
   for (const match of value.matchAll(pattern)) {
     const label = normalizeClaimLabel(match[0].toLowerCase().replace(/\s+/g, "-"));
     if (label) labels.push({ label, index: match.index, end: match.index + match[0].length });
@@ -678,7 +681,7 @@ function findProtectedOccurrence(text: string, value: string, category: string, 
 
 function normalizeNumericText(text: string): string {
   return text
-    .replace(/([<>]=?|[≤≥])\s+(?=[+−±$€£¥₩-]?\d)/g, "$1")
+    .replace(/([<>]=?|[≤≥=≠])\s+(?=[+−±$€£¥₩-]?\d)/g, "$1")
     .replace(
       /(\d)\s*(?=°[CFK]|kg\b|g\b|mg\b|lb\b|oz\b|km\b|m\b|cm\b|mm\b|mi\b|ft\b|in\b|ms\b|s\b|h\b|USD\b|EUR\b|GBP\b|JPY\b|KRW\b|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)/gi,
       "$1 ",
