@@ -159,19 +159,29 @@ function markdownIndentedCodeBlocks(text: string): string[] {
   const lines = text.match(/[^\n]*(?:\n|$)/g)?.filter((line) => line.length > 0) ?? [];
   const blocks: string[] = [];
   let listContext = false;
+  let previousBlank = true;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    if (/^[ \t]*(?:\r?\n|$)/.test(line)) {
+      previousBlank = true;
+      continue;
+    }
     if (/^[ \t]{0,3}(?:[-+*]|\d+[.)])[ \t]+/.test(line)) {
       listContext = true;
+      previousBlank = false;
       continue;
     }
     if (/^\S/.test(line)) listContext = false;
     const spaces = line.match(/^ */)?.[0].length ?? 0;
-    const codeIndent = line.startsWith("\t") || spaces >= (listContext ? 6 : 4);
-    if (!codeIndent) continue;
+    const codeIndent = previousBlank && (line.startsWith("\t") || spaces >= (listContext ? 6 : 4));
+    if (!codeIndent) {
+      previousBlank = false;
+      continue;
+    }
     let end = index;
     while (end + 1 < lines.length && (/^(?: {4}|\t)/.test(lines[end + 1]) || /^[ \t]*(?:\r?\n|$)/.test(lines[end + 1]))) end += 1;
     blocks.push(lines.slice(index, end + 1).join(""));
+    previousBlank = /^[ \t]*(?:\r?\n|$)/.test(lines[end]);
     index = end;
   }
   return blocks;
@@ -312,7 +322,7 @@ export function scanRepository(root: string, config: Config = DEFAULT_CONFIG): P
   const failed = files.filter((file) => file.status === "FAIL").length;
   const warned = files.filter((file) => file.status === "WARN").length;
   const passed = files.filter((file) => file.status === "PASS").length;
-  const observedStatus: GateStatus = failed > 0 ? "FAIL" : warned > 0 ? "WARN" : "PASS";
+  const observedStatus: GateStatus = files.length === 0 && config.mode === "blocking" ? "BLOCKED" : failed > 0 ? "FAIL" : warned > 0 ? "WARN" : "PASS";
   return {
     schemaVersion: "prose-quality-report/v1",
     mode: config.mode,
@@ -408,7 +418,7 @@ function standaloneUrls(text: string): string[] {
 
 function protectedValues(text: string): Map<string, { category: string; count: number }> {
   const categories: Array<[string, RegExp]> = [
-    ["number", /\bv\d+(?:\.\d+)+\b|(?<![\w.])[+-]?\d+(?:[.,]\d+)*(?:%|[A-Za-z]+\b|\b)/g],
+    ["number", /\bv\d+(?:\.\d+)+\b|(?<![\w.])[$€£¥₩]?[+-]?\d+(?:[.,]\d+)*(?:%|[A-Za-z]+\b|\b)/g],
     ["normative", /\b(?:MUST|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+된다|해야\s+한다|할\s+수\s+있다)/gi],
     ["quotation", /“[^”]+”|"[^"]+"/g],
   ];

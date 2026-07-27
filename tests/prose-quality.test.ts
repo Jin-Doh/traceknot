@@ -128,6 +128,25 @@ describe("published prose extraction and locale selection", () => {
     expect(prose).not.toContain("rapidly evolving landscape");
     expect(prose).toContain("Ordinary prose.");
   });
+
+  test("blocks enabled blocking scans with no matching publication files", () => {
+    const root = mkdtempSync(join(tmpdir(), "traceknot-prose-empty-"));
+    writeFileSync(join(root, "README.md"), "Publication prose exists, but the configured include path is stale.");
+    const config: Config = {
+      schemaVersion: "prose-quality-config/v1",
+      enabled: true,
+      mode: "blocking",
+      locales: ["en"],
+      include: ["posts/**/*.md"],
+      exclude: [],
+      minimumProseCharacters: 1,
+      maxChangeRate: 0.3,
+      rejectChangeRate: 0.5,
+    };
+    const report = scanRepository(root, config);
+    expect(report.status).toBe("BLOCKED");
+    expect(report.summary.checked).toBe(0);
+  });
 });
 
 describe("language-specific prose rules", () => {
@@ -373,5 +392,18 @@ describe("rewrite preservation gate", () => {
     expect(prose).not.toContain("rapidly evolving landscape");
     expect(prose).not.toContain("underscores the importance");
     expect(prose).toContain("Ordinary publication prose.");
+  });
+
+  test("keeps immediate indented paragraph continuations in prose", () => {
+    const before = "Ordinary paragraph opening.\n    Indented continuation remains prose.";
+    const after = "Ordinary paragraph opening.\n    Natural continuation remains prose.";
+    expect(extractProse(before)).toContain("Indented continuation remains prose.");
+    expect(verifyPreservation(before, after).failures.some((failure) => failure.category === "code-block")).toBe(false);
+  });
+
+  test("preserves currency symbols with numeric values", () => {
+    const report = verifyPreservation("The published price is $5 for this plan.", "The published price is €5 for this plan.");
+    expect(report.status).toBe("FAIL");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
   });
 });
