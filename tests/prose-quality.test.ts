@@ -515,6 +515,28 @@ describe("rewrite preservation gate", () => {
     const after = "The minimum release is 2.0, while the maximum release is 1.2 for supported deployments.";
     const report = verifyPreservation(before, after);
     expect(report.status).toBe("FAIL");
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "protected-order" }));
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
+
+  test("binds protected values to surrounding claim labels", () => {
+    const before = "The minimum release is 1.2, while the maximum release is 2.0 for supported deployments.";
+    const after = "The maximum release is 1.2, while the minimum release is 2.0 for supported deployments.";
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
+
+  test("protects quotations containing escaped delimiters", () => {
+    const before = 'The guide says "Use the \\"old\\" mode" for recovery.';
+    const after = 'The guide says "Use the \\"new\\" mode" for recovery.';
+    expect(verifyPreservation(before, after).failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
+  });
+
+  test("normalizes whitespace inside numeric measurements", () => {
+    const report = verifyPreservation("The package weighs 5 kg.", "The package weighs 5\nkg.");
+    expect(report.failures.some((failure) => failure.category === "number")).toBe(false);
+  });
+
+  test("treats tab-indented fence markers as indented code", () => {
+    const prose = extractProse("\t```not-a-fence\n\tcode\nFollowing publication prose.");
+    expect(prose).toContain("Following publication prose.");
   });
 });

@@ -109,14 +109,14 @@ function markdownFencedBlocks(text: string): string[] {
   const lines = text.match(/[^\n]*(?:\n|$)/g)?.filter((line) => line.length > 0) ?? [];
   const blocks: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
-    const opening = lines[index].match(/^[ \t]{0,3}(`{3,}|~{3,})/);
-    if (!opening) continue;
-    const delimiter = opening[1];
+    const opening = lines[index].match(/^([ \t]*)(`{3,}|~{3,})/);
+    if (!opening || indentationColumns(opening[1]) > 3) continue;
+    const delimiter = opening[2];
     const marker = delimiter[0];
     let end = lines.length - 1;
     for (let candidate = index + 1; candidate < lines.length; candidate += 1) {
-      const closing = lines[candidate].match(/^[ \t]{0,3}(`+|~+)[ \t]*(?:\r?\n|$)/);
-      if (closing && closing[1][0] === marker && closing[1].length >= delimiter.length) {
+      const closing = lines[candidate].match(/^([ \t]*)(`+|~+)[ \t]*(?:\r?\n|$)/);
+      if (closing && indentationColumns(closing[1]) <= 3 && closing[2][0] === marker && closing[2].length >= delimiter.length) {
         end = candidate;
         break;
       }
@@ -151,6 +151,30 @@ function markdownInlineCodeSpans(text: string): string[] {
       candidate += closingLength;
     }
     if (!closed) cursor = start + openingLength;
+  }
+  return spans;
+}
+
+function isEscaped(text: string, index: number): boolean {
+  let backslashes = 0;
+  for (let cursor = index - 1; cursor >= 0 && text[cursor] === "\\"; cursor -= 1) backslashes += 1;
+  return backslashes % 2 === 1;
+}
+
+function directQuotationSpans(text: string): string[] {
+  const spans: string[] = [];
+  for (const [opening, closing] of [["\"", "\""], ["“", "”"]] as const) {
+    let cursor = 0;
+    while (cursor < text.length) {
+      let start = text.indexOf(opening, cursor);
+      while (start >= 0 && isEscaped(text, start)) start = text.indexOf(opening, start + 1);
+      if (start < 0) break;
+      let end = text.indexOf(closing, start + 1);
+      while (end >= 0 && isEscaped(text, end)) end = text.indexOf(closing, end + 1);
+      if (end < 0) break;
+      spans.push(text.slice(start, end + 1));
+      cursor = end + 1;
+    }
   }
   return spans;
 }
@@ -253,7 +277,7 @@ export function extractProse(markdown: string): string {
   for (const block of markdownIndentedCodeBlocks(prose)) prose = prose.replace(block, maskContentPreservingLines);
   for (const span of htmlCodeSpans(prose)) prose = prose.replace(span.value, maskContentPreservingLines);
   for (const quote of markdownBlockquotes(prose)) prose = prose.replace(quote, maskContentPreservingLines);
-  prose = prose.replace(/“[^”]+”|"[^"]+"/g, maskContentPreservingLines);
+  for (const quote of directQuotationSpans(prose)) prose = prose.replace(quote, maskContentPreservingLines);
   for (const span of markdownInlineCodeSpans(prose)) prose = prose.replace(span, maskContentPreservingLines);
   prose = prose.replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1");
   prose = prose.replace(/<(?:(?:[A-Za-z][A-Za-z0-9+.-]*:[^>\s]+)|(?:[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}))>|https?:\/\/\S+/g, "");
@@ -473,16 +497,20 @@ function protectedValues(text: string): Map<string, { category: string; count: n
   const categories: Array<[string, RegExp]> = [
     ["number", /\b\d{4}-\d{2}-\d{2}\b|\bv\d+(?:\.\d+)+\b|(?<![\w.])[$€£¥₩]?[+-]?\d+(?:[.,]\d+)*(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW)\b|(?:개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
     ["normative", /\b(?:MUST|SHOULD|MAY)(?:\s+NOT)?\b|(?:해서는\s+안\s+된다|해야\s+한다|할\s+수\s+있다)/gi],
-    ["quotation", /“[^”]+”|"[^"]+"/g],
   ];
   const values = new Map<string, { category: string; count: number }>();
   for (const [category, pattern] of categories) {
     for (const match of text.matchAll(pattern)) {
-      const value = category === "normative" ? match[0].replace(/\s+/g, " ") : match[0];
+      const value = category === "normative" || category === "number" ? match[0].replace(/\s+/g, " ") : match[0];
       const key = `${category}\u0000${value}`;
       const current = values.get(key);
       values.set(key, { category, count: (current?.count ?? 0) + 1 });
     }
+  }
+  for (const quote of directQuotationSpans(text)) {
+    const key = `quotation\u0000${quote}`;
+    const current = values.get(key);
+    values.set(key, { category: "quotation", count: (current?.count ?? 0) + 1 });
   }
   for (const url of standaloneUrls(text)) {
     const key = `url\u0000${url}`;
@@ -522,9 +550,22 @@ function protectedValues(text: string): Map<string, { category: string; count: n
   return values;
 }
 
-function protectedValueOrder(text: string, values: Map<string, { category: string; count: number }>): string[] {
+const CLAIM_CONTEXT_STOPWORDS = new Set([
+  "a", "an", "and", "as", "at", "be", "by", "for", "from", "in", "is", "of", "on", "or", "the", "to", "using", "while", "with",
+]);
+
+function claimContext(text: string, index: number, valueLength: number): string {
+  const tokenPattern = /[\p{L}\p{N}_-]+/gu;
+  const contextTokens = (value: string): string[] =>
+    (value.match(tokenPattern) ?? []).filter((token) => !CLAIM_CONTEXT_STOPWORDS.has(token.toLowerCase()));
+  const before = contextTokens(text.slice(Math.max(0, index - 128), index)).slice(-4);
+  const after = contextTokens(text.slice(index + valueLength, index + valueLength + 128)).slice(0, 4);
+  return `${before.join(" ")}\u0002${after.join(" ")}`;
+}
+
+function protectedValueBindings(text: string, values: Map<string, { category: string; count: number }>): string[] {
   const normalizedText = text.replace(/\s+/g, " ");
-  const occurrences: Array<{ index: number; key: string }> = [];
+  const occurrences: Array<{ index: number; binding: string }> = [];
   for (const [key, item] of values) {
     const separator = key.indexOf("\u0000");
     const value = key.slice(separator + 1).replace(/\s+/g, " ");
@@ -532,12 +573,12 @@ function protectedValueOrder(text: string, values: Map<string, { category: strin
     for (let count = 0; count < item.count; count += 1) {
       const index = normalizedText.indexOf(value, cursor);
       if (index < 0) break;
-      occurrences.push({ index, key });
+      occurrences.push({ index, binding: `${key}\u0002${claimContext(normalizedText, index, value.length)}` });
       cursor = index + Math.max(value.length, 1);
     }
   }
-  occurrences.sort((left, right) => left.index - right.index || left.key.localeCompare(right.key));
-  return occurrences.map((occurrence) => occurrence.key);
+  occurrences.sort((left, right) => left.index - right.index || left.binding.localeCompare(right.binding));
+  return occurrences.map((occurrence) => occurrence.binding);
 }
 
 export function verifyPreservation(before: string, after: string, maxChangeRate = 0.3, rejectChangeRate = 0.5): PreservationReport {
@@ -557,14 +598,14 @@ export function verifyPreservation(before: string, after: string, maxChangeRate 
     if (actualCount !== expectedCount) failures.push({ category: expectedItem?.category ?? actualItem?.category ?? "unknown", valueHash: hash(key), expectedCount, actualCount });
   }
   if (failures.length === 0) {
-    const expectedOrder = protectedValueOrder(before, expected);
-    const actualOrder = protectedValueOrder(after, actual);
-    if (JSON.stringify(expectedOrder) !== JSON.stringify(actualOrder)) {
+    const expectedBindings = protectedValueBindings(before, expected);
+    const actualBindings = protectedValueBindings(after, actual);
+    if (JSON.stringify(expectedBindings) !== JSON.stringify(actualBindings)) {
       failures.push({
-        category: "protected-order",
-        valueHash: hash(`${expectedOrder.join("\u0001")}\u0000${actualOrder.join("\u0001")}`),
-        expectedCount: expectedOrder.length,
-        actualCount: actualOrder.length,
+        category: "protected-context",
+        valueHash: hash(`${expectedBindings.join("\u0001")}\u0000${actualBindings.join("\u0001")}`),
+        expectedCount: expectedBindings.length,
+        actualCount: actualBindings.length,
       });
     }
   }
