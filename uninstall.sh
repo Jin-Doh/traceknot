@@ -305,6 +305,14 @@ else
         fail 'crontab is required to remove the automatic-update schedule safely'
     fi
 fi
+if [ -e "$PREFIX_CANON/.traceknot-update" ] || [ -L "$PREFIX_CANON/.traceknot-update" ]; then
+    [ -d "$PREFIX_CANON/.traceknot-update" ] && [ ! -L "$PREFIX_CANON/.traceknot-update" ] ||
+        fail 'refusing unsafe updater state path'
+fi
+if [ -e "$PREFIX_CANON/releases" ] || [ -L "$PREFIX_CANON/releases" ]; then
+    [ -d "$PREFIX_CANON/releases" ] && [ ! -L "$PREFIX_CANON/releases" ] ||
+        fail 'refusing unsafe releases path'
+fi
 if [ "$REGISTRATION_OWNED" -eq 1 ]; then
     rm -f "$REGISTRATION_PATH"
 fi
@@ -324,13 +332,9 @@ if [ -L "$PREFIX_CANON/rollback" ]; then
     rm -f "$PREFIX_CANON/rollback"
 fi
 if [ -e "$PREFIX_CANON/.traceknot-update" ]; then
-    [ -d "$PREFIX_CANON/.traceknot-update" ] && [ ! -L "$PREFIX_CANON/.traceknot-update" ] ||
-        fail 'refusing unsafe updater state path'
     rm -rf "$PREFIX_CANON/.traceknot-update"
 fi
 if [ -e "$PREFIX_CANON/releases" ]; then
-    [ -d "$PREFIX_CANON/releases" ] && [ ! -L "$PREFIX_CANON/releases" ] ||
-        fail 'refusing unsafe releases path'
     rm -rf "$PREFIX_CANON/releases"
 fi
 rm -rf "$PREFIX_CANON/.traceknot-update.lock-recovery"
