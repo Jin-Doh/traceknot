@@ -28,6 +28,8 @@ The installer and updater now:
 | BASIS-006 | Derived operational criterion | Interrupted or failed updates leave either the old complete version active or the new complete version active, never a mixed tree. |
 | BASIS-007 | Explicit product decision | Automatic update is enabled by default, can be disabled during or after installation, and never requires `sudo`. |
 | BASIS-008 | Derived compatibility criterion | Custom-prefix, pinned initial source, dry-run, reinstall, and uninstall workflows remain functional; an explicit opt-out persists. |
+| BASIS-009 | Explicit deployment decision | Release promotion requires an approved immutable source identity rather than implicitly deploying every `main` merge. |
+| BASIS-010 | Derived operational criterion | Publication succeeds only when the assets downloaded from the public Release API retain the expected identity, digest, provenance, installability, and delayed-observation behavior. |
 
 ### Freshness definition
 
@@ -58,6 +60,7 @@ Prereleases, drafts, deleted releases, mutable releases, and releases without va
 | RISK-004 | R2 | 3 | 3 | BASIS-004, BASIS-008 | Migration or the default-policy change can break existing workflows. Preserve v1 manifest import and persist explicit opt-out state. |
 | RISK-005 | R2 | 3 | 2 | BASIS-006 | Concurrent invocations can race. Use a per-prefix lock with stale-lock recovery that never guesses ownership. |
 | RISK-006 | R2 | 3 | 3 | BASIS-007 | Default-on checks can surprise users or hide failures. Provide installation-time and runtime opt-out, structured status, check-only controls, the seven-day delay, and no privilege escalation. |
+| RISK-007 | R3 | 4 | 3 | BASIS-009, BASIS-010 | A stale approval, mistargeted tag, partially visible release, or public-asset mismatch can distribute unverified executable content. Bind approval to the full current `main` SHA and require post-publication verification against re-downloaded assets. |
 
 Residual risk remains R3 until the release pipeline, updater, migration, rollback, and independent security verification are implemented and exercised.
 
@@ -119,6 +122,41 @@ Invalid transitions fail closed. Cancellation before activation removes staging.
 7. Update state and activation targets must be regular owned paths beneath the canonical prefix, with the installer's existing symlink checks retained.
 8. Logs must not contain tokens. GitHub authentication, if supported later, is read from the environment and never persisted.
 
+## Release promotion and operations
+
+`.github/workflows/promote-release.yml` is the approval and promotion boundary; `.github/workflows/release.yml` is the trusted publication boundary. Promotion requires the intended `X.Y.Z` version and the full current `main` commit SHA, rejects a moving or reused target, reruns `sh scripts/ci`, and creates the protected tag only after that gate passes. The resulting tag-push event runs the trusted release workflow in tag context, preserving the `refs/tags/vX.Y.Z` identity required by updater provenance verification. The release workflow repeats the canonical gate, packages and attests the tagged source, publishes it, and verifies assets downloaded again through the public GitHub Release API.
+
+Repository administrators must configure the `release` GitHub Environment with required reviewers, add an Environment secret named `RELEASE_PROMOTION_TOKEN`, and protect `v*.*.*` tags from direct creation by untrusted actors. The token must be a dedicated, short-lived or regularly rotated fine-grained credential limited to writing repository contents; unlike the workflow `GITHUB_TOKEN`, its tag-creation event must trigger the tag-push release workflow. The workflow declares the Environment, but repository policy—not workflow YAML—owns reviewers, tag rules, and token rotation. Do not treat a run as authorized until the Environment deployment records an approval.
+
+To promote a release:
+
+```sh
+commit=$(gh api repos/Jin-Doh/traceknot/commits/main --jq .sha)
+gh workflow run promote-release.yml \
+  --ref main \
+  -f version=X.Y.Z \
+  -f sourceCommit="$commit"
+```
+
+The run must reach all of these terminal results:
+
+1. the approved SHA still equals the current `main` SHA;
+2. canonical CI passes against that SHA;
+3. the deterministic archive and manifest validate;
+4. provenance is issued by `.github/workflows/release.yml`;
+5. the release is stable and immutable;
+6. the tag, manifest, archive digest, and source commit agree;
+7. a clean installation from the downloaded public archive succeeds;
+8. the installed updater observes the new release but does not bypass the strict seven-day delay.
+
+The verification job writes a workflow summary and retains `release-evidence.json`, the published manifest, and updater output for 90 days. The evidence record includes the release URL, source commit, archive and manifest SHA-256 values, verification time, expected first eligible instant, and the completed public-surface checks.
+
+### Failed or compromised release
+
+Published immutable assets are never replaced and an existing version tag is never retargeted. If verification fails after publication, treat that version as unavailable for promotion, preserve the failed run and evidence, diagnose the public release state, and publish a higher patch version only after correction. Deleting or revoking a compromised release prevents future discovery but cannot undo an already activated installation; affected users must run `traceknot-update rollback`, and maintainers must publish a fixed version. Never recreate the deleted tag or reuse its semantic version.
+
+The updater's seven-day observation delay limits immediate adoption but is not an incident-response control. Until a server-side release exclusion mechanism exists, maintainers must remove a known-bad release from the GitHub Releases API before it becomes eligible and record the incident, affected digest, disposition, and replacement release. A failed publication or public verification is a release-blocking defect, not a warning that may be ignored.
+
 ## Delivery plan
 
 ### Phase 0 — trusted release foundation
@@ -166,6 +204,8 @@ Invalid transitions fail closed. Cancellation before activation removes staging.
 | COND-006 migration compatibility | BASIS-004, BASIS-008 | RISK-004 | Compatibility scenarios | v1, custom-prefix, pinned, dry-run, install, and uninstall contracts remain usable. |
 | COND-007 release pipeline | BASIS-003, BASIS-005 | RISK-001 | Build, negative provenance | Only the protected workflow after the canonical gate can produce accepted release provenance. |
 | COND-008 end-to-end default and opt-out flow | BASIS-001, BASIS-002, BASIS-007 | RISK-001, RISK-002, RISK-003, RISK-006 | End-to-end scenario | Fresh install schedules checks by default; installation-time and runtime opt-out persist; delayed application, status, and rollback work without privilege escalation. |
+| COND-009 release promotion identity | BASIS-005, BASIS-009 | RISK-001, RISK-007 | Decision table, stale-operation test | Dispatch accepts only an unused semantic version and the full current `main` SHA; tag-triggered releases must identify a commit contained in `main`. |
+| COND-010 public release verification | BASIS-003, BASIS-010 | RISK-001, RISK-002, RISK-007 | End-to-end scenario, negative identity test | Public API metadata, tag, manifest, archive, provenance, clean install, and first observation agree; any mismatch fails the release run. |
 
 ### Mandatory obligations
 
@@ -179,6 +219,8 @@ Invalid transitions fail closed. Cancellation before activation removes staging.
 | OBL-006 | COND-006 | BASIS-004, BASIS-008 / RISK-004 | Scenario result | Installer lifecycle / independent-producer | Default/custom prefixes, v1 manifests, legacy rollback snapshots, original Skill registration, dry-run, pinned refs, install, and uninstall retain their contracts. |
 | OBL-007 | COND-007 | BASIS-003, BASIS-005 / RISK-001 | Build result | Release candidate / independent-producer | Canonical CI, deterministic package, schema validation, trusted-workflow attestation verification, immutable publication gate, and offline verification pass. |
 | OBL-008 | COND-008 | BASIS-001, BASIS-002, BASIS-007 / RISK-001, RISK-002, RISK-003, RISK-006 | Scenario result | Installed product / independent-producer | A fresh installation schedules one daily check, observes for more than seven days using controlled trusted time, applies, smoke-checks, reports status, rolls back under injected failure, and both opt-out paths disable cleanly. |
+| OBL-009 | COND-009 | BASIS-005, BASIS-009 / RISK-001, RISK-007 | Scenario result and Environment approval | Release promotion / external-approval | The approved full SHA still equals current `main`, the version and tag are unused, required reviewers approve the `release` Environment, and the canonical gate passes before publication. |
+| OBL-010 | COND-010 | BASIS-003, BASIS-010 / RISK-001, RISK-002, RISK-007 | Public scenario result and retained evidence | Published release / independent-producer | Re-downloaded assets pass identity, schema, size, digest, trusted-workflow attestation, safe extraction, clean installation, and updater-observation checks, with an immutable evidence record retained by CI. |
 
 Every evidence record must bind the obligation ID, basis and risk IDs, target commit, release-candidate digest, environment, command or scenario, start and end timestamps, exit status, structured counts, immutable artifact URI, and producer identity plus independence level. Missing binding makes the obligation incomplete, not passed.
 
