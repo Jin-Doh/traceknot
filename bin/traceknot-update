@@ -207,7 +207,7 @@ acquire_lock
 mkdir -p "$STATE_DIR"
 [ ! -L "$STATE_DIR" ] || fail 'refusing symlink update state directory'
 if [ ! -f "$CONFIG" ]; then
-    printf '%s\n%s\n%s\n' 'traceknot-update-config/v1' 'automatic=1' 'lastCheck=0' > "$CONFIG"
+    printf '%s\n%s\n%s\n' 'traceknot-update-config/v1' 'automatic=0' 'lastCheck=0' > "$CONFIG"
 fi
 [ "$(sed -n '1p' "$CONFIG")" = traceknot-update-config/v1 ] || fail 'invalid update configuration'
 AUTOMATIC=$(sed -n 's/^automatic=//p' "$CONFIG")
@@ -230,7 +230,8 @@ cron_marker="# traceknot-auto-update:$PREFIX"
 remove_schedule() {
     command -v crontab >/dev/null 2>&1 || return 0
     existing=$(crontab -l 2>/dev/null || true)
-    filtered=$(printf '%s\n' "$existing" | grep -Fv "$cron_marker" || true)
+    filtered=$(printf '%s\n' "$existing" |
+        awk -v marker="$cron_marker" 'substr($0, length($0) - length(marker) + 1) != marker')
     if [ -n "$filtered" ]; then
         printf '%s\n' "$filtered" | crontab -
     elif [ -n "$existing" ]; then
@@ -247,7 +248,8 @@ install_schedule() {
     fi
     [ -x "$updater" ] || fail "installed updater is missing: $updater"
     existing=$(crontab -l 2>/dev/null || true)
-    filtered=$(printf '%s\n' "$existing" | grep -Fv "$cron_marker" || true)
+    filtered=$(printf '%s\n' "$existing" |
+        awk -v marker="$cron_marker" 'substr($0, length($0) - length(marker) + 1) != marker')
     entry="17 3 * * * $(shell_quote "$updater") --prefix $(shell_quote "$PREFIX") --auto >/dev/null 2>&1 $cron_marker"
     {
         [ -z "$filtered" ] || printf '%s\n' "$filtered"

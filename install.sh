@@ -239,6 +239,19 @@ if [ -e "$MANIFEST" ]; then
 $(sed -n '2,$p' "$MANIFEST")
 EOF
 fi
+EXISTING_UPDATE_CONFIG=$PREFIX_CANON/.traceknot-update/config
+if [ -e "$EXISTING_UPDATE_CONFIG" ]; then
+    [ -f "$EXISTING_UPDATE_CONFIG" ] && [ ! -L "$EXISTING_UPDATE_CONFIG" ] ||
+        fail "refusing unsafe update configuration: $EXISTING_UPDATE_CONFIG"
+    [ "$(sed -n '1p' "$EXISTING_UPDATE_CONFIG")" = traceknot-update-config/v1 ] ||
+        fail "unsupported update configuration: $EXISTING_UPDATE_CONFIG"
+    EXISTING_AUTOMATIC=$(sed -n 's/^automatic=//p' "$EXISTING_UPDATE_CONFIG")
+    case "$EXISTING_AUTOMATIC" in
+        0) AUTO_UPDATE=0 ;;
+        1) ;;
+        *) fail "invalid automatic update setting: $EXISTING_UPDATE_CONFIG" ;;
+    esac
+fi
 
 manifest_owns() {
     ownership_entry=$1
