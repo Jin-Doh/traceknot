@@ -42,9 +42,33 @@ jq -n \
     --argjson size "$ARTIFACT_SIZE" \
     '{schemaVersion:"traceknot-update-manifest/v1",version:$version,releaseTag:$tag,sourceRepository:"Jin-Doh/traceknot",sourceCommit:$commit,publishedAt:$published,artifact:{name:$name,size:$size,sha256:$sha}}' \
     > "$FIXTURE/manifest.json"
+LOWER_VERSION=1.1.9
+LOWER_TAG=v$LOWER_VERSION
+LOWER_ARCHIVE_NAME=traceknot-v$LOWER_VERSION.tar.gz
+jq -n \
+    --arg version "$LOWER_VERSION" \
+    --arg tag "$LOWER_TAG" \
+    --arg commit "$SOURCE_COMMIT" \
+    --arg published "$PUBLISHED_AT" \
+    --arg name "$LOWER_ARCHIVE_NAME" \
+    --arg sha "$ARTIFACT_SHA" \
+    --argjson size "$ARTIFACT_SIZE" \
+    '{schemaVersion:"traceknot-update-manifest/v1",version:$version,releaseTag:$tag,sourceRepository:"Jin-Doh/traceknot",sourceCommit:$commit,publishedAt:$published,artifact:{name:$name,size:$size,sha256:$sha}}' \
+    > "$FIXTURE/manifest-lower.json"
 
 cat > "$FIXTURE/releases.json" <<EOF
 [
+  {
+    "tag_name": "$LOWER_TAG",
+    "published_at": "$PUBLISHED_AT",
+    "draft": false,
+    "prerelease": false,
+    "immutable": true,
+    "assets": [
+      {"name": "traceknot-update-manifest.json", "url": "https://api.github.com/repos/Jin-Doh/traceknot/releases/assets/manifest-lower"},
+      {"name": "$LOWER_ARCHIVE_NAME", "url": "https://api.github.com/repos/Jin-Doh/traceknot/releases/assets/artifact-lower"}
+    ]
+  },
   {
     "tag_name": "$TAG",
     "published_at": "$PUBLISHED_AT",
@@ -80,6 +104,7 @@ if [ -n "$headers" ]; then
 fi
 case "$url" in
     */releases) cp "$FAKE_FIXTURE/releases.json" "$output" ;;
+    */manifest-lower) cp "$FAKE_FIXTURE/manifest-lower.json" "$output" ;;
     */manifest) cp "$FAKE_FIXTURE/manifest.json" "$output" ;;
     */artifact)
         cp "$FAKE_FIXTURE/$FAKE_ARCHIVE_NAME" "$output"
@@ -117,6 +142,21 @@ case "${1:-}" in
 esac
 EOF
 chmod +x "$FAKE_BIN/crontab"
+REAL_MV=$(command -v mv)
+export REAL_MV
+cat > "$FAKE_BIN/mv" <<'EOF'
+#!/bin/sh
+last=
+for argument do
+    last=$argument
+done
+if [ -n "${FAKE_MV_FAIL_BASENAME:-}" ] &&
+   [ "${last##*/}" = "$FAKE_MV_FAIL_BASENAME" ]; then
+    exit 1
+fi
+exec "$REAL_MV" "$@"
+EOF
+chmod +x "$FAKE_BIN/mv"
 
 FAKE_HTTP_DATE=$(jq -nr --argjson epoch "$FAKE_NOW" '$epoch | strftime("%a, %d %b %Y %H:%M:%S GMT")')
 FAKE_FIXTURE=$FIXTURE
@@ -157,13 +197,17 @@ fi
 first_output=$("$PREFIX/bin/traceknot-update" check --prefix "$PREFIX")
 printf '%s\n' "$first_output" | grep -F 'No release has exceeded' >/dev/null
 MANIFEST_SHA=$(if command -v sha256sum >/dev/null 2>&1; then sha256sum "$FIXTURE/manifest.json" | cut -d ' ' -f 1; else shasum -a 256 "$FIXTURE/manifest.json" | cut -d ' ' -f 1; fi)
-printf '%s\t%s\t%s\t%s\n' "$MANIFEST_SHA" "$((FAKE_NOW - 604800))" "$TAG" "$ARTIFACT_SHA" > "$PREFIX/.traceknot-update/observations.tsv"
+LOWER_MANIFEST_SHA=$(if command -v sha256sum >/dev/null 2>&1; then sha256sum "$FIXTURE/manifest-lower.json" | cut -d ' ' -f 1; else shasum -a 256 "$FIXTURE/manifest-lower.json" | cut -d ' ' -f 1; fi)
+{
+    printf '%s\t%s\t%s\t%s\n' "$LOWER_MANIFEST_SHA" "$((FAKE_NOW - 604800))" "$LOWER_TAG" "$ARTIFACT_SHA"
+    printf '%s\t%s\t%s\t%s\n' "$MANIFEST_SHA" "$((FAKE_NOW - 604800))" "$TAG" "$ARTIFACT_SHA"
+} > "$PREFIX/.traceknot-update/observations.tsv"
 
 # Exactly seven days is still ineligible.
 boundary_output=$("$PREFIX/bin/traceknot-update" check --prefix "$PREFIX")
 printf '%s\n' "$boundary_output" | grep -F 'No release has exceeded' >/dev/null
 
-# The first second after seven complete days is eligible.
+# The first second after seven complete days selects the highest eligible semantic version, not the first API entry.
 FAKE_NOW=$((FAKE_NOW + 1))
 FAKE_HTTP_DATE=$(jq -nr --argjson epoch "$FAKE_NOW" '$epoch | strftime("%a, %d %b %Y %H:%M:%S GMT")')
 export FAKE_HTTP_DATE
@@ -197,6 +241,19 @@ test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = "$TAG"
 test -L "$TRACEKNOT_SKILLS_ROOT/traceknot"
 test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/skill"
 
+# A failed atomic rename keeps the previous activation link continuously available.
+CURRENT_BEFORE=$(readlink "$PREFIX/current")
+FAKE_MV_FAIL_BASENAME=current
+export FAKE_MV_FAIL_BASENAME
+if "$PREFIX/current/bin/traceknot-update" rollback --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'rollback unexpectedly survived injected atomic-rename failure' >&2
+    exit 1
+fi
+test -L "$PREFIX/current"
+test "$(readlink "$PREFIX/current")" = "$CURRENT_BEFORE"
+unset FAKE_MV_FAIL_BASENAME
+"$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null
+test ! -e "$PREFIX/.traceknot-update/transaction"
 # A committed release can be rolled back and then restored without network access.
 "$PREFIX/current/bin/traceknot-update" rollback --prefix "$PREFIX" >/dev/null
 test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = legacy

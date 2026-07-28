@@ -320,10 +320,14 @@ replace_symlink() {
         fail "refusing to replace non-symlink path: $link_path"
     rm -f "$link_tmp"
     ln -s "$link_target" "$link_tmp"
-    if [ -L "$link_path" ]; then
-        rm -f "$link_path"
+    if mv -fh "$link_tmp" "$link_path" 2>/dev/null; then
+        return
     fi
-    mv "$link_tmp" "$link_path"
+    if mv -fT "$link_tmp" "$link_path" 2>/dev/null; then
+        return
+    fi
+    rm -f "$link_tmp"
+    fail "cannot atomically replace symlink: $link_path"
 }
 assert_registration_owned() {
     expected_target=${1:-}
@@ -524,6 +528,8 @@ jq -r '
 
 CANDIDATE_FOUND=0
 ELIGIBLE=0
+CURRENT_MATCH=0
+SELECTED_VERSION=
 while IFS="$(printf '\t')" read -r RELEASE_TAG RELEASE_PUBLISHED MANIFEST_URL; do
     [ -n "$RELEASE_TAG" ] || continue
     CANDIDATE_FOUND=1
@@ -596,8 +602,8 @@ while IFS="$(printf '\t')" read -r RELEASE_TAG RELEASE_PUBLISHED MANIFEST_URL; d
             if [ "$VERSION_ORDER" -eq 0 ]; then
                 [ "$ARTIFACT_SHA" = "$ACTIVE_SHA" ] ||
                     fail "installed version $VERSION was republished with a different digest"
-                printf '%s is already installed.\n' "$RELEASE_TAG"
-                exit 0
+                CURRENT_MATCH=1
+                continue
             fi
         fi
     fi
@@ -606,13 +612,38 @@ while IFS="$(printf '\t')" read -r RELEASE_TAG RELEASE_PUBLISHED MANIFEST_URL; d
     ' "$RELEASE_JSON")
     [ -n "$ARTIFACT_URL" ] || fail "release asset is missing: $ARTIFACT_NAME"
     validate_asset_api_url "$ARTIFACT_URL"
+    if [ "$ELIGIBLE" -eq 1 ]; then
+        SELECTION_ORDER=$(jq -nr --arg candidate "$VERSION" --arg selected "$SELECTED_VERSION" '
+          ($candidate | split(".") | map(tonumber)) as $c
+          | ($selected | split(".") | map(tonumber)) as $s
+          | if $c < $s then -1 elif $c == $s then 0 else 1 end
+        ')
+        if [ "$SELECTION_ORDER" -lt 0 ]; then
+            continue
+        fi
+        if [ "$SELECTION_ORDER" -eq 0 ]; then
+            [ "$ARTIFACT_SHA" = "$SELECTED_ARTIFACT_SHA" ] ||
+                fail "eligible version $VERSION has conflicting artifact digests"
+            continue
+        fi
+    fi
     ELIGIBLE=1
+    SELECTED_RELEASE_TAG=$RELEASE_TAG
+    SELECTED_VERSION=$VERSION
+    SELECTED_SOURCE_COMMIT=$SOURCE_COMMIT
+    SELECTED_ARTIFACT_NAME=$ARTIFACT_NAME
+    SELECTED_ARTIFACT_SIZE=$ARTIFACT_SIZE
+    SELECTED_ARTIFACT_SHA=$ARTIFACT_SHA
+    SELECTED_ARTIFACT_URL=$ARTIFACT_URL
     cp "$MANIFEST" "$TMP_ROOT/eligible-manifest.json"
-    break
 done < "$TMP_ROOT/candidates.tsv"
 
 if [ "$CANDIDATE_FOUND" -eq 0 ]; then
     printf '%s\n' 'No immutable stable release with an update manifest is available.'
+    exit 0
+fi
+if [ "$ELIGIBLE" -eq 0 ] && [ "$CURRENT_MATCH" -eq 1 ]; then
+    printf '%s is already installed.\n' "$(jq -r .releaseTag "$ACTIVE_STATE")"
     exit 0
 fi
 if [ "$ELIGIBLE" -eq 0 ]; then
@@ -620,6 +651,13 @@ if [ "$ELIGIBLE" -eq 0 ]; then
     exit 0
 fi
 
+RELEASE_TAG=$SELECTED_RELEASE_TAG
+VERSION=$SELECTED_VERSION
+SOURCE_COMMIT=$SELECTED_SOURCE_COMMIT
+ARTIFACT_NAME=$SELECTED_ARTIFACT_NAME
+ARTIFACT_SIZE=$SELECTED_ARTIFACT_SIZE
+ARTIFACT_SHA=$SELECTED_ARTIFACT_SHA
+ARTIFACT_URL=$SELECTED_ARTIFACT_URL
 printf 'Eligible update: %s (%s)\n' "$RELEASE_TAG" "$ARTIFACT_SHA"
 [ "$COMMAND" = apply ] || exit 0
 [ "$DRY_RUN" -eq 0 ] || { printf 'Would apply %s to %s\n' "$RELEASE_TAG" "$PREFIX"; exit 0; }
