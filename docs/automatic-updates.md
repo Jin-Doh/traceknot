@@ -190,10 +190,10 @@ Implementation entry requires an approved release identity model, protected tag 
 
 A production verdict cannot be `PASS` until all mandatory obligations above pass against an identified commit and release candidate, with no unaccepted material defect. A green unit suite alone is insufficient.
 
-## Foundation prepared in this change
+## Implemented foundation
 
-- This architecture and phased delivery plan.
-- A strict JSON Schema for the signed update manifest.
-- Explicit basis, risk, conditions, obligations, independence, and exit criteria for future implementation.
+- Default-on daily checks with installation-time and runtime opt-out.
+- Strict signed-manifest schema, deterministic release packaging, and artifact attestation.
+- Transactional activation, rollback, stale-lock recovery, migration, and adversarial verification obligations.
 
 Automatic checks are enabled by default. Users can opt out during installation with `--disable-auto-update` or afterward with `traceknot-update disable`.
