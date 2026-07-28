@@ -277,6 +277,29 @@ else
         fail 'unsafe acquired installation lock path'
     rm -f "$LOCK_CLAIM"
     UPDATE_LOCK_OWNED=1
+    if command -v crontab >/dev/null 2>&1; then
+        crontab_error=$(mktemp "${TMPDIR:-/tmp}/traceknot-crontab.XXXXXX") ||
+            fail 'cannot create crontab diagnostic file'
+        if existing_crontab=$(crontab -l 2>"$crontab_error"); then
+            escaped_prefix=$(printf '%s' "$PREFIX_CANON" | sed 's/%/\\%/g')
+            cron_marker="# traceknot-auto-update:$escaped_prefix"
+            filtered_crontab=$(printf '%s\n' "$existing_crontab" |
+                TRACEKNOT_CRON_MARKER=$cron_marker awk '
+                  BEGIN { marker=ENVIRON["TRACEKNOT_CRON_MARKER"] }
+                  substr($0, length($0) - length(marker) + 1) != marker
+                ')
+            if [ -n "$filtered_crontab" ]; then
+                printf '%s\n' "$filtered_crontab" | crontab -
+            elif [ -n "$existing_crontab" ]; then
+                printf '%s' '' | crontab -
+            fi
+        elif ! grep -Eiq 'no crontab (for|exists)' "$crontab_error"; then
+            cat "$crontab_error" >&2
+            rm -f "$crontab_error"
+            fail 'cannot read existing crontab safely'
+        fi
+        rm -f "$crontab_error"
+    fi
 fi
 if [ "$REGISTRATION_OWNED" -eq 1 ]; then
     rm -f "$REGISTRATION_PATH"

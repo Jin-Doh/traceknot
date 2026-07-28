@@ -205,6 +205,8 @@ test -f "$PREFIX/system/core/qa-core.ts"
 test -f "$PREFIX/.traceknot-install-manifest"
 test -L "$REGISTRATION_PATH"
 
+# A damaged installation without an executable updater still removes its schedule.
+chmod -x "$PREFIX/bin/traceknot-update"
 sh "$ROOT/uninstall.sh" --prefix "$PREFIX"
 test ! -e "$PREFIX/LICENSE"
 test ! -e "$PREFIX/skill/SKILL.md"
@@ -215,6 +217,10 @@ test ! -e "$PREFIX/bin/traceknot-update"
 test ! -e "$PREFIX/.traceknot-install-manifest"
 test ! -e "$REGISTRATION_PATH"
 test ! -L "$REGISTRATION_PATH"
+if grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null 2>&1; then
+    printf '%s\n' 'fallback uninstall left its automatic-update schedule behind' >&2
+    exit 1
+fi
 test "$(cat "$PREFIX/unrelated-sentinel.txt")" = keep-me
 
 # A second uninstall is intentionally harmless.

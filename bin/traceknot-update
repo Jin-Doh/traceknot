@@ -350,6 +350,12 @@ install_schedule() {
 
 if [ "$COMMAND" = enable ]; then
     [ "$DRY_RUN" -eq 0 ] || { printf 'Would enable daily automatic updates for %s\n' "$PREFIX"; exit 0; }
+    command -v crontab >/dev/null 2>&1 ||
+        fail 'crontab is required to enable automatic updates'
+    for update_dependency in curl jq gh tar sync; do
+        command -v "$update_dependency" >/dev/null 2>&1 ||
+            fail "$update_dependency is required to enable automatic updates"
+    done
     install_schedule
     write_config 1 "$LAST_CHECK"
     printf 'Automatic updates enabled for %s\n' "$PREFIX"
@@ -577,7 +583,7 @@ recover_transaction() {
 }
 recover_transaction
 
-if [ "$COMMAND" = rollback ]; then
+perform_rollback() {
     [ -L "$CURRENT" ] || fail 'no updater-managed release is active'
     [ -L "$ROLLBACK" ] || fail 'no previous release is available'
     [ -f "$ROLLBACK_STATE" ] || fail 'previous release metadata is unavailable'
@@ -598,6 +604,8 @@ if [ "$COMMAND" = rollback ]; then
     sync_transaction_state
     replace_symlink "$rollback_to" "$CURRENT"
     replace_symlink "$rollback_from" "$ROLLBACK"
+    mkdir -p "$SKILLS_ROOT"
+    replace_symlink "$CURRENT/skill" "$REGISTRATION"
     write_journal rollback activated "$rollback_from" "$rollback_to" '' "$rollback_registration_previous" "$rollback_to"
     sync_transaction_state
     rollback_active_tmp=$ACTIVE_STATE.tmp.rollback.$$
@@ -611,6 +619,10 @@ if [ "$COMMAND" = rollback ]; then
     rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
     printf 'Rolled Traceknot back to %s\n' "$(jq -r .releaseTag "$ACTIVE_STATE")"
     exit 0
+}
+
+if [ "$COMMAND" = rollback ]; then
+    perform_rollback
 fi
 
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-update.XXXXXX") || fail 'cannot create temporary directory'
@@ -855,6 +867,11 @@ FINAL=$RELEASES_DIR/$VERSION
     if [ -f "$ACTIVE_STATE" ] && [ "$(jq -r .artifactSha256 "$ACTIVE_STATE")" = "$ARTIFACT_SHA" ]; then
         printf '%s is already installed.\n' "$RELEASE_TAG"
         exit 0
+    fi
+    if [ -L "$ROLLBACK" ] && [ "$(readlink "$ROLLBACK")" = "$FINAL" ] &&
+       [ -f "$ROLLBACK_STATE" ] &&
+       [ "$(jq -r .artifactSha256 "$ROLLBACK_STATE")" = "$ARTIFACT_SHA" ]; then
+        perform_rollback
     fi
     fail "release directory already exists with different state: $FINAL"
 }

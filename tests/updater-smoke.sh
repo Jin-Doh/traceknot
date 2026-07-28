@@ -305,12 +305,12 @@ test "$(readlink "$PREFIX/current")" = "$CURRENT_BEFORE"
 unset FAKE_MV_FAIL_BASENAME
 "$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null
 test ! -e "$PREFIX/.traceknot-update/transaction"
-# A committed release can be rolled back and then restored without network access.
+# A rolled-back release can be verified and reapplied from its retained directory.
 "$PREFIX/current/bin/traceknot-update" rollback --prefix "$PREFIX" >/dev/null
 test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = legacy
 legacy_check=$("$PREFIX/bin/traceknot-update" check --prefix "$PREFIX")
 printf '%s\n' "$legacy_check" | grep -F "Eligible update: $TAG" >/dev/null
-"$PREFIX/bin/traceknot-update" rollback --prefix "$PREFIX" >/dev/null
+"$PREFIX/bin/traceknot-update" apply --prefix "$PREFIX" >/dev/null
 test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = "$TAG"
 test -f "$PREFIX/current/skill/SKILL.md"
 # Committed recovery prunes a release that is no longer current or rollback.

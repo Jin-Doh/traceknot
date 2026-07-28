@@ -8,6 +8,7 @@ SOURCE_ROOT=$(CDPATH='' cd -P "$(dirname "$0")" && pwd)
 MANIFEST_NAME=.traceknot-install-manifest
 DRY_RUN=0
 AUTO_UPDATE=1
+AUTO_UPDATE_EXPLICIT=0
 PREFIX=
 BOOTSTRAP_TMP=
 MANIFEST_TMP=
@@ -209,6 +210,7 @@ while [ "$#" -gt 0 ]; do
             ;;
         --disable-auto-update)
             AUTO_UPDATE=0
+            AUTO_UPDATE_EXPLICIT=1
             shift
             ;;
         --help|-h)
@@ -419,6 +421,21 @@ mkdir -p "$PREFIX_CANON"
 PREFIX_CANON=$(canonical_path "$PREFIX_CANON") || fail 'cannot resolve destination after creation'
 [ "$PREFIX_CANON" != "/" ] || fail 'refusing to install into filesystem root'
 acquire_install_lock
+if [ "$AUTO_UPDATE_EXPLICIT" -eq 0 ]; then
+    AUTO_UPDATE=1
+    if [ -e "$EXISTING_UPDATE_CONFIG" ] || [ -L "$EXISTING_UPDATE_CONFIG" ]; then
+        [ -f "$EXISTING_UPDATE_CONFIG" ] && [ ! -L "$EXISTING_UPDATE_CONFIG" ] ||
+            fail "refusing unsafe update configuration after locking: $EXISTING_UPDATE_CONFIG"
+        [ "$(sed -n '1p' "$EXISTING_UPDATE_CONFIG")" = traceknot-update-config/v1 ] ||
+            fail "unsupported update configuration after locking: $EXISTING_UPDATE_CONFIG"
+        EXISTING_AUTOMATIC=$(sed -n 's/^automatic=//p' "$EXISTING_UPDATE_CONFIG")
+        case "$EXISTING_AUTOMATIC" in
+            0) AUTO_UPDATE=0 ;;
+            1) ;;
+            *) fail "invalid automatic update setting after locking: $EXISTING_UPDATE_CONFIG" ;;
+        esac
+    fi
+fi
 
 MANIFEST_TMP="$PREFIX_CANON/$MANIFEST_NAME.tmp.$$"
 printf '%s\n' 'traceknot-install/v1' > "$MANIFEST_TMP"
