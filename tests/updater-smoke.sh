@@ -265,6 +265,11 @@ if "$PREFIX/current/bin/traceknot-update" rollback --prefix "$PREFIX" >/dev/null
 fi
 test "$(cat "$SNAPSHOT_TARGET")" = preserve-snapshot-target
 rm -f "$PREFIX/.traceknot-update/transaction-active-before.json"
+# A regular pre-journal snapshot orphan is cleaned before the next operation.
+cp "$PREFIX/.traceknot-update/active.json" \
+    "$PREFIX/.traceknot-update/transaction-active-before.json"
+"$PREFIX/current/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null
+test ! -e "$PREFIX/.traceknot-update/transaction-active-before.json"
 
 # A failed atomic rename keeps the previous activation link continuously available.
 CURRENT_BEFORE=$(readlink "$PREFIX/current")

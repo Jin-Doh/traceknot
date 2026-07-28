@@ -256,6 +256,9 @@ case "$PREFIX$SKILLS_ROOT${PATH:-}" in
     *"$carriage_return"*|*'
 '*) fail 'prefix, Skills root, and PATH must not contain line breaks' ;;
 esac
+case "$PREFIX$SKILLS_ROOT${PATH:-}" in
+    *\\%*) fail 'prefix, Skills root, and PATH must not contain backslash-percent sequences' ;;
+esac
 acquire_lock
 mkdir -p "$STATE_DIR"
 [ ! -L "$STATE_DIR" ] || fail 'refusing symlink update state directory'
@@ -453,8 +456,18 @@ prune_obsolete_release() {
 }
 
 recover_transaction() {
-    [ -f "$JOURNAL" ] || return 0
-    [ ! -L "$JOURNAL" ] || fail 'refusing symlink transaction journal'
+    if [ ! -e "$JOURNAL" ] && [ ! -L "$JOURNAL" ]; then
+        for orphan_snapshot in "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE"; do
+            if [ -e "$orphan_snapshot" ] || [ -L "$orphan_snapshot" ]; then
+                [ -f "$orphan_snapshot" ] && [ ! -L "$orphan_snapshot" ] ||
+                    fail "unsafe orphan transaction snapshot: $orphan_snapshot"
+                rm -f "$orphan_snapshot"
+            fi
+        done
+        return 0
+    fi
+    [ -f "$JOURNAL" ] && [ ! -L "$JOURNAL" ] ||
+        fail 'refusing unsafe transaction journal'
     for journal_key in operation phase previous candidate staging registrationPrevious rollbackPrevious; do
         [ "$(grep -c "^$journal_key=" "$JOURNAL")" -eq 1 ] ||
             fail "invalid transaction journal field: $journal_key"
