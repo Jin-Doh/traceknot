@@ -224,6 +224,8 @@ if [ -n "$UPDATER_HELPER" ]; then
     "$UPDATER_HELPER" uninstall-lock --prefix "$PREFIX_CANON" >/dev/null
     UPDATE_LOCK_OWNED=1
 else
+    command -v crontab >/dev/null 2>&1 ||
+        fail 'crontab is required to remove the automatic-update schedule safely'
     LOCK_PATH=$PREFIX_CANON/.traceknot-update.lock
     LOCK_CLAIM=$PREFIX_CANON/.traceknot-update-lock-claim.$$
     RECOVERY_PATH=$PREFIX_CANON/.traceknot-update.lock-recovery

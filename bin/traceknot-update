@@ -545,6 +545,7 @@ recover_transaction() {
         if [ "$operation" = apply ]; then
             prune_obsolete_release "$rollback_previous"
         fi
+        sync_transaction_state
         rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
         sync_transaction_state
         return
@@ -1024,6 +1025,7 @@ sync_transaction_state
 write_journal apply committed "$PREVIOUS" "$FINAL" "$STAGING" "$REGISTRATION_PREVIOUS" "$ROLLBACK_PREVIOUS"
 sync_transaction_state
 prune_obsolete_release "$ROLLBACK_PREVIOUS"
+sync_transaction_state
 rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
 sync_transaction_state
 printf 'Updated Traceknot to %s at %s\n' "$RELEASE_TAG" "$CURRENT"

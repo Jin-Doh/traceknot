@@ -296,6 +296,17 @@ test ! -e "$PREFIX/rollback"
 test ! -e "$PREFIX/.traceknot-update/active.json"
 test ! -e "$PREFIX/.traceknot-update/rollback-active.json"
 test ! -e "$PREFIX/releases"
+# Flat reinstall also clears a prepared first-apply transaction with no activation links.
+PREPARED_CANDIDATE=$PREFIX_CANON/releases/prepared-candidate
+mkdir -p "$PREPARED_CANDIDATE"
+printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+    operation=apply phase=prepared previous= \
+    "candidate=$PREPARED_CANDIDATE" "staging=$PREFIX_CANON/releases/.staging-prepared" \
+    "registrationPrevious=$PREFIX_CANON/skill" rollbackPrevious= \
+    > "$PREFIX/.traceknot-update/transaction"
+sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null
+test ! -e "$PREFIX/releases"
+test ! -e "$PREFIX/.traceknot-update/transaction"
 "$PREFIX/bin/traceknot-update" apply --prefix "$PREFIX" >/dev/null
 test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/skill"
 

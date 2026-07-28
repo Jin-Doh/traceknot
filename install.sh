@@ -423,10 +423,23 @@ PREFIX_CANON=$(canonical_path "$PREFIX_CANON") || fail 'cannot resolve destinati
 [ "$PREFIX_CANON" != "/" ] || fail 'refusing to install into filesystem root'
 acquire_install_lock
 MANAGED_RELEASES_DIR=$PREFIX_CANON/releases
-if [ -e "$PREFIX_CANON/current" ] || [ -L "$PREFIX_CANON/current" ] ||
-   [ -e "$PREFIX_CANON/rollback" ] || [ -L "$PREFIX_CANON/rollback" ]; then
-    [ -d "$MANAGED_RELEASES_DIR" ] && [ ! -L "$MANAGED_RELEASES_DIR" ] ||
-        fail "refusing unsafe managed releases directory: $MANAGED_RELEASES_DIR"
+if [ -e "$MANAGED_RELEASES_DIR" ] || [ -L "$MANAGED_RELEASES_DIR" ] ||
+   [ -e "$PREFIX_CANON/current" ] || [ -L "$PREFIX_CANON/current" ] ||
+   [ -e "$PREFIX_CANON/rollback" ] || [ -L "$PREFIX_CANON/rollback" ] ||
+   [ -e "$PREFIX_CANON/.traceknot-update/active.json" ] ||
+   [ -L "$PREFIX_CANON/.traceknot-update/active.json" ] ||
+   [ -e "$PREFIX_CANON/.traceknot-update/rollback-active.json" ] ||
+   [ -L "$PREFIX_CANON/.traceknot-update/rollback-active.json" ] ||
+   [ -e "$PREFIX_CANON/.traceknot-update/transaction" ] ||
+   [ -L "$PREFIX_CANON/.traceknot-update/transaction" ] ||
+   [ -e "$PREFIX_CANON/.traceknot-update/transaction-active-before.json" ] ||
+   [ -L "$PREFIX_CANON/.traceknot-update/transaction-active-before.json" ] ||
+   [ -e "$PREFIX_CANON/.traceknot-update/transaction-rollback-before.json" ] ||
+   [ -L "$PREFIX_CANON/.traceknot-update/transaction-rollback-before.json" ]; then
+    if [ -e "$MANAGED_RELEASES_DIR" ] || [ -L "$MANAGED_RELEASES_DIR" ]; then
+        [ -d "$MANAGED_RELEASES_DIR" ] && [ ! -L "$MANAGED_RELEASES_DIR" ] ||
+            fail "refusing unsafe managed releases directory: $MANAGED_RELEASES_DIR"
+    fi
     for managed_link in "$PREFIX_CANON/current" "$PREFIX_CANON/rollback"; do
         if [ -e "$managed_link" ] || [ -L "$managed_link" ]; then
             [ -L "$managed_link" ] ||

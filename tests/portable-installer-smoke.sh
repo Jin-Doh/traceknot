@@ -212,6 +212,7 @@ if PATH=$NO_CRONTAB_BIN sh "$ROOT/uninstall.sh" --prefix "$PREFIX" >/dev/null 2>
     exit 1
 fi
 test -f "$PREFIX/LICENSE"
+test ! -e "$PREFIX/.traceknot-update.lock"
 sh "$ROOT/uninstall.sh" --prefix "$PREFIX"
 test ! -e "$PREFIX/LICENSE"
 test ! -e "$PREFIX/skill/SKILL.md"
