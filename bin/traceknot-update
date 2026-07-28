@@ -88,7 +88,7 @@ shell_quote() {
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        check|apply|rollback|enable|disable|status|install-lock|uninstall-lock)
+        check|apply|rollback|enable|disable|status|uninstall-lock)
             COMMAND=$1
             shift
             ;;
@@ -281,11 +281,6 @@ if [ "$COMMAND" = disable ]; then
     exit 0
 fi
 
-if [ "$COMMAND" = install-lock ]; then
-    printf '%s\n' "$PPID" > "$LOCK_DIR"
-    LOCK_HELD=0
-    exit 0
-fi
 if [ "$COMMAND" = uninstall-lock ]; then
     remove_schedule
     write_config 0 "$LAST_CHECK"

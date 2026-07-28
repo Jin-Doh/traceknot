@@ -53,6 +53,19 @@ fi
 test "$(cat "$REGISTRATION_PATH")" = do-not-overwrite
 rm -f "$REGISTRATION_PATH"
 
+# A fresh prefix honors the updater lock before writing any payload.
+FRESH_LOCKED_PREFIX=$TMP_DIR/fresh-locked
+FRESH_LOCKED_SKILLS=$TMP_DIR/fresh-locked-skills
+mkdir -p "$FRESH_LOCKED_PREFIX"
+printf '%s\n' "$$" > "$FRESH_LOCKED_PREFIX/.traceknot-update.lock"
+if TRACEKNOT_SKILLS_ROOT=$FRESH_LOCKED_SKILLS sh "$ROOT/install.sh" \
+    --prefix "$FRESH_LOCKED_PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'fresh install unexpectedly acquired a live update lock' >&2
+    exit 1
+fi
+test ! -e "$FRESH_LOCKED_PREFIX/LICENSE"
+rm -rf "$FRESH_LOCKED_PREFIX" "$FRESH_LOCKED_SKILLS"
+
 sh "$ROOT/install.sh" --prefix "$PREFIX"
 PREFIX_CANON=$(CDPATH='' cd -P "$PREFIX" && pwd)
 test -f "$PREFIX/LICENSE"
@@ -71,6 +84,14 @@ test "$(readlink "$REGISTRATION_PATH")" = "$PREFIX_CANON/skill"
 test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 1
 grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null
 test "$(cat "$PREFIX/unrelated-sentinel.txt")" = keep-me
+
+# Reinstall must not require the previously installed updater to know new commands.
+cat > "$PREFIX/bin/traceknot-update" <<'EOF'
+#!/bin/sh
+printf '%s\n' 'legacy updater must not be invoked during installer lock acquisition' >&2
+exit 2
+EOF
+chmod +x "$PREFIX/bin/traceknot-update"
 
 # Reinstalling over the same prefix must succeed and preserve unrelated files.
 sh "$ROOT/install.sh" --prefix "$PREFIX"

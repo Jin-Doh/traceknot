@@ -14,6 +14,60 @@ MANIFEST_TMP=
 SKILLS_ROOT=
 REGISTRATION_PATH=
 INSTALL_LOCK_OWNED=0
+INSTALL_RECOVERY_LOCK_HELD=0
+
+try_acquire_install_lock() {
+    install_lock=$PREFIX_CANON/.traceknot-update.lock
+    lock_claim=$PREFIX_CANON/.traceknot-update-lock-claim.$$
+    printf '%s\n' "$$" > "$lock_claim"
+    if ln "$lock_claim" "$install_lock" 2>/dev/null; then
+        rm -f "$lock_claim"
+        INSTALL_LOCK_OWNED=1
+        return 0
+    fi
+    rm -f "$lock_claim"
+    return 1
+}
+
+acquire_install_lock() {
+    try_acquire_install_lock && return
+    install_lock=$PREFIX_CANON/.traceknot-update.lock
+    recovery_lock=$PREFIX_CANON/.traceknot-update.lock-recovery
+    [ -f "$install_lock" ] && [ ! -L "$install_lock" ] ||
+        fail "unsafe update lock path: $install_lock"
+    lock_pid=$(sed -n '1p' "$install_lock" 2>/dev/null || true)
+    case "$lock_pid" in
+        ''|*[!0-9]*) fail "update lock has invalid ownership metadata: $install_lock" ;;
+    esac
+    kill -0 "$lock_pid" 2>/dev/null &&
+        fail "another update owns the lock: $install_lock"
+    if command -v shlock >/dev/null 2>&1; then
+        shlock -f "$recovery_lock" -p "$$" ||
+            fail "stale-lock recovery is already in progress: $recovery_lock"
+        INSTALL_RECOVERY_LOCK_HELD=1
+    elif command -v flock >/dev/null 2>&1; then
+        exec 9>"$recovery_lock"
+        flock -n 9 ||
+            fail "stale-lock recovery is already in progress: $recovery_lock"
+        INSTALL_RECOVERY_LOCK_HELD=2
+    else
+        fail 'shlock or flock is required for safe stale-lock recovery'
+    fi
+    if [ -e "$install_lock" ]; then
+        [ -f "$install_lock" ] && [ ! -L "$install_lock" ] ||
+            fail "unsafe update lock path during recovery: $install_lock"
+        recovered_pid=$(sed -n '1p' "$install_lock" 2>/dev/null || true)
+        [ "$recovered_pid" = "$lock_pid" ] ||
+            fail 'update lock changed during stale-lock recovery'
+        kill -0 "$recovered_pid" 2>/dev/null &&
+            fail 'update lock owner became live during recovery'
+        rm -f "$install_lock"
+    fi
+    try_acquire_install_lock ||
+        fail 'cannot acquire update lock after stale-lock recovery'
+    rm -rf "$recovery_lock"
+    INSTALL_RECOVERY_LOCK_HELD=0
+}
 
 release_install_lock() {
     [ "$INSTALL_LOCK_OWNED" -eq 1 ] || return 0
@@ -25,6 +79,10 @@ release_install_lock() {
     INSTALL_LOCK_OWNED=0
 }
 cleanup() {
+    if [ "$INSTALL_RECOVERY_LOCK_HELD" -ne 0 ]; then
+        rm -rf "$PREFIX_CANON/.traceknot-update.lock-recovery"
+        INSTALL_RECOVERY_LOCK_HELD=0
+    fi
     release_install_lock
     if [ -n "$MANIFEST_TMP" ]; then
         rm -f "$MANIFEST_TMP"
@@ -328,16 +386,10 @@ EOF
     exit 0
 fi
 
-if [ -x "$PREFIX_CANON/bin/traceknot-update" ]; then
-    "$PREFIX_CANON/bin/traceknot-update" install-lock --prefix "$PREFIX_CANON"
-    INSTALL_LOCK_OWNED=1
-elif [ -e "$PREFIX_CANON/.traceknot-update.lock" ] ||
-     [ -L "$PREFIX_CANON/.traceknot-update.lock" ]; then
-    fail 'cannot safely install while an update lock exists'
-fi
 mkdir -p "$PREFIX_CANON"
 PREFIX_CANON=$(canonical_path "$PREFIX_CANON") || fail 'cannot resolve destination after creation'
 [ "$PREFIX_CANON" != "/" ] || fail 'refusing to install into filesystem root'
+acquire_install_lock
 
 MANIFEST_TMP="$PREFIX_CANON/$MANIFEST_NAME.tmp.$$"
 printf '%s\n' 'traceknot-install/v1' > "$MANIFEST_TMP"
