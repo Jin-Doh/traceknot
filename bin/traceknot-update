@@ -88,7 +88,7 @@ shell_quote() {
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        check|apply|rollback|enable|disable|status|uninstall-lock)
+        check|apply|rollback|enable|disable|status|install-lock|uninstall-lock)
             COMMAND=$1
             shift
             ;;
@@ -281,6 +281,11 @@ if [ "$COMMAND" = disable ]; then
     exit 0
 fi
 
+if [ "$COMMAND" = install-lock ]; then
+    printf '%s\n' "$PPID" > "$LOCK_DIR"
+    LOCK_HELD=0
+    exit 0
+fi
 if [ "$COMMAND" = uninstall-lock ]; then
     remove_schedule
     write_config 0 "$LAST_CHECK"
@@ -375,6 +380,22 @@ validate_managed_release_path() {
     esac
     [ ! -L "$managed_path" ] || fail "transaction path is a symbolic link: $managed_path"
 }
+prune_obsolete_release() {
+    obsolete_path=$1
+    [ -n "$obsolete_path" ] || return 0
+    validate_managed_release_path "$obsolete_path"
+    current_target=
+    rollback_target=
+    [ ! -L "$CURRENT" ] || current_target=$(readlink "$CURRENT")
+    [ ! -L "$ROLLBACK" ] || rollback_target=$(readlink "$ROLLBACK")
+    [ "$obsolete_path" != "$current_target" ] ||
+        fail 'refusing to prune the active release'
+    [ "$obsolete_path" != "$rollback_target" ] ||
+        fail 'refusing to prune the rollback release'
+    [ ! -e "$obsolete_path" ] || [ -d "$obsolete_path" ] ||
+        fail "obsolete release is not a directory: $obsolete_path"
+    rm -rf "$obsolete_path"
+}
 
 recover_transaction() {
     [ -f "$JOURNAL" ] || return 0
@@ -407,6 +428,9 @@ recover_transaction() {
     esac
 
     if [ "$phase" = committed ]; then
+        if [ "$operation" = apply ]; then
+            prune_obsolete_release "$rollback_previous"
+        fi
         rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
         return
     fi
@@ -822,5 +846,6 @@ if [ "$AUTOMATIC" -eq 1 ]; then
     install_schedule
 fi
 write_journal apply committed "$PREVIOUS" "$FINAL" "$STAGING" "$REGISTRATION_PREVIOUS" "$ROLLBACK_PREVIOUS"
+prune_obsolete_release "$ROLLBACK_PREVIOUS"
 rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
 printf 'Updated Traceknot to %s at %s\n' "$RELEASE_TAG" "$CURRENT"

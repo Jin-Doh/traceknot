@@ -13,8 +13,19 @@ BOOTSTRAP_TMP=
 MANIFEST_TMP=
 SKILLS_ROOT=
 REGISTRATION_PATH=
+INSTALL_LOCK_OWNED=0
 
+release_install_lock() {
+    [ "$INSTALL_LOCK_OWNED" -eq 1 ] || return 0
+    install_lock=$PREFIX_CANON/.traceknot-update.lock
+    if [ -f "$install_lock" ] && [ ! -L "$install_lock" ] &&
+       [ "$(sed -n '1p' "$install_lock" 2>/dev/null || true)" = "$$" ]; then
+        rm -f "$install_lock"
+    fi
+    INSTALL_LOCK_OWNED=0
+}
 cleanup() {
+    release_install_lock
     if [ -n "$MANIFEST_TMP" ]; then
         rm -f "$MANIFEST_TMP"
     fi
@@ -217,8 +228,11 @@ fi
 
 if [ -L "$REGISTRATION_PATH" ]; then
     command -v readlink >/dev/null 2>&1 || fail 'readlink is required to verify the existing Skill registration'
-    [ "$(readlink "$REGISTRATION_PATH")" = "$PREFIX_CANON/skill" ] ||
-        fail "refusing unrelated Skill registration: $REGISTRATION_PATH"
+    registration_target=$(readlink "$REGISTRATION_PATH")
+    case "$registration_target" in
+        "$PREFIX_CANON/skill"|"$PREFIX_CANON/current/skill") ;;
+        *) fail "refusing unrelated Skill registration: $REGISTRATION_PATH" ;;
+    esac
 elif [ -e "$REGISTRATION_PATH" ]; then
     fail "refusing to overwrite unowned Skill registration: $REGISTRATION_PATH"
 fi
@@ -314,6 +328,13 @@ EOF
     exit 0
 fi
 
+if [ -x "$PREFIX_CANON/bin/traceknot-update" ]; then
+    "$PREFIX_CANON/bin/traceknot-update" install-lock --prefix "$PREFIX_CANON"
+    INSTALL_LOCK_OWNED=1
+elif [ -e "$PREFIX_CANON/.traceknot-update.lock" ] ||
+     [ -L "$PREFIX_CANON/.traceknot-update.lock" ]; then
+    fail 'cannot safely install while an update lock exists'
+fi
 mkdir -p "$PREFIX_CANON"
 PREFIX_CANON=$(canonical_path "$PREFIX_CANON") || fail 'cannot resolve destination after creation'
 [ "$PREFIX_CANON" != "/" ] || fail 'refusing to install into filesystem root'
@@ -362,6 +383,7 @@ fi
 
 mv "$MANIFEST_TMP" "$PREFIX_CANON/$MANIFEST_NAME"
 MANIFEST_TMP=
+release_install_lock
 if [ "$AUTO_UPDATE" -eq 1 ]; then
     "$PREFIX_CANON/bin/traceknot-update" enable --prefix "$PREFIX_CANON"
 else

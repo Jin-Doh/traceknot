@@ -240,6 +240,9 @@ test -f "$PREFIX/.traceknot-update/active.json"
 test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = "$TAG"
 test -L "$TRACEKNOT_SKILLS_ROOT/traceknot"
 test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/skill"
+# Ordinary reinstall accepts and preserves the updater-managed registration target.
+sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null
+test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/skill"
 
 # A failed atomic rename keeps the previous activation link continuously available.
 CURRENT_BEFORE=$(readlink "$PREFIX/current")
@@ -262,6 +265,18 @@ printf '%s\n' "$legacy_check" | grep -F "Eligible update: $TAG" >/dev/null
 "$PREFIX/bin/traceknot-update" rollback --prefix "$PREFIX" >/dev/null
 test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = "$TAG"
 test -f "$PREFIX/current/skill/SKILL.md"
+# Committed recovery prunes a release that is no longer current or rollback.
+OBSOLETE=$PREFIX_CANON/releases/obsolete
+mkdir -p "$OBSOLETE"
+printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+    operation=apply phase=committed "previous=$(readlink "$PREFIX/current")" \
+    "candidate=$(readlink "$PREFIX/current")" staging= \
+    "registrationPrevious=$PREFIX_CANON/current/skill" \
+    "rollbackPrevious=$OBSOLETE" > "$PREFIX/.traceknot-update/transaction"
+"$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null
+test ! -e "$OBSOLETE"
+test -L "$PREFIX/current"
+test -L "$PREFIX/rollback"
 
 # Default-on scheduling and explicit opt-out own only their marked schedule.
 "$PREFIX/current/bin/traceknot-update" enable --prefix "$PREFIX" >/dev/null
@@ -320,6 +335,12 @@ TRACEKNOT_SKILLS_ROOT=$BACKSLASH_SKILLS sh "$ROOT/install.sh" \
 test "$(sed -n 's/^automatic=//p' "$BACKSLASH_PREFIX/.traceknot-update/config")" = 0
 # A held lock blocks a second writer without changing the activation.
 printf '%s\n' "$$" > "$PREFIX/.traceknot-update.lock"
+printf '%s\n' preserve-locked-reinstall >> "$PREFIX/skill/SKILL.md"
+if sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'reinstall unexpectedly mutated files while the update lock was held' >&2
+    exit 1
+fi
+grep -F preserve-locked-reinstall "$PREFIX/skill/SKILL.md" >/dev/null
 if "$PREFIX/current/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>&1; then
     printf '%s\n' 'concurrent updater unexpectedly acquired the lock' >&2
     exit 1
