@@ -217,15 +217,15 @@ X_PREFIX_CANON=$(CDPATH='' cd -P "$X_PREFIX" && pwd)
 grep -Fx "$X_FOREIGN_ENTRY" "$CRONTAB_FILE" >/dev/null
 grep -Fx "$X_UNMARKED_ENTRY" "$CRONTAB_FILE" >/dev/null
 awk -v marker="# traceknot-auto-update:$X_PREFIX_CANON" \
-    'substr($0, length($0) - length(marker) + 1) = marker { found=1 } END { exit !found }' \
+    'substr($0, length($0) - length(marker) + 1) == marker { found=1 } END { exit !found }' \
     "$CRONTAB_FILE"
 "$X_PREFIX/bin/traceknot-update" disable --prefix "$X_PREFIX" >/dev/null
 grep -Fx "$X_FOREIGN_ENTRY" "$CRONTAB_FILE" >/dev/null
 grep -Fx "$X_UNMARKED_ENTRY" "$CRONTAB_FILE" >/dev/null
 if awk -v marker="# traceknot-auto-update:$X_PREFIX_CANON" \
-    'substr($0, length($0) - length(marker) + 1) = marker { found=1 } END { exit found }' \
+    'substr($0, length($0) - length(marker) + 1) == marker { found=1 } END { exit !found }' \
     "$CRONTAB_FILE"; then
-    printf '%s\n' 'disabling /x unexpectedly removed only-partially-matching schedules' >&2
+    printf '%s\n' 'disabling /x unexpectedly retained its own schedule' >&2
     exit 1
 fi
 

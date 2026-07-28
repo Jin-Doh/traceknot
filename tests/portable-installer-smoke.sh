@@ -128,9 +128,9 @@ fi
 REJECT_PREFIX=$TMP_DIR/rejected-crontab-prefix
 REJECT_SKILLS=$TMP_DIR/rejected-crontab-skills
 REJECT_CRONTAB_FILE=$TMP_DIR/rejected-crontab
-if reject_output=$(CRONTAB_FILE="$REJECT_CRONTAB_FILE" CRONTAB_REJECT_WRITES=1 \
+if CRONTAB_FILE="$REJECT_CRONTAB_FILE" CRONTAB_REJECT_WRITES=1 \
     TRACEKNOT_SKILLS_ROOT="$REJECT_SKILLS" sh "$ROOT/install.sh" \
-    --prefix "$REJECT_PREFIX" 2>&1); then
+    --prefix "$REJECT_PREFIX" >/dev/null 2>&1; then
     printf '%s\n' 'installation unexpectedly succeeded after crontab rejection' >&2
     exit 1
 fi
