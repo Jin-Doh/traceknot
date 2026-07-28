@@ -86,7 +86,7 @@ reject_symlink_components() {
 validate_entry() {
     manifest_entry=$1
     case "$manifest_entry" in
-        LICENSE|skill/*|contracts/*|adapters/*|system/core/*) ;;
+        LICENSE|skill/*|contracts/*|adapters/*|system/core/*|bin/*) ;;
         /*|../*|*/../*|*/..|.|./*|*/./*) fail "unsafe manifest entry: $manifest_entry" ;;
         *) fail "unknown manifest entry: $manifest_entry" ;;
     esac
@@ -180,7 +180,9 @@ SKILLS_ROOT_CANON=$(canonical_path "$SKILLS_ROOT") || fail "cannot resolve Agent
 REGISTRATION_PATH=$SKILLS_ROOT_CANON/traceknot
 if [ -L "$REGISTRATION_PATH" ]; then
     command -v readlink >/dev/null 2>&1 || fail 'readlink is required to verify the Skill registration'
-    if [ "$(readlink "$REGISTRATION_PATH")" = "$PREFIX_CANON/skill" ]; then
+    registration_target=$(readlink "$REGISTRATION_PATH")
+    if [ "$registration_target" = "$PREFIX_CANON/skill" ] ||
+       [ "$registration_target" = "$PREFIX_CANON/current/skill" ]; then
         REGISTRATION_OWNED=1
     fi
 fi
@@ -204,9 +206,16 @@ EOF
     if [ "$REGISTRATION_OWNED" -eq 1 ]; then
         printf '  remove Skill registration %s\n' "$REGISTRATION_PATH"
     fi
+    if [ -e "$PREFIX_CANON/.traceknot-update" ] || [ -e "$PREFIX_CANON/releases" ] ||
+       [ -L "$PREFIX_CANON/current" ] || [ -L "$PREFIX_CANON/rollback" ]; then
+        printf '  remove updater state and managed release directories\n'
+    fi
     exit 0
 fi
 
+if [ -x "$PREFIX_CANON/bin/traceknot-update" ]; then
+    "$PREFIX_CANON/bin/traceknot-update" disable --prefix "$PREFIX_CANON" >/dev/null
+fi
 if [ "$REGISTRATION_OWNED" -eq 1 ]; then
     rm -f "$REGISTRATION_PATH"
 fi
@@ -219,5 +228,21 @@ while IFS= read -r manifest_entry; do
 done <<EOF
 $(sed -n '2,$p' "$MANIFEST")
 EOF
+if [ -L "$PREFIX_CANON/current" ]; then
+    rm -f "$PREFIX_CANON/current"
+fi
+if [ -L "$PREFIX_CANON/rollback" ]; then
+    rm -f "$PREFIX_CANON/rollback"
+fi
+if [ -e "$PREFIX_CANON/.traceknot-update" ]; then
+    [ -d "$PREFIX_CANON/.traceknot-update" ] && [ ! -L "$PREFIX_CANON/.traceknot-update" ] ||
+        fail 'refusing unsafe updater state path'
+    rm -rf "$PREFIX_CANON/.traceknot-update"
+fi
+if [ -e "$PREFIX_CANON/releases" ]; then
+    [ -d "$PREFIX_CANON/releases" ] && [ ! -L "$PREFIX_CANON/releases" ] ||
+        fail 'refusing unsafe releases path'
+    rm -rf "$PREFIX_CANON/releases"
+fi
 rm -f "$MANIFEST"
 printf 'Uninstalled Traceknot from %s and removed its owned Skill registration\n' "$PREFIX_CANON"

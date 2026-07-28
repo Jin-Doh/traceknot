@@ -1,0 +1,524 @@
+#!/bin/sh
+# Secure, opt-in updater for user-local Traceknot installations.
+
+set -eu
+
+PROGRAM=traceknot-update
+REPOSITORY=Jin-Doh/traceknot
+API_URL=https://api.github.com/repos/$REPOSITORY/releases
+SIGNER_WORKFLOW=Jin-Doh/traceknot/.github/workflows/release.yml
+MIN_AGE=604800
+CHECK_INTERVAL=86400
+PREFIX=
+COMMAND=check
+DRY_RUN=0
+AUTO_INVOCATION=0
+TMP_ROOT=
+LOCK_HELD=0
+
+fail() {
+    printf '%s: %s\n' "$PROGRAM" "$*" >&2
+    exit 2
+}
+
+usage() {
+    cat <<EOF
+Usage: $PROGRAM [COMMAND] [--prefix DIR] [--dry-run]
+
+Commands:
+  check                 observe releases and report eligibility (default)
+  apply                 install the newest eligible verified release
+  enable                opt in and install the daily automatic-update schedule
+  disable               opt out and remove the automatic-update schedule
+  status                show policy and installed update state
+
+Options:
+  --prefix DIR          installation prefix
+  --dry-run, -n         show an eligible update without changing installed files
+  --auto                scheduled invocation; no-op unless automatic updates are enabled
+  --help, -h            show this help
+
+A candidate must be immutable and observed for strictly more than seven days.
+Update checks require curl and jq. Application also requires gh and tar.
+EOF
+}
+
+cleanup() {
+    if [ "$LOCK_HELD" -eq 1 ]; then
+        rm -rf "$LOCK_DIR"
+    fi
+    if [ -n "$TMP_ROOT" ]; then
+        rm -rf "$TMP_ROOT"
+    fi
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+canonical_path() {
+    canonical_input=$1
+    case "$canonical_input" in /*) ;; *) return 1 ;; esac
+    if [ -d "$canonical_input" ]; then
+        (CDPATH='' cd -P "$canonical_input" && pwd)
+        return
+    fi
+    canonical_parent=$(dirname "$canonical_input")
+    canonical_name=$(basename "$canonical_input")
+    canonical_parent=$(canonical_path "$canonical_parent") || return 1
+    printf '%s/%s\n' "$canonical_parent" "$canonical_name"
+}
+
+sha256_file() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | cut -d ' ' -f 1
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | cut -d ' ' -f 1
+    else
+        fail 'sha256sum or shasum is required'
+    fi
+}
+
+shell_quote() {
+    printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        check|apply|enable|disable|status)
+            COMMAND=$1
+            shift
+            ;;
+        --prefix)
+            [ "$#" -ge 2 ] || fail '--prefix requires a directory'
+            PREFIX=$2
+            shift 2
+            ;;
+        --prefix=*)
+            PREFIX=${1#*=}
+            [ -n "$PREFIX" ] || fail '--prefix requires a directory'
+            shift
+            ;;
+        --dry-run|-n)
+            DRY_RUN=1
+            shift
+            ;;
+        --auto)
+            AUTO_INVOCATION=1
+            COMMAND=apply
+            shift
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        *) fail "unknown argument: $1" ;;
+    esac
+done
+
+if [ -z "$PREFIX" ]; then
+    [ -n "${HOME:-}" ] || fail 'HOME is required when --prefix is not supplied'
+    PREFIX=${XDG_DATA_HOME:-"$HOME/.local/share"}/traceknot
+fi
+case "$PREFIX" in /*) ;; *) fail 'prefix must be absolute' ;; esac
+[ -d "$PREFIX" ] || fail "Traceknot is not installed at $PREFIX"
+[ ! -L "$PREFIX" ] || fail "refusing symlink prefix: $PREFIX"
+PREFIX=$(canonical_path "$PREFIX") || fail 'cannot resolve prefix'
+[ "$PREFIX" != / ] || fail 'refusing filesystem root prefix'
+
+INSTALL_MANIFEST=$PREFIX/.traceknot-install-manifest
+[ -f "$INSTALL_MANIFEST" ] || fail "missing installation manifest: $INSTALL_MANIFEST"
+[ ! -L "$INSTALL_MANIFEST" ] || fail 'refusing symlink installation manifest'
+[ "$(sed -n '1p' "$INSTALL_MANIFEST")" = traceknot-install/v1 ] || fail 'unsupported installation manifest'
+
+STATE_DIR=$PREFIX/.traceknot-update
+CONFIG=$STATE_DIR/config
+OBSERVATIONS=$STATE_DIR/observations.tsv
+ACTIVE_STATE=$STATE_DIR/active.json
+JOURNAL=$STATE_DIR/transaction
+LOCK_DIR=$STATE_DIR/update.lock
+CURRENT=$PREFIX/current
+ROLLBACK=$PREFIX/rollback
+RELEASES_DIR=$PREFIX/releases
+SKILLS_ROOT=${TRACEKNOT_SKILLS_ROOT:-"$HOME/.agents/skills"}
+REGISTRATION=$SKILLS_ROOT/traceknot
+
+mkdir -p "$STATE_DIR"
+[ ! -L "$STATE_DIR" ] || fail 'refusing symlink update state directory'
+if [ ! -f "$CONFIG" ]; then
+    printf '%s\n%s\n%s\n' 'traceknot-update-config/v1' 'automatic=0' 'lastCheck=0' > "$CONFIG"
+fi
+[ "$(sed -n '1p' "$CONFIG")" = traceknot-update-config/v1 ] || fail 'invalid update configuration'
+AUTOMATIC=$(sed -n 's/^automatic=//p' "$CONFIG")
+LAST_CHECK=$(sed -n 's/^lastCheck=//p' "$CONFIG")
+case "$AUTOMATIC" in 0|1) ;; *) fail 'invalid automatic update setting' ;; esac
+case "$LAST_CHECK" in ''|*[!0-9]*) fail 'invalid last check time' ;; esac
+
+write_config() {
+    automatic_value=$1
+    last_check_value=$2
+    config_tmp=$CONFIG.tmp.$$
+    printf '%s\n%s\n%s\n' \
+        'traceknot-update-config/v1' \
+        "automatic=$automatic_value" \
+        "lastCheck=$last_check_value" > "$config_tmp"
+    mv "$config_tmp" "$CONFIG"
+}
+
+cron_marker="# traceknot-auto-update:$PREFIX"
+remove_schedule() {
+    command -v crontab >/dev/null 2>&1 || return 0
+    existing=$(crontab -l 2>/dev/null || true)
+    filtered=$(printf '%s\n' "$existing" | grep -Fv "$cron_marker" || true)
+    if [ -n "$filtered" ]; then
+        printf '%s\n' "$filtered" | crontab -
+    elif [ -n "$existing" ]; then
+        printf '%s' '' | crontab -
+    fi
+}
+
+install_schedule() {
+    command -v crontab >/dev/null 2>&1 || fail 'crontab is required to enable automatic updates'
+    updater=$PREFIX/bin/traceknot-update
+    [ -x "$updater" ] || fail "installed updater is missing: $updater"
+    remove_schedule
+    existing=$(crontab -l 2>/dev/null || true)
+    entry="17 3 * * * $(shell_quote "$updater") --prefix $(shell_quote "$PREFIX") --auto >/dev/null 2>&1 $cron_marker"
+    {
+        [ -z "$existing" ] || printf '%s\n' "$existing"
+        printf '%s\n' "$entry"
+    } | crontab -
+}
+
+if [ "$COMMAND" = enable ]; then
+    [ "$DRY_RUN" -eq 0 ] || { printf 'Would enable daily automatic updates for %s\n' "$PREFIX"; exit 0; }
+    install_schedule
+    write_config 1 "$LAST_CHECK"
+    printf 'Automatic updates enabled for %s\n' "$PREFIX"
+    exit 0
+fi
+
+if [ "$COMMAND" = disable ]; then
+    [ "$DRY_RUN" -eq 0 ] || { printf 'Would disable automatic updates for %s\n' "$PREFIX"; exit 0; }
+    remove_schedule
+    write_config 0 "$LAST_CHECK"
+    printf 'Automatic updates disabled for %s\n' "$PREFIX"
+    exit 0
+fi
+
+if [ "$COMMAND" = status ]; then
+    printf 'prefix=%s\nautomatic=%s\nlastCheck=%s\n' "$PREFIX" "$AUTOMATIC" "$LAST_CHECK"
+    if [ -f "$ACTIVE_STATE" ]; then
+        jq -r '"version=\(.version)\ntag=\(.releaseTag)\nsha256=\(.artifactSha256)"' "$ACTIVE_STATE"
+    else
+        printf '%s\n' 'version=legacy'
+    fi
+    exit 0
+fi
+
+if [ "$AUTO_INVOCATION" -eq 1 ] && [ "$AUTOMATIC" -ne 1 ]; then
+    exit 0
+fi
+
+command -v curl >/dev/null 2>&1 || fail 'curl is required'
+command -v jq >/dev/null 2>&1 || fail 'jq is required'
+
+acquire_lock() {
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+        LOCK_HELD=1
+        printf '%s\n' "$$" > "$LOCK_DIR/pid"
+        return
+    fi
+    fail "another update owns the lock: $LOCK_DIR"
+}
+acquire_lock
+
+replace_symlink() {
+    link_target=$1
+    link_path=$2
+    link_tmp=$link_path.tmp.$$
+    [ ! -e "$link_path" ] || [ -L "$link_path" ] ||
+        fail "refusing to replace non-symlink path: $link_path"
+    rm -f "$link_tmp"
+    ln -s "$link_target" "$link_tmp"
+    if [ -L "$link_path" ]; then
+        rm -f "$link_path"
+    fi
+    mv "$link_tmp" "$link_path"
+}
+
+recover_transaction() {
+    [ -f "$JOURNAL" ] || return 0
+    [ ! -L "$JOURNAL" ] || fail 'refusing symlink transaction journal'
+    phase=$(sed -n 's/^phase=//p' "$JOURNAL")
+    previous=$(sed -n 's/^previous=//p' "$JOURNAL")
+    candidate=$(sed -n 's/^candidate=//p' "$JOURNAL")
+    registration_previous=$(sed -n 's/^registrationPrevious=//p' "$JOURNAL")
+    case "$phase" in
+        prepared)
+            [ -z "$candidate" ] || rm -rf "$candidate"
+            rm -f "$JOURNAL"
+            ;;
+        activated)
+            if [ -n "$previous" ] && [ -d "$previous" ]; then
+                replace_symlink "$previous" "$CURRENT"
+            fi
+            if [ -n "$registration_previous" ]; then
+                mkdir -p "$SKILLS_ROOT"
+                replace_symlink "$registration_previous" "$REGISTRATION"
+            fi
+            rm -f "$JOURNAL"
+            ;;
+        committed) rm -f "$JOURNAL" ;;
+        *) fail 'invalid transaction journal phase' ;;
+    esac
+}
+recover_transaction
+
+TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-update.XXXXXX") || fail 'cannot create temporary directory'
+HEADERS=$TMP_ROOT/headers
+RELEASE_JSON=$TMP_ROOT/releases.json
+
+curl_args=""
+if [ -n "${GH_TOKEN:-}" ]; then
+    curl_args="Authorization: Bearer $GH_TOKEN"
+fi
+if [ -n "$curl_args" ]; then
+    curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+        -H 'Accept: application/vnd.github+json' -H "$curl_args" \
+        -D "$HEADERS" -o "$RELEASE_JSON" "$API_URL"
+else
+    curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+        -H 'Accept: application/vnd.github+json' \
+        -D "$HEADERS" -o "$RELEASE_JSON" "$API_URL"
+fi
+
+SERVER_DATE=$(sed -n 's/^[Dd]ate: //p' "$HEADERS" | tr -d '\r' | tail -n 1)
+[ -n "$SERVER_DATE" ] || fail 'GitHub response did not include trusted server time'
+TRUSTED_NOW=$(jq -nr --arg value "$SERVER_DATE" '$value | strptime("%a, %d %b %Y %H:%M:%S GMT") | mktime') ||
+    fail 'cannot parse trusted GitHub server time'
+LOCAL_NOW=$(date -u '+%s')
+CLOCK_DELTA=$((LOCAL_NOW - TRUSTED_NOW))
+[ "$CLOCK_DELTA" -le 86400 ] && [ "$CLOCK_DELTA" -ge -86400 ] || fail 'local clock differs from GitHub server time by more than 24 hours'
+
+if [ "$AUTO_INVOCATION" -eq 1 ] && [ $((TRUSTED_NOW - LAST_CHECK)) -lt "$CHECK_INTERVAL" ]; then
+    exit 0
+fi
+write_config "$AUTOMATIC" "$TRUSTED_NOW"
+
+jq -e 'type == "array"' "$RELEASE_JSON" >/dev/null || fail 'invalid GitHub releases response'
+: > "$TMP_ROOT/candidates.tsv"
+jq -r '
+  .[]
+  | select(.draft == false and .prerelease == false and .immutable == true)
+  | . as $release
+  | [.assets[]? | select(.name == "traceknot-update-manifest.json")][0] as $manifest
+  | select($manifest != null)
+  | [$release.tag_name, $release.published_at, $manifest.url]
+  | @tsv
+' "$RELEASE_JSON" > "$TMP_ROOT/candidates.tsv"
+
+CANDIDATE_FOUND=0
+ELIGIBLE=0
+while IFS="$(printf '\t')" read -r RELEASE_TAG RELEASE_PUBLISHED MANIFEST_URL; do
+    [ -n "$RELEASE_TAG" ] || continue
+    CANDIDATE_FOUND=1
+    MANIFEST=$TMP_ROOT/manifest.json
+    if [ -n "$curl_args" ]; then
+        curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            -H 'Accept: application/octet-stream' -H "$curl_args" -o "$MANIFEST" "$MANIFEST_URL"
+    else
+        curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            -H 'Accept: application/octet-stream' -o "$MANIFEST" "$MANIFEST_URL"
+    fi
+
+    jq -e '
+      type == "object"
+      and (keys | sort == ["artifact","publishedAt","releaseTag","schemaVersion","sourceCommit","sourceRepository","version"])
+      and .schemaVersion == "traceknot-update-manifest/v1"
+      and .sourceRepository == "Jin-Doh/traceknot"
+      and (.version | test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"))
+      and .releaseTag == ("v" + .version)
+      and (.sourceCommit | test("^[0-9a-f]{40}$"))
+      and (.publishedAt | test("^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]+)?Z$"))
+      and (.artifact | type == "object")
+      and (.artifact | keys | sort == ["name","sha256","size"])
+      and .artifact.name == ("traceknot-v" + .version + ".tar.gz")
+      and (.artifact.size | type == "number" and . > 0 and floor == .)
+      and (.artifact.sha256 | test("^[0-9a-f]{64}$"))
+    ' "$MANIFEST" >/dev/null || fail "invalid update manifest for $RELEASE_TAG"
+
+    MANIFEST_TAG=$(jq -r .releaseTag "$MANIFEST")
+    [ "$MANIFEST_TAG" = "$RELEASE_TAG" ] || fail 'release tag and manifest tag disagree'
+    MANIFEST_PUBLISHED=$(jq -r .publishedAt "$MANIFEST")
+    MANIFEST_EPOCH=$(jq -nr --arg value "$MANIFEST_PUBLISHED" '$value | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601') ||
+        fail 'manifest publication time is not a valid calendar instant'
+    RELEASE_EPOCH=$(jq -nr --arg value "$RELEASE_PUBLISHED" '$value | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601') ||
+        fail 'release publication time is invalid'
+    [ "$MANIFEST_EPOCH" -le "$TRUSTED_NOW" ] || fail 'manifest publication time is in the future'
+
+    MANIFEST_SHA=$(sha256_file "$MANIFEST")
+    FIRST_SEEN=$(grep "^$MANIFEST_SHA$(printf '\t')" "$OBSERVATIONS" 2>/dev/null | cut -f 2 | tail -n 1 || true)
+    if [ -z "$FIRST_SEEN" ]; then
+        FIRST_SEEN=$TRUSTED_NOW
+        printf '%s\t%s\t%s\t%s\n' "$MANIFEST_SHA" "$FIRST_SEEN" "$RELEASE_TAG" "$(jq -r .artifact.sha256 "$MANIFEST")" >> "$OBSERVATIONS"
+    fi
+    case "$FIRST_SEEN" in ''|*[!0-9]*) fail 'invalid candidate observation time' ;; esac
+    AGE_BASE=$RELEASE_EPOCH
+    [ "$FIRST_SEEN" -le "$AGE_BASE" ] || AGE_BASE=$FIRST_SEEN
+    if [ "$TRUSTED_NOW" -le $((AGE_BASE + MIN_AGE)) ]; then
+        printf 'Observing %s; eligible after %s trusted epoch seconds\n' "$RELEASE_TAG" "$((AGE_BASE + MIN_AGE))"
+        continue
+    fi
+
+    VERSION=$(jq -r .version "$MANIFEST")
+    SOURCE_COMMIT=$(jq -r .sourceCommit "$MANIFEST")
+    ARTIFACT_NAME=$(jq -r .artifact.name "$MANIFEST")
+    ARTIFACT_SIZE=$(jq -r .artifact.size "$MANIFEST")
+    ARTIFACT_SHA=$(jq -r .artifact.sha256 "$MANIFEST")
+    if [ -f "$ACTIVE_STATE" ]; then
+        ACTIVE_VERSION=$(jq -r .version "$ACTIVE_STATE")
+        ACTIVE_SHA=$(jq -r .artifactSha256 "$ACTIVE_STATE")
+        VERSION_ORDER=$(jq -nr --arg candidate "$VERSION" --arg active "$ACTIVE_VERSION" '
+          ($candidate | split(".") | map(tonumber)) as $c
+          | ($active | split(".") | map(tonumber)) as $a
+          | if $c < $a then -1 elif $c == $a then 0 else 1 end
+        ')
+        if [ "$VERSION_ORDER" -lt 0 ]; then
+            continue
+        fi
+        if [ "$VERSION_ORDER" -eq 0 ]; then
+            [ "$ARTIFACT_SHA" = "$ACTIVE_SHA" ] ||
+                fail "installed version $VERSION was republished with a different digest"
+            printf '%s is already installed.\n' "$RELEASE_TAG"
+            exit 0
+        fi
+    fi
+    ARTIFACT_URL=$(jq -r --arg name "$ARTIFACT_NAME" --arg tag "$RELEASE_TAG" '
+      .[] | select(.tag_name == $tag) | [.assets[] | select(.name == $name) | .url][0] // empty
+    ' "$RELEASE_JSON")
+    [ -n "$ARTIFACT_URL" ] || fail "release asset is missing: $ARTIFACT_NAME"
+    ELIGIBLE=1
+    cp "$MANIFEST" "$TMP_ROOT/eligible-manifest.json"
+    break
+done < "$TMP_ROOT/candidates.tsv"
+
+if [ "$CANDIDATE_FOUND" -eq 0 ]; then
+    printf '%s\n' 'No immutable stable release with an update manifest is available.'
+    exit 0
+fi
+if [ "$ELIGIBLE" -eq 0 ]; then
+    printf '%s\n' 'No release has exceeded the seven-day observation requirement.'
+    exit 0
+fi
+
+printf 'Eligible update: %s (%s)\n' "$RELEASE_TAG" "$ARTIFACT_SHA"
+[ "$COMMAND" = apply ] || exit 0
+[ "$DRY_RUN" -eq 0 ] || { printf 'Would apply %s to %s\n' "$RELEASE_TAG" "$PREFIX"; exit 0; }
+
+command -v gh >/dev/null 2>&1 || fail 'gh is required to verify artifact provenance'
+command -v tar >/dev/null 2>&1 || fail 'tar is required to extract the release'
+ARCHIVE=$TMP_ROOT/$ARTIFACT_NAME
+if [ -n "$curl_args" ]; then
+    curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+        -H 'Accept: application/octet-stream' -H "$curl_args" -o "$ARCHIVE" "$ARTIFACT_URL"
+else
+    curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+        -H 'Accept: application/octet-stream' -o "$ARCHIVE" "$ARTIFACT_URL"
+fi
+[ "$(wc -c < "$ARCHIVE" | tr -d ' ')" = "$ARTIFACT_SIZE" ] || fail 'artifact size does not match manifest'
+[ "$(sha256_file "$ARCHIVE")" = "$ARTIFACT_SHA" ] || fail 'artifact digest does not match manifest'
+
+gh attestation verify "$ARCHIVE" \
+    --repo "$REPOSITORY" \
+    --signer-workflow "$SIGNER_WORKFLOW" \
+    --source-ref "refs/tags/$RELEASE_TAG" \
+    --source-digest "$SOURCE_COMMIT" \
+    --deny-self-hosted-runners >/dev/null || fail 'artifact provenance verification failed'
+
+mkdir -p "$RELEASES_DIR"
+[ ! -L "$RELEASES_DIR" ] || fail 'refusing symlink releases directory'
+STAGING=$RELEASES_DIR/.staging-$VERSION-$$
+FINAL=$RELEASES_DIR/$VERSION
+[ ! -e "$FINAL" ] || {
+    if [ -f "$ACTIVE_STATE" ] && [ "$(jq -r .artifactSha256 "$ACTIVE_STATE")" = "$ARTIFACT_SHA" ]; then
+        printf '%s is already installed.\n' "$RELEASE_TAG"
+        exit 0
+    fi
+    fail "release directory already exists with different state: $FINAL"
+}
+mkdir "$STAGING"
+tar -tzf "$ARCHIVE" | while IFS= read -r entry; do
+    case "$entry" in
+        /*|../*|*/../*|*/..|..) fail "unsafe archive entry: $entry" ;;
+    esac
+done
+tar -xzf "$ARCHIVE" -C "$STAGING" --strip-components 1
+if find "$STAGING" -type l -print | grep . >/dev/null; then
+    fail 'release archive contains a symbolic link'
+fi
+if find "$STAGING" ! -type f ! -type d -print | grep . >/dev/null; then
+    fail 'release archive contains a special filesystem entry'
+fi
+[ -f "$STAGING/LICENSE" ] || fail 'staged release is incomplete'
+[ -f "$STAGING/skill/SKILL.md" ] || fail 'staged release is incomplete'
+[ -x "$STAGING/bin/traceknot-update" ] || fail 'staged updater is missing'
+
+PREVIOUS=
+REGISTRATION_PREVIOUS=
+if [ -L "$CURRENT" ]; then
+    PREVIOUS=$(readlink "$CURRENT")
+elif [ ! -e "$CURRENT" ]; then
+    LEGACY_SHA=$(sha256_file "$INSTALL_MANIFEST")
+    PREVIOUS=$RELEASES_DIR/legacy-$LEGACY_SHA
+    if [ ! -d "$PREVIOUS" ]; then
+        mkdir "$PREVIOUS"
+        while IFS= read -r relative; do
+            [ -n "$relative" ] || continue
+            case "$relative" in LICENSE|skill/*|contracts/*|adapters/*|system/core/*|bin/*) ;; *) fail "unsafe legacy manifest entry: $relative" ;; esac
+            [ -f "$PREFIX/$relative" ] || fail "legacy installed file is missing: $relative"
+            mkdir -p "$PREVIOUS/$(dirname "$relative")"
+            cp -p "$PREFIX/$relative" "$PREVIOUS/$relative"
+        done <<EOF
+$(sed -n '2,$p' "$INSTALL_MANIFEST")
+EOF
+    fi
+else
+    fail 'current activation path is not a symlink'
+fi
+if [ -L "$REGISTRATION" ]; then
+    REGISTRATION_PREVIOUS=$(readlink "$REGISTRATION")
+elif [ -e "$REGISTRATION" ]; then
+    fail 'refusing unrelated Skill registration'
+fi
+
+mv "$STAGING" "$FINAL"
+printf '%s\n%s\n%s\n%s\n' \
+    'phase=prepared' "previous=$PREVIOUS" "candidate=$FINAL" "registrationPrevious=$REGISTRATION_PREVIOUS" > "$JOURNAL"
+replace_symlink "$PREVIOUS" "$ROLLBACK"
+replace_symlink "$FINAL" "$CURRENT"
+printf '%s\n%s\n%s\n%s\n' \
+    'phase=activated' "previous=$PREVIOUS" "candidate=$FINAL" "registrationPrevious=$REGISTRATION_PREVIOUS" > "$JOURNAL"
+mkdir -p "$SKILLS_ROOT"
+replace_symlink "$CURRENT/skill" "$REGISTRATION"
+
+if [ ! -f "$CURRENT/skill/SKILL.md" ] || [ ! -x "$CURRENT/bin/traceknot-update" ]; then
+    replace_symlink "$PREVIOUS" "$CURRENT"
+    if [ -n "$REGISTRATION_PREVIOUS" ]; then
+        replace_symlink "$REGISTRATION_PREVIOUS" "$REGISTRATION"
+    fi
+    fail 'post-activation smoke check failed; previous release restored'
+fi
+
+active_tmp=$ACTIVE_STATE.tmp.$$
+jq -n \
+    --arg schemaVersion traceknot-active-release/v1 \
+    --arg version "$VERSION" \
+    --arg releaseTag "$RELEASE_TAG" \
+    --arg sourceCommit "$SOURCE_COMMIT" \
+    --arg artifactSha256 "$ARTIFACT_SHA" \
+    --argjson activatedAt "$TRUSTED_NOW" \
+    '{schemaVersion:$schemaVersion,version:$version,releaseTag:$releaseTag,sourceCommit:$sourceCommit,artifactSha256:$artifactSha256,activatedAt:$activatedAt}' > "$active_tmp"
+mv "$active_tmp" "$ACTIVE_STATE"
+printf '%s\n%s\n%s\n%s\n' \
+    'phase=committed' "previous=$PREVIOUS" "candidate=$FINAL" "registrationPrevious=$REGISTRATION_PREVIOUS" > "$JOURNAL"
+rm -f "$JOURNAL"
+printf 'Updated Traceknot to %s at %s\n' "$RELEASE_TAG" "$CURRENT"
