@@ -107,6 +107,36 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
 
 The uninstaller reads the installation manifest, removes only files installed by Traceknot, and removes the shared Skill registration only when it still points to that installation. Pass `--dry-run` to preview removals; running uninstall again is harmless. Use the same `TRACEKNOT_SKILLS_ROOT` override used during installation. A cloned repository can use `./uninstall.sh` instead.
 
+## Automatic updates
+
+Automatic update checks are enabled by default. The updater considers only immutable GitHub releases whose signed provenance and SHA-256 digest verify, and delays eligibility until the exact artifact has been observed for more than seven complete days.
+
+```sh
+TRACEKNOT_PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/traceknot"
+if [ -x "$TRACEKNOT_PREFIX/current/bin/traceknot-update" ]; then
+  TRACEKNOT_UPDATE="$TRACEKNOT_PREFIX/current/bin/traceknot-update"
+else
+  TRACEKNOT_UPDATE="$TRACEKNOT_PREFIX/bin/traceknot-update"
+fi
+
+# Show policy, schedule, and installed release state
+"$TRACEKNOT_UPDATE" status
+
+# Check for an eligible release without changing files
+"$TRACEKNOT_UPDATE" check
+
+# Apply the newest eligible verified release
+"$TRACEKNOT_UPDATE" apply
+
+# Disable or re-enable the daily automatic check
+"$TRACEKNOT_UPDATE" disable
+"$TRACEKNOT_UPDATE" enable
+# Restore the immediately previous managed release
+"$TRACEKNOT_UPDATE" rollback
+```
+
+Pass `--prefix DIR`, set `TRACEKNOT_PREFIX="$DIR"`, and repeat the active-updater selection above when Traceknot is not installed at the default prefix. Installation schedules checks but never applies an update immediately. Use `install.sh --disable-auto-update` to opt out during installation, or `"$TRACEKNOT_UPDATE" disable` afterward. Full policy, recovery behavior, release contract, and verification evidence are documented in [`docs/automatic-updates.md`](docs/automatic-updates.md).
+
 ## Architecture
 
 ```mermaid

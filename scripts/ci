@@ -17,8 +17,10 @@ printf '%s\n' '==> locked dependencies'
 bun install --frozen-lockfile --ignore-scripts
 
 printf '%s\n' '==> shell syntax and installer lifecycle'
-sh -n install.sh uninstall.sh tests/portable-installer-smoke.sh scripts/ci
+sh -n install.sh uninstall.sh bin/traceknot-update scripts/package-release.sh \
+    tests/portable-installer-smoke.sh tests/updater-smoke.sh scripts/ci
 sh tests/portable-installer-smoke.sh
+sh tests/updater-smoke.sh
 
 printf '%s\n' '==> JSON syntax'
 git ls-files '*.json' | while IFS= read -r json_file; do

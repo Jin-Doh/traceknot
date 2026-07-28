@@ -9,7 +9,7 @@ SOURCE_ROOT=
 case "$0" in
     */*)
         LOCAL_SOURCE=1
-        SOURCE_ROOT=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
+        SOURCE_ROOT=$(CDPATH='' cd -P "$(dirname "$0")" && pwd)
         ;;
 esac
 MANIFEST_NAME=.traceknot-install-manifest
@@ -18,6 +18,7 @@ PREFIX=
 SKILLS_ROOT=
 REGISTRATION_PATH=
 REGISTRATION_OWNED=0
+UPDATE_LOCK_OWNED=0
 
 usage() {
     cat <<EOF
@@ -50,7 +51,7 @@ canonical_path() {
     esac
 
     if [ -d "$canonical_input" ]; then
-        (CDPATH= cd -P "$canonical_input" && pwd)
+        (CDPATH='' cd -P "$canonical_input" && pwd)
         return
     fi
 
@@ -86,7 +87,7 @@ reject_symlink_components() {
 validate_entry() {
     manifest_entry=$1
     case "$manifest_entry" in
-        LICENSE|skill/*|contracts/*|adapters/*|system/core/*) ;;
+        LICENSE|skill/*|contracts/*|adapters/*|system/core/*|bin/*) ;;
         /*|../*|*/../*|*/..|.|./*|*/./*) fail "unsafe manifest entry: $manifest_entry" ;;
         *) fail "unknown manifest entry: $manifest_entry" ;;
     esac
@@ -180,7 +181,9 @@ SKILLS_ROOT_CANON=$(canonical_path "$SKILLS_ROOT") || fail "cannot resolve Agent
 REGISTRATION_PATH=$SKILLS_ROOT_CANON/traceknot
 if [ -L "$REGISTRATION_PATH" ]; then
     command -v readlink >/dev/null 2>&1 || fail 'readlink is required to verify the Skill registration'
-    if [ "$(readlink "$REGISTRATION_PATH")" = "$PREFIX_CANON/skill" ]; then
+    registration_target=$(readlink "$REGISTRATION_PATH")
+    if [ "$registration_target" = "$PREFIX_CANON/skill" ] ||
+       [ "$registration_target" = "$PREFIX_CANON/current/skill" ]; then
         REGISTRATION_OWNED=1
     fi
 fi
@@ -204,9 +207,112 @@ EOF
     if [ "$REGISTRATION_OWNED" -eq 1 ]; then
         printf '  remove Skill registration %s\n' "$REGISTRATION_PATH"
     fi
+    if [ -e "$PREFIX_CANON/.traceknot-update" ] || [ -e "$PREFIX_CANON/releases" ] ||
+       [ -L "$PREFIX_CANON/current" ] || [ -L "$PREFIX_CANON/rollback" ]; then
+        printf '  remove updater state and managed release directories\n'
+    fi
     exit 0
 fi
 
+UPDATER_HELPER=
+if [ -x "$PREFIX_CANON/bin/traceknot-update" ]; then
+    UPDATER_HELPER=$PREFIX_CANON/bin/traceknot-update
+elif [ -x "$PREFIX_CANON/current/bin/traceknot-update" ]; then
+    UPDATER_HELPER=$PREFIX_CANON/current/bin/traceknot-update
+fi
+if [ -n "$UPDATER_HELPER" ]; then
+    "$UPDATER_HELPER" uninstall-lock --prefix "$PREFIX_CANON" >/dev/null
+    UPDATE_LOCK_OWNED=1
+else
+    command -v crontab >/dev/null 2>&1 ||
+        fail 'crontab is required to remove the automatic-update schedule safely'
+    LOCK_PATH=$PREFIX_CANON/.traceknot-update.lock
+    LOCK_CLAIM=$PREFIX_CANON/.traceknot-update-lock-claim.$$
+    RECOVERY_PATH=$PREFIX_CANON/.traceknot-update.lock-recovery
+    create_lock_claim() {
+        if ! (set -C; printf '%s\n' "$$" > "$LOCK_CLAIM") 2>/dev/null; then
+            fail 'unsafe installation lock claim path'
+        fi
+        [ -f "$LOCK_CLAIM" ] && [ ! -L "$LOCK_CLAIM" ] ||
+            fail 'unsafe installation lock claim path'
+    }
+    create_lock_claim
+    if [ -e "$LOCK_PATH" ] || [ -L "$LOCK_PATH" ] ||
+       ! ln "$LOCK_CLAIM" "$LOCK_PATH" 2>/dev/null; then
+        rm -f "$LOCK_CLAIM"
+        [ -f "$LOCK_PATH" ] && [ ! -L "$LOCK_PATH" ] ||
+            fail 'unsafe installation lock path'
+        LOCK_PID=$(sed -n '1p' "$LOCK_PATH" 2>/dev/null || true)
+        case "$LOCK_PID" in ''|*[!0-9]*) fail 'invalid installation lock metadata' ;; esac
+        kill -0 "$LOCK_PID" 2>/dev/null && fail 'another update owns the installation lock'
+        if [ -e "$RECOVERY_PATH" ] || [ -L "$RECOVERY_PATH" ]; then
+            [ -f "$RECOVERY_PATH" ] && [ ! -L "$RECOVERY_PATH" ] ||
+                fail 'unsafe stale-lock recovery path'
+        fi
+        if command -v shlock >/dev/null 2>&1; then
+            shlock -f "$RECOVERY_PATH" -p "$$" ||
+                fail 'stale-lock recovery is already in progress'
+        elif command -v flock >/dev/null 2>&1; then
+            if [ ! -e "$RECOVERY_PATH" ]; then
+                (set -C; : > "$RECOVERY_PATH") 2>/dev/null ||
+                    fail 'cannot create stale-lock recovery guard'
+            fi
+            [ -f "$RECOVERY_PATH" ] && [ ! -L "$RECOVERY_PATH" ] ||
+                fail 'unsafe stale-lock recovery path'
+            exec 9>>"$RECOVERY_PATH"
+            flock -n 9 || fail 'stale-lock recovery is already in progress'
+        else
+            fail 'cannot safely recover a stale installation lock'
+        fi
+        CURRENT_LOCK_PID=$(sed -n '1p' "$LOCK_PATH" 2>/dev/null || true)
+        [ "$CURRENT_LOCK_PID" = "$LOCK_PID" ] || fail 'installation lock changed during recovery'
+        kill -0 "$CURRENT_LOCK_PID" 2>/dev/null &&
+            fail 'installation lock owner became live during recovery'
+        rm -f "$LOCK_PATH"
+        create_lock_claim
+        if [ -e "$LOCK_PATH" ] || [ -L "$LOCK_PATH" ] ||
+           ! ln "$LOCK_CLAIM" "$LOCK_PATH" 2>/dev/null; then
+            fail 'cannot acquire installation lock after recovery'
+        fi
+    fi
+    [ -f "$LOCK_PATH" ] && [ ! -L "$LOCK_PATH" ] ||
+        fail 'unsafe acquired installation lock path'
+    rm -f "$LOCK_CLAIM"
+    UPDATE_LOCK_OWNED=1
+    if command -v crontab >/dev/null 2>&1; then
+        crontab_error=$(mktemp "${TMPDIR:-/tmp}/traceknot-crontab.XXXXXX") ||
+            fail 'cannot create crontab diagnostic file'
+        if existing_crontab=$(crontab -l 2>"$crontab_error"); then
+            escaped_prefix=$(printf '%s' "$PREFIX_CANON" | sed 's/%/\\%/g')
+            cron_marker="# traceknot-auto-update:$escaped_prefix"
+            filtered_crontab=$(printf '%s\n' "$existing_crontab" |
+                TRACEKNOT_CRON_MARKER=$cron_marker awk '
+                  BEGIN { marker=ENVIRON["TRACEKNOT_CRON_MARKER"] }
+                  substr($0, length($0) - length(marker) + 1) != marker
+                ')
+            if [ -n "$filtered_crontab" ]; then
+                printf '%s\n' "$filtered_crontab" | crontab -
+            elif [ -n "$existing_crontab" ]; then
+                printf '%s' '' | crontab -
+            fi
+        elif ! grep -Eiq 'no crontab (for|exists)' "$crontab_error"; then
+            cat "$crontab_error" >&2
+            rm -f "$crontab_error"
+            fail 'cannot read existing crontab safely'
+        fi
+        rm -f "$crontab_error"
+    else
+        fail 'crontab is required to remove the automatic-update schedule safely'
+    fi
+fi
+if [ -e "$PREFIX_CANON/.traceknot-update" ] || [ -L "$PREFIX_CANON/.traceknot-update" ]; then
+    [ -d "$PREFIX_CANON/.traceknot-update" ] && [ ! -L "$PREFIX_CANON/.traceknot-update" ] ||
+        fail 'refusing unsafe updater state path'
+fi
+if [ -e "$PREFIX_CANON/releases" ] || [ -L "$PREFIX_CANON/releases" ]; then
+    [ -d "$PREFIX_CANON/releases" ] && [ ! -L "$PREFIX_CANON/releases" ] ||
+        fail 'refusing unsafe releases path'
+fi
 if [ "$REGISTRATION_OWNED" -eq 1 ]; then
     rm -f "$REGISTRATION_PATH"
 fi
@@ -219,5 +325,21 @@ while IFS= read -r manifest_entry; do
 done <<EOF
 $(sed -n '2,$p' "$MANIFEST")
 EOF
+if [ -L "$PREFIX_CANON/current" ]; then
+    rm -f "$PREFIX_CANON/current"
+fi
+if [ -L "$PREFIX_CANON/rollback" ]; then
+    rm -f "$PREFIX_CANON/rollback"
+fi
+if [ -e "$PREFIX_CANON/.traceknot-update" ]; then
+    rm -rf "$PREFIX_CANON/.traceknot-update"
+fi
+if [ -e "$PREFIX_CANON/releases" ]; then
+    rm -rf "$PREFIX_CANON/releases"
+fi
+rm -rf "$PREFIX_CANON/.traceknot-update.lock-recovery"
 rm -f "$MANIFEST"
+if [ "$UPDATE_LOCK_OWNED" -eq 1 ]; then
+    rm -f "$PREFIX_CANON/.traceknot-update.lock"
+fi
 printf 'Uninstalled Traceknot from %s and removed its owned Skill registration\n' "$PREFIX_CANON"
