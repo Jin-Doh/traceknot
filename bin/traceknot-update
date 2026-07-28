@@ -151,6 +151,24 @@ ACTIVE_STATE=$STATE_DIR/active.json
 JOURNAL=$STATE_DIR/transaction
 LOCK_DIR=$PREFIX/.traceknot-update.lock
 RECOVERY_LOCK=$PREFIX/.traceknot-update.lock-recovery
+create_exclusive_file() {
+    exclusive_path=$1
+    if [ -e "$exclusive_path" ] || [ -L "$exclusive_path" ]; then
+        fail "refusing existing state temporary path: $exclusive_path"
+    fi
+    (set -C; : > "$exclusive_path") 2>/dev/null ||
+        fail "cannot create state temporary file: $exclusive_path"
+    [ -f "$exclusive_path" ] && [ ! -L "$exclusive_path" ] ||
+        fail "unsafe state temporary path: $exclusive_path"
+}
+
+copy_exclusive() {
+    copy_source=$1
+    copy_target=$2
+    create_exclusive_file "$copy_target"
+    cp "$copy_source" "$copy_target"
+}
+
 CURRENT=$PREFIX/current
 ROLLBACK=$PREFIX/rollback
 RELEASES_DIR=$PREFIX/releases
@@ -233,6 +251,11 @@ acquire_lock() {
     RECOVERY_LOCK_HELD=0
 }
 
+carriage_return=$(printf '\r')
+case "$PREFIX$SKILLS_ROOT${PATH:-}" in
+    *"$carriage_return"*|*'
+'*) fail 'prefix, Skills root, and PATH must not contain line breaks' ;;
+esac
 acquire_lock
 mkdir -p "$STATE_DIR"
 [ ! -L "$STATE_DIR" ] || fail 'refusing symlink update state directory'
@@ -250,6 +273,7 @@ write_config() {
     automatic_value=$1
     last_check_value=$2
     config_tmp=$CONFIG.tmp.$$
+    create_exclusive_file "$config_tmp"
     printf '%s\n%s\n%s\n' \
         'traceknot-update-config/v1' \
         "automatic=$automatic_value" \
@@ -257,7 +281,11 @@ write_config() {
     mv "$config_tmp" "$CONFIG"
 }
 
-cron_marker="# traceknot-auto-update:$PREFIX"
+cron_escape() {
+    printf '%s' "$1" | sed 's/%/\\%/g'
+}
+
+cron_marker=$(cron_escape "# traceknot-auto-update:$PREFIX")
 remove_schedule() {
     command -v crontab >/dev/null 2>&1 || return 0
     existing=$(crontab -l 2>/dev/null || true)
@@ -287,7 +315,8 @@ install_schedule() {
           BEGIN { marker=ENVIRON["TRACEKNOT_CRON_MARKER"] }
           substr($0, length($0) - length(marker) + 1) != marker
         ')
-    entry="17 3 * * * TRACEKNOT_SKILLS_ROOT=$(shell_quote "$SKILLS_ROOT") $(shell_quote "$updater") --prefix $(shell_quote "$PREFIX") --auto >/dev/null 2>&1 $cron_marker"
+    raw_entry="17 3 * * * PATH=$(shell_quote "${PATH:-/usr/bin:/bin}") TRACEKNOT_SKILLS_ROOT=$(shell_quote "$SKILLS_ROOT") $(shell_quote "$updater") --prefix $(shell_quote "$PREFIX") --auto >/dev/null 2>&1 # traceknot-auto-update:$PREFIX"
+    entry=$(cron_escape "$raw_entry")
     {
         [ -z "$filtered" ] || printf '%s\n' "$filtered"
         printf '%s\n' "$entry"
@@ -383,6 +412,7 @@ write_journal() {
     registration_value=$6
     rollback_previous_value=$7
     journal_tmp=$JOURNAL.tmp.$$
+    create_exclusive_file "$journal_tmp"
     printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
         "operation=$operation_value" "phase=$phase_value" \
         "previous=$previous_value" "candidate=$candidate_value" \
@@ -487,14 +517,16 @@ recover_transaction() {
         rm -f "$REGISTRATION"
     fi
     if [ -f "$TX_ACTIVE_BEFORE" ]; then
-        cp "$TX_ACTIVE_BEFORE" "$ACTIVE_STATE.tmp.recover.$$"
-        mv "$ACTIVE_STATE.tmp.recover.$$" "$ACTIVE_STATE"
+        recover_active_tmp=$ACTIVE_STATE.tmp.recover.$$
+        copy_exclusive "$TX_ACTIVE_BEFORE" "$recover_active_tmp"
+        mv "$recover_active_tmp" "$ACTIVE_STATE"
     else
         rm -f "$ACTIVE_STATE"
     fi
     if [ -f "$TX_ROLLBACK_BEFORE" ]; then
-        cp "$TX_ROLLBACK_BEFORE" "$ROLLBACK_STATE.tmp.recover.$$"
-        mv "$ROLLBACK_STATE.tmp.recover.$$" "$ROLLBACK_STATE"
+        recover_rollback_tmp=$ROLLBACK_STATE.tmp.recover.$$
+        copy_exclusive "$TX_ROLLBACK_BEFORE" "$recover_rollback_tmp"
+        mv "$recover_rollback_tmp" "$ROLLBACK_STATE"
     else
         rm -f "$ROLLBACK_STATE"
     fi
@@ -521,16 +553,18 @@ if [ "$COMMAND" = rollback ]; then
     validate_managed_release_path "$rollback_to"
     [ -d "$rollback_from" ] && [ -d "$rollback_to" ] || fail 'rollback target is missing'
     [ -f "$ACTIVE_STATE" ] || fail 'active release metadata is unavailable'
-    cp "$ACTIVE_STATE" "$TX_ACTIVE_BEFORE"
-    cp "$ROLLBACK_STATE" "$TX_ROLLBACK_BEFORE"
+    copy_exclusive "$ACTIVE_STATE" "$TX_ACTIVE_BEFORE"
+    copy_exclusive "$ROLLBACK_STATE" "$TX_ROLLBACK_BEFORE"
     write_journal rollback prepared "$rollback_from" "$rollback_to" '' "$rollback_registration_previous" "$rollback_to"
     replace_symlink "$rollback_to" "$CURRENT"
     replace_symlink "$rollback_from" "$ROLLBACK"
     write_journal rollback activated "$rollback_from" "$rollback_to" '' "$rollback_registration_previous" "$rollback_to"
-    cp "$TX_ROLLBACK_BEFORE" "$ACTIVE_STATE.tmp.rollback.$$"
-    mv "$ACTIVE_STATE.tmp.rollback.$$" "$ACTIVE_STATE"
-    cp "$TX_ACTIVE_BEFORE" "$ROLLBACK_STATE.tmp.rollback.$$"
-    mv "$ROLLBACK_STATE.tmp.rollback.$$" "$ROLLBACK_STATE"
+    rollback_active_tmp=$ACTIVE_STATE.tmp.rollback.$$
+    copy_exclusive "$TX_ROLLBACK_BEFORE" "$rollback_active_tmp"
+    mv "$rollback_active_tmp" "$ACTIVE_STATE"
+    rollback_state_tmp=$ROLLBACK_STATE.tmp.rollback.$$
+    copy_exclusive "$TX_ACTIVE_BEFORE" "$rollback_state_tmp"
+    mv "$rollback_state_tmp" "$ROLLBACK_STATE"
     write_journal rollback committed "$rollback_from" "$rollback_to" '' "$rollback_registration_previous" "$rollback_to"
     rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
     printf 'Rolled Traceknot back to %s\n' "$(jq -r .releaseTag "$ACTIVE_STATE")"
@@ -629,6 +663,12 @@ while IFS="$(printf '\t')" read -r RELEASE_TAG RELEASE_PUBLISHED MANIFEST_URL; d
     [ "$MANIFEST_EPOCH" -le "$TRUSTED_NOW" ] || fail 'manifest publication time is in the future'
 
     MANIFEST_SHA=$(sha256_file "$MANIFEST")
+    if [ -e "$OBSERVATIONS" ] || [ -L "$OBSERVATIONS" ]; then
+        [ -f "$OBSERVATIONS" ] && [ ! -L "$OBSERVATIONS" ] ||
+            fail 'refusing unsafe observations file'
+    else
+        create_exclusive_file "$OBSERVATIONS"
+    fi
     FIRST_SEEN=$(grep "^$MANIFEST_SHA$(printf '\t')" "$OBSERVATIONS" 2>/dev/null | cut -f 2 | tail -n 1 || true)
     if [ -z "$FIRST_SEEN" ]; then
         FIRST_SEEN=$TRUSTED_NOW
@@ -835,8 +875,9 @@ elif [ -e "$REGISTRATION" ]; then
 fi
 
 if [ -f "$ACTIVE_STATE" ]; then
-    cp "$ACTIVE_STATE" "$TX_ACTIVE_BEFORE"
+    copy_exclusive "$ACTIVE_STATE" "$TX_ACTIVE_BEFORE"
 else
+    create_exclusive_file "$TX_ACTIVE_BEFORE"
     jq -n \
         --arg schemaVersion traceknot-active-release/v1 \
         --arg version legacy \
@@ -848,7 +889,7 @@ else
         > "$TX_ACTIVE_BEFORE"
 fi
 if [ -f "$ROLLBACK_STATE" ]; then
-    cp "$ROLLBACK_STATE" "$TX_ROLLBACK_BEFORE"
+    copy_exclusive "$ROLLBACK_STATE" "$TX_ROLLBACK_BEFORE"
 else
     rm -f "$TX_ROLLBACK_BEFORE"
 fi
@@ -867,6 +908,7 @@ if [ ! -f "$CURRENT/skill/SKILL.md" ] || [ ! -x "$CURRENT/bin/traceknot-update" 
 fi
 
 active_tmp=$ACTIVE_STATE.tmp.$$
+create_exclusive_file "$active_tmp"
 jq -n \
     --arg schemaVersion traceknot-active-release/v1 \
     --arg version "$VERSION" \
@@ -875,8 +917,9 @@ jq -n \
     --arg artifactSha256 "$ARTIFACT_SHA" \
     --argjson activatedAt "$TRUSTED_NOW" \
     '{schemaVersion:$schemaVersion,version:$version,releaseTag:$releaseTag,sourceCommit:$sourceCommit,artifactSha256:$artifactSha256,activatedAt:$activatedAt}' > "$active_tmp"
-cp "$TX_ACTIVE_BEFORE" "$ROLLBACK_STATE.tmp.$$"
-mv "$ROLLBACK_STATE.tmp.$$" "$ROLLBACK_STATE"
+rollback_state_tmp=$ROLLBACK_STATE.tmp.$$
+copy_exclusive "$TX_ACTIVE_BEFORE" "$rollback_state_tmp"
+mv "$rollback_state_tmp" "$ROLLBACK_STATE"
 mv "$active_tmp" "$ACTIVE_STATE"
 if [ "$AUTOMATIC" -eq 1 ]; then
     install_schedule

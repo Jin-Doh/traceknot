@@ -226,20 +226,38 @@ if [ -n "$UPDATER_HELPER" ]; then
 else
     LOCK_PATH=$PREFIX_CANON/.traceknot-update.lock
     LOCK_CLAIM=$PREFIX_CANON/.traceknot-update-lock-claim.$$
-    printf '%s\n' "$$" > "$LOCK_CLAIM"
-    if ! ln "$LOCK_CLAIM" "$LOCK_PATH" 2>/dev/null; then
+    RECOVERY_PATH=$PREFIX_CANON/.traceknot-update.lock-recovery
+    create_lock_claim() {
+        if ! (set -C; printf '%s\n' "$$" > "$LOCK_CLAIM") 2>/dev/null; then
+            fail 'unsafe installation lock claim path'
+        fi
+        [ -f "$LOCK_CLAIM" ] && [ ! -L "$LOCK_CLAIM" ] ||
+            fail 'unsafe installation lock claim path'
+    }
+    create_lock_claim
+    if [ -e "$LOCK_PATH" ] || [ -L "$LOCK_PATH" ] ||
+       ! ln "$LOCK_CLAIM" "$LOCK_PATH" 2>/dev/null; then
         rm -f "$LOCK_CLAIM"
         [ -f "$LOCK_PATH" ] && [ ! -L "$LOCK_PATH" ] ||
             fail 'unsafe installation lock path'
         LOCK_PID=$(sed -n '1p' "$LOCK_PATH" 2>/dev/null || true)
         case "$LOCK_PID" in ''|*[!0-9]*) fail 'invalid installation lock metadata' ;; esac
         kill -0 "$LOCK_PID" 2>/dev/null && fail 'another update owns the installation lock'
-        RECOVERY_PATH=$PREFIX_CANON/.traceknot-update.lock-recovery
+        if [ -e "$RECOVERY_PATH" ] || [ -L "$RECOVERY_PATH" ]; then
+            [ -f "$RECOVERY_PATH" ] && [ ! -L "$RECOVERY_PATH" ] ||
+                fail 'unsafe stale-lock recovery path'
+        fi
         if command -v shlock >/dev/null 2>&1; then
             shlock -f "$RECOVERY_PATH" -p "$$" ||
                 fail 'stale-lock recovery is already in progress'
         elif command -v flock >/dev/null 2>&1; then
-            exec 9>"$RECOVERY_PATH"
+            if [ ! -e "$RECOVERY_PATH" ]; then
+                (set -C; : > "$RECOVERY_PATH") 2>/dev/null ||
+                    fail 'cannot create stale-lock recovery guard'
+            fi
+            [ -f "$RECOVERY_PATH" ] && [ ! -L "$RECOVERY_PATH" ] ||
+                fail 'unsafe stale-lock recovery path'
+            exec 9>>"$RECOVERY_PATH"
             flock -n 9 || fail 'stale-lock recovery is already in progress'
         else
             fail 'cannot safely recover a stale installation lock'
@@ -249,10 +267,14 @@ else
         kill -0 "$CURRENT_LOCK_PID" 2>/dev/null &&
             fail 'installation lock owner became live during recovery'
         rm -f "$LOCK_PATH"
-        printf '%s\n' "$$" > "$LOCK_CLAIM"
-        ln "$LOCK_CLAIM" "$LOCK_PATH" ||
+        create_lock_claim
+        if [ -e "$LOCK_PATH" ] || [ -L "$LOCK_PATH" ] ||
+           ! ln "$LOCK_CLAIM" "$LOCK_PATH" 2>/dev/null; then
             fail 'cannot acquire installation lock after recovery'
+        fi
     fi
+    [ -f "$LOCK_PATH" ] && [ ! -L "$LOCK_PATH" ] ||
+        fail 'unsafe acquired installation lock path'
     rm -f "$LOCK_CLAIM"
     UPDATE_LOCK_OWNED=1
 fi

@@ -193,6 +193,17 @@ if grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null 2>
     exit 1
 fi
 
+# Observation state refuses symbolic links before reading or appending.
+OBSERVATION_TARGET=$TMP_DIR/observation-target
+printf '%s\n' preserve-observation-target > "$OBSERVATION_TARGET"
+ln -s "$OBSERVATION_TARGET" "$PREFIX/.traceknot-update/observations.tsv"
+if "$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'symbolic-link observations file unexpectedly accepted' >&2
+    exit 1
+fi
+test "$(cat "$OBSERVATION_TARGET")" = preserve-observation-target
+rm -f "$PREFIX/.traceknot-update/observations.tsv"
+
 # First observation is never immediately eligible, even for an old published release.
 first_output=$("$PREFIX/bin/traceknot-update" check --prefix "$PREFIX")
 printf '%s\n' "$first_output" | grep -F 'No release has exceeded' >/dev/null
@@ -243,6 +254,17 @@ test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/s
 # Ordinary reinstall accepts and preserves the updater-managed registration target.
 sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null
 test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/skill"
+
+# Transaction snapshot destinations refuse symbolic links.
+SNAPSHOT_TARGET=$TMP_DIR/snapshot-target
+printf '%s\n' preserve-snapshot-target > "$SNAPSHOT_TARGET"
+ln -s "$SNAPSHOT_TARGET" "$PREFIX/.traceknot-update/transaction-active-before.json"
+if "$PREFIX/current/bin/traceknot-update" rollback --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'symbolic-link transaction snapshot unexpectedly accepted' >&2
+    exit 1
+fi
+test "$(cat "$SNAPSHOT_TARGET")" = preserve-snapshot-target
+rm -f "$PREFIX/.traceknot-update/transaction-active-before.json"
 
 # A failed atomic rename keeps the previous activation link continuously available.
 CURRENT_BEFORE=$(readlink "$PREFIX/current")
@@ -384,6 +406,25 @@ for claim_entrypoint in updater installer; do
     test "$(cat "$CLAIM_TARGET")" = preserve-claim-target
     rm -f "$claim_path"
 done
+# Predictable state-temporary paths are also no-clobber.
+STATE_TARGET=$TMP_DIR/state-target
+printf '%s\n' preserve-state-target > "$STATE_TARGET"
+rm -f "$CLAIM_PID_FILE" "$CLAIM_GO_FILE"
+CLAIM_PID_FILE=$CLAIM_PID_FILE CLAIM_GO_FILE=$CLAIM_GO_FILE \
+    "$CLAIM_WRAPPER" "$PREFIX/current/bin/traceknot-update" \
+    disable --prefix "$PREFIX" >/dev/null 2>&1 &
+state_process=$!
+while [ ! -s "$CLAIM_PID_FILE" ]; do sleep 0.01; done
+state_pid=$(cat "$CLAIM_PID_FILE")
+state_tmp=$PREFIX/.traceknot-update/config.tmp.$state_pid
+ln -s "$STATE_TARGET" "$state_tmp"
+touch "$CLAIM_GO_FILE"
+if wait "$state_process"; then
+    printf '%s\n' 'state temporary symlink unexpectedly accepted' >&2
+    exit 1
+fi
+test "$(cat "$STATE_TARGET")" = preserve-state-target
+rm -f "$state_tmp"
 
 # Directory lock paths cannot be mistaken for successful hard-link acquisition.
 mkdir "$PREFIX/.traceknot-update.lock"
