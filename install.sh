@@ -15,11 +15,17 @@ SKILLS_ROOT=
 REGISTRATION_PATH=
 INSTALL_LOCK_OWNED=0
 INSTALL_RECOVERY_LOCK_HELD=0
+INSTALL_LOCK_CLAIM=
 
 try_acquire_install_lock() {
     install_lock=$PREFIX_CANON/.traceknot-update.lock
-    lock_claim=$PREFIX_CANON/.traceknot-update-lock-claim.$$
-    printf '%s\n' "$$" > "$lock_claim"
+    INSTALL_LOCK_CLAIM=$PREFIX_CANON/.traceknot-update-lock-claim.$$
+    if ! (set -C; printf '%s\n' "$$" > "$INSTALL_LOCK_CLAIM") 2>/dev/null; then
+        fail "unsafe update lock claim path: $INSTALL_LOCK_CLAIM"
+    fi
+    [ -f "$INSTALL_LOCK_CLAIM" ] && [ ! -L "$INSTALL_LOCK_CLAIM" ] ||
+        fail "unsafe update lock claim path: $INSTALL_LOCK_CLAIM"
+    lock_claim=$INSTALL_LOCK_CLAIM
     if [ ! -e "$install_lock" ] && [ ! -L "$install_lock" ] &&
        ln "$lock_claim" "$install_lock" 2>/dev/null; then
         if [ ! -f "$install_lock" ] || [ -L "$install_lock" ]; then
@@ -27,10 +33,12 @@ try_acquire_install_lock() {
             return 1
         fi
         rm -f "$lock_claim"
+        INSTALL_LOCK_CLAIM=
         INSTALL_LOCK_OWNED=1
         return 0
     fi
     rm -f "$lock_claim"
+    INSTALL_LOCK_CLAIM=
     return 1
 }
 
@@ -94,6 +102,12 @@ release_install_lock() {
     INSTALL_LOCK_OWNED=0
 }
 cleanup() {
+    if [ -n "$INSTALL_LOCK_CLAIM" ] && [ -f "$INSTALL_LOCK_CLAIM" ] &&
+       [ ! -L "$INSTALL_LOCK_CLAIM" ] &&
+       [ "$(sed -n '1p' "$INSTALL_LOCK_CLAIM" 2>/dev/null || true)" = "$$" ]; then
+        rm -f "$INSTALL_LOCK_CLAIM"
+    fi
+    INSTALL_LOCK_CLAIM=
     if [ "$INSTALL_RECOVERY_LOCK_HELD" -ne 0 ]; then
         rm -rf "$PREFIX_CANON/.traceknot-update.lock-recovery"
         INSTALL_RECOVERY_LOCK_HELD=0

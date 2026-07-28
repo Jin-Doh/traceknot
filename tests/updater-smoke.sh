@@ -269,7 +269,7 @@ test -f "$PREFIX/current/skill/SKILL.md"
 OBSOLETE=$PREFIX_CANON/releases/obsolete
 mkdir -p "$OBSOLETE"
 printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
-    operation=apply phase=committed "previous=$(readlink "$PREFIX/current")" \
+    operation=apply phase=committed "previous=$(readlink "$PREFIX/rollback")" \
     "candidate=$(readlink "$PREFIX/current")" staging= \
     "registrationPrevious=$PREFIX_CANON/current/skill" \
     "rollbackPrevious=$OBSOLETE" > "$PREFIX/.traceknot-update/transaction"
@@ -281,6 +281,7 @@ test -L "$PREFIX/rollback"
 # Default-on scheduling and explicit opt-out own only their marked schedule.
 "$PREFIX/current/bin/traceknot-update" enable --prefix "$PREFIX" >/dev/null
 grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null
+grep -F "TRACEKNOT_SKILLS_ROOT='$TRACEKNOT_SKILLS_ROOT'" "$CRONTAB_FILE" >/dev/null
 test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 1
 "$PREFIX/current/bin/traceknot-update" disable --prefix "$PREFIX" >/dev/null
 if grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null; then exit 1; fi
@@ -346,6 +347,44 @@ if "$PREFIX/current/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>
     exit 1
 fi
 rm -f "$PREFIX/.traceknot-update.lock"
+# Predictable claim paths are created without following pre-existing symlinks.
+CLAIM_WRAPPER=$TMP_DIR/claim-wrapper
+cat > "$CLAIM_WRAPPER" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$$" > "$CLAIM_PID_FILE"
+while [ ! -e "$CLAIM_GO_FILE" ]; do sleep 0.01; done
+exec "$@"
+EOF
+chmod +x "$CLAIM_WRAPPER"
+for claim_entrypoint in updater installer; do
+    CLAIM_TARGET=$TMP_DIR/claim-target-$claim_entrypoint
+    CLAIM_PID_FILE=$TMP_DIR/claim-pid
+    CLAIM_GO_FILE=$TMP_DIR/claim-go
+    printf '%s\n' preserve-claim-target > "$CLAIM_TARGET"
+    rm -f "$CLAIM_PID_FILE" "$CLAIM_GO_FILE"
+    if [ "$claim_entrypoint" = updater ]; then
+        CLAIM_PID_FILE=$CLAIM_PID_FILE CLAIM_GO_FILE=$CLAIM_GO_FILE \
+            "$CLAIM_WRAPPER" "$PREFIX/current/bin/traceknot-update" \
+            check --prefix "$PREFIX" >/dev/null 2>&1 &
+    else
+        CLAIM_PID_FILE=$CLAIM_PID_FILE CLAIM_GO_FILE=$CLAIM_GO_FILE \
+            "$CLAIM_WRAPPER" sh "$ROOT/install.sh" \
+            --prefix "$PREFIX" >/dev/null 2>&1 &
+    fi
+    claim_process=$!
+    while [ ! -s "$CLAIM_PID_FILE" ]; do sleep 0.01; done
+    claim_pid=$(cat "$CLAIM_PID_FILE")
+    claim_path=$PREFIX/.traceknot-update-lock-claim.$claim_pid
+    ln -s "$CLAIM_TARGET" "$claim_path"
+    touch "$CLAIM_GO_FILE"
+    if wait "$claim_process"; then
+        printf '%s\n' "$claim_entrypoint unexpectedly followed a lock claim symlink" >&2
+        exit 1
+    fi
+    test "$(cat "$CLAIM_TARGET")" = preserve-claim-target
+    rm -f "$claim_path"
+done
+
 # Directory lock paths cannot be mistaken for successful hard-link acquisition.
 mkdir "$PREFIX/.traceknot-update.lock"
 if sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null 2>&1; then
@@ -376,6 +415,21 @@ fi
 test "$(cat "$RECOVERY_TARGET")" = preserve-recovery-target
 rm -f "$PREFIX/.traceknot-update.lock" "$PREFIX/.traceknot-update.lock-recovery"
 printf '%s\n' 2147483647 > "$PREFIX/.traceknot-update.lock"
+# Corrupt apply journals cannot alias and delete the active release.
+ALIASED_CURRENT=$(readlink "$PREFIX/current")
+printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+    operation=apply phase=prepared "previous=$ALIASED_CURRENT" \
+    "candidate=$ALIASED_CURRENT" "staging=$PREFIX_CANON/releases/.staging-alias" \
+    "registrationPrevious=$PREFIX_CANON/current/skill" \
+    "rollbackPrevious=$(readlink "$PREFIX/rollback")" > "$PREFIX/.traceknot-update/transaction"
+if "$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'aliased recovery journal unexpectedly accepted' >&2
+    exit 1
+fi
+test -f "$ALIASED_CURRENT/skill/SKILL.md"
+test "$(readlink "$PREFIX/current")" = "$ALIASED_CURRENT"
+rm -f "$PREFIX/.traceknot-update/transaction"
+
 "$PREFIX/current/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null
 test ! -e "$PREFIX/.traceknot-update.lock"
 test -f "$PREFIX/current/skill/SKILL.md"

@@ -16,6 +16,7 @@ AUTO_INVOCATION=0
 TMP_ROOT=
 LOCK_HELD=0
 RECOVERY_LOCK_HELD=0
+LOCK_CLAIM=
 
 fail() {
     printf '%s: %s\n' "$PROGRAM" "$*" >&2
@@ -46,6 +47,12 @@ EOF
 }
 
 cleanup() {
+    if [ -n "$LOCK_CLAIM" ] && [ -f "$LOCK_CLAIM" ] &&
+       [ ! -L "$LOCK_CLAIM" ] &&
+       [ "$(sed -n '1p' "$LOCK_CLAIM" 2>/dev/null || true)" = "$$" ]; then
+        rm -f "$LOCK_CLAIM"
+    fi
+    LOCK_CLAIM=
     if [ "$LOCK_HELD" -eq 1 ]; then
         rm -rf "$LOCK_DIR"
     fi
@@ -151,19 +158,27 @@ SKILLS_ROOT=${TRACEKNOT_SKILLS_ROOT:-"$HOME/.agents/skills"}
 REGISTRATION=$SKILLS_ROOT/traceknot
 
 try_acquire_lock() {
-    lock_claim=$PREFIX/.traceknot-update-lock-claim.$$
-    printf '%s\n' "$$" > "$lock_claim"
+    LOCK_CLAIM=$PREFIX/.traceknot-update-lock-claim.$$
+    if ! (set -C; printf '%s\n' "$$" > "$LOCK_CLAIM") 2>/dev/null; then
+        fail "unsafe update lock claim path: $LOCK_CLAIM"
+    fi
+    [ -f "$LOCK_CLAIM" ] && [ ! -L "$LOCK_CLAIM" ] ||
+        fail "unsafe update lock claim path: $LOCK_CLAIM"
+    lock_claim=$LOCK_CLAIM
     if [ ! -e "$LOCK_DIR" ] && [ ! -L "$LOCK_DIR" ] &&
        ln "$lock_claim" "$LOCK_DIR" 2>/dev/null; then
         if [ ! -f "$LOCK_DIR" ] || [ -L "$LOCK_DIR" ]; then
             rm -f "$lock_claim"
+            LOCK_CLAIM=
             return 1
         fi
         rm -f "$lock_claim"
+        LOCK_CLAIM=
         LOCK_HELD=1
         return 0
     fi
     rm -f "$lock_claim"
+    LOCK_CLAIM=
     return 1
 }
 
@@ -272,7 +287,7 @@ install_schedule() {
           BEGIN { marker=ENVIRON["TRACEKNOT_CRON_MARKER"] }
           substr($0, length($0) - length(marker) + 1) != marker
         ')
-    entry="17 3 * * * $(shell_quote "$updater") --prefix $(shell_quote "$PREFIX") --auto >/dev/null 2>&1 $cron_marker"
+    entry="17 3 * * * TRACEKNOT_SKILLS_ROOT=$(shell_quote "$SKILLS_ROOT") $(shell_quote "$updater") --prefix $(shell_quote "$PREFIX") --auto >/dev/null 2>&1 $cron_marker"
     {
         [ -z "$filtered" ] || printf '%s\n' "$filtered"
         printf '%s\n' "$entry"
@@ -431,6 +446,17 @@ recover_transaction() {
     fi
     if [ -n "$rollback_previous" ]; then
         validate_managed_release_path "$rollback_previous"
+    fi
+    if [ "$operation" = apply ]; then
+        [ "$candidate" != "$previous" ] ||
+            fail 'apply transaction candidate aliases previous release'
+        [ -z "$rollback_previous" ] || [ "$candidate" != "$rollback_previous" ] ||
+            fail 'apply transaction candidate aliases rollback release'
+        case "$staging" in
+            "$previous"|"$candidate"|"$rollback_previous")
+                fail 'apply transaction staging path aliases a committed release'
+                ;;
+        esac
     fi
     case "$registration_previous" in
         ''|"$PREFIX/skill"|"$PREFIX/current/skill") ;;
