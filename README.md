@@ -109,7 +109,27 @@ The uninstaller reads the installation manifest, removes only files installed by
 
 ## Automatic updates
 
-Automatic updates are planned but not implemented. The security model, seven-day observation rule, release contract, rollout phases, and verification obligations are defined in [`docs/automatic-updates.md`](docs/automatic-updates.md).
+Automatic updates are opt-in. The updater considers only immutable GitHub releases whose signed provenance and SHA-256 digest verify, and delays eligibility until the exact artifact has been observed for more than seven complete days.
+
+```sh
+# Show policy, schedule, and installed release state
+traceknot-update status
+
+# Check for an eligible release without changing files
+traceknot-update check
+
+# Apply the newest eligible verified release
+traceknot-update apply
+
+# Enable or disable one scheduled check per day
+traceknot-update enable
+traceknot-update disable
+
+# Restore the immediately previous managed release
+traceknot-update rollback
+```
+
+Pass `--prefix DIR` when Traceknot is not installed at the default prefix. Installation can opt in immediately with `install.sh --enable-auto-update`; no update is applied during installation. Full policy, recovery behavior, release contract, and verification evidence are documented in [`docs/automatic-updates.md`](docs/automatic-updates.md).
 
 ## Architecture
 

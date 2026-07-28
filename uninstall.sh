@@ -9,7 +9,7 @@ SOURCE_ROOT=
 case "$0" in
     */*)
         LOCAL_SOURCE=1
-        SOURCE_ROOT=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
+        SOURCE_ROOT=$(CDPATH='' cd -P "$(dirname "$0")" && pwd)
         ;;
 esac
 MANIFEST_NAME=.traceknot-install-manifest
@@ -18,6 +18,7 @@ PREFIX=
 SKILLS_ROOT=
 REGISTRATION_PATH=
 REGISTRATION_OWNED=0
+UPDATE_LOCK_OWNED=0
 
 usage() {
     cat <<EOF
@@ -50,7 +51,7 @@ canonical_path() {
     esac
 
     if [ -d "$canonical_input" ]; then
-        (CDPATH= cd -P "$canonical_input" && pwd)
+        (CDPATH='' cd -P "$canonical_input" && pwd)
         return
     fi
 
@@ -213,8 +214,47 @@ EOF
     exit 0
 fi
 
+UPDATER_HELPER=
 if [ -x "$PREFIX_CANON/bin/traceknot-update" ]; then
-    "$PREFIX_CANON/bin/traceknot-update" disable --prefix "$PREFIX_CANON" >/dev/null
+    UPDATER_HELPER=$PREFIX_CANON/bin/traceknot-update
+elif [ -x "$PREFIX_CANON/current/bin/traceknot-update" ]; then
+    UPDATER_HELPER=$PREFIX_CANON/current/bin/traceknot-update
+fi
+if [ -n "$UPDATER_HELPER" ]; then
+    "$UPDATER_HELPER" uninstall-lock --prefix "$PREFIX_CANON" >/dev/null
+    UPDATE_LOCK_OWNED=1
+else
+    LOCK_PATH=$PREFIX_CANON/.traceknot-update.lock
+    LOCK_CLAIM=$PREFIX_CANON/.traceknot-update-lock-claim.$$
+    printf '%s\n' "$$" > "$LOCK_CLAIM"
+    if ! ln "$LOCK_CLAIM" "$LOCK_PATH" 2>/dev/null; then
+        rm -f "$LOCK_CLAIM"
+        [ -f "$LOCK_PATH" ] && [ ! -L "$LOCK_PATH" ] ||
+            fail 'unsafe installation lock path'
+        LOCK_PID=$(sed -n '1p' "$LOCK_PATH" 2>/dev/null || true)
+        case "$LOCK_PID" in ''|*[!0-9]*) fail 'invalid installation lock metadata' ;; esac
+        kill -0 "$LOCK_PID" 2>/dev/null && fail 'another update owns the installation lock'
+        RECOVERY_PATH=$PREFIX_CANON/.traceknot-update.lock-recovery
+        if command -v shlock >/dev/null 2>&1; then
+            shlock -f "$RECOVERY_PATH" -p "$$" ||
+                fail 'stale-lock recovery is already in progress'
+        elif command -v flock >/dev/null 2>&1; then
+            exec 9>"$RECOVERY_PATH"
+            flock -n 9 || fail 'stale-lock recovery is already in progress'
+        else
+            fail 'cannot safely recover a stale installation lock'
+        fi
+        CURRENT_LOCK_PID=$(sed -n '1p' "$LOCK_PATH" 2>/dev/null || true)
+        [ "$CURRENT_LOCK_PID" = "$LOCK_PID" ] || fail 'installation lock changed during recovery'
+        kill -0 "$CURRENT_LOCK_PID" 2>/dev/null &&
+            fail 'installation lock owner became live during recovery'
+        rm -f "$LOCK_PATH"
+        printf '%s\n' "$$" > "$LOCK_CLAIM"
+        ln "$LOCK_CLAIM" "$LOCK_PATH" ||
+            fail 'cannot acquire installation lock after recovery'
+    fi
+    rm -f "$LOCK_CLAIM"
+    UPDATE_LOCK_OWNED=1
 fi
 if [ "$REGISTRATION_OWNED" -eq 1 ]; then
     rm -f "$REGISTRATION_PATH"
@@ -244,5 +284,9 @@ if [ -e "$PREFIX_CANON/releases" ]; then
         fail 'refusing unsafe releases path'
     rm -rf "$PREFIX_CANON/releases"
 fi
+rm -rf "$PREFIX_CANON/.traceknot-update.lock-recovery"
 rm -f "$MANIFEST"
+if [ "$UPDATE_LOCK_OWNED" -eq 1 ]; then
+    rm -f "$PREFIX_CANON/.traceknot-update.lock"
+fi
 printf 'Uninstalled Traceknot from %s and removed its owned Skill registration\n' "$PREFIX_CANON"

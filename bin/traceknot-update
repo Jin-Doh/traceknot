@@ -15,6 +15,7 @@ DRY_RUN=0
 AUTO_INVOCATION=0
 TMP_ROOT=
 LOCK_HELD=0
+RECOVERY_LOCK_HELD=0
 
 fail() {
     printf '%s: %s\n' "$PROGRAM" "$*" >&2
@@ -28,6 +29,7 @@ Usage: $PROGRAM [COMMAND] [--prefix DIR] [--dry-run]
 Commands:
   check                 observe releases and report eligibility (default)
   apply                 install the newest eligible verified release
+  rollback              restore the previous committed release
   enable                opt in and install the daily automatic-update schedule
   disable               opt out and remove the automatic-update schedule
   status                show policy and installed update state
@@ -46,6 +48,9 @@ EOF
 cleanup() {
     if [ "$LOCK_HELD" -eq 1 ]; then
         rm -rf "$LOCK_DIR"
+    fi
+    if [ "$RECOVERY_LOCK_HELD" -eq 1 ]; then
+        rm -rf "$RECOVERY_LOCK"
     fi
     if [ -n "$TMP_ROOT" ]; then
         rm -rf "$TMP_ROOT"
@@ -83,7 +88,7 @@ shell_quote() {
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        check|apply|enable|disable|status)
+        check|apply|rollback|enable|disable|status|uninstall-lock)
             COMMAND=$1
             shift
             ;;
@@ -132,15 +137,73 @@ INSTALL_MANIFEST=$PREFIX/.traceknot-install-manifest
 STATE_DIR=$PREFIX/.traceknot-update
 CONFIG=$STATE_DIR/config
 OBSERVATIONS=$STATE_DIR/observations.tsv
+ROLLBACK_STATE=$STATE_DIR/rollback-active.json
+TX_ACTIVE_BEFORE=$STATE_DIR/transaction-active-before.json
+TX_ROLLBACK_BEFORE=$STATE_DIR/transaction-rollback-before.json
 ACTIVE_STATE=$STATE_DIR/active.json
 JOURNAL=$STATE_DIR/transaction
-LOCK_DIR=$STATE_DIR/update.lock
+LOCK_DIR=$PREFIX/.traceknot-update.lock
+RECOVERY_LOCK=$PREFIX/.traceknot-update.lock-recovery
 CURRENT=$PREFIX/current
 ROLLBACK=$PREFIX/rollback
 RELEASES_DIR=$PREFIX/releases
 SKILLS_ROOT=${TRACEKNOT_SKILLS_ROOT:-"$HOME/.agents/skills"}
 REGISTRATION=$SKILLS_ROOT/traceknot
 
+try_acquire_lock() {
+    lock_claim=$PREFIX/.traceknot-update-lock-claim.$$
+    printf '%s\n' "$$" > "$lock_claim"
+    if ln "$lock_claim" "$LOCK_DIR" 2>/dev/null; then
+        rm -f "$lock_claim"
+        LOCK_HELD=1
+        return 0
+    fi
+    rm -f "$lock_claim"
+    return 1
+}
+
+acquire_recovery_guard() {
+    if command -v shlock >/dev/null 2>&1; then
+        shlock -f "$RECOVERY_LOCK" -p "$$" ||
+            fail "stale-lock recovery is already in progress: $RECOVERY_LOCK"
+        RECOVERY_LOCK_HELD=1
+    elif command -v flock >/dev/null 2>&1; then
+        exec 9>"$RECOVERY_LOCK"
+        flock -n 9 || fail "stale-lock recovery is already in progress: $RECOVERY_LOCK"
+        RECOVERY_LOCK_HELD=2
+    else
+        fail 'shlock or flock is required for safe stale-lock recovery'
+    fi
+}
+
+acquire_lock() {
+    try_acquire_lock && return
+    [ -f "$LOCK_DIR" ] && [ ! -L "$LOCK_DIR" ] ||
+        fail "unsafe update lock path: $LOCK_DIR"
+    lock_pid=$(sed -n '1p' "$LOCK_DIR" 2>/dev/null || true)
+    case "$lock_pid" in
+        ''|*[!0-9]*) fail "update lock has invalid ownership metadata: $LOCK_DIR" ;;
+    esac
+    if kill -0 "$lock_pid" 2>/dev/null; then
+        fail "another update owns the lock: $LOCK_DIR"
+    fi
+    acquire_recovery_guard
+    if [ -e "$LOCK_DIR" ]; then
+        [ -f "$LOCK_DIR" ] && [ ! -L "$LOCK_DIR" ] ||
+            fail "unsafe update lock path during recovery: $LOCK_DIR"
+        recovered_pid=$(sed -n '1p' "$LOCK_DIR" 2>/dev/null || true)
+        [ "$recovered_pid" = "$lock_pid" ] ||
+            fail 'update lock changed during stale-lock recovery'
+        kill -0 "$recovered_pid" 2>/dev/null &&
+            fail 'update lock owner became live during recovery'
+        rm -f "$LOCK_DIR"
+    fi
+    try_acquire_lock || fail 'cannot acquire update lock after stale-lock recovery'
+    rm -rf "$RECOVERY_LOCK"
+    RECOVERY_LOCK_HELD=0
+}
+
+acquire_lock
 mkdir -p "$STATE_DIR"
 [ ! -L "$STATE_DIR" ] || fail 'refusing symlink update state directory'
 if [ ! -f "$CONFIG" ]; then
@@ -177,16 +240,21 @@ remove_schedule() {
 
 install_schedule() {
     command -v crontab >/dev/null 2>&1 || fail 'crontab is required to enable automatic updates'
-    updater=$PREFIX/bin/traceknot-update
+    if [ -x "$PREFIX/current/bin/traceknot-update" ]; then
+        updater=$PREFIX/current/bin/traceknot-update
+    else
+        updater=$PREFIX/bin/traceknot-update
+    fi
     [ -x "$updater" ] || fail "installed updater is missing: $updater"
-    remove_schedule
     existing=$(crontab -l 2>/dev/null || true)
+    filtered=$(printf '%s\n' "$existing" | grep -Fv "$cron_marker" || true)
     entry="17 3 * * * $(shell_quote "$updater") --prefix $(shell_quote "$PREFIX") --auto >/dev/null 2>&1 $cron_marker"
     {
-        [ -z "$existing" ] || printf '%s\n' "$existing"
+        [ -z "$filtered" ] || printf '%s\n' "$filtered"
         printf '%s\n' "$entry"
     } | crontab -
 }
+
 
 if [ "$COMMAND" = enable ]; then
     [ "$DRY_RUN" -eq 0 ] || { printf 'Would enable daily automatic updates for %s\n' "$PREFIX"; exit 0; }
@@ -204,8 +272,17 @@ if [ "$COMMAND" = disable ]; then
     exit 0
 fi
 
+if [ "$COMMAND" = uninstall-lock ]; then
+    remove_schedule
+    write_config 0 "$LAST_CHECK"
+    printf '%s\n' "$PPID" > "$LOCK_DIR"
+    LOCK_HELD=0
+    exit 0
+fi
+
 if [ "$COMMAND" = status ]; then
     printf 'prefix=%s\nautomatic=%s\nlastCheck=%s\n' "$PREFIX" "$AUTOMATIC" "$LAST_CHECK"
+
     if [ -f "$ACTIVE_STATE" ]; then
         jq -r '"version=\(.version)\ntag=\(.releaseTag)\nsha256=\(.artifactSha256)"' "$ACTIVE_STATE"
     else
@@ -221,15 +298,10 @@ fi
 command -v curl >/dev/null 2>&1 || fail 'curl is required'
 command -v jq >/dev/null 2>&1 || fail 'jq is required'
 
-acquire_lock() {
-    if mkdir "$LOCK_DIR" 2>/dev/null; then
-        LOCK_HELD=1
-        printf '%s\n' "$$" > "$LOCK_DIR/pid"
-        return
-    fi
-    fail "another update owns the lock: $LOCK_DIR"
-}
-acquire_lock
+if [ "$AUTO_INVOCATION" -eq 1 ]; then
+    AUTOMATIC=$(sed -n 's/^automatic=//p' "$CONFIG")
+    [ "$AUTOMATIC" -eq 1 ] || exit 0
+fi
 
 replace_symlink() {
     link_target=$1
@@ -244,34 +316,153 @@ replace_symlink() {
     fi
     mv "$link_tmp" "$link_path"
 }
+assert_registration_owned() {
+    expected_target=${1:-}
+    if [ -L "$REGISTRATION" ]; then
+        actual_target=$(readlink "$REGISTRATION")
+        case "$actual_target" in
+            "$PREFIX/skill"|"$PREFIX/current/skill") ;;
+            "$expected_target") [ -n "$expected_target" ] ||
+                fail "refusing unrelated Skill registration: $REGISTRATION" ;;
+            *) fail "refusing unrelated Skill registration: $REGISTRATION" ;;
+        esac
+    elif [ -e "$REGISTRATION" ]; then
+        fail "refusing unrelated Skill registration: $REGISTRATION"
+    fi
+}
+
+write_journal() {
+    operation_value=$1
+    phase_value=$2
+    previous_value=$3
+    candidate_value=$4
+    staging_value=$5
+    registration_value=$6
+    rollback_previous_value=$7
+    journal_tmp=$JOURNAL.tmp.$$
+    printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+        "operation=$operation_value" "phase=$phase_value" \
+        "previous=$previous_value" "candidate=$candidate_value" \
+        "staging=$staging_value" "registrationPrevious=$registration_value" \
+        "rollbackPrevious=$rollback_previous_value" > "$journal_tmp"
+    mv "$journal_tmp" "$JOURNAL"
+}
+validate_managed_release_path() {
+    managed_path=$1
+    [ -d "$RELEASES_DIR" ] && [ ! -L "$RELEASES_DIR" ] ||
+        fail 'managed releases directory is missing or unsafe'
+    [ -n "$managed_path" ] || fail 'transaction contains an empty managed release path'
+    case "$managed_path" in
+        "$RELEASES_DIR"/*) ;;
+        *) fail "transaction path escapes releases directory: $managed_path" ;;
+    esac
+    managed_relative=${managed_path#"$RELEASES_DIR"/}
+    case "$managed_relative" in
+        ''|/*|*..*|*//*|*/*) fail "unsafe transaction release path: $managed_path" ;;
+    esac
+    [ ! -L "$managed_path" ] || fail "transaction path is a symbolic link: $managed_path"
+}
 
 recover_transaction() {
     [ -f "$JOURNAL" ] || return 0
     [ ! -L "$JOURNAL" ] || fail 'refusing symlink transaction journal'
+    for journal_key in operation phase previous candidate staging registrationPrevious rollbackPrevious; do
+        [ "$(grep -c "^$journal_key=" "$JOURNAL")" -eq 1 ] ||
+            fail "invalid transaction journal field: $journal_key"
+    done
+    operation=$(sed -n 's/^operation=//p' "$JOURNAL")
     phase=$(sed -n 's/^phase=//p' "$JOURNAL")
     previous=$(sed -n 's/^previous=//p' "$JOURNAL")
     candidate=$(sed -n 's/^candidate=//p' "$JOURNAL")
+    staging=$(sed -n 's/^staging=//p' "$JOURNAL")
     registration_previous=$(sed -n 's/^registrationPrevious=//p' "$JOURNAL")
-    case "$phase" in
-        prepared)
-            [ -z "$candidate" ] || rm -rf "$candidate"
-            rm -f "$JOURNAL"
-            ;;
-        activated)
-            if [ -n "$previous" ] && [ -d "$previous" ]; then
-                replace_symlink "$previous" "$CURRENT"
-            fi
-            if [ -n "$registration_previous" ]; then
-                mkdir -p "$SKILLS_ROOT"
-                replace_symlink "$registration_previous" "$REGISTRATION"
-            fi
-            rm -f "$JOURNAL"
-            ;;
-        committed) rm -f "$JOURNAL" ;;
-        *) fail 'invalid transaction journal phase' ;;
+    rollback_previous=$(sed -n 's/^rollbackPrevious=//p' "$JOURNAL")
+    case "$operation" in apply|rollback) ;; *) fail 'invalid transaction operation' ;; esac
+    case "$phase" in prepared|installed|activated|committed) ;; *) fail 'invalid transaction phase' ;; esac
+    validate_managed_release_path "$previous"
+    validate_managed_release_path "$candidate"
+    if [ -n "$staging" ]; then
+        validate_managed_release_path "$staging"
+        case "${staging#"$RELEASES_DIR"/}" in .staging-*) ;; *) fail 'invalid transaction staging path' ;; esac
+    fi
+    if [ -n "$rollback_previous" ]; then
+        validate_managed_release_path "$rollback_previous"
+    fi
+    case "$registration_previous" in
+        ''|"$PREFIX/skill"|"$PREFIX/current/skill") ;;
+        *) fail 'invalid previous Skill registration in transaction' ;;
     esac
+
+    if [ "$phase" = committed ]; then
+        rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
+        return
+    fi
+
+    assert_registration_owned "$registration_previous"
+    if [ -d "$previous" ]; then
+        replace_symlink "$previous" "$CURRENT"
+    fi
+    if [ -n "$rollback_previous" ] && [ -d "$rollback_previous" ]; then
+        replace_symlink "$rollback_previous" "$ROLLBACK"
+    else
+        rm -f "$ROLLBACK"
+    fi
+    if [ -n "$registration_previous" ]; then
+        mkdir -p "$SKILLS_ROOT"
+        replace_symlink "$registration_previous" "$REGISTRATION"
+    elif [ -L "$REGISTRATION" ] && [ "$(readlink "$REGISTRATION")" = "$PREFIX/current/skill" ]; then
+        rm -f "$REGISTRATION"
+    fi
+    if [ -f "$TX_ACTIVE_BEFORE" ]; then
+        cp "$TX_ACTIVE_BEFORE" "$ACTIVE_STATE.tmp.recover.$$"
+        mv "$ACTIVE_STATE.tmp.recover.$$" "$ACTIVE_STATE"
+    else
+        rm -f "$ACTIVE_STATE"
+    fi
+    if [ -f "$TX_ROLLBACK_BEFORE" ]; then
+        cp "$TX_ROLLBACK_BEFORE" "$ROLLBACK_STATE.tmp.recover.$$"
+        mv "$ROLLBACK_STATE.tmp.recover.$$" "$ROLLBACK_STATE"
+    else
+        rm -f "$ROLLBACK_STATE"
+    fi
+    if [ "$operation" = apply ]; then
+        [ -z "$staging" ] || rm -rf "$staging"
+        rm -rf "$candidate"
+    fi
+    rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
 }
 recover_transaction
+
+if [ "$COMMAND" = rollback ]; then
+    [ -L "$CURRENT" ] || fail 'no updater-managed release is active'
+    [ -L "$ROLLBACK" ] || fail 'no previous release is available'
+    [ -f "$ROLLBACK_STATE" ] || fail 'previous release metadata is unavailable'
+    assert_registration_owned "$PREFIX/current/skill"
+    rollback_registration_previous=
+    if [ -L "$REGISTRATION" ]; then
+        rollback_registration_previous=$(readlink "$REGISTRATION")
+    fi
+    rollback_from=$(readlink "$CURRENT")
+    rollback_to=$(readlink "$ROLLBACK")
+    validate_managed_release_path "$rollback_from"
+    validate_managed_release_path "$rollback_to"
+    [ -d "$rollback_from" ] && [ -d "$rollback_to" ] || fail 'rollback target is missing'
+    [ -f "$ACTIVE_STATE" ] || fail 'active release metadata is unavailable'
+    cp "$ACTIVE_STATE" "$TX_ACTIVE_BEFORE"
+    cp "$ROLLBACK_STATE" "$TX_ROLLBACK_BEFORE"
+    write_journal rollback prepared "$rollback_from" "$rollback_to" '' "$rollback_registration_previous" "$rollback_to"
+    replace_symlink "$rollback_to" "$CURRENT"
+    replace_symlink "$rollback_from" "$ROLLBACK"
+    write_journal rollback activated "$rollback_from" "$rollback_to" '' "$rollback_registration_previous" "$rollback_to"
+    cp "$TX_ROLLBACK_BEFORE" "$ACTIVE_STATE.tmp.rollback.$$"
+    mv "$ACTIVE_STATE.tmp.rollback.$$" "$ACTIVE_STATE"
+    cp "$TX_ACTIVE_BEFORE" "$ROLLBACK_STATE.tmp.rollback.$$"
+    mv "$ROLLBACK_STATE.tmp.rollback.$$" "$ROLLBACK_STATE"
+    write_journal rollback committed "$rollback_from" "$rollback_to" '' "$rollback_registration_previous" "$rollback_to"
+    rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
+    printf 'Rolled Traceknot back to %s\n' "$(jq -r .releaseTag "$ACTIVE_STATE")"
+    exit 0
+fi
 
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-update.XXXXXX") || fail 'cannot create temporary directory'
 HEADERS=$TMP_ROOT/headers
@@ -377,19 +568,21 @@ while IFS="$(printf '\t')" read -r RELEASE_TAG RELEASE_PUBLISHED MANIFEST_URL; d
     if [ -f "$ACTIVE_STATE" ]; then
         ACTIVE_VERSION=$(jq -r .version "$ACTIVE_STATE")
         ACTIVE_SHA=$(jq -r .artifactSha256 "$ACTIVE_STATE")
-        VERSION_ORDER=$(jq -nr --arg candidate "$VERSION" --arg active "$ACTIVE_VERSION" '
-          ($candidate | split(".") | map(tonumber)) as $c
-          | ($active | split(".") | map(tonumber)) as $a
-          | if $c < $a then -1 elif $c == $a then 0 else 1 end
-        ')
-        if [ "$VERSION_ORDER" -lt 0 ]; then
-            continue
-        fi
-        if [ "$VERSION_ORDER" -eq 0 ]; then
-            [ "$ARTIFACT_SHA" = "$ACTIVE_SHA" ] ||
-                fail "installed version $VERSION was republished with a different digest"
-            printf '%s is already installed.\n' "$RELEASE_TAG"
-            exit 0
+        if [ "$ACTIVE_VERSION" != legacy ]; then
+            VERSION_ORDER=$(jq -nr --arg candidate "$VERSION" --arg active "$ACTIVE_VERSION" '
+              ($candidate | split(".") | map(tonumber)) as $c
+              | ($active | split(".") | map(tonumber)) as $a
+              | if $c < $a then -1 elif $c == $a then 0 else 1 end
+            ')
+            if [ "$VERSION_ORDER" -lt 0 ]; then
+                continue
+            fi
+            if [ "$VERSION_ORDER" -eq 0 ]; then
+                [ "$ARTIFACT_SHA" = "$ACTIVE_SHA" ] ||
+                    fail "installed version $VERSION was republished with a different digest"
+                printf '%s is already installed.\n' "$RELEASE_TAG"
+                exit 0
+            fi
         fi
     fi
     ARTIFACT_URL=$(jq -r --arg name "$ARTIFACT_NAME" --arg tag "$RELEASE_TAG" '
@@ -464,47 +657,97 @@ fi
 
 PREVIOUS=
 REGISTRATION_PREVIOUS=
+ROLLBACK_PREVIOUS=
+if [ -L "$ROLLBACK" ]; then
+    ROLLBACK_PREVIOUS=$(readlink "$ROLLBACK")
+    validate_managed_release_path "$ROLLBACK_PREVIOUS"
+elif [ -e "$ROLLBACK" ]; then
+    fail 'rollback activation path is not a symlink'
+fi
 if [ -L "$CURRENT" ]; then
     PREVIOUS=$(readlink "$CURRENT")
+    validate_managed_release_path "$PREVIOUS"
+    [ -f "$ACTIVE_STATE" ] || fail 'active release metadata is missing'
 elif [ ! -e "$CURRENT" ]; then
     LEGACY_SHA=$(sha256_file "$INSTALL_MANIFEST")
     PREVIOUS=$RELEASES_DIR/legacy-$LEGACY_SHA
-    if [ ! -d "$PREVIOUS" ]; then
-        mkdir "$PREVIOUS"
+    validate_managed_release_path "$PREVIOUS"
+    legacy_complete=1
+    if [ -d "$PREVIOUS" ] && [ ! -L "$PREVIOUS" ]; then
+        if find "$PREVIOUS" -type l -print | grep . >/dev/null; then
+            legacy_complete=0
+        fi
+        while IFS= read -r relative; do
+            [ -n "$relative" ] || continue
+            if [ ! -f "$PREVIOUS/$relative" ] ||
+               ! cmp -s "$PREVIOUS/$relative" "$PREFIX/$relative"; then
+                legacy_complete=0
+            fi
+        done <<EOF
+$(sed -n '2,$p' "$INSTALL_MANIFEST")
+EOF
+    else
+        legacy_complete=0
+    fi
+    if [ "$legacy_complete" -eq 0 ]; then
+        LEGACY_STAGING=$RELEASES_DIR/.staging-legacy-$LEGACY_SHA-$$
+        validate_managed_release_path "$LEGACY_STAGING"
+        rm -rf "$LEGACY_STAGING"
+        mkdir "$LEGACY_STAGING"
         while IFS= read -r relative; do
             [ -n "$relative" ] || continue
             case "$relative" in LICENSE|skill/*|contracts/*|adapters/*|system/core/*|bin/*) ;; *) fail "unsafe legacy manifest entry: $relative" ;; esac
             [ -f "$PREFIX/$relative" ] || fail "legacy installed file is missing: $relative"
-            mkdir -p "$PREVIOUS/$(dirname "$relative")"
-            cp -p "$PREFIX/$relative" "$PREVIOUS/$relative"
+            mkdir -p "$LEGACY_STAGING/$(dirname "$relative")"
+            cp -p "$PREFIX/$relative" "$LEGACY_STAGING/$relative"
         done <<EOF
 $(sed -n '2,$p' "$INSTALL_MANIFEST")
 EOF
+        rm -rf "$PREVIOUS"
+        mv "$LEGACY_STAGING" "$PREVIOUS"
     fi
 else
     fail 'current activation path is not a symlink'
 fi
 if [ -L "$REGISTRATION" ]; then
     REGISTRATION_PREVIOUS=$(readlink "$REGISTRATION")
+    case "$REGISTRATION_PREVIOUS" in
+        "$PREFIX/skill"|"$PREFIX/current/skill") ;;
+        *) fail "refusing unrelated Skill registration: $REGISTRATION" ;;
+    esac
 elif [ -e "$REGISTRATION" ]; then
     fail 'refusing unrelated Skill registration'
 fi
 
+if [ -f "$ACTIVE_STATE" ]; then
+    cp "$ACTIVE_STATE" "$TX_ACTIVE_BEFORE"
+else
+    jq -n \
+        --arg schemaVersion traceknot-active-release/v1 \
+        --arg version legacy \
+        --arg releaseTag legacy \
+        --arg sourceCommit '' \
+        --arg artifactSha256 "$LEGACY_SHA" \
+        --argjson activatedAt 0 \
+        '{schemaVersion:$schemaVersion,version:$version,releaseTag:$releaseTag,sourceCommit:$sourceCommit,artifactSha256:$artifactSha256,activatedAt:$activatedAt}' \
+        > "$TX_ACTIVE_BEFORE"
+fi
+if [ -f "$ROLLBACK_STATE" ]; then
+    cp "$ROLLBACK_STATE" "$TX_ROLLBACK_BEFORE"
+else
+    rm -f "$TX_ROLLBACK_BEFORE"
+fi
+write_journal apply prepared "$PREVIOUS" "$FINAL" "$STAGING" "$REGISTRATION_PREVIOUS" "$ROLLBACK_PREVIOUS"
 mv "$STAGING" "$FINAL"
-printf '%s\n%s\n%s\n%s\n' \
-    'phase=prepared' "previous=$PREVIOUS" "candidate=$FINAL" "registrationPrevious=$REGISTRATION_PREVIOUS" > "$JOURNAL"
+write_journal apply installed "$PREVIOUS" "$FINAL" "$STAGING" "$REGISTRATION_PREVIOUS" "$ROLLBACK_PREVIOUS"
 replace_symlink "$PREVIOUS" "$ROLLBACK"
 replace_symlink "$FINAL" "$CURRENT"
-printf '%s\n%s\n%s\n%s\n' \
-    'phase=activated' "previous=$PREVIOUS" "candidate=$FINAL" "registrationPrevious=$REGISTRATION_PREVIOUS" > "$JOURNAL"
+write_journal apply activated "$PREVIOUS" "$FINAL" "$STAGING" "$REGISTRATION_PREVIOUS" "$ROLLBACK_PREVIOUS"
 mkdir -p "$SKILLS_ROOT"
 replace_symlink "$CURRENT/skill" "$REGISTRATION"
 
 if [ ! -f "$CURRENT/skill/SKILL.md" ] || [ ! -x "$CURRENT/bin/traceknot-update" ]; then
-    replace_symlink "$PREVIOUS" "$CURRENT"
-    if [ -n "$REGISTRATION_PREVIOUS" ]; then
-        replace_symlink "$REGISTRATION_PREVIOUS" "$REGISTRATION"
-    fi
+    recover_transaction
     fail 'post-activation smoke check failed; previous release restored'
 fi
 
@@ -517,8 +760,12 @@ jq -n \
     --arg artifactSha256 "$ARTIFACT_SHA" \
     --argjson activatedAt "$TRUSTED_NOW" \
     '{schemaVersion:$schemaVersion,version:$version,releaseTag:$releaseTag,sourceCommit:$sourceCommit,artifactSha256:$artifactSha256,activatedAt:$activatedAt}' > "$active_tmp"
+cp "$TX_ACTIVE_BEFORE" "$ROLLBACK_STATE.tmp.$$"
+mv "$ROLLBACK_STATE.tmp.$$" "$ROLLBACK_STATE"
 mv "$active_tmp" "$ACTIVE_STATE"
-printf '%s\n%s\n%s\n%s\n' \
-    'phase=committed' "previous=$PREVIOUS" "candidate=$FINAL" "registrationPrevious=$REGISTRATION_PREVIOUS" > "$JOURNAL"
-rm -f "$JOURNAL"
+if [ "$AUTOMATIC" -eq 1 ]; then
+    install_schedule
+fi
+write_journal apply committed "$PREVIOUS" "$FINAL" "$STAGING" "$REGISTRATION_PREVIOUS" "$ROLLBACK_PREVIOUS"
+rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
 printf 'Updated Traceknot to %s at %s\n' "$RELEASE_TAG" "$CURRENT"

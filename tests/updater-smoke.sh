@@ -22,6 +22,7 @@ test -x "$PREFIX/bin/traceknot-update"
 VERSION=1.2.3
 TAG=v$VERSION
 SOURCE_COMMIT=0123456789abcdef0123456789abcdef01234567
+FAKE_NOW=$(date -u '+%s')
 ARCHIVE_NAME=traceknot-v$VERSION.tar.gz
 STAGE=$TMP_DIR/stage/traceknot-v$VERSION
 mkdir -p "$STAGE"
@@ -33,7 +34,7 @@ else
     ARTIFACT_SHA=$(shasum -a 256 "$FIXTURE/$ARCHIVE_NAME" | cut -d ' ' -f 1)
 fi
 ARTIFACT_SIZE=$(wc -c < "$FIXTURE/$ARCHIVE_NAME" | tr -d ' ')
-PUBLISHED_AT=2026-01-01T00:00:00Z
+PUBLISHED_AT=$(jq -nr --argjson epoch "$((FAKE_NOW - 1209600))" '$epoch | todateiso8601')
 jq -n \
     --arg version "$VERSION" \
     --arg tag "$TAG" \
@@ -85,7 +86,9 @@ case "$url" in
     */manifest) cp "$FAKE_FIXTURE/manifest.json" "$output" ;;
     */artifact)
         cp "$FAKE_FIXTURE/$FAKE_ARCHIVE_NAME" "$output"
-        [ "${FAKE_CORRUPT_ARTIFACT:-0}" -eq 0 ] || printf 'corrupt' >> "$output"
+        if [ "${FAKE_CORRUPT_ARTIFACT:-0}" -ne 0 ]; then
+            printf X | dd of="$output" bs=1 seek=0 conv=notrunc 2>/dev/null
+        fi
         ;;
     *) printf 'unexpected URL: %s\n' "$url" >&2; exit 2 ;;
 esac
@@ -97,6 +100,11 @@ cat > "$FAKE_BIN/gh" <<'EOF'
 set -eu
 [ "$1" = attestation ]
 [ "$2" = verify ]
+case " $* " in *" --repo Jin-Doh/traceknot "*) ;; *) exit 2 ;; esac
+case " $* " in *" --signer-workflow Jin-Doh/traceknot/.github/workflows/release.yml "*) ;; *) exit 2 ;; esac
+case " $* " in *" --source-ref refs/tags/v1.2.3 "*) ;; *) exit 2 ;; esac
+case " $* " in *" --source-digest 0123456789abcdef0123456789abcdef01234567 "*) ;; *) exit 2 ;; esac
+case " $* " in *" --deny-self-hosted-runners "*) ;; *) exit 2 ;; esac
 [ "${FAKE_GH_FAIL:-0}" -eq 0 ] || exit 1
 exit 0
 EOF
@@ -113,7 +121,6 @@ esac
 EOF
 chmod +x "$FAKE_BIN/crontab"
 
-FAKE_NOW=1785200000
 FAKE_HTTP_DATE=$(jq -nr --argjson epoch "$FAKE_NOW" '$epoch | strftime("%a, %d %b %Y %H:%M:%S GMT")')
 FAKE_FIXTURE=$FIXTURE
 FAKE_ARCHIVE_NAME=$ARCHIVE_NAME
@@ -164,6 +171,15 @@ test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = "$TAG"
 test -L "$TRACEKNOT_SKILLS_ROOT/traceknot"
 test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/skill"
 
+# A committed release can be rolled back and then restored without network access.
+"$PREFIX/current/bin/traceknot-update" rollback --prefix "$PREFIX" >/dev/null
+test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = legacy
+legacy_check=$("$PREFIX/bin/traceknot-update" check --prefix "$PREFIX")
+printf '%s\n' "$legacy_check" | grep -F "Eligible update: $TAG" >/dev/null
+"$PREFIX/bin/traceknot-update" rollback --prefix "$PREFIX" >/dev/null
+test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = "$TAG"
+test -f "$PREFIX/current/skill/SKILL.md"
+
 # Opt-in and opt-out are explicit and own only their marked schedule.
 "$PREFIX/current/bin/traceknot-update" enable --prefix "$PREFIX" >/dev/null
 grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null
@@ -173,26 +189,61 @@ if grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null; t
 test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 0
 
 # A held lock blocks a second writer without changing the activation.
-mkdir "$PREFIX/.traceknot-update/update.lock"
+printf '%s\n' "$$" > "$PREFIX/.traceknot-update.lock"
 if "$PREFIX/current/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>&1; then
     printf '%s\n' 'concurrent updater unexpectedly acquired the lock' >&2
     exit 1
 fi
-rm -rf "$PREFIX/.traceknot-update/update.lock"
+rm -f "$PREFIX/.traceknot-update.lock"
+printf '%s\n' 2147483647 > "$PREFIX/.traceknot-update.lock"
+"$PREFIX/current/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null
+test ! -e "$PREFIX/.traceknot-update.lock"
 test -f "$PREFIX/current/skill/SKILL.md"
 
 # Recovery from an interrupted activated phase restores the previous target.
-PREVIOUS=$(readlink "$PREFIX/rollback")
-BAD=$PREFIX/releases/bad
+PREVIOUS=$(readlink "$PREFIX/current")
+ROLLBACK_PREVIOUS=$(readlink "$PREFIX/rollback")
+BAD=$PREFIX_CANON/releases/bad
 mkdir -p "$BAD"
-ln -s "$BAD" "$PREFIX/current.tmp-test"
-mv -f "$PREFIX/current.tmp-test" "$PREFIX/current"
-printf '%s\n%s\n%s\n%s\n' \
-    phase=activated "previous=$PREVIOUS" "candidate=$BAD" "registrationPrevious=$PREFIX_CANON/skill" \
-    > "$PREFIX/.traceknot-update/transaction"
+rm -f "$PREFIX/current"
+ln -s "$BAD" "$PREFIX/current"
+cp "$PREFIX/.traceknot-update/active.json" "$PREFIX/.traceknot-update/transaction-active-before.json"
+cp "$PREFIX/.traceknot-update/rollback-active.json" "$PREFIX/.traceknot-update/transaction-rollback-before.json"
+printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+    operation=apply phase=activated "previous=$PREVIOUS" "candidate=$BAD" \
+    "staging=$PREFIX_CANON/releases/.staging-bad" "registrationPrevious=$PREFIX_CANON/current/skill" \
+    "rollbackPrevious=$ROLLBACK_PREVIOUS" > "$PREFIX/.traceknot-update/transaction"
 "$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null
 test "$(readlink "$PREFIX/current")" = "$PREVIOUS"
+test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = "$TAG"
+test "$(readlink "$PREFIX/rollback")" = "$ROLLBACK_PREVIOUS"
+test ! -e "$BAD"
 test ! -e "$PREFIX/.traceknot-update/transaction"
+
+# A corrupted journal cannot delete a path outside the managed releases directory.
+OUTSIDE=$TMP_DIR/outside-sentinel
+mkdir "$OUTSIDE"
+printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+    operation=apply phase=prepared "previous=$PREVIOUS" "candidate=$OUTSIDE" \
+    "staging=$PREFIX_CANON/releases/.staging-bad" "registrationPrevious=$PREFIX_CANON/current/skill" \
+    "rollbackPrevious=$ROLLBACK_PREVIOUS" > "$PREFIX/.traceknot-update/transaction"
+if "$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'unsafe transaction journal unexpectedly recovered' >&2
+    exit 1
+fi
+test -d "$OUTSIDE"
+rm -f "$PREFIX/.traceknot-update/transaction"
+ln -s "$OUTSIDE" "$PREFIX/releases/link"
+printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
+    operation=apply phase=prepared "previous=$PREVIOUS" "candidate=$PREFIX_CANON/releases/link" \
+    "staging=$PREFIX_CANON/releases/.staging-bad" "registrationPrevious=$PREFIX_CANON/current/skill" \
+    "rollbackPrevious=$ROLLBACK_PREVIOUS" > "$PREFIX/.traceknot-update/transaction"
+if "$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'symlinked transaction path unexpectedly recovered' >&2
+    exit 1
+fi
+test -d "$OUTSIDE"
+rm -f "$PREFIX/.traceknot-update/transaction" "$PREFIX/releases/link"
 
 sh "$ROOT/uninstall.sh" --prefix "$PREFIX" >/dev/null
 test ! -e "$PREFIX/current"
