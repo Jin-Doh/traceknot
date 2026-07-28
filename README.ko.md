@@ -112,7 +112,12 @@ Uninstaller는 설치 manifest를 읽어 Traceknot이 설치한 파일만 삭제
 자동 업데이트 확인은 기본적으로 활성화됩니다. Updater는 서명된 provenance와 SHA-256 digest 검증을 통과한 immutable GitHub Release만 대상으로 하며, 동일 artifact를 처음 관찰한 뒤 7일이 완전히 지난 경우에만 설치 대상으로 판단합니다.
 
 ```sh
-TRACEKNOT_UPDATE="${XDG_DATA_HOME:-$HOME/.local/share}/traceknot/bin/traceknot-update"
+TRACEKNOT_PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/traceknot"
+if [ -x "$TRACEKNOT_PREFIX/current/bin/traceknot-update" ]; then
+  TRACEKNOT_UPDATE="$TRACEKNOT_PREFIX/current/bin/traceknot-update"
+else
+  TRACEKNOT_UPDATE="$TRACEKNOT_PREFIX/bin/traceknot-update"
+fi
 
 # 정책, schedule, 설치된 release 상태 확인
 "$TRACEKNOT_UPDATE" status
@@ -130,7 +135,7 @@ TRACEKNOT_UPDATE="${XDG_DATA_HOME:-$HOME/.local/share}/traceknot/bin/traceknot-u
 "$TRACEKNOT_UPDATE" rollback
 ```
 
-기본 경로가 아닌 곳에 설치했다면 `--prefix DIR`과 `TRACEKNOT_UPDATE="$DIR/bin/traceknot-update"`를 지정합니다. 설치 시 확인 schedule만 생성하며 update를 즉시 적용하지는 않습니다. 설치 중에는 `install.sh --disable-auto-update`, 설치 후에는 `"$TRACEKNOT_UPDATE" disable`로 opt-out할 수 있습니다. 전체 정책, 복구 동작, release contract, 검증 근거는 [`docs/automatic-updates.md`](docs/automatic-updates.md)에 정리되어 있습니다.
+기본 경로가 아닌 곳에 설치했다면 `--prefix DIR`과 `TRACEKNOT_PREFIX="$DIR"`을 지정한 뒤 위의 active updater 선택 구문을 다시 실행합니다. 설치 시 확인 schedule만 생성하며 update를 즉시 적용하지는 않습니다. 설치 중에는 `install.sh --disable-auto-update`, 설치 후에는 `"$TRACEKNOT_UPDATE" disable`로 opt-out할 수 있습니다. 전체 정책, 복구 동작, release contract, 검증 근거는 [`docs/automatic-updates.md`](docs/automatic-updates.md)에 정리되어 있습니다.
 
 ## 아키텍처
 

@@ -112,7 +112,12 @@ The uninstaller reads the installation manifest, removes only files installed by
 Automatic update checks are enabled by default. The updater considers only immutable GitHub releases whose signed provenance and SHA-256 digest verify, and delays eligibility until the exact artifact has been observed for more than seven complete days.
 
 ```sh
-TRACEKNOT_UPDATE="${XDG_DATA_HOME:-$HOME/.local/share}/traceknot/bin/traceknot-update"
+TRACEKNOT_PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/traceknot"
+if [ -x "$TRACEKNOT_PREFIX/current/bin/traceknot-update" ]; then
+  TRACEKNOT_UPDATE="$TRACEKNOT_PREFIX/current/bin/traceknot-update"
+else
+  TRACEKNOT_UPDATE="$TRACEKNOT_PREFIX/bin/traceknot-update"
+fi
 
 # Show policy, schedule, and installed release state
 "$TRACEKNOT_UPDATE" status
@@ -130,7 +135,7 @@ TRACEKNOT_UPDATE="${XDG_DATA_HOME:-$HOME/.local/share}/traceknot/bin/traceknot-u
 "$TRACEKNOT_UPDATE" rollback
 ```
 
-Pass `--prefix DIR` and set `TRACEKNOT_UPDATE="$DIR/bin/traceknot-update"` when Traceknot is not installed at the default prefix. Installation schedules checks but never applies an update immediately. Use `install.sh --disable-auto-update` to opt out during installation, or `"$TRACEKNOT_UPDATE" disable` afterward. Full policy, recovery behavior, release contract, and verification evidence are documented in [`docs/automatic-updates.md`](docs/automatic-updates.md).
+Pass `--prefix DIR`, set `TRACEKNOT_PREFIX="$DIR"`, and repeat the active-updater selection above when Traceknot is not installed at the default prefix. Installation schedules checks but never applies an update immediately. Use `install.sh --disable-auto-update` to opt out during installation, or `"$TRACEKNOT_UPDATE" disable` afterward. Full policy, recovery behavior, release contract, and verification evidence are documented in [`docs/automatic-updates.md`](docs/automatic-updates.md).
 
 ## Architecture
 
