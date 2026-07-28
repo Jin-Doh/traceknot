@@ -346,6 +346,35 @@ if "$PREFIX/current/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>
     exit 1
 fi
 rm -f "$PREFIX/.traceknot-update.lock"
+# Directory lock paths cannot be mistaken for successful hard-link acquisition.
+mkdir "$PREFIX/.traceknot-update.lock"
+if sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'installer unexpectedly acquired a directory lock path' >&2
+    exit 1
+fi
+if "$PREFIX/current/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'updater unexpectedly acquired a directory lock path' >&2
+    exit 1
+fi
+test -d "$PREFIX/.traceknot-update.lock"
+rm -rf "$PREFIX/.traceknot-update.lock"
+
+# A symbolic-link recovery guard is rejected without touching its target.
+RECOVERY_TARGET=$TMP_DIR/recovery-target
+printf '%s\n' preserve-recovery-target > "$RECOVERY_TARGET"
+printf '%s\n' 2147483647 > "$PREFIX/.traceknot-update.lock"
+ln -s "$RECOVERY_TARGET" "$PREFIX/.traceknot-update.lock-recovery"
+if sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'installer unexpectedly followed a symbolic-link recovery guard' >&2
+    exit 1
+fi
+test "$(cat "$RECOVERY_TARGET")" = preserve-recovery-target
+if "$PREFIX/current/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'updater unexpectedly followed a symbolic-link recovery guard' >&2
+    exit 1
+fi
+test "$(cat "$RECOVERY_TARGET")" = preserve-recovery-target
+rm -f "$PREFIX/.traceknot-update.lock" "$PREFIX/.traceknot-update.lock-recovery"
 printf '%s\n' 2147483647 > "$PREFIX/.traceknot-update.lock"
 "$PREFIX/current/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null
 test ! -e "$PREFIX/.traceknot-update.lock"

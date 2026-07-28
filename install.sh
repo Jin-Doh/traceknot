@@ -20,7 +20,12 @@ try_acquire_install_lock() {
     install_lock=$PREFIX_CANON/.traceknot-update.lock
     lock_claim=$PREFIX_CANON/.traceknot-update-lock-claim.$$
     printf '%s\n' "$$" > "$lock_claim"
-    if ln "$lock_claim" "$install_lock" 2>/dev/null; then
+    if [ ! -e "$install_lock" ] && [ ! -L "$install_lock" ] &&
+       ln "$lock_claim" "$install_lock" 2>/dev/null; then
+        if [ ! -f "$install_lock" ] || [ -L "$install_lock" ]; then
+            rm -f "$lock_claim"
+            return 1
+        fi
         rm -f "$lock_claim"
         INSTALL_LOCK_OWNED=1
         return 0
@@ -41,12 +46,22 @@ acquire_install_lock() {
     esac
     kill -0 "$lock_pid" 2>/dev/null &&
         fail "another update owns the lock: $install_lock"
+    if [ -e "$recovery_lock" ] || [ -L "$recovery_lock" ]; then
+        [ -f "$recovery_lock" ] && [ ! -L "$recovery_lock" ] ||
+            fail "unsafe stale-lock recovery path: $recovery_lock"
+    fi
     if command -v shlock >/dev/null 2>&1; then
         shlock -f "$recovery_lock" -p "$$" ||
             fail "stale-lock recovery is already in progress: $recovery_lock"
         INSTALL_RECOVERY_LOCK_HELD=1
     elif command -v flock >/dev/null 2>&1; then
-        exec 9>"$recovery_lock"
+        if [ ! -e "$recovery_lock" ]; then
+            (set -C; : > "$recovery_lock") 2>/dev/null ||
+                fail "cannot create stale-lock recovery guard: $recovery_lock"
+        fi
+        [ -f "$recovery_lock" ] && [ ! -L "$recovery_lock" ] ||
+            fail "unsafe stale-lock recovery path: $recovery_lock"
+        exec 9>>"$recovery_lock"
         flock -n 9 ||
             fail "stale-lock recovery is already in progress: $recovery_lock"
         INSTALL_RECOVERY_LOCK_HELD=2

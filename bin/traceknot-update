@@ -153,7 +153,12 @@ REGISTRATION=$SKILLS_ROOT/traceknot
 try_acquire_lock() {
     lock_claim=$PREFIX/.traceknot-update-lock-claim.$$
     printf '%s\n' "$$" > "$lock_claim"
-    if ln "$lock_claim" "$LOCK_DIR" 2>/dev/null; then
+    if [ ! -e "$LOCK_DIR" ] && [ ! -L "$LOCK_DIR" ] &&
+       ln "$lock_claim" "$LOCK_DIR" 2>/dev/null; then
+        if [ ! -f "$LOCK_DIR" ] || [ -L "$LOCK_DIR" ]; then
+            rm -f "$lock_claim"
+            return 1
+        fi
         rm -f "$lock_claim"
         LOCK_HELD=1
         return 0
@@ -163,12 +168,22 @@ try_acquire_lock() {
 }
 
 acquire_recovery_guard() {
+    if [ -e "$RECOVERY_LOCK" ] || [ -L "$RECOVERY_LOCK" ]; then
+        [ -f "$RECOVERY_LOCK" ] && [ ! -L "$RECOVERY_LOCK" ] ||
+            fail "unsafe stale-lock recovery path: $RECOVERY_LOCK"
+    fi
     if command -v shlock >/dev/null 2>&1; then
         shlock -f "$RECOVERY_LOCK" -p "$$" ||
             fail "stale-lock recovery is already in progress: $RECOVERY_LOCK"
         RECOVERY_LOCK_HELD=1
     elif command -v flock >/dev/null 2>&1; then
-        exec 9>"$RECOVERY_LOCK"
+        if [ ! -e "$RECOVERY_LOCK" ]; then
+            (set -C; : > "$RECOVERY_LOCK") 2>/dev/null ||
+                fail "cannot create stale-lock recovery guard: $RECOVERY_LOCK"
+        fi
+        [ -f "$RECOVERY_LOCK" ] && [ ! -L "$RECOVERY_LOCK" ] ||
+            fail "unsafe stale-lock recovery path: $RECOVERY_LOCK"
+        exec 9>>"$RECOVERY_LOCK"
         flock -n 9 || fail "stale-lock recovery is already in progress: $RECOVERY_LOCK"
         RECOVERY_LOCK_HELD=2
     else
