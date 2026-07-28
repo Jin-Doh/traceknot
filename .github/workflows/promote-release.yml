@@ -13,7 +13,8 @@ on:
         type: string
 
 permissions:
-  contents: read
+  actions: write
+  contents: write
 
 concurrency:
   group: promote-release-${{ inputs.version }}
@@ -45,13 +46,9 @@ jobs:
         env:
           APPROVED_VERSION: ${{ inputs.version }}
           APPROVED_COMMIT: ${{ inputs.sourceCommit }}
-          GH_TOKEN: ${{ secrets.RELEASE_PROMOTION_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          test -n "$GH_TOKEN" || {
-            printf '%s\n' 'The release Environment must provide RELEASE_PROMOTION_TOKEN.' >&2
-            exit 1
-          }
           [[ "$APPROVED_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           [[ "$APPROVED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           source_commit=$(git rev-parse HEAD)
@@ -78,13 +75,19 @@ jobs:
 
       - name: Create protected release tag
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PROMOTION_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           SOURCE_COMMIT: ${{ steps.release.outputs.sourceCommit }}
         run: >-
           gh api --method POST "/repos/$GITHUB_REPOSITORY/git/refs"
           -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$SOURCE_COMMIT"
           >/dev/null
+
+      - name: Dispatch trusted release in tag context
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: gh workflow run release.yml --ref "$RELEASE_TAG"
 
       - name: Record promotion handoff
         env:
@@ -95,5 +98,5 @@ jobs:
             printf "## Release promotion handed off\n\n"
             printf -- "- Tag: \`%s\`\n" "$RELEASE_TAG"
             printf -- "- Source commit: \`%s\`\n" "$SOURCE_COMMIT"
-            printf -- "- Publisher: \`Trusted release\` (tag push)\n"
+            printf -- "- Publisher: \`Trusted release\` (tag-ref dispatch)\n"
           } >> "$GITHUB_STEP_SUMMARY"

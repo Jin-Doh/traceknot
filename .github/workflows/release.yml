@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
 
 permissions: {}
 
@@ -41,6 +42,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          [[ "$GITHUB_REF_TYPE" == tag ]] || {
+            printf '%s\n' 'Trusted release must run with a tag ref.' >&2
+            exit 1
+          }
           git fetch --no-tags origin main
           tag=$GITHUB_REF_NAME
           version=${tag#v}
