@@ -461,6 +461,17 @@ if [ -e "$PREFIX_CANON/current" ] || [ -L "$PREFIX_CANON/current" ] ||
                 fail "managed activation target is unsafe: $managed_target"
         fi
     done
+    for managed_metadata in \
+        "$PREFIX_CANON/.traceknot-update/active.json" \
+        "$PREFIX_CANON/.traceknot-update/rollback-active.json" \
+        "$PREFIX_CANON/.traceknot-update/transaction" \
+        "$PREFIX_CANON/.traceknot-update/transaction-active-before.json" \
+        "$PREFIX_CANON/.traceknot-update/transaction-rollback-before.json"; do
+        if [ -e "$managed_metadata" ] || [ -L "$managed_metadata" ]; then
+            [ -f "$managed_metadata" ] && [ ! -L "$managed_metadata" ] ||
+                fail "refusing unsafe managed metadata path: $managed_metadata"
+        fi
+    done
     MANAGED_STATE_RESET=1
 fi
 if [ "$MANAGED_STATE_RESET" -eq 1 ]; then
@@ -562,13 +573,15 @@ if [ "$MANAGED_STATE_RESET" -eq 1 ]; then
         "$PREFIX_CANON/.traceknot-update/transaction-rollback-before.json"
     rm -rf "$MANAGED_RELEASES_DIR"
     sync
+fi
+if [ "$AUTO_UPDATE" -eq 1 ]; then
+    "$PREFIX_CANON/bin/traceknot-update" enable-install-lock --prefix "$PREFIX_CANON"
+else
+    "$PREFIX_CANON/bin/traceknot-update" disable-install-lock --prefix "$PREFIX_CANON"
+fi
+if [ "$MANAGED_STATE_RESET" -eq 1 ]; then
     rm -f "$PREFIX_CANON/.traceknot-update/reinstall-reset"
     sync
 fi
 release_install_lock
-if [ "$AUTO_UPDATE" -eq 1 ]; then
-    "$PREFIX_CANON/bin/traceknot-update" enable --prefix "$PREFIX_CANON"
-else
-    "$PREFIX_CANON/bin/traceknot-update" disable --prefix "$PREFIX_CANON"
-fi
 printf 'Installed Traceknot to %s and registered %s\n' "$PREFIX_CANON" "$REGISTRATION_PATH"

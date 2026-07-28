@@ -99,7 +99,7 @@ shell_quote() {
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        check|apply|rollback|enable|disable|status|uninstall-lock)
+        check|apply|rollback|enable|disable|status|uninstall-lock|enable-install-lock|disable-install-lock)
             COMMAND=$1
             shift
             ;;
@@ -178,7 +178,6 @@ CURRENT=$PREFIX/current
 ROLLBACK=$PREFIX/rollback
 RELEASES_DIR=$PREFIX/releases
 SKILLS_ROOT=${TRACEKNOT_SKILLS_ROOT:-"$HOME/.agents/skills"}
-REGISTRATION=$SKILLS_ROOT/traceknot
 
 try_acquire_lock() {
     LOCK_CLAIM=$PREFIX/.traceknot-update-lock-claim.$$
@@ -264,16 +263,36 @@ esac
 case "$PREFIX$SKILLS_ROOT${PATH:-}" in
     *\\%*) fail 'prefix, Skills root, and PATH must not contain backslash-percent sequences' ;;
 esac
-acquire_lock
+case "$COMMAND" in
+    enable-install-lock|disable-install-lock)
+        [ -f "$LOCK_DIR" ] && [ ! -L "$LOCK_DIR" ] &&
+            [ "$(sed -n '1p' "$LOCK_DIR" 2>/dev/null || true)" = "$PPID" ] ||
+            fail 'installer does not own the update lock'
+        ;;
+    *) acquire_lock ;;
+esac
 mkdir -p "$STATE_DIR"
 [ ! -L "$STATE_DIR" ] || fail 'refusing symlink update state directory'
 [ ! -L "$CONFIG" ] || fail 'refusing symlink update configuration'
 if [ ! -f "$CONFIG" ]; then
-    printf '%s\n%s\n%s\n' 'traceknot-update-config/v1' 'automatic=0' 'lastCheck=0' > "$CONFIG"
+    printf '%s\n%s\n%s\n%s\n' 'traceknot-update-config/v1' 'automatic=0' 'lastCheck=0' \
+        "skillsRoot=$SKILLS_ROOT" > "$CONFIG"
 fi
 [ "$(sed -n '1p' "$CONFIG")" = traceknot-update-config/v1 ] || fail 'invalid update configuration'
 AUTOMATIC=$(sed -n 's/^automatic=//p' "$CONFIG")
 LAST_CHECK=$(sed -n 's/^lastCheck=//p' "$CONFIG")
+CONFIG_SKILLS_ROOT=$(sed -n 's/^skillsRoot=//p' "$CONFIG")
+if [ -z "${TRACEKNOT_SKILLS_ROOT+x}" ] && [ -n "$CONFIG_SKILLS_ROOT" ]; then
+    SKILLS_ROOT=$CONFIG_SKILLS_ROOT
+fi
+case "$SKILLS_ROOT" in
+    /*) ;;
+    *) fail 'configured Skills root must be absolute' ;;
+esac
+case "$SKILLS_ROOT" in *"$carriage_return"*|*'
+'*) fail 'configured Skills root must not contain line breaks' ;; esac
+case "$SKILLS_ROOT" in *\\%*) fail 'configured Skills root must not contain backslash-percent sequences' ;; esac
+REGISTRATION=$SKILLS_ROOT/traceknot
 case "$AUTOMATIC" in 0|1) ;; *) fail 'invalid automatic update setting' ;; esac
 case "$LAST_CHECK" in ''|*[!0-9]*) fail 'invalid last check time' ;; esac
 
@@ -282,10 +301,11 @@ write_config() {
     last_check_value=$2
     config_tmp=$CONFIG.tmp.$$
     create_exclusive_file "$config_tmp"
-    printf '%s\n%s\n%s\n' \
+    printf '%s\n%s\n%s\n%s\n' \
         'traceknot-update-config/v1' \
         "automatic=$automatic_value" \
-        "lastCheck=$last_check_value" > "$config_tmp"
+        "lastCheck=$last_check_value" \
+        "skillsRoot=$SKILLS_ROOT" > "$config_tmp"
     mv "$config_tmp" "$CONFIG"
 }
 
@@ -356,7 +376,7 @@ case "$COMMAND" in
         fi
         ;;
 esac
-if [ "$COMMAND" = enable ]; then
+if [ "$COMMAND" = enable ] || [ "$COMMAND" = enable-install-lock ]; then
     [ "$DRY_RUN" -eq 0 ] || { printf 'Would enable daily automatic updates for %s\n' "$PREFIX"; exit 0; }
     command -v crontab >/dev/null 2>&1 ||
         fail 'crontab is required to enable automatic updates'
@@ -373,7 +393,7 @@ if [ "$COMMAND" = enable ]; then
     exit 0
 fi
 
-if [ "$COMMAND" = disable ]; then
+if [ "$COMMAND" = disable ] || [ "$COMMAND" = disable-install-lock ]; then
     [ "$DRY_RUN" -eq 0 ] || { printf 'Would disable automatic updates for %s\n' "$PREFIX"; exit 0; }
     remove_schedule
     write_config 0 "$LAST_CHECK"
