@@ -288,6 +288,16 @@ test -f "$PREFIX/.traceknot-update/active.json"
 test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = "$TAG"
 test -L "$TRACEKNOT_SKILLS_ROOT/traceknot"
 test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/skill"
+# An interrupted managed-to-flat cutover is completed from its durable journal.
+printf '%s\n' traceknot-reinstall-reset/v1 > "$PREFIX/.traceknot-update/reinstall-reset"
+rm -f "$TRACEKNOT_SKILLS_ROOT/traceknot"
+ln -s "$PREFIX_CANON/skill" "$TRACEKNOT_SKILLS_ROOT/traceknot"
+"$PREFIX/current/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null
+test ! -e "$PREFIX/.traceknot-update/reinstall-reset"
+test ! -e "$PREFIX/current"
+test ! -e "$PREFIX/releases"
+test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/skill"
+"$PREFIX/bin/traceknot-update" apply --prefix "$PREFIX" >/dev/null
 # Ordinary reinstall retargets registration to the newly installed flat payload.
 sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null
 test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/skill"

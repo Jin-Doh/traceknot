@@ -93,10 +93,13 @@ exit 2
 EOF
 chmod +x "$PREFIX/bin/traceknot-update"
 
+mkdir -p "$PREFIX/releases"
+printf '%s\n' keep-release > "$PREFIX/releases/unrelated-sentinel"
 # Reinstalling over the same prefix must succeed and preserve unrelated files.
 sh "$ROOT/install.sh" --prefix "$PREFIX"
 test -f "$PREFIX/system/core/qa-core.ts"
 test "$(cat "$PREFIX/unrelated-sentinel.txt")" = keep-me
+test "$(cat "$PREFIX/releases/unrelated-sentinel")" = keep-release
 test -x "$PREFIX/bin/traceknot-update"
 test -L "$REGISTRATION_PATH"
 test "$(readlink "$REGISTRATION_PATH")" = "$PREFIX_CANON/skill"

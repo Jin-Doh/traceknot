@@ -153,6 +153,7 @@ TX_ACTIVE_BEFORE=$STATE_DIR/transaction-active-before.json
 TX_ROLLBACK_BEFORE=$STATE_DIR/transaction-rollback-before.json
 ACTIVE_STATE=$STATE_DIR/active.json
 JOURNAL=$STATE_DIR/transaction
+REINSTALL_RESET=$STATE_DIR/reinstall-reset
 LOCK_DIR=$PREFIX/.traceknot-update.lock
 RECOVERY_LOCK=$PREFIX/.traceknot-update.lock-recovery
 create_exclusive_file() {
@@ -348,6 +349,13 @@ install_schedule() {
 }
 
 
+case "$COMMAND" in
+    enable|disable|status|uninstall-lock)
+        if [ -e "$REINSTALL_RESET" ] || [ -L "$REINSTALL_RESET" ]; then
+            fail 'flat reinstall recovery is pending; run check first'
+        fi
+        ;;
+esac
 if [ "$COMMAND" = enable ]; then
     [ "$DRY_RUN" -eq 0 ] || { printf 'Would enable daily automatic updates for %s\n' "$PREFIX"; exit 0; }
     command -v crontab >/dev/null 2>&1 ||
@@ -490,6 +498,29 @@ prune_obsolete_release() {
     rm -rf "$obsolete_path"
 }
 
+recover_reinstall_reset() {
+    if [ ! -e "$REINSTALL_RESET" ] && [ ! -L "$REINSTALL_RESET" ]; then
+        return
+    fi
+    [ -f "$REINSTALL_RESET" ] && [ ! -L "$REINSTALL_RESET" ] ||
+        fail 'unsafe flat reinstall recovery journal'
+    [ "$(sed -n '1p' "$REINSTALL_RESET")" = traceknot-reinstall-reset/v1 ] ||
+        fail 'invalid flat reinstall recovery journal'
+    if [ -e "$RELEASES_DIR" ] || [ -L "$RELEASES_DIR" ]; then
+        [ -d "$RELEASES_DIR" ] && [ ! -L "$RELEASES_DIR" ] ||
+            fail 'unsafe releases directory during flat reinstall recovery'
+    fi
+    assert_registration_owned
+    mkdir -p "$SKILLS_ROOT"
+    replace_symlink "$PREFIX/skill" "$REGISTRATION"
+    rm -f "$CURRENT" "$ROLLBACK" "$ACTIVE_STATE" "$ROLLBACK_STATE" \
+        "$JOURNAL" "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE"
+    rm -rf "$RELEASES_DIR"
+    sync_transaction_state
+    rm -f "$REINSTALL_RESET"
+    sync_transaction_state
+}
+
 recover_transaction() {
     if [ ! -e "$JOURNAL" ] && [ ! -L "$JOURNAL" ]; then
         for orphan_snapshot in "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE"; do
@@ -588,6 +619,7 @@ recover_transaction() {
     rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
     sync_transaction_state
 }
+recover_reinstall_reset
 recover_transaction
 
 perform_rollback() {

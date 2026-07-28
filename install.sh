@@ -423,8 +423,7 @@ PREFIX_CANON=$(canonical_path "$PREFIX_CANON") || fail 'cannot resolve destinati
 [ "$PREFIX_CANON" != "/" ] || fail 'refusing to install into filesystem root'
 acquire_install_lock
 MANAGED_RELEASES_DIR=$PREFIX_CANON/releases
-if [ -e "$MANAGED_RELEASES_DIR" ] || [ -L "$MANAGED_RELEASES_DIR" ] ||
-   [ -e "$PREFIX_CANON/current" ] || [ -L "$PREFIX_CANON/current" ] ||
+if [ -e "$PREFIX_CANON/current" ] || [ -L "$PREFIX_CANON/current" ] ||
    [ -e "$PREFIX_CANON/rollback" ] || [ -L "$PREFIX_CANON/rollback" ] ||
    [ -e "$PREFIX_CANON/.traceknot-update/active.json" ] ||
    [ -L "$PREFIX_CANON/.traceknot-update/active.json" ] ||
@@ -435,10 +434,19 @@ if [ -e "$MANAGED_RELEASES_DIR" ] || [ -L "$MANAGED_RELEASES_DIR" ] ||
    [ -e "$PREFIX_CANON/.traceknot-update/transaction-active-before.json" ] ||
    [ -L "$PREFIX_CANON/.traceknot-update/transaction-active-before.json" ] ||
    [ -e "$PREFIX_CANON/.traceknot-update/transaction-rollback-before.json" ] ||
-   [ -L "$PREFIX_CANON/.traceknot-update/transaction-rollback-before.json" ]; then
+   [ -L "$PREFIX_CANON/.traceknot-update/transaction-rollback-before.json" ] ||
+   [ -e "$PREFIX_CANON/.traceknot-update/reinstall-reset" ] ||
+   [ -L "$PREFIX_CANON/.traceknot-update/reinstall-reset" ]; then
     if [ -e "$MANAGED_RELEASES_DIR" ] || [ -L "$MANAGED_RELEASES_DIR" ]; then
         [ -d "$MANAGED_RELEASES_DIR" ] && [ ! -L "$MANAGED_RELEASES_DIR" ] ||
             fail "refusing unsafe managed releases directory: $MANAGED_RELEASES_DIR"
+    fi
+    if [ -e "$PREFIX_CANON/.traceknot-update/reinstall-reset" ] ||
+       [ -L "$PREFIX_CANON/.traceknot-update/reinstall-reset" ]; then
+        [ -f "$PREFIX_CANON/.traceknot-update/reinstall-reset" ] &&
+            [ ! -L "$PREFIX_CANON/.traceknot-update/reinstall-reset" ] &&
+            [ "$(sed -n '1p' "$PREFIX_CANON/.traceknot-update/reinstall-reset")" = traceknot-reinstall-reset/v1 ] ||
+            fail 'refusing unsafe flat reinstall recovery journal'
     fi
     for managed_link in "$PREFIX_CANON/current" "$PREFIX_CANON/rollback"; do
         if [ -e "$managed_link" ] || [ -L "$managed_link" ]; then
@@ -500,6 +508,16 @@ $(find "$SOURCE_ROOT/$component" -type f -print)
 EOF
 done
 
+if [ "$MANAGED_STATE_RESET" -eq 1 ] &&
+   [ ! -e "$PREFIX_CANON/.traceknot-update/reinstall-reset" ] &&
+   [ ! -L "$PREFIX_CANON/.traceknot-update/reinstall-reset" ]; then
+    reinstall_reset_tmp=$PREFIX_CANON/.traceknot-update/reinstall-reset.tmp.$$
+    if ! (set -C; printf '%s\n' traceknot-reinstall-reset/v1 > "$reinstall_reset_tmp") 2>/dev/null; then
+        fail 'cannot create flat reinstall recovery journal'
+    fi
+    mv "$reinstall_reset_tmp" "$PREFIX_CANON/.traceknot-update/reinstall-reset"
+    if command -v sync >/dev/null 2>&1; then sync; fi
+fi
 if [ ! -L "$REGISTRATION_PATH" ]; then
     if [ -L "$SKILLS_ROOT" ]; then
         fail "refusing symlink Agent Skills directory: $SKILLS_ROOT"
@@ -533,6 +551,8 @@ if [ "$MANAGED_STATE_RESET" -eq 1 ]; then
         "$PREFIX_CANON/.traceknot-update/transaction-active-before.json" \
         "$PREFIX_CANON/.traceknot-update/transaction-rollback-before.json"
     rm -rf "$MANAGED_RELEASES_DIR"
+    if command -v sync >/dev/null 2>&1; then sync; fi
+    rm -f "$PREFIX_CANON/.traceknot-update/reinstall-reset"
     if command -v sync >/dev/null 2>&1; then sync; fi
 fi
 release_install_lock
