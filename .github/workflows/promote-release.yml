@@ -100,8 +100,9 @@ jobs:
         run: |
           set -euo pipefail
           existing_runs=$(gh run list --workflow release.yml --branch "$RELEASE_TAG" \
-            --limit 100 --json headSha \
-            --jq "map(select(.headSha == \"$SOURCE_COMMIT\")) | length")
+            --limit 100 --json headSha,status,conclusion \
+            --jq "map(select(.headSha == \"$SOURCE_COMMIT\" and
+              (.status != \"completed\" or .conclusion == \"success\"))) | length")
           if [ "$existing_runs" -eq 0 ]; then
             gh workflow run release.yml --ref "$RELEASE_TAG"
           else
