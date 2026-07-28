@@ -516,6 +516,9 @@ recover_reinstall_reset() {
     rm -f "$CURRENT" "$ROLLBACK" "$ACTIVE_STATE" "$ROLLBACK_STATE" \
         "$JOURNAL" "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE"
     rm -rf "$RELEASES_DIR"
+    if [ "$AUTOMATIC" -eq 1 ]; then
+        install_schedule
+    fi
     sync_transaction_state
     rm -f "$REINSTALL_RESET"
     sync_transaction_state

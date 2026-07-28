@@ -463,6 +463,10 @@ if [ -e "$PREFIX_CANON/current" ] || [ -L "$PREFIX_CANON/current" ] ||
     done
     MANAGED_STATE_RESET=1
 fi
+if [ "$MANAGED_STATE_RESET" -eq 1 ]; then
+    command -v sync >/dev/null 2>&1 ||
+        fail 'sync is required for a managed-to-flat reinstall'
+fi
 if [ "$AUTO_UPDATE_EXPLICIT" -eq 0 ]; then
     AUTO_UPDATE=1
     if [ -e "$EXISTING_UPDATE_CONFIG" ] || [ -L "$EXISTING_UPDATE_CONFIG" ]; then
@@ -508,6 +512,10 @@ $(find "$SOURCE_ROOT/$component" -type f -print)
 EOF
 done
 
+if [ "$MANAGED_STATE_RESET" -eq 1 ]; then
+    mv "$MANIFEST_TMP" "$PREFIX_CANON/$MANIFEST_NAME"
+    MANIFEST_TMP=
+fi
 if [ "$MANAGED_STATE_RESET" -eq 1 ] &&
    [ ! -e "$PREFIX_CANON/.traceknot-update/reinstall-reset" ] &&
    [ ! -L "$PREFIX_CANON/.traceknot-update/reinstall-reset" ]; then
@@ -516,7 +524,7 @@ if [ "$MANAGED_STATE_RESET" -eq 1 ] &&
         fail 'cannot create flat reinstall recovery journal'
     fi
     mv "$reinstall_reset_tmp" "$PREFIX_CANON/.traceknot-update/reinstall-reset"
-    if command -v sync >/dev/null 2>&1; then sync; fi
+    sync
 fi
 if [ ! -L "$REGISTRATION_PATH" ]; then
     if [ -L "$SKILLS_ROOT" ]; then
@@ -541,8 +549,10 @@ if [ "$(readlink "$REGISTRATION_PATH")" != "$PREFIX_CANON/skill" ]; then
     fi
 fi
 
-mv "$MANIFEST_TMP" "$PREFIX_CANON/$MANIFEST_NAME"
-MANIFEST_TMP=
+if [ -n "$MANIFEST_TMP" ]; then
+    mv "$MANIFEST_TMP" "$PREFIX_CANON/$MANIFEST_NAME"
+    MANIFEST_TMP=
+fi
 if [ "$MANAGED_STATE_RESET" -eq 1 ]; then
     rm -f "$PREFIX_CANON/current" "$PREFIX_CANON/rollback" \
         "$PREFIX_CANON/.traceknot-update/active.json" \
@@ -551,9 +561,9 @@ if [ "$MANAGED_STATE_RESET" -eq 1 ]; then
         "$PREFIX_CANON/.traceknot-update/transaction-active-before.json" \
         "$PREFIX_CANON/.traceknot-update/transaction-rollback-before.json"
     rm -rf "$MANAGED_RELEASES_DIR"
-    if command -v sync >/dev/null 2>&1; then sync; fi
+    sync
     rm -f "$PREFIX_CANON/.traceknot-update/reinstall-reset"
-    if command -v sync >/dev/null 2>&1; then sync; fi
+    sync
 fi
 release_install_lock
 if [ "$AUTO_UPDATE" -eq 1 ]; then

@@ -281,6 +281,7 @@ fi
 unset FAKE_GH_FAIL
 test ! -e "$PREFIX/current"
 
+"$PREFIX/bin/traceknot-update" enable --prefix "$PREFIX" >/dev/null
 "$PREFIX/bin/traceknot-update" apply --prefix "$PREFIX" >/dev/null
 test -L "$PREFIX/current"
 test -f "$PREFIX/current/skill/SKILL.md"
@@ -297,6 +298,12 @@ test ! -e "$PREFIX/.traceknot-update/reinstall-reset"
 test ! -e "$PREFIX/current"
 test ! -e "$PREFIX/releases"
 test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/skill"
+grep -F "$PREFIX_CANON/bin/traceknot-update" "$CRONTAB_FILE" >/dev/null
+if grep -F "$PREFIX_CANON/current/bin/traceknot-update" "$CRONTAB_FILE" >/dev/null 2>&1; then
+    printf '%s\n' 'reinstall recovery left cron pointed at the removed managed updater' >&2
+    exit 1
+fi
+"$PREFIX/bin/traceknot-update" --prefix "$PREFIX" --auto >/dev/null
 "$PREFIX/bin/traceknot-update" apply --prefix "$PREFIX" >/dev/null
 # Ordinary reinstall retargets registration to the newly installed flat payload.
 sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null
