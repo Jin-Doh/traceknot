@@ -61,6 +61,7 @@ TAG_JSON=$TMP_ROOT/tag.json
 
 gh api -H 'Accept: application/vnd.github+json' \
     "/repos/$REPOSITORY/releases/tags/$TAG" > "$RELEASE_JSON"
+cp "$RELEASE_JSON" "$OUTPUT_DIR/public-release.json"
 jq -e --arg tag "$TAG" '
   .tag_name == $tag and .draft == false and .prerelease == false and .immutable == true
   and ([.assets[] | select(.name == "traceknot-update-manifest.json")] | length == 1)
@@ -68,6 +69,7 @@ jq -e --arg tag "$TAG" '
 
 gh api -H 'Accept: application/vnd.github+json' \
     "/repos/$REPOSITORY/git/ref/tags/$TAG" > "$TAG_JSON"
+cp "$TAG_JSON" "$OUTPUT_DIR/public-tag.json"
 TAG_OBJECT_TYPE=$(jq -r .object.type "$TAG_JSON")
 TAG_OBJECT_SHA=$(jq -r .object.sha "$TAG_JSON")
 case "$TAG_OBJECT_TYPE" in
@@ -83,6 +85,7 @@ esac
 MANIFEST_ASSET_ID=$(jq -r '[.assets[] | select(.name == "traceknot-update-manifest.json")][0].id' "$RELEASE_JSON")
 gh api -H 'Accept: application/octet-stream' \
     "/repos/$REPOSITORY/releases/assets/$MANIFEST_ASSET_ID" > "$MANIFEST"
+cp "$MANIFEST" "$OUTPUT_DIR/traceknot-update-manifest.json"
 bun x --no-install ajv validate --spec=draft2020 \
     -s contracts/update-manifest.schema.json -d "$MANIFEST" >/dev/null
 
@@ -133,6 +136,11 @@ TRACEKNOT_SKILLS_ROOT=$SKILLS_ROOT sh "$STAGING/install.sh" \
     --prefix "$PREFIX" --disable-auto-update >/dev/null
 TRACEKNOT_SKILLS_ROOT=$SKILLS_ROOT "$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" \
     > "$OUTPUT_DIR/updater-check.txt"
+grep -F "Observing $TAG;" "$OUTPUT_DIR/updater-check.txt" >/dev/null ||
+    fail 'clean updater check did not keep the new release in observation'
+if grep -F "Eligible update: $TAG" "$OUTPUT_DIR/updater-check.txt" >/dev/null; then
+    fail 'clean updater check made the new release immediately eligible'
+fi
 MANIFEST_SHA=$(sha256_file "$MANIFEST")
 OBSERVATION=$(grep "^$MANIFEST_SHA$(printf '\t').*$(printf '\t')$TAG$(printf '\t')$EXPECTED_SHA$" \
     "$PREFIX/.traceknot-update/observations.tsv") ||
@@ -161,5 +169,4 @@ jq -n \
       checks:{immutable:true,identity:true,schema:true,digest:true,provenance:true,
               archiveSafety:true,cleanInstall:true,updaterObservation:true}}' \
     > "$OUTPUT_DIR/release-evidence.json"
-cp "$MANIFEST" "$OUTPUT_DIR/traceknot-update-manifest.json"
 printf 'Verified published release %s (%s)\n' "$TAG" "$EXPECTED_SHA"

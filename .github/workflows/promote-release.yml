@@ -27,12 +27,12 @@ jobs:
     timeout-minutes: 15
     environment: release
     steps:
-      - name: Check out current main
+      - name: Check out approved source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: main
+          ref: ${{ inputs.sourceCommit }}
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -52,28 +52,37 @@ jobs:
           [[ "$APPROVED_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           [[ "$APPROVED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           source_commit=$(git rev-parse HEAD)
-          [[ "$source_commit" == "$APPROVED_COMMIT" ]] || {
-            printf '%s\n' 'The approved sourceCommit is no longer the current main commit.' >&2
-            exit 1
-          }
+          [[ "$source_commit" == "$APPROVED_COMMIT" ]]
+          git fetch --no-tags origin main
           tag=v$APPROVED_VERSION
-          if gh api "/repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
-            printf 'Tag already exists: %s\n' "$tag" >&2
-            exit 1
-          fi
           if gh api "/repos/$GITHUB_REPOSITORY/releases/tags/$tag" >/dev/null 2>&1; then
             printf 'Release already exists: %s\n' "$tag" >&2
             exit 1
           fi
+          create_tag=true
+          if tag_commit=$(gh api "/repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha 2>/dev/null); then
+            [[ "$tag_commit" == "$source_commit" ]] || {
+              printf 'Existing tag %s identifies a different commit.\n' "$tag" >&2
+              exit 1
+            }
+            create_tag=false
+          else
+            [[ "$source_commit" == "$(git rev-parse origin/main)" ]] || {
+              printf '%s\n' 'The approved sourceCommit is no longer the current main commit.' >&2
+              exit 1
+            }
+          fi
           {
             printf 'tag=%s\n' "$tag"
             printf 'sourceCommit=%s\n' "$source_commit"
+            printf 'createTag=%s\n' "$create_tag"
           } >> "$GITHUB_OUTPUT"
 
       - name: Run canonical gate before promotion
         run: sh scripts/ci
 
       - name: Create protected release tag
+        if: steps.release.outputs.createTag == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
@@ -87,7 +96,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
-        run: gh workflow run release.yml --ref "$RELEASE_TAG"
+          SOURCE_COMMIT: ${{ steps.release.outputs.sourceCommit }}
+        run: |
+          set -euo pipefail
+          existing_runs=$(gh run list --workflow release.yml --branch "$RELEASE_TAG" \
+            --limit 100 --json headSha \
+            --jq "map(select(.headSha == \"$SOURCE_COMMIT\")) | length")
+          if [ "$existing_runs" -eq 0 ]; then
+            gh workflow run release.yml --ref "$RELEASE_TAG"
+          else
+            printf 'Trusted release already dispatched for %s.\n' "$RELEASE_TAG"
+          fi
 
       - name: Record promotion handoff
         env:

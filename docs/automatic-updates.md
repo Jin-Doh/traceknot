@@ -128,6 +128,8 @@ Invalid transitions fail closed. Cancellation before activation removes staging.
 
 Repository administrators must configure the `release` GitHub Environment with required reviewers and protect `v*.*.*` tags from direct creation by untrusted actors. Promotion uses its job-scoped `GITHUB_TOKEN` with only `contents: write` and `actions: write`; no long-lived release credential is required. The workflow declares the Environment, but repository policy—not workflow YAML—owns reviewers and tag rules. Do not treat a promotion as authorized until the Environment deployment records an approval.
 
+If dispatch fails after tag creation, rerun the same promotion inputs. The workflow accepts an existing tag only when it still resolves to the approved SHA and no release exists, skips ref creation, and dispatches the trusted workflow unless a run for that tag and SHA already exists. A conflicting tag or existing release remains a hard failure.
+
 To promote a release:
 
 ```sh
@@ -140,7 +142,7 @@ gh workflow run promote-release.yml \
 
 The run must reach all of these terminal results:
 
-1. the approved SHA still equals the current `main` SHA;
+1. a new promotion's approved SHA still equals current `main`, or a resumed promotion's existing tag resolves exactly to that approved SHA;
 2. canonical CI passes against that SHA;
 3. the deterministic archive and manifest validate;
 4. provenance is issued by `.github/workflows/release.yml`;
@@ -149,7 +151,7 @@ The run must reach all of these terminal results:
 7. a clean installation from the downloaded public archive succeeds;
 8. the installed updater observes the new release but does not bypass the strict seven-day delay.
 
-The verification job writes a workflow summary and retains `release-evidence.json`, the published manifest, and updater output for 90 days. The evidence record includes the release URL, source commit, archive and manifest SHA-256 values, verification time, expected first eligible instant, and the completed public-surface checks.
+The verification job writes a workflow summary and retains `verification-status.json`, `verifier.log`, public release and tag metadata, the published manifest when available, updater output when reached, and the successful `release-evidence.json` for 90 days. The upload runs even when post-publication verification fails, so incident evidence survives a failed immutable publication. A successful evidence record includes the release URL, source commit, archive and manifest SHA-256 values, verification time, expected first eligible instant, and the completed public-surface checks.
 
 ### Failed or compromised release
 

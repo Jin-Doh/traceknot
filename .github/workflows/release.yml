@@ -111,11 +111,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           SOURCE_COMMIT: ${{ steps.release.outputs.sourceCommit }}
-        run: >-
-          sh scripts/verify-published-release.sh
-          --tag "$RELEASE_TAG"
-          --source-commit "$SOURCE_COMMIT"
-          --output release-evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-evidence
+          set +e
+          sh scripts/verify-published-release.sh \
+            --tag "$RELEASE_TAG" \
+            --source-commit "$SOURCE_COMMIT" \
+            --output release-evidence \
+            2>&1 | tee release-evidence/verifier.log
+          verifier_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$verifier_status" -eq 0 ]; then result=passed; else result=failed; fi
+          jq -n --arg status "$result" --argjson exitStatus "$verifier_status" \
+            '{schemaVersion:"traceknot-release-verification-status/v1",
+              status:$status,exitStatus:$exitStatus}' \
+            > release-evidence/verification-status.json
+          exit "$verifier_status"
 
       - name: Publish release evidence summary
         env:
@@ -134,6 +147,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Retain release verification evidence
+        if: always() && steps.publish.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-evidence-${{ steps.release.outputs.tag }}

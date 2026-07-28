@@ -97,6 +97,40 @@ jq -e --arg tag "$TAG" --arg commit "$SOURCE_COMMIT" '
 ' "$OUTPUT/release-evidence.json" >/dev/null
 grep -F "Observing $TAG" "$OUTPUT/updater-check.txt" >/dev/null
 
+# Recording an observation is insufficient when the installed updater reports immediate eligibility.
+MALICIOUS=$TMP_ROOT/malicious
+mkdir "$MALICIOUS"
+tar -xzf "$FIXTURE/$ARCHIVE_NAME" -C "$MALICIOUS"
+PAYLOAD=$MALICIOUS/traceknot-v$VERSION
+sed 's/Observing %s;/Eligible update: %s;/' \
+    "$PAYLOAD/bin/traceknot-update" > "$PAYLOAD/bin/traceknot-update.modified"
+mv "$PAYLOAD/bin/traceknot-update.modified" "$PAYLOAD/bin/traceknot-update"
+chmod +x "$PAYLOAD/bin/traceknot-update"
+tar -czf "$FIXTURE/$ARCHIVE_NAME" -C "$MALICIOUS" "traceknot-v$VERSION"
+if command -v sha256sum >/dev/null 2>&1; then
+    malicious_sha=$(sha256sum "$FIXTURE/$ARCHIVE_NAME" | cut -d ' ' -f 1)
+else
+    malicious_sha=$(shasum -a 256 "$FIXTURE/$ARCHIVE_NAME" | cut -d ' ' -f 1)
+fi
+malicious_size=$(wc -c < "$FIXTURE/$ARCHIVE_NAME" | tr -d ' ')
+jq --arg sha "$malicious_sha" --argjson size "$malicious_size" \
+    '.artifact.sha256=$sha | .artifact.size=$size' \
+    "$FIXTURE/traceknot-update-manifest.json" > "$FIXTURE/manifest-malicious.json"
+mv "$FIXTURE/manifest-malicious.json" "$FIXTURE/traceknot-update-manifest.json"
+if PATH=$FAKE_BIN:$PATH RELEASE_FIXTURE=$FIXTURE \
+    sh "$ROOT/scripts/verify-published-release.sh" \
+    --tag "$TAG" --source-commit "$SOURCE_COMMIT" --output "$TMP_ROOT/eligible-rejected" \
+    >/dev/null 2>"$TMP_ROOT/eligible-error.log"; then
+    printf '%s\n' 'release verifier accepted immediate eligibility after first observation' >&2
+    exit 1
+fi
+test -f "$TMP_ROOT/eligible-rejected/updater-check.txt" || {
+    cat "$TMP_ROOT/eligible-error.log" >&2
+    printf '%s\n' 'negative eligibility fixture failed before the updater oracle' >&2
+    exit 1
+}
+grep -F "Eligible update: $TAG" "$TMP_ROOT/eligible-rejected/updater-check.txt" >/dev/null
+
 # A tag pointing at any other commit must fail before installation.
 jq --arg sha 0000000000000000000000000000000000000000 '.object.sha=$sha' \
     "$FIXTURE/tag.json" > "$FIXTURE/tag-wrong.json"
@@ -108,5 +142,7 @@ if PATH=$FAKE_BIN:$PATH RELEASE_FIXTURE=$FIXTURE \
     printf '%s\n' 'release verifier accepted a mismatched tag commit' >&2
     exit 1
 fi
+test -f "$TMP_ROOT/rejected/public-release.json"
+test -f "$TMP_ROOT/rejected/public-tag.json"
 
 printf '%s\n' 'release verifier smoke test: PASS'
