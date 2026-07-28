@@ -18,10 +18,14 @@ if [ "${1:-}" = -l ]; then
     [ ! -f "$CRONTAB_FILE" ] || cat "$CRONTAB_FILE"
     exit 0
 fi
+if [ "${CRONTAB_REJECT_WRITES:-0}" -ne 0 ]; then
+    exit 1
+fi
 cat > "$CRONTAB_FILE"
 EOF
 chmod +x "$FAKE_BIN/crontab"
-PATH=$FAKE_BIN:$PATH
+ORIGINAL_PATH=$PATH
+PATH=$FAKE_BIN:$ORIGINAL_PATH
 export PATH CRONTAB_FILE
 mkdir -p "$HOME"
 
@@ -77,7 +81,7 @@ test -L "$REGISTRATION_PATH"
 test "$(readlink "$REGISTRATION_PATH")" = "$PREFIX_CANON/skill"
 test "$(grep -Fc "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE")" = 1
 
-# Explicit opt-out persists disabled state and creates no schedule.
+# Explicit opt-out persists disabled state and creates no schedule, including across ordinary reinstall.
 DISABLED_PREFIX=$TMP_DIR/disabled-prefix
 DISABLED_SKILLS=$TMP_DIR/disabled-skills
 TRACEKNOT_SKILLS_ROOT=$DISABLED_SKILLS sh "$ROOT/install.sh" \
@@ -87,8 +91,56 @@ if grep -F "# traceknot-auto-update:$DISABLED_PREFIX" "$CRONTAB_FILE" >/dev/null
     printf '%s\n' 'opted-out installation unexpectedly scheduled updates' >&2
     exit 1
 fi
+TRACEKNOT_SKILLS_ROOT=$DISABLED_SKILLS sh "$ROOT/install.sh" \
+    --prefix "$DISABLED_PREFIX" >/dev/null
+test "$(sed -n 's/^automatic=//p' "$DISABLED_PREFIX/.traceknot-update/config")" = 0
+if grep -F "# traceknot-auto-update:$DISABLED_PREFIX" "$CRONTAB_FILE" >/dev/null 2>&1; then
+    printf '%s\n' 'ordinary reinstall unexpectedly re-enabled opted-out updates' >&2
+    exit 1
+fi
 TRACEKNOT_SKILLS_ROOT=$DISABLED_SKILLS sh "$ROOT/uninstall.sh" \
     --prefix "$DISABLED_PREFIX" >/dev/null
+# A default install with no crontab must fail closed with a disabled policy.
+MISSING_PREFIX=$TMP_DIR/missing-crontab-prefix
+MISSING_SKILLS=$TMP_DIR/missing-crontab-skills
+NO_CRONTAB_BIN=$TMP_DIR/no-crontab-bin
+mkdir -p "$NO_CRONTAB_BIN"
+for utility in awk basename cat cp dirname find ln mkdir mv readlink rm sed sh; do
+    utility_path=$(PATH=$ORIGINAL_PATH command -v "$utility")
+    case "$utility_path" in
+        /*) ln -s "$utility_path" "$NO_CRONTAB_BIN/$utility" ;;
+        *) printf '%s\n' "missing required test utility: $utility" >&2; exit 1 ;;
+    esac
+done
+if missing_output=$(PATH=$NO_CRONTAB_BIN TRACEKNOT_SKILLS_ROOT="$MISSING_SKILLS" \
+    sh "$ROOT/install.sh" --prefix "$MISSING_PREFIX" 2>&1); then
+    printf '%s\n' 'installation unexpectedly succeeded without crontab' >&2
+    exit 1
+fi
+printf '%s\n' "$missing_output" | grep -F 'crontab is required to enable automatic updates' >/dev/null
+test "$(sed -n 's/^automatic=//p' "$MISSING_PREFIX/.traceknot-update/config")" = 0
+if grep -F "# traceknot-auto-update:$MISSING_PREFIX" "$CRONTAB_FILE" >/dev/null 2>&1; then
+    printf '%s\n' 'missing-crontab installation unexpectedly scheduled updates' >&2
+    exit 1
+fi
+
+# A crontab write rejection must fail closed with automatic=0.
+REJECT_PREFIX=$TMP_DIR/rejected-crontab-prefix
+REJECT_SKILLS=$TMP_DIR/rejected-crontab-skills
+REJECT_CRONTAB_FILE=$TMP_DIR/rejected-crontab
+if reject_output=$(CRONTAB_FILE="$REJECT_CRONTAB_FILE" CRONTAB_REJECT_WRITES=1 \
+    TRACEKNOT_SKILLS_ROOT="$REJECT_SKILLS" sh "$ROOT/install.sh" \
+    --prefix "$REJECT_PREFIX" 2>&1); then
+    printf '%s\n' 'installation unexpectedly succeeded after crontab rejection' >&2
+    exit 1
+fi
+test "$(sed -n 's/^automatic=//p' "$REJECT_PREFIX/.traceknot-update/config")" = 0
+test ! -e "$REJECT_CRONTAB_FILE"
+if grep -F "# traceknot-auto-update:$REJECT_PREFIX" "$CRONTAB_FILE" >/dev/null 2>&1; then
+    printf '%s\n' 'rejected crontab write unexpectedly enabled updates' >&2
+    exit 1
+fi
+
 # Preview modes must not create or remove anything.
 PREVIEW_PREFIX=$TMP_DIR/preview
 TRACEKNOT_SKILLS_ROOT=$TMP_DIR/preview-skills sh "$ROOT/install.sh" --prefix "$PREVIEW_PREFIX" --dry-run >/dev/null

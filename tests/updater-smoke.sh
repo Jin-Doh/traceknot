@@ -129,6 +129,20 @@ test -x "$PREFIX/bin/traceknot-update"
 test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 1
 grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null
 
+# Runtime opt-out must survive a subsequent ordinary reinstall.
+"$PREFIX/bin/traceknot-update" disable --prefix "$PREFIX" >/dev/null
+test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 0
+if grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null 2>&1; then
+    printf '%s\n' 'runtime disable unexpectedly left an automatic-update schedule' >&2
+    exit 1
+fi
+sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null
+test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 0
+if grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null 2>&1; then
+    printf '%s\n' 'ordinary reinstall unexpectedly re-enabled runtime opt-out' >&2
+    exit 1
+fi
+
 # First observation is never immediately eligible, even for an old published release.
 first_output=$("$PREFIX/bin/traceknot-update" check --prefix "$PREFIX")
 printf '%s\n' "$first_output" | grep -F 'No release has exceeded' >/dev/null
@@ -189,6 +203,31 @@ test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 1
 "$PREFIX/current/bin/traceknot-update" disable --prefix "$PREFIX" >/dev/null
 if grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null; then exit 1; fi
 test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 0
+
+# Prefix marker matching is exact: /x must not remove a foreign /x-alt schedule.
+X_PREFIX=$TMP_DIR/x
+X_ALT_PREFIX=$TMP_DIR/x-alt
+X_SKILLS_ROOT=$TMP_DIR/x-skills
+X_FOREIGN_MARKER="# traceknot-auto-update:$X_ALT_PREFIX"
+X_FOREIGN_ENTRY="17 3 * * * /foreign/traceknot-update --prefix $X_ALT_PREFIX --auto $X_FOREIGN_MARKER"
+X_UNMARKED_ENTRY='MAILTO=traceknot-smoke@example.test'
+printf '%s\n%s\n' "$X_FOREIGN_ENTRY" "$X_UNMARKED_ENTRY" > "$CRONTAB_FILE"
+TRACEKNOT_SKILLS_ROOT=$X_SKILLS_ROOT sh "$ROOT/install.sh" --prefix "$X_PREFIX" >/dev/null
+X_PREFIX_CANON=$(CDPATH='' cd -P "$X_PREFIX" && pwd)
+grep -Fx "$X_FOREIGN_ENTRY" "$CRONTAB_FILE" >/dev/null
+grep -Fx "$X_UNMARKED_ENTRY" "$CRONTAB_FILE" >/dev/null
+awk -v marker="# traceknot-auto-update:$X_PREFIX_CANON" \
+    'substr($0, length($0) - length(marker) + 1) = marker { found=1 } END { exit !found }' \
+    "$CRONTAB_FILE"
+"$X_PREFIX/bin/traceknot-update" disable --prefix "$X_PREFIX" >/dev/null
+grep -Fx "$X_FOREIGN_ENTRY" "$CRONTAB_FILE" >/dev/null
+grep -Fx "$X_UNMARKED_ENTRY" "$CRONTAB_FILE" >/dev/null
+if awk -v marker="# traceknot-auto-update:$X_PREFIX_CANON" \
+    'substr($0, length($0) - length(marker) + 1) = marker { found=1 } END { exit found }' \
+    "$CRONTAB_FILE"; then
+    printf '%s\n' 'disabling /x unexpectedly removed only-partially-matching schedules' >&2
+    exit 1
+fi
 
 # A held lock blocks a second writer without changing the activation.
 printf '%s\n' "$$" > "$PREFIX/.traceknot-update.lock"
