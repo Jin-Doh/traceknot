@@ -2,21 +2,19 @@
 
 ## Decision summary
 
-Traceknot should introduce automatic updates as an opt-in, invocation-triggered feature. It must not update directly from `main`. The updater may install only an immutable, tagged release whose exact artifact has been observed for at least seven complete days and whose signed provenance and digest verify successfully.
+Traceknot enables delayed automatic update checks by default, with an explicit installation-time and runtime opt-out. It never updates directly from `main`. The updater may install only an immutable, tagged release whose exact artifact has been observed for more than seven complete days and whose signed provenance and digest verify successfully.
 
 The seven-day delay is a safety buffer, not a trust mechanism. Release immutability, artifact provenance, digest verification, atomic activation, and rollback remain mandatory.
 
 ## Current-state review
 
-The current `install.sh`:
+The installer and updater now:
 
-- downloads a GitHub source archive from `TRACEKNOT_REF`, defaulting to `main`;
-- copies files directly into one installation prefix;
-- records owned paths in `.traceknot-install-manifest` (`traceknot-install/v1`);
-- safely refuses unrelated files and symlinked destinations;
-- supports repeat installation, but has no installed release identity, update policy, locking, staged verification, atomic activation, or rollback.
-
-This makes reinstallation useful but unsuitable as an automatic updater. Updating in place can leave a mixed version after interruption, and `main` is not a release boundary.
+- install into a user-local prefix and record owned paths;
+- enable one daily verified update check by default;
+- support `--disable-auto-update` during installation and `traceknot-update disable` afterward;
+- stage immutable releases, verify provenance and digest, activate atomically, and retain one rollback target;
+- serialize update and uninstall operations and recover interrupted transactions.
 
 ## Test basis and acceptance criteria
 
@@ -28,8 +26,8 @@ This makes reinstallation useful but unsuitable as an automatic updater. Updatin
 | BASIS-004 | Current installer contract | Existing user-local prefixes, Skill registration, dry-run behavior, and owned-file protections must remain supported during migration. |
 | BASIS-005 | Repository contract | The canonical `sh scripts/ci` gate remains the release precondition. |
 | BASIS-006 | Derived operational criterion | Interrupted or failed updates leave either the old complete version active or the new complete version active, never a mixed tree. |
-| BASIS-007 | Derived security criterion | Automatic update is opt-in, can be disabled, and never requires `sudo`. |
-| BASIS-008 | Derived compatibility criterion | Pinned `TRACEKNOT_REF` installation remains deterministic and does not silently opt into updates. |
+| BASIS-007 | Explicit product decision | Automatic update is enabled by default, can be disabled during or after installation, and never requires `sudo`. |
+| BASIS-008 | Derived compatibility criterion | Custom-prefix, pinned initial source, dry-run, reinstall, and uninstall workflows remain functional; an explicit opt-out persists. |
 
 ### Freshness definition
 
@@ -57,9 +55,9 @@ Prereleases, drafts, deleted releases, mutable releases, and releases without va
 | RISK-001 | R3 | 4 | 3 | BASIS-001, BASIS-003 | Supply-chain compromise can execute attacker-controlled content. Require immutable releases, signed provenance, digest verification, and independent release-gate evidence. |
 | RISK-002 | R3 | 4 | 3 | BASIS-002, BASIS-003 | Timestamp manipulation or asset replacement could bypass the delay. Use authenticated GitHub server time, `max(publishedAt, firstSeenAt)`, immutable releases, and provenance bound to the artifact digest and source commit. |
 | RISK-003 | R2 | 3 | 3 | BASIS-004, BASIS-006 | In-place copying can create partial or mixed installs. Stage into a version directory and atomically switch an activation pointer. |
-| RISK-004 | R2 | 3 | 3 | BASIS-004, BASIS-008 | Migration can break existing installs or pinned workflows. Preserve v1 manifest import and keep pinned installs update-disabled. |
+| RISK-004 | R2 | 3 | 3 | BASIS-004, BASIS-008 | Migration or the default-policy change can break existing workflows. Preserve v1 manifest import and persist explicit opt-out state. |
 | RISK-005 | R2 | 3 | 2 | BASIS-006 | Concurrent invocations can race. Use a per-prefix lock with stale-lock recovery that never guesses ownership. |
-| RISK-006 | R2 | 3 | 2 | BASIS-007 | Silent updates can surprise users or hide failures. Require explicit opt-in, structured status, disable/check-only controls, and no privilege escalation. |
+| RISK-006 | R2 | 3 | 3 | BASIS-007 | Default-on checks can surprise users or hide failures. Provide installation-time and runtime opt-out, structured status, check-only controls, the seven-day delay, and no privilege escalation. |
 
 Residual risk remains R3 until the release pipeline, updater, migration, rollback, and independent security verification are implemented and exercised.
 
@@ -112,8 +110,8 @@ Invalid transitions fail closed. Cancellation before activation removes staging.
 
 ## Policy and security invariants
 
-1. Automatic mode is disabled by default. `--enable-auto-update` records explicit consent; it does not force an immediate update.
-2. `TRACEKNOT_REF` other than an updater-managed stable tag implies pinned mode and disables automatic application.
+1. Automatic checks are enabled by default. `--disable-auto-update` records installation-time opt-out; `traceknot-update disable` removes the schedule and persists that decision.
+2. `TRACEKNOT_REF` pins the initially installed revision; use `--disable-auto-update` when that installation must remain pinned.
 3. Network failure, GitHub rate limiting, malformed metadata, missing attestation, clock anomaly, or verification failure preserves the active version.
 4. The updater accepts assets only from the configured Traceknot GitHub repository and rejects redirects to unapproved origins.
 5. Archive extraction rejects absolute paths, `..`, device files, and links escaping the staging root.
@@ -136,23 +134,23 @@ Invalid transitions fail closed. Cancellation before activation removes staging.
 
 - Add the schema-backed resolver, observation store, policy engine, status output, and locking.
 - Ship `check`, `status`, `enable`, and `disable`; do not apply updates.
-- Import a v1 manifest as an update-disabled legacy state. Before first managed activation, copy the owned flat payload into a verified `releases/legacy-<digest>` rollback snapshot without changing the live files. The first activation transaction must persist that snapshot and original Skill-registration target, then atomically activate `current` and replace the registration through the same recovery journal. Startup recovery restores both the legacy payload target and original registration if the transaction does not commit.
+- Import a v1 manifest as a legacy state while preserving the configured default or explicit opt-out. Before first managed activation, copy the owned flat payload into a verified `releases/legacy-<digest>` rollback snapshot without changing the live files. The first activation transaction must persist that snapshot and original Skill-registration target, then atomically activate `current` and replace the registration through the same recovery journal. Startup recovery restores both the legacy payload target and original registration if the transaction does not commit.
 
 **Exit:** strict boundary, backdating, forward and backward local-clock jumps, invalid calendar dates, mutation, prerelease, malformed metadata, race, and offline scenarios return the expected decision without changing installed files.
 
-### Phase 2 — transactional opt-in application
+### Phase 2 — transactional application
 
 - Add verified download, safe extraction, versioned staging, atomic activation, smoke check, and rollback.
 - Move Skill registration to `${prefix}/current/skill` only after the active release exists.
-- Preserve pinned and dry-run workflows.
+- Preserve custom-prefix, explicit opt-out, and dry-run workflows.
 
 **Exit:** fault injection at every filesystem boundary leaves a complete old or new install, and the original registration remains usable after rollback.
 
-### Phase 3 — controlled adoption
+### Phase 3 — default-on controlled adoption
 
-- Enable opt-in automatic checks on normal Traceknot invocation, rate-limited to once per 24 hours.
+- Enable one automatic check per day by default; installation and runtime opt-out remain first-class.
 - Publish structured status and user-facing remediation.
-- Observe failure and rollback rates before considering any default change. Default-on requires a separate decision and risk acceptance.
+- Monitor failure and rollback rates, and retain the ability to disable without removing Traceknot.
 
 ## Verification plan
 
@@ -167,7 +165,7 @@ Invalid transitions fail closed. Cancellation before activation removes staging.
 | COND-005 concurrency | BASIS-006 | RISK-005 | Race, stale operation, cancellation | At most one writer can stage or activate a prefix. |
 | COND-006 migration compatibility | BASIS-004, BASIS-008 | RISK-004 | Compatibility scenarios | v1, custom-prefix, pinned, dry-run, install, and uninstall contracts remain usable. |
 | COND-007 release pipeline | BASIS-003, BASIS-005 | RISK-001 | Build, negative provenance | Only the protected workflow after the canonical gate can produce accepted release provenance. |
-| COND-008 end-to-end opt-in flow | BASIS-001, BASIS-002, BASIS-007 | RISK-001, RISK-002, RISK-003, RISK-006 | End-to-end scenario | Opt-in observation, delayed application, status, rollback, and disable work without privilege escalation. |
+| COND-008 end-to-end default and opt-out flow | BASIS-001, BASIS-002, BASIS-007 | RISK-001, RISK-002, RISK-003, RISK-006 | End-to-end scenario | Fresh install schedules checks by default; installation-time and runtime opt-out persist; delayed application, status, and rollback work without privilege escalation. |
 
 ### Mandatory obligations
 
@@ -180,7 +178,7 @@ Invalid transitions fail closed. Cancellation before activation removes staging.
 | OBL-005 | COND-005 | BASIS-006 / RISK-005 | Scenario result | Concurrent processes / independent-producer | Concurrent check/apply attempts serialize; stale lock handling never permits two writers. |
 | OBL-006 | COND-006 | BASIS-004, BASIS-008 / RISK-004 | Scenario result | Installer lifecycle / independent-producer | Default/custom prefixes, v1 manifests, legacy rollback snapshots, original Skill registration, dry-run, pinned refs, install, and uninstall retain their contracts. |
 | OBL-007 | COND-007 | BASIS-003, BASIS-005 / RISK-001 | Build result | Release candidate / independent-producer | Canonical CI, deterministic package, schema validation, trusted-workflow attestation verification, immutable publication gate, and offline verification pass. |
-| OBL-008 | COND-008 | BASIS-001, BASIS-002, BASIS-007 / RISK-001, RISK-002, RISK-003, RISK-006 | Scenario result | Installed product / independent-producer | A fresh installation opts in, observes for more than seven days using controlled trusted time, applies, smoke-checks, reports status, rolls back under injected failure, and disables cleanly. |
+| OBL-008 | COND-008 | BASIS-001, BASIS-002, BASIS-007 / RISK-001, RISK-002, RISK-003, RISK-006 | Scenario result | Installed product / independent-producer | A fresh installation schedules one daily check, observes for more than seven days using controlled trusted time, applies, smoke-checks, reports status, rolls back under injected failure, and both opt-out paths disable cleanly. |
 
 Every evidence record must bind the obligation ID, basis and risk IDs, target commit, release-candidate digest, environment, command or scenario, start and end timestamps, exit status, structured counts, immutable artifact URI, and producer identity plus independence level. Missing binding makes the obligation incomplete, not passed.
 
@@ -198,4 +196,4 @@ A production verdict cannot be `PASS` until all mandatory obligations above pass
 - A strict JSON Schema for the signed update manifest.
 - Explicit basis, risk, conditions, obligations, independence, and exit criteria for future implementation.
 
-No updater is enabled by this planning change. Existing installation behavior remains unchanged.
+Automatic checks are enabled by default. Users can opt out during installation with `--disable-auto-update` or afterward with `traceknot-update disable`.

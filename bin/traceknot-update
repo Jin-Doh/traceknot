@@ -1,5 +1,5 @@
 #!/bin/sh
-# Secure, opt-in updater for user-local Traceknot installations.
+# Secure updater for user-local Traceknot installations.
 
 set -eu
 
@@ -30,7 +30,7 @@ Commands:
   check                 observe releases and report eligibility (default)
   apply                 install the newest eligible verified release
   rollback              restore the previous committed release
-  enable                opt in and install the daily automatic-update schedule
+  enable                install the daily automatic-update schedule
   disable               opt out and remove the automatic-update schedule
   status                show policy and installed update state
 
@@ -207,7 +207,7 @@ acquire_lock
 mkdir -p "$STATE_DIR"
 [ ! -L "$STATE_DIR" ] || fail 'refusing symlink update state directory'
 if [ ! -f "$CONFIG" ]; then
-    printf '%s\n%s\n%s\n' 'traceknot-update-config/v1' 'automatic=0' 'lastCheck=0' > "$CONFIG"
+    printf '%s\n%s\n%s\n' 'traceknot-update-config/v1' 'automatic=1' 'lastCheck=0' > "$CONFIG"
 fi
 [ "$(sed -n '1p' "$CONFIG")" = traceknot-update-config/v1 ] || fail 'invalid update configuration'
 AUTOMATIC=$(sed -n 's/^automatic=//p' "$CONFIG")

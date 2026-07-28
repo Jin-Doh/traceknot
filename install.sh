@@ -4,10 +4,10 @@
 set -eu
 
 PROGRAM=traceknot-install
-SOURCE_ROOT=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
+SOURCE_ROOT=$(CDPATH='' cd -P "$(dirname "$0")" && pwd)
 MANIFEST_NAME=.traceknot-install-manifest
 DRY_RUN=0
-ENABLE_AUTO_UPDATE=0
+AUTO_UPDATE=1
 PREFIX=
 BOOTSTRAP_TMP=
 MANIFEST_TMP=
@@ -28,7 +28,7 @@ trap 'exit 1' HUP INT TERM
 
 usage() {
     cat <<EOF
-Usage: $PROGRAM [--prefix DIR] [--dry-run] [--enable-auto-update]
+Usage: $PROGRAM [--prefix DIR] [--dry-run] [--disable-auto-update]
 
 Install Traceknot and register its Skill for OMP and Codex without sudo.
 
@@ -36,7 +36,7 @@ Options:
   --prefix DIR       install into DIR instead of the default
   --destination DIR  alias for --prefix
   --dry-run, -n      show planned writes without changing the filesystem
-  --enable-auto-update  opt in and schedule one verified update check per day
+  --disable-auto-update  install without scheduling automatic update checks
   --help, -h         show this help
 
 Default prefix: \${XDG_DATA_HOME:-\$HOME/.local/share}/traceknot
@@ -60,7 +60,7 @@ canonical_path() {
     esac
 
     if [ -d "$canonical_input" ]; then
-        (CDPATH= cd -P "$canonical_input" && pwd)
+        (CDPATH='' cd -P "$canonical_input" && pwd)
         return
     fi
 
@@ -109,8 +109,8 @@ while [ "$#" -gt 0 ]; do
             DRY_RUN=1
             shift
             ;;
-        --enable-auto-update)
-            ENABLE_AUTO_UPDATE=1
+        --disable-auto-update)
+            AUTO_UPDATE=0
             shift
             ;;
         --help|-h)
@@ -288,8 +288,10 @@ $(find "$SOURCE_ROOT/$component" -type f -print)
 EOF
     done
     printf '  register %s -> %s/skill\n' "$REGISTRATION_PATH" "$PREFIX_CANON"
-    if [ "$ENABLE_AUTO_UPDATE" -eq 1 ]; then
+    if [ "$AUTO_UPDATE" -eq 1 ]; then
         printf '  enable daily automatic updates after installation\n'
+    else
+        printf '  leave automatic updates disabled\n'
     fi
     exit 0
 fi
@@ -342,7 +344,9 @@ fi
 
 mv "$MANIFEST_TMP" "$PREFIX_CANON/$MANIFEST_NAME"
 MANIFEST_TMP=
-if [ "$ENABLE_AUTO_UPDATE" -eq 1 ]; then
+if [ "$AUTO_UPDATE" -eq 1 ]; then
     "$PREFIX_CANON/bin/traceknot-update" enable --prefix "$PREFIX_CANON"
+else
+    "$PREFIX_CANON/bin/traceknot-update" disable --prefix "$PREFIX_CANON"
 fi
 printf 'Installed Traceknot to %s and registered %s\n' "$PREFIX_CANON" "$REGISTRATION_PATH"

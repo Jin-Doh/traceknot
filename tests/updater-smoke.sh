@@ -15,9 +15,6 @@ CRONTAB_FILE=$TMP_DIR/crontab
 export HOME TRACEKNOT_SKILLS_ROOT CRONTAB_FILE
 mkdir -p "$HOME" "$FAKE_BIN" "$FIXTURE"
 
-sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null
-PREFIX_CANON=$(CDPATH='' cd -P "$PREFIX" && pwd)
-test -x "$PREFIX/bin/traceknot-update"
 
 VERSION=1.2.3
 TAG=v$VERSION
@@ -126,6 +123,11 @@ FAKE_FIXTURE=$FIXTURE
 FAKE_ARCHIVE_NAME=$ARCHIVE_NAME
 PATH=$FAKE_BIN:$PATH
 export FAKE_HTTP_DATE FAKE_FIXTURE FAKE_ARCHIVE_NAME PATH
+sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null
+PREFIX_CANON=$(CDPATH='' cd -P "$PREFIX" && pwd)
+test -x "$PREFIX/bin/traceknot-update"
+test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 1
+grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null
 
 # First observation is never immediately eligible, even for an old published release.
 first_output=$("$PREFIX/bin/traceknot-update" check --prefix "$PREFIX")
@@ -180,7 +182,7 @@ printf '%s\n' "$legacy_check" | grep -F "Eligible update: $TAG" >/dev/null
 test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = "$TAG"
 test -f "$PREFIX/current/skill/SKILL.md"
 
-# Opt-in and opt-out are explicit and own only their marked schedule.
+# Default-on scheduling and explicit opt-out own only their marked schedule.
 "$PREFIX/current/bin/traceknot-update" enable --prefix "$PREFIX" >/dev/null
 grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null
 test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 1

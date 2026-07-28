@@ -3,12 +3,26 @@
 
 set -eu
 
-ROOT=$(CDPATH= cd -P "$(dirname "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -P "$(dirname "$0")/.." && pwd)
 TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-installer.XXXXXX")
 trap 'rm -rf "$TMP_DIR"' 0 HUP INT TERM
 HOME=$TMP_DIR/home
 TRACEKNOT_SKILLS_ROOT=$HOME/.agents/skills
 export HOME TRACEKNOT_SKILLS_ROOT
+FAKE_BIN=$TMP_DIR/bin
+CRONTAB_FILE=$TMP_DIR/crontab
+mkdir -p "$FAKE_BIN"
+cat > "$FAKE_BIN/crontab" <<'EOF'
+#!/bin/sh
+if [ "${1:-}" = -l ]; then
+    [ ! -f "$CRONTAB_FILE" ] || cat "$CRONTAB_FILE"
+    exit 0
+fi
+cat > "$CRONTAB_FILE"
+EOF
+chmod +x "$FAKE_BIN/crontab"
+PATH=$FAKE_BIN:$PATH
+export PATH CRONTAB_FILE
 mkdir -p "$HOME"
 
 PREFIX=$TMP_DIR/prefix
@@ -36,7 +50,7 @@ test "$(cat "$REGISTRATION_PATH")" = do-not-overwrite
 rm -f "$REGISTRATION_PATH"
 
 sh "$ROOT/install.sh" --prefix "$PREFIX"
-PREFIX_CANON=$(CDPATH= cd -P "$PREFIX" && pwd)
+PREFIX_CANON=$(CDPATH='' cd -P "$PREFIX" && pwd)
 test -f "$PREFIX/LICENSE"
 test -f "$PREFIX/skill/SKILL.md"
 test -f "$PREFIX/skill/references/test-process.md"
@@ -50,6 +64,8 @@ test -x "$PREFIX/bin/traceknot-update"
 test -f "$PREFIX/.traceknot-install-manifest"
 test -L "$REGISTRATION_PATH"
 test "$(readlink "$REGISTRATION_PATH")" = "$PREFIX_CANON/skill"
+test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 1
+grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null
 test "$(cat "$PREFIX/unrelated-sentinel.txt")" = keep-me
 
 # Reinstalling over the same prefix must succeed and preserve unrelated files.
@@ -59,7 +75,20 @@ test "$(cat "$PREFIX/unrelated-sentinel.txt")" = keep-me
 test -x "$PREFIX/bin/traceknot-update"
 test -L "$REGISTRATION_PATH"
 test "$(readlink "$REGISTRATION_PATH")" = "$PREFIX_CANON/skill"
+test "$(grep -Fc "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE")" = 1
 
+# Explicit opt-out persists disabled state and creates no schedule.
+DISABLED_PREFIX=$TMP_DIR/disabled-prefix
+DISABLED_SKILLS=$TMP_DIR/disabled-skills
+TRACEKNOT_SKILLS_ROOT=$DISABLED_SKILLS sh "$ROOT/install.sh" \
+    --prefix "$DISABLED_PREFIX" --disable-auto-update >/dev/null
+test "$(sed -n 's/^automatic=//p' "$DISABLED_PREFIX/.traceknot-update/config")" = 0
+if grep -F "# traceknot-auto-update:$DISABLED_PREFIX" "$CRONTAB_FILE" >/dev/null 2>&1; then
+    printf '%s\n' 'opted-out installation unexpectedly scheduled updates' >&2
+    exit 1
+fi
+TRACEKNOT_SKILLS_ROOT=$DISABLED_SKILLS sh "$ROOT/uninstall.sh" \
+    --prefix "$DISABLED_PREFIX" >/dev/null
 # Preview modes must not create or remove anything.
 PREVIEW_PREFIX=$TMP_DIR/preview
 TRACEKNOT_SKILLS_ROOT=$TMP_DIR/preview-skills sh "$ROOT/install.sh" --prefix "$PREVIEW_PREFIX" --dry-run >/dev/null
