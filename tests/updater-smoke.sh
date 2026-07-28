@@ -210,6 +210,22 @@ if grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null 2>
     printf '%s\n' 'ordinary reinstall unexpectedly re-enabled runtime opt-out' >&2
     exit 1
 fi
+# Enable fails before scheduling when no checksum implementation is available.
+NO_CHECKSUM_BIN=$TMP_DIR/no-checksum-bin
+mkdir -p "$NO_CHECKSUM_BIN"
+for checksum_dependency in awk basename cat crontab curl dirname gh jq ln mkdir mktemp mv readlink rm sed sh sync tar; do
+    checksum_dependency_path=$(command -v "$checksum_dependency")
+    ln -s "$checksum_dependency_path" "$NO_CHECKSUM_BIN/$checksum_dependency"
+done
+if PATH=$NO_CHECKSUM_BIN "$PREFIX/bin/traceknot-update" enable --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'automatic updates enabled without a checksum utility' >&2
+    exit 1
+fi
+test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 0
+if grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null 2>&1; then
+    printf '%s\n' 'missing checksum preflight still installed a schedule' >&2
+    exit 1
+fi
 
 # Observation state refuses symbolic links before reading or appending.
 OBSERVATION_TARGET=$TMP_DIR/observation-target
@@ -275,6 +291,13 @@ test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/s
 # Ordinary reinstall retargets registration to the newly installed flat payload.
 sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null
 test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/skill"
+test ! -e "$PREFIX/current"
+test ! -e "$PREFIX/rollback"
+test ! -e "$PREFIX/.traceknot-update/active.json"
+test ! -e "$PREFIX/.traceknot-update/rollback-active.json"
+test ! -e "$PREFIX/releases"
+"$PREFIX/bin/traceknot-update" apply --prefix "$PREFIX" >/dev/null
+test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/skill"
 
 # Transaction snapshot destinations refuse symbolic links.
 SNAPSHOT_TARGET=$TMP_DIR/snapshot-target

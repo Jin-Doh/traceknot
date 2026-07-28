@@ -17,6 +17,7 @@ REGISTRATION_PATH=
 INSTALL_LOCK_OWNED=0
 INSTALL_RECOVERY_LOCK_HELD=0
 INSTALL_LOCK_CLAIM=
+MANAGED_STATE_RESET=0
 
 try_acquire_install_lock() {
     install_lock=$PREFIX_CANON/.traceknot-update.lock
@@ -421,6 +422,26 @@ mkdir -p "$PREFIX_CANON"
 PREFIX_CANON=$(canonical_path "$PREFIX_CANON") || fail 'cannot resolve destination after creation'
 [ "$PREFIX_CANON" != "/" ] || fail 'refusing to install into filesystem root'
 acquire_install_lock
+MANAGED_RELEASES_DIR=$PREFIX_CANON/releases
+if [ -e "$PREFIX_CANON/current" ] || [ -L "$PREFIX_CANON/current" ] ||
+   [ -e "$PREFIX_CANON/rollback" ] || [ -L "$PREFIX_CANON/rollback" ]; then
+    [ -d "$MANAGED_RELEASES_DIR" ] && [ ! -L "$MANAGED_RELEASES_DIR" ] ||
+        fail "refusing unsafe managed releases directory: $MANAGED_RELEASES_DIR"
+    for managed_link in "$PREFIX_CANON/current" "$PREFIX_CANON/rollback"; do
+        if [ -e "$managed_link" ] || [ -L "$managed_link" ]; then
+            [ -L "$managed_link" ] ||
+                fail "refusing non-symlink managed activation path: $managed_link"
+            managed_target=$(readlink "$managed_link")
+            case "$managed_target" in
+                "$MANAGED_RELEASES_DIR"/*) ;;
+                *) fail "managed activation escapes releases directory: $managed_link" ;;
+            esac
+            [ -d "$managed_target" ] && [ ! -L "$managed_target" ] ||
+                fail "managed activation target is unsafe: $managed_target"
+        fi
+    done
+    MANAGED_STATE_RESET=1
+fi
 if [ "$AUTO_UPDATE_EXPLICIT" -eq 0 ]; then
     AUTO_UPDATE=1
     if [ -e "$EXISTING_UPDATE_CONFIG" ] || [ -L "$EXISTING_UPDATE_CONFIG" ]; then
@@ -491,6 +512,16 @@ fi
 
 mv "$MANIFEST_TMP" "$PREFIX_CANON/$MANIFEST_NAME"
 MANIFEST_TMP=
+if [ "$MANAGED_STATE_RESET" -eq 1 ]; then
+    rm -f "$PREFIX_CANON/current" "$PREFIX_CANON/rollback" \
+        "$PREFIX_CANON/.traceknot-update/active.json" \
+        "$PREFIX_CANON/.traceknot-update/rollback-active.json" \
+        "$PREFIX_CANON/.traceknot-update/transaction" \
+        "$PREFIX_CANON/.traceknot-update/transaction-active-before.json" \
+        "$PREFIX_CANON/.traceknot-update/transaction-rollback-before.json"
+    rm -rf "$MANAGED_RELEASES_DIR"
+    if command -v sync >/dev/null 2>&1; then sync; fi
+fi
 release_install_lock
 if [ "$AUTO_UPDATE" -eq 1 ]; then
     "$PREFIX_CANON/bin/traceknot-update" enable --prefix "$PREFIX_CANON"

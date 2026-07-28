@@ -299,6 +299,8 @@ else
             fail 'cannot read existing crontab safely'
         fi
         rm -f "$crontab_error"
+    else
+        fail 'crontab is required to remove the automatic-update schedule safely'
     fi
 fi
 if [ "$REGISTRATION_OWNED" -eq 1 ]; then

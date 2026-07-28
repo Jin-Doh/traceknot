@@ -207,6 +207,11 @@ test -L "$REGISTRATION_PATH"
 
 # A damaged installation without an executable updater still removes its schedule.
 chmod -x "$PREFIX/bin/traceknot-update"
+if PATH=$NO_CRONTAB_BIN sh "$ROOT/uninstall.sh" --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'fallback uninstall succeeded without crontab access' >&2
+    exit 1
+fi
+test -f "$PREFIX/LICENSE"
 sh "$ROOT/uninstall.sh" --prefix "$PREFIX"
 test ! -e "$PREFIX/LICENSE"
 test ! -e "$PREFIX/skill/SKILL.md"

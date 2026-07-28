@@ -356,6 +356,9 @@ if [ "$COMMAND" = enable ]; then
         command -v "$update_dependency" >/dev/null 2>&1 ||
             fail "$update_dependency is required to enable automatic updates"
     done
+    command -v sha256sum >/dev/null 2>&1 ||
+        command -v shasum >/dev/null 2>&1 ||
+        fail 'sha256sum or shasum is required to enable automatic updates'
     install_schedule
     write_config 1 "$LAST_CHECK"
     printf 'Automatic updates enabled for %s\n' "$PREFIX"
@@ -543,6 +546,7 @@ recover_transaction() {
             prune_obsolete_release "$rollback_previous"
         fi
         rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
+        sync_transaction_state
         return
     fi
 
@@ -579,7 +583,9 @@ recover_transaction() {
         [ -z "$staging" ] || rm -rf "$staging"
         rm -rf "$candidate"
     fi
+    sync_transaction_state
     rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
+    sync_transaction_state
 }
 recover_transaction
 
@@ -614,9 +620,11 @@ perform_rollback() {
     rollback_state_tmp=$ROLLBACK_STATE.tmp.rollback.$$
     copy_exclusive "$TX_ACTIVE_BEFORE" "$rollback_state_tmp"
     mv "$rollback_state_tmp" "$ROLLBACK_STATE"
+    sync_transaction_state
     write_journal rollback committed "$rollback_from" "$rollback_to" '' "$rollback_registration_previous" "$rollback_to"
     sync_transaction_state
     rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
+    sync_transaction_state
     printf 'Rolled Traceknot back to %s\n' "$(jq -r .releaseTag "$ACTIVE_STATE")"
     exit 0
 }
@@ -1012,8 +1020,10 @@ mv "$active_tmp" "$ACTIVE_STATE"
 if [ "$AUTOMATIC" -eq 1 ]; then
     install_schedule
 fi
+sync_transaction_state
 write_journal apply committed "$PREVIOUS" "$FINAL" "$STAGING" "$REGISTRATION_PREVIOUS" "$ROLLBACK_PREVIOUS"
 sync_transaction_state
 prune_obsolete_release "$ROLLBACK_PREVIOUS"
 rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
+sync_transaction_state
 printf 'Updated Traceknot to %s at %s\n' "$RELEASE_TAG" "$CURRENT"
