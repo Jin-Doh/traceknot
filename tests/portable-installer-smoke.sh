@@ -141,6 +141,40 @@ if grep -F "# traceknot-auto-update:$REJECT_PREFIX" "$CRONTAB_FILE" >/dev/null 2
     exit 1
 fi
 
+# Unsafe updater state is rejected before any installed payload can be overwritten.
+STATE_PREFIX=$TMP_DIR/state-symlink-prefix
+STATE_SKILLS=$TMP_DIR/state-symlink-skills
+TRACEKNOT_SKILLS_ROOT=$STATE_SKILLS sh "$ROOT/install.sh" \
+    --prefix "$STATE_PREFIX" --disable-auto-update >/dev/null
+printf '%s\n' preserve-state-payload >> "$STATE_PREFIX/skill/SKILL.md"
+rm -rf "$STATE_PREFIX/.traceknot-update"
+mkdir -p "$TMP_DIR/outside-state"
+printf '%s\n%s\n%s\n' traceknot-update-config/v1 automatic=0 lastCheck=0 \
+    > "$TMP_DIR/outside-state/config"
+ln -s "$TMP_DIR/outside-state" "$STATE_PREFIX/.traceknot-update"
+if TRACEKNOT_SKILLS_ROOT=$STATE_SKILLS sh "$ROOT/install.sh" \
+    --prefix "$STATE_PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'reinstall unexpectedly accepted symlink update state' >&2
+    exit 1
+fi
+grep -F preserve-state-payload "$STATE_PREFIX/skill/SKILL.md" >/dev/null
+
+# A dangling config symlink cannot escape the prefix during reinstall.
+CONFIG_PREFIX=$TMP_DIR/config-symlink-prefix
+CONFIG_SKILLS=$TMP_DIR/config-symlink-skills
+OUTSIDE_CONFIG=$TMP_DIR/outside-config
+TRACEKNOT_SKILLS_ROOT=$CONFIG_SKILLS sh "$ROOT/install.sh" \
+    --prefix "$CONFIG_PREFIX" --disable-auto-update >/dev/null
+printf '%s\n' preserve-config-payload >> "$CONFIG_PREFIX/skill/SKILL.md"
+rm -f "$CONFIG_PREFIX/.traceknot-update/config"
+ln -s "$OUTSIDE_CONFIG" "$CONFIG_PREFIX/.traceknot-update/config"
+if TRACEKNOT_SKILLS_ROOT=$CONFIG_SKILLS sh "$ROOT/install.sh" \
+    --prefix "$CONFIG_PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'reinstall unexpectedly accepted symlink update config' >&2
+    exit 1
+fi
+test ! -e "$OUTSIDE_CONFIG"
+grep -F preserve-config-payload "$CONFIG_PREFIX/skill/SKILL.md" >/dev/null
 # Preview modes must not create or remove anything.
 PREVIEW_PREFIX=$TMP_DIR/preview
 TRACEKNOT_SKILLS_ROOT=$TMP_DIR/preview-skills sh "$ROOT/install.sh" --prefix "$PREVIEW_PREFIX" --dry-run >/dev/null

@@ -113,7 +113,7 @@ Invalid transitions fail closed. Cancellation before activation removes staging.
 1. Automatic checks are enabled by default. `--disable-auto-update` records installation-time opt-out; `traceknot-update disable` removes the schedule and persists that decision.
 2. `TRACEKNOT_REF` pins the initially installed revision; use `--disable-auto-update` when that installation must remain pinned.
 3. Network failure, GitHub rate limiting, malformed metadata, missing attestation, clock anomaly, or verification failure preserves the active version.
-4. The updater accepts assets only from the configured Traceknot GitHub repository and rejects redirects to unapproved origins.
+4. The updater accepts asset API URLs only from the configured Traceknot GitHub repository and permits only HTTPS transport for GitHub-controlled download redirects.
 5. Archive extraction rejects absolute paths, `..`, device files, and links escaping the staging root.
 6. A version is never downgraded automatically. Reinstalling the same digest is a no-op; the same version with a different digest is a security failure.
 7. Update state and activation targets must be regular owned paths beneath the canonical prefix, with the installer's existing symlink checks retained.

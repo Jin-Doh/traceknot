@@ -239,8 +239,13 @@ if [ -e "$MANIFEST" ]; then
 $(sed -n '2,$p' "$MANIFEST")
 EOF
 fi
+UPDATE_STATE_DIR=$PREFIX_CANON/.traceknot-update
+if [ -e "$UPDATE_STATE_DIR" ] || [ -L "$UPDATE_STATE_DIR" ]; then
+    [ -d "$UPDATE_STATE_DIR" ] && [ ! -L "$UPDATE_STATE_DIR" ] ||
+        fail "refusing unsafe update state directory: $UPDATE_STATE_DIR"
+fi
 EXISTING_UPDATE_CONFIG=$PREFIX_CANON/.traceknot-update/config
-if [ -e "$EXISTING_UPDATE_CONFIG" ]; then
+if [ -e "$EXISTING_UPDATE_CONFIG" ] || [ -L "$EXISTING_UPDATE_CONFIG" ]; then
     [ -f "$EXISTING_UPDATE_CONFIG" ] && [ ! -L "$EXISTING_UPDATE_CONFIG" ] ||
         fail "refusing unsafe update configuration: $EXISTING_UPDATE_CONFIG"
     [ "$(sed -n '1p' "$EXISTING_UPDATE_CONFIG")" = traceknot-update-config/v1 ] ||

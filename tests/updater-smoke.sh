@@ -52,8 +52,8 @@ cat > "$FIXTURE/releases.json" <<EOF
     "prerelease": false,
     "immutable": true,
     "assets": [
-      {"name": "traceknot-update-manifest.json", "url": "https://api.github.test/manifest"},
-      {"name": "$ARCHIVE_NAME", "url": "https://api.github.test/artifact"}
+      {"name": "traceknot-update-manifest.json", "url": "https://api.github.com/repos/Jin-Doh/traceknot/releases/assets/manifest"},
+      {"name": "$ARCHIVE_NAME", "url": "https://api.github.com/repos/Jin-Doh/traceknot/releases/assets/artifact"}
     ]
   }
 ]
@@ -129,6 +129,16 @@ test -x "$PREFIX/bin/traceknot-update"
 test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 1
 grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null
 
+# Release metadata cannot redirect asset fetches outside the approved GitHub API origin.
+cp "$FIXTURE/releases.json" "$FIXTURE/releases.safe.json"
+jq '.[0].assets |= map(.url = "https://evil.example/" + .name)' \
+    "$FIXTURE/releases.safe.json" > "$FIXTURE/releases.json"
+if "$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'unapproved release asset origin unexpectedly accepted' >&2
+    exit 1
+fi
+mv "$FIXTURE/releases.safe.json" "$FIXTURE/releases.json"
+test ! -e "$PREFIX/current"
 # Runtime opt-out must survive a subsequent ordinary reinstall.
 "$PREFIX/bin/traceknot-update" disable --prefix "$PREFIX" >/dev/null
 test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 0
@@ -229,6 +239,28 @@ if awk -v marker="# traceknot-auto-update:$X_PREFIX_CANON" \
     exit 1
 fi
 
+# Exact marker matching treats backslashes in a legal absolute prefix literally.
+BACKSLASH_PREFIX=$TMP_DIR/'prefix\b'
+BACKSLASH_SKILLS=$TMP_DIR/backslash-skills
+TRACEKNOT_SKILLS_ROOT=$BACKSLASH_SKILLS sh "$ROOT/install.sh" \
+    --prefix "$BACKSLASH_PREFIX" >/dev/null
+BACKSLASH_PREFIX_CANON=$(CDPATH='' cd -P "$BACKSLASH_PREFIX" && pwd)
+TRACEKNOT_CRON_MARKER="# traceknot-auto-update:$BACKSLASH_PREFIX_CANON" \
+    awk 'BEGIN { marker=ENVIRON["TRACEKNOT_CRON_MARKER"] }
+         substr($0, length($0) - length(marker) + 1) == marker { found++ }
+         END { exit found != 1 }' "$CRONTAB_FILE"
+"$BACKSLASH_PREFIX/bin/traceknot-update" disable \
+    --prefix "$BACKSLASH_PREFIX" >/dev/null
+if TRACEKNOT_CRON_MARKER="# traceknot-auto-update:$BACKSLASH_PREFIX_CANON" \
+    awk 'BEGIN { marker=ENVIRON["TRACEKNOT_CRON_MARKER"] }
+         substr($0, length($0) - length(marker) + 1) == marker { found=1 }
+         END { exit !found }' "$CRONTAB_FILE"; then
+    printf '%s\n' 'backslash-prefix schedule survived explicit opt-out' >&2
+    exit 1
+fi
+TRACEKNOT_SKILLS_ROOT=$BACKSLASH_SKILLS sh "$ROOT/install.sh" \
+    --prefix "$BACKSLASH_PREFIX" >/dev/null
+test "$(sed -n 's/^automatic=//p' "$BACKSLASH_PREFIX/.traceknot-update/config")" = 0
 # A held lock blocks a second writer without changing the activation.
 printf '%s\n' "$$" > "$PREFIX/.traceknot-update.lock"
 if "$PREFIX/current/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>&1; then
