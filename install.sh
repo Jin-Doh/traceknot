@@ -316,16 +316,6 @@ if [ -e "$MANIFEST" ]; then
     [ "$(sed -n '1p' "$MANIFEST")" = 'traceknot-install/v1' ] || fail "refusing unrelated manifest: $MANIFEST"
 fi
 
-if [ -L "$REGISTRATION_PATH" ]; then
-    command -v readlink >/dev/null 2>&1 || fail 'readlink is required to verify the existing Skill registration'
-    registration_target=$(readlink "$REGISTRATION_PATH")
-    case "$registration_target" in
-        "$PREFIX_CANON/skill"|"$PREFIX_CANON/current/skill") ;;
-        *) fail "refusing unrelated Skill registration: $REGISTRATION_PATH" ;;
-    esac
-elif [ -e "$REGISTRATION_PATH" ]; then
-    fail "refusing to overwrite unowned Skill registration: $REGISTRATION_PATH"
-fi
 
 PREVIOUS_MANIFEST=0
 if [ -e "$MANIFEST" ]; then
@@ -360,6 +350,35 @@ if [ -e "$EXISTING_UPDATE_CONFIG" ] || [ -L "$EXISTING_UPDATE_CONFIG" ]; then
         1) ;;
         *) fail "invalid automatic update setting: $EXISTING_UPDATE_CONFIG" ;;
     esac
+fi
+if [ -z "${TRACEKNOT_SKILLS_ROOT+x}" ] &&
+   [ -e "$EXISTING_UPDATE_CONFIG" ] && [ ! -L "$EXISTING_UPDATE_CONFIG" ]; then
+    PERSISTED_SKILLS_ROOT=$(sed -n 's/^skillsRoot=//p' "$EXISTING_UPDATE_CONFIG")
+    if [ -n "$PERSISTED_SKILLS_ROOT" ]; then
+        case "$PERSISTED_SKILLS_ROOT" in
+            /*) ;;
+            *) fail "persisted Skills root must be absolute: $EXISTING_UPDATE_CONFIG" ;;
+        esac
+        case "$PERSISTED_SKILLS_ROOT" in *'
+'*) fail "persisted Skills root contains a line break: $EXISTING_UPDATE_CONFIG" ;; esac
+        SKILLS_ROOT=$PERSISTED_SKILLS_ROOT
+        SKILLS_ROOT_CANON=$(canonical_path "$SKILLS_ROOT") ||
+            fail "cannot resolve persisted Agent Skills directory: $SKILLS_ROOT"
+        [ "$SKILLS_ROOT_CANON" != "/" ] ||
+            fail 'refusing to register a Skill in filesystem root'
+        REGISTRATION_PATH=$SKILLS_ROOT_CANON/traceknot
+    fi
+fi
+if [ -L "$REGISTRATION_PATH" ]; then
+    command -v readlink >/dev/null 2>&1 ||
+        fail 'readlink is required to verify the existing Skill registration'
+    registration_target=$(readlink "$REGISTRATION_PATH")
+    case "$registration_target" in
+        "$PREFIX_CANON/skill"|"$PREFIX_CANON/current/skill") ;;
+        *) fail "refusing unrelated Skill registration: $REGISTRATION_PATH" ;;
+    esac
+elif [ -e "$REGISTRATION_PATH" ]; then
+    fail "refusing to overwrite unowned Skill registration: $REGISTRATION_PATH"
 fi
 
 manifest_owns() {

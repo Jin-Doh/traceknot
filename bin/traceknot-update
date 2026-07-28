@@ -285,6 +285,18 @@ CONFIG_SKILLS_ROOT=$(sed -n 's/^skillsRoot=//p' "$CONFIG")
 if [ -z "${TRACEKNOT_SKILLS_ROOT+x}" ] && [ -n "$CONFIG_SKILLS_ROOT" ]; then
     SKILLS_ROOT=$CONFIG_SKILLS_ROOT
 fi
+if [ -z "${TRACEKNOT_SKILLS_ROOT+x}" ] && [ -z "$CONFIG_SKILLS_ROOT" ]; then
+    legacy_registration=$SKILLS_ROOT/traceknot
+    if [ -L "$legacy_registration" ]; then
+        legacy_registration_target=$(readlink "$legacy_registration")
+        case "$legacy_registration_target" in
+            "$PREFIX/skill"|"$PREFIX/current/skill") ;;
+            *) fail 'legacy update configuration requires TRACEKNOT_SKILLS_ROOT' ;;
+        esac
+    else
+        fail 'legacy update configuration requires TRACEKNOT_SKILLS_ROOT'
+    fi
+fi
 case "$SKILLS_ROOT" in
     /*) ;;
     *) fail 'configured Skills root must be absolute' ;;
@@ -395,6 +407,10 @@ fi
 
 if [ "$COMMAND" = disable ] || [ "$COMMAND" = disable-install-lock ]; then
     [ "$DRY_RUN" -eq 0 ] || { printf 'Would disable automatic updates for %s\n' "$PREFIX"; exit 0; }
+    if [ "$AUTOMATIC" -eq 1 ]; then
+        command -v crontab >/dev/null 2>&1 ||
+            fail 'crontab is required to disable automatic updates safely'
+    fi
     remove_schedule
     write_config 0 "$LAST_CHECK"
     printf 'Automatic updates disabled for %s\n' "$PREFIX"

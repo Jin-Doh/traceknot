@@ -115,9 +115,9 @@ if grep -F "# traceknot-auto-update:$DISABLED_PREFIX" "$CRONTAB_FILE" >/dev/null
     printf '%s\n' 'opted-out installation unexpectedly scheduled updates' >&2
     exit 1
 fi
-TRACEKNOT_SKILLS_ROOT=$DISABLED_SKILLS sh "$ROOT/install.sh" \
-    --prefix "$DISABLED_PREFIX" >/dev/null
+env -u TRACEKNOT_SKILLS_ROOT sh "$ROOT/install.sh" --prefix "$DISABLED_PREFIX" >/dev/null
 test "$(sed -n 's/^automatic=//p' "$DISABLED_PREFIX/.traceknot-update/config")" = 0
+test "$(readlink "$DISABLED_SKILLS/traceknot")" = "$(CDPATH='' cd -P "$DISABLED_PREFIX" && pwd)/skill"
 if grep -F "# traceknot-auto-update:$DISABLED_PREFIX" "$CRONTAB_FILE" >/dev/null 2>&1; then
     printf '%s\n' 'ordinary reinstall unexpectedly re-enabled opted-out updates' >&2
     exit 1
