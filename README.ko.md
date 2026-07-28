@@ -107,6 +107,10 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
 
 Uninstaller는 설치 manifest를 읽어 Traceknot이 설치한 파일만 삭제하며, 공용 Skill 등록이 해당 설치를 계속 가리킬 때만 그 등록을 제거합니다. `--dry-run`으로 삭제 대상을 미리 확인할 수 있으며, 이미 제거된 상태에서 다시 실행해도 오류가 발생하지 않습니다. 설치 시 `TRACEKNOT_SKILLS_ROOT`를 지정했다면 제거 시에도 같은 값을 사용합니다. 저장소를 복제한 경우에는 `./uninstall.sh`를 사용할 수 있습니다.
 
+## 자동 업데이트
+
+자동 업데이트는 기획이 완료되었으나 아직 구현되지 않았습니다. 보안 모델, 7일 관찰 규칙, 릴리스 계약, 단계별 도입 계획, 검증 의무는 [`docs/automatic-updates.md`](docs/automatic-updates.md)에 정의되어 있습니다.
+
 ## 아키텍처
 
 ```mermaid

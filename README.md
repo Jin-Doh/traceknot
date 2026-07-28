@@ -107,6 +107,10 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
 
 The uninstaller reads the installation manifest, removes only files installed by Traceknot, and removes the shared Skill registration only when it still points to that installation. Pass `--dry-run` to preview removals; running uninstall again is harmless. Use the same `TRACEKNOT_SKILLS_ROOT` override used during installation. A cloned repository can use `./uninstall.sh` instead.
 
+## Automatic updates
+
+Automatic updates are planned but not implemented. The security model, seven-day observation rule, release contract, rollout phases, and verification obligations are defined in [`docs/automatic-updates.md`](docs/automatic-updates.md).
+
 ## Architecture
 
 ```mermaid
