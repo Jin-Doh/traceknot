@@ -17,6 +17,8 @@ TMP_ROOT=
 LOCK_HELD=0
 RECOVERY_LOCK_HELD=0
 LOCK_CLAIM=
+STAGING_CLEANUP=
+LEGACY_STAGING_CLEANUP=
 
 fail() {
     printf '%s: %s\n' "$PROGRAM" "$*" >&2
@@ -53,6 +55,8 @@ cleanup() {
         rm -f "$LOCK_CLAIM"
     fi
     LOCK_CLAIM=
+    [ -z "$STAGING_CLEANUP" ] || rm -rf "$STAGING_CLEANUP"
+    [ -z "$LEGACY_STAGING_CLEANUP" ] || rm -rf "$LEGACY_STAGING_CLEANUP"
     if [ "$LOCK_HELD" -eq 1 ]; then
         rm -rf "$LOCK_DIR"
     fi
@@ -288,10 +292,27 @@ cron_escape() {
     printf '%s' "$1" | sed 's/%/\\%/g'
 }
 
+read_existing_crontab() {
+    crontab_error=$(mktemp "${TMPDIR:-/tmp}/traceknot-crontab.XXXXXX") ||
+        fail 'cannot create crontab diagnostic file'
+    if existing=$(crontab -l 2>"$crontab_error"); then
+        rm -f "$crontab_error"
+        return
+    fi
+    if grep -Eiq 'no crontab (for|exists)' "$crontab_error"; then
+        existing=
+        rm -f "$crontab_error"
+        return
+    fi
+    cat "$crontab_error" >&2
+    rm -f "$crontab_error"
+    fail 'cannot read existing crontab safely'
+}
+
 cron_marker=$(cron_escape "# traceknot-auto-update:$PREFIX")
 remove_schedule() {
     command -v crontab >/dev/null 2>&1 || return 0
-    existing=$(crontab -l 2>/dev/null || true)
+    read_existing_crontab
     filtered=$(printf '%s\n' "$existing" |
         TRACEKNOT_CRON_MARKER=$cron_marker awk '
           BEGIN { marker=ENVIRON["TRACEKNOT_CRON_MARKER"] }
@@ -312,7 +333,7 @@ install_schedule() {
         updater=$PREFIX/bin/traceknot-update
     fi
     [ -x "$updater" ] || fail "installed updater is missing: $updater"
-    existing=$(crontab -l 2>/dev/null || true)
+    read_existing_crontab
     filtered=$(printf '%s\n' "$existing" |
         TRACEKNOT_CRON_MARKER=$cron_marker awk '
           BEGIN { marker=ENVIRON["TRACEKNOT_CRON_MARKER"] }
@@ -404,6 +425,11 @@ assert_registration_owned() {
     elif [ -e "$REGISTRATION" ]; then
         fail "refusing unrelated Skill registration: $REGISTRATION"
     fi
+}
+
+sync_transaction_state() {
+    command -v sync >/dev/null 2>&1 || fail 'sync is required for durable activation'
+    sync
 }
 
 write_journal() {
@@ -569,9 +595,11 @@ if [ "$COMMAND" = rollback ]; then
     copy_exclusive "$ACTIVE_STATE" "$TX_ACTIVE_BEFORE"
     copy_exclusive "$ROLLBACK_STATE" "$TX_ROLLBACK_BEFORE"
     write_journal rollback prepared "$rollback_from" "$rollback_to" '' "$rollback_registration_previous" "$rollback_to"
+    sync_transaction_state
     replace_symlink "$rollback_to" "$CURRENT"
     replace_symlink "$rollback_from" "$ROLLBACK"
     write_journal rollback activated "$rollback_from" "$rollback_to" '' "$rollback_registration_previous" "$rollback_to"
+    sync_transaction_state
     rollback_active_tmp=$ACTIVE_STATE.tmp.rollback.$$
     copy_exclusive "$TX_ROLLBACK_BEFORE" "$rollback_active_tmp"
     mv "$rollback_active_tmp" "$ACTIVE_STATE"
@@ -579,6 +607,7 @@ if [ "$COMMAND" = rollback ]; then
     copy_exclusive "$TX_ACTIVE_BEFORE" "$rollback_state_tmp"
     mv "$rollback_state_tmp" "$ROLLBACK_STATE"
     write_journal rollback committed "$rollback_from" "$rollback_to" '' "$rollback_registration_previous" "$rollback_to"
+    sync_transaction_state
     rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
     printf 'Rolled Traceknot back to %s\n' "$(jq -r .releaseTag "$ACTIVE_STATE")"
     exit 0
@@ -598,15 +627,37 @@ curl_args=""
 if [ -n "${GH_TOKEN:-}" ]; then
     curl_args="Authorization: Bearer $GH_TOKEN"
 fi
-if [ -n "$curl_args" ]; then
-    curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
-        -H 'Accept: application/vnd.github+json' -H "$curl_args" \
-        -D "$HEADERS" -o "$RELEASE_JSON" "$API_URL"
-else
-    curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
-        -H 'Accept: application/vnd.github+json' \
-        -D "$HEADERS" -o "$RELEASE_JSON" "$API_URL"
-fi
+fetch_release_page() {
+    fetch_url=$1
+    fetch_headers=$2
+    fetch_output=$3
+    if [ -n "$curl_args" ]; then
+        curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            -H 'Accept: application/vnd.github+json' -H "$curl_args" \
+            -D "$fetch_headers" -o "$fetch_output" "$fetch_url"
+    else
+        curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            -H 'Accept: application/vnd.github+json' \
+            -D "$fetch_headers" -o "$fetch_output" "$fetch_url"
+    fi
+}
+printf '%s\n' '[]' > "$RELEASE_JSON"
+release_page=1
+while :; do
+    page_json=$TMP_ROOT/releases-$release_page.json
+    page_headers=$TMP_ROOT/headers-$release_page
+    fetch_release_page "$API_URL?per_page=100&page=$release_page" "$page_headers" "$page_json"
+    jq -e 'type == "array"' "$page_json" >/dev/null ||
+        fail 'invalid GitHub releases response'
+    [ "$release_page" -ne 1 ] || cp "$page_headers" "$HEADERS"
+    page_count=$(jq 'length' "$page_json")
+    combined_json=$TMP_ROOT/releases-combined.json
+    jq -s '.[0] + .[1]' "$RELEASE_JSON" "$page_json" > "$combined_json"
+    mv "$combined_json" "$RELEASE_JSON"
+    [ "$page_count" -eq 100 ] || break
+    release_page=$((release_page + 1))
+    [ "$release_page" -le 100 ] || fail 'GitHub releases pagination exceeded safety limit'
+done
 
 SERVER_DATE=$(sed -n 's/^[Dd]ate: //p' "$HEADERS" | tr -d '\r' | tail -n 1)
 [ -n "$SERVER_DATE" ] || fail 'GitHub response did not include trusted server time'
@@ -798,6 +849,7 @@ gh attestation verify "$ARCHIVE" \
 mkdir -p "$RELEASES_DIR"
 [ ! -L "$RELEASES_DIR" ] || fail 'refusing symlink releases directory'
 STAGING=$RELEASES_DIR/.staging-$VERSION-$$
+STAGING_CLEANUP=$STAGING
 FINAL=$RELEASES_DIR/$VERSION
 [ ! -e "$FINAL" ] || {
     if [ -f "$ACTIVE_STATE" ] && [ "$(jq -r .artifactSha256 "$ACTIVE_STATE")" = "$ARTIFACT_SHA" ]; then
@@ -859,6 +911,7 @@ EOF
     fi
     if [ "$legacy_complete" -eq 0 ]; then
         LEGACY_STAGING=$RELEASES_DIR/.staging-legacy-$LEGACY_SHA-$$
+        LEGACY_STAGING_CLEANUP=$LEGACY_STAGING
         validate_managed_release_path "$LEGACY_STAGING"
         rm -rf "$LEGACY_STAGING"
         mkdir "$LEGACY_STAGING"
@@ -873,6 +926,7 @@ $(sed -n '2,$p' "$INSTALL_MANIFEST")
 EOF
         rm -rf "$PREVIOUS"
         mv "$LEGACY_STAGING" "$PREVIOUS"
+        LEGACY_STAGING_CLEANUP=
     fi
 else
     fail 'current activation path is not a symlink'
@@ -898,7 +952,7 @@ else
         --arg sourceCommit '' \
         --arg artifactSha256 "$LEGACY_SHA" \
         --argjson activatedAt 0 \
-        '{schemaVersion:$schemaVersion,version:$version,releaseTag:$releaseTag,sourceCommit:$sourceCommit,artifactSha256:$artifactSha256,activatedAt:$activatedAt}' \
+        '{schemaVersion:$schemaVersion,version:$version,releaseTag:$version,sourceCommit:$sourceCommit,artifactSha256:$artifactSha256,activatedAt:$activatedAt}' \
         > "$TX_ACTIVE_BEFORE"
 fi
 if [ -f "$ROLLBACK_STATE" ]; then
@@ -907,11 +961,15 @@ else
     rm -f "$TX_ROLLBACK_BEFORE"
 fi
 write_journal apply prepared "$PREVIOUS" "$FINAL" "$STAGING" "$REGISTRATION_PREVIOUS" "$ROLLBACK_PREVIOUS"
+sync_transaction_state
 mv "$STAGING" "$FINAL"
+STAGING_CLEANUP=
 write_journal apply installed "$PREVIOUS" "$FINAL" "$STAGING" "$REGISTRATION_PREVIOUS" "$ROLLBACK_PREVIOUS"
+sync_transaction_state
 replace_symlink "$PREVIOUS" "$ROLLBACK"
 replace_symlink "$FINAL" "$CURRENT"
 write_journal apply activated "$PREVIOUS" "$FINAL" "$STAGING" "$REGISTRATION_PREVIOUS" "$ROLLBACK_PREVIOUS"
+sync_transaction_state
 mkdir -p "$SKILLS_ROOT"
 replace_symlink "$CURRENT/skill" "$REGISTRATION"
 
@@ -938,6 +996,7 @@ if [ "$AUTOMATIC" -eq 1 ]; then
     install_schedule
 fi
 write_journal apply committed "$PREVIOUS" "$FINAL" "$STAGING" "$REGISTRATION_PREVIOUS" "$ROLLBACK_PREVIOUS"
+sync_transaction_state
 prune_obsolete_release "$ROLLBACK_PREVIOUS"
 rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
 printf 'Updated Traceknot to %s at %s\n' "$RELEASE_TAG" "$CURRENT"

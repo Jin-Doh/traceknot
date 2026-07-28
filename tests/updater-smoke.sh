@@ -82,6 +82,14 @@ cat > "$FIXTURE/releases.json" <<EOF
   }
 ]
 EOF
+jq -n '[range(0;100) | {
+  tag_name:("v0.0." + tostring),
+  published_at:"2020-01-01T00:00:00Z",
+  draft:true,
+  prerelease:false,
+  immutable:true,
+  assets:[]
+}]' > "$FIXTURE/releases-page-1.json"
 
 cat > "$FAKE_BIN/curl" <<'EOF'
 #!/bin/sh
@@ -103,7 +111,17 @@ if [ -n "$headers" ]; then
     printf 'HTTP/2 200\r\ndate: %s\r\n\r\n' "$FAKE_HTTP_DATE" > "$headers"
 fi
 case "$url" in
-    */releases) cp "$FAKE_FIXTURE/releases.json" "$output" ;;
+    */releases\?*)
+        if [ "${FAKE_PAGINATED_RELEASES:-0}" -eq 1 ]; then
+            case "$url" in
+                *page=1) cp "$FAKE_FIXTURE/releases-page-1.json" "$output" ;;
+                *page=2) cp "$FAKE_FIXTURE/releases.json" "$output" ;;
+                *) printf '%s\n' '[]' > "$output" ;;
+            esac
+        else
+            cp "$FAKE_FIXTURE/releases.json" "$output"
+        fi
+        ;;
     */manifest-lower) cp "$FAKE_FIXTURE/manifest-lower.json" "$output" ;;
     */manifest) cp "$FAKE_FIXTURE/manifest.json" "$output" ;;
     */artifact)
@@ -136,7 +154,7 @@ cat > "$FAKE_BIN/crontab" <<'EOF'
 #!/bin/sh
 set -eu
 case "${1:-}" in
-    -l) [ -f "$CRONTAB_FILE" ] && cat "$CRONTAB_FILE" || exit 1 ;;
+    -l) [ -f "$CRONTAB_FILE" ] && cat "$CRONTAB_FILE" || { printf '%s\n' 'no crontab for traceknot-smoke' >&2; exit 1; } ;;
     -) cat > "$CRONTAB_FILE" ;;
     *) exit 2 ;;
 esac
@@ -204,9 +222,12 @@ fi
 test "$(cat "$OBSERVATION_TARGET")" = preserve-observation-target
 rm -f "$PREFIX/.traceknot-update/observations.tsv"
 
+FAKE_PAGINATED_RELEASES=1
+export FAKE_PAGINATED_RELEASES
 # First observation is never immediately eligible, even for an old published release.
 first_output=$("$PREFIX/bin/traceknot-update" check --prefix "$PREFIX")
 printf '%s\n' "$first_output" | grep -F 'No release has exceeded' >/dev/null
+unset FAKE_PAGINATED_RELEASES
 MANIFEST_SHA=$(if command -v sha256sum >/dev/null 2>&1; then sha256sum "$FIXTURE/manifest.json" | cut -d ' ' -f 1; else shasum -a 256 "$FIXTURE/manifest.json" | cut -d ' ' -f 1; fi)
 LOWER_MANIFEST_SHA=$(if command -v sha256sum >/dev/null 2>&1; then sha256sum "$FIXTURE/manifest-lower.json" | cut -d ' ' -f 1; else shasum -a 256 "$FIXTURE/manifest-lower.json" | cut -d ' ' -f 1; fi)
 {
@@ -251,9 +272,9 @@ test -f "$PREFIX/.traceknot-update/active.json"
 test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = "$TAG"
 test -L "$TRACEKNOT_SKILLS_ROOT/traceknot"
 test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/skill"
-# Ordinary reinstall accepts and preserves the updater-managed registration target.
+# Ordinary reinstall retargets registration to the newly installed flat payload.
 sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null
-test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/skill"
+test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/skill"
 
 # Transaction snapshot destinations refuse symbolic links.
 SNAPSHOT_TARGET=$TMP_DIR/snapshot-target

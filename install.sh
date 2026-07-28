@@ -461,6 +461,16 @@ if [ ! -L "$REGISTRATION_PATH" ]; then
         fail "Skill registration appeared during installation: $REGISTRATION_PATH"
     ln -s "$PREFIX_CANON/skill" "$REGISTRATION_PATH"
 fi
+if [ "$(readlink "$REGISTRATION_PATH")" != "$PREFIX_CANON/skill" ]; then
+    registration_tmp=$REGISTRATION_PATH.tmp.$$
+    rm -f "$registration_tmp"
+    ln -s "$PREFIX_CANON/skill" "$registration_tmp"
+    if ! mv -fh "$registration_tmp" "$REGISTRATION_PATH" 2>/dev/null &&
+       ! mv -fT "$registration_tmp" "$REGISTRATION_PATH" 2>/dev/null; then
+        rm -f "$registration_tmp"
+        fail 'cannot atomically retarget Skill registration'
+    fi
+fi
 
 mv "$MANIFEST_TMP" "$PREFIX_CANON/$MANIFEST_NAME"
 MANIFEST_TMP=
