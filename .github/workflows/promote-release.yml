@@ -101,6 +101,11 @@ jobs:
           printf '%s\n' "$RELEASE_TAG_DEPLOY_KEY" > "$ssh_root/key"
           chmod 600 "$ssh_root/key"
           gh api meta --jq '.ssh_keys[] | "github.com " + .' > "$ssh_root/known_hosts"
+          git fetch --no-tags origin main
+          [ "$SOURCE_COMMIT" = "$(git rev-parse origin/main)" ] || {
+            printf '%s\n' 'Main advanced while the promotion gate was running; restart approval.' >&2
+            exit 1
+          }
           git tag "$RELEASE_TAG" "$SOURCE_COMMIT"
           GIT_SSH_COMMAND="ssh -i $ssh_root/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$ssh_root/known_hosts -o StrictHostKeyChecking=yes" \
             git push "git@github.com:$GITHUB_REPOSITORY.git" \

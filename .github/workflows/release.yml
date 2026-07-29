@@ -103,10 +103,9 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --generate-notes
-          release_url=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json url --jq .url)
-          printf 'url=%s\n' "$release_url" >> "$GITHUB_OUTPUT"
 
       - name: Verify public release surfaces
+        if: always() && steps.publish.outcome != 'skipped'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
@@ -147,7 +146,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Retain release verification evidence
-        if: always() && steps.publish.outcome == 'success'
+        if: always() && steps.publish.outcome != 'skipped'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-evidence-${{ steps.release.outputs.tag }}
