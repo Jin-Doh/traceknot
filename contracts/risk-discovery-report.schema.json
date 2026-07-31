@@ -163,7 +163,11 @@
                 "propertyNames": { "type": "string", "minLength": 1 },
                 "additionalProperties": {
                   "type": "object",
-                  "not": { "required": ["reviewerOutputs"] }
+                  "not": {
+                    "type": "object",
+                    "required": ["reviewerOutputs"],
+                    "properties": { "reviewerOutputs": {} }
+                  }
                 }
               }
             }
