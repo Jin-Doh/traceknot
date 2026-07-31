@@ -13,6 +13,7 @@ type Mutation = MutationOperation & {
   base: string;
   operations?: MutationOperation[];
   fields?: string[];
+  expectedKeyword: string;
   expectedInstancePath?: string;
 };
 
