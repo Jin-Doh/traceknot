@@ -97,37 +97,40 @@
         "challenge": { "$ref": "#/$defs/challenge" }
       },
       "allOf": [
-          {
-            "if": {
-              "anyOf": [
-                { "properties": { "initialRiskLevel": { "enum": ["R2", "R3"] } } },
-                { "properties": { "scopeUnknown": { "const": true } } },
-                { "properties": { "materialTrigger": { "const": true } } },
-                {
-                  "properties": {
-                    "triggeredProfiles": {
-                      "contains": {
-                        "type": "object",
-                        "required": ["material"],
-                        "properties": { "material": { "const": true } }
-                      }
+        {
+          "if": {
+            "anyOf": [
+              { "type": "object", "properties": { "initialRiskLevel": { "enum": ["R2", "R3"] } } },
+              { "type": "object", "properties": { "scopeUnknown": { "const": true } } },
+              { "type": "object", "properties": { "materialTrigger": { "const": true } } },
+              {
+                "type": "object",
+                "properties": {
+                  "triggeredProfiles": {
+                    "type": "array",
+                    "contains": {
+                      "type": "object",
+                      "required": ["material"],
+                      "properties": { "material": { "const": true } }
                     }
                   }
                 }
-              ]
-            },
-            "then": {
-              "properties": {
-                "challenge": {
-                  "type": "object",
-                  "properties": {
-                    "outcome": { "not": { "const": "NOT_REQUIRED" } }
-                  }
+              }
+            ]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "outcome": { "not": { "const": "NOT_REQUIRED" } }
                 }
               }
             }
           }
-        ]
+        }
+      ]
     },
     "challenge": {
       "type": "object",
@@ -229,8 +232,9 @@
       },
       "allOf": [
         {
-          "if": { "properties": { "materiality": { "const": "material" } } },
+          "if": { "type": "object", "properties": { "materiality": { "const": "material" } } },
           "then": {
+            "type": "object",
             "required": ["disposition"],
             "properties": {
               "disposition": { "$ref": "#/$defs/materialDisposition" }
@@ -238,8 +242,9 @@
           }
         },
         {
-          "if": { "properties": { "kind": { "const": "COVERAGE_GAP" } } },
+          "if": { "type": "object", "properties": { "kind": { "const": "COVERAGE_GAP" } } },
           "then": {
+            "type": "object",
             "required": ["coverageGap", "coverageChecked"],
             "properties": {
               "coverageGap": { "type": "string", "minLength": 1 },
@@ -248,8 +253,9 @@
           }
         },
         {
-          "if": { "properties": { "kind": { "const": "SOURCE_CANDIDATE" } } },
+          "if": { "type": "object", "properties": { "kind": { "const": "SOURCE_CANDIDATE" } } },
           "then": {
+            "type": "object",
             "required": ["anchors", "failureMechanism", "coverageChecked", "confirmationProbe", "uncertainty"],
             "properties": {
               "anchors": { "$ref": "#/$defs/finding/properties/anchors" },
@@ -261,8 +267,9 @@
           }
         },
         {
-          "if": { "properties": { "kind": { "const": "CONFIRMED_DEFECT" } } },
+          "if": { "type": "object", "properties": { "kind": { "const": "CONFIRMED_DEFECT" } } },
           "then": {
+            "type": "object",
             "required": ["expected", "actual", "reproduction"],
             "properties": {
               "expected": { "type": "string", "minLength": 1 },
@@ -272,8 +279,9 @@
           }
         },
         {
-          "if": { "properties": { "kind": { "const": "POLICY_QUESTION" } } },
+          "if": { "type": "object", "properties": { "kind": { "const": "POLICY_QUESTION" } } },
           "then": {
+            "type": "object",
             "required": ["question"],
             "properties": {
               "question": { "type": "string", "minLength": 1 }
@@ -281,8 +289,9 @@
           }
         },
         {
-          "if": { "properties": { "kind": { "const": "NOT_APPLICABLE" } } },
+          "if": { "type": "object", "properties": { "kind": { "const": "NOT_APPLICABLE" } } },
           "then": {
+            "type": "object",
             "required": ["reason"],
             "properties": {
               "reason": { "type": "string", "minLength": 1 }
@@ -290,8 +299,9 @@
           }
         },
         {
-          "if": { "properties": { "kind": { "const": "CAPABILITY_LIMITED" } } },
+          "if": { "type": "object", "properties": { "kind": { "const": "CAPABILITY_LIMITED" } } },
           "then": {
+            "type": "object",
             "required": ["capability", "limitation"],
             "properties": {
               "capability": { "$ref": "#/$defs/capabilityName" },
@@ -300,8 +310,9 @@
           }
         },
         {
-          "if": { "properties": { "kind": { "const": "DUPLICATE_CLUSTER" } } },
+          "if": { "type": "object", "properties": { "kind": { "const": "DUPLICATE_CLUSTER" } } },
           "then": {
+            "type": "object",
             "required": ["clusterMemberIds"],
             "properties": {
               "clusterMemberIds": {
@@ -334,15 +345,17 @@
       },
       "allOf": [
         {
-          "if": { "properties": { "status": { "const": "PROMOTED_TO_OBLIGATION" } } },
+          "if": { "type": "object", "properties": { "status": { "const": "PROMOTED_TO_OBLIGATION" } } },
           "then": {
+            "type": "object",
             "required": ["obligationId"],
             "properties": { "obligationId": { "type": "string", "minLength": 1 } }
           }
         },
         {
-          "if": { "properties": { "status": { "const": "ACCEPTED_RISK" } } },
+          "if": { "type": "object", "properties": { "status": { "const": "ACCEPTED_RISK" } } },
           "then": {
+            "type": "object",
             "required": ["owner", "expiry", "acceptance"],
             "properties": {
               "owner": { "type": "string", "minLength": 1 },
@@ -355,8 +368,9 @@
           }
         },
         {
-          "if": { "properties": { "status": { "const": "BLOCKED" } } },
+          "if": { "type": "object", "properties": { "status": { "const": "BLOCKED" } } },
           "then": {
+            "type": "object",
             "required": ["blocker"],
             "properties": { "blocker": { "type": "string", "minLength": 1 } }
           }
@@ -384,15 +398,17 @@
       },
       "allOf": [
         {
-          "if": { "properties": { "disposition": { "const": "PROMOTED_TO_OBLIGATION" } } },
+          "if": { "type": "object", "properties": { "disposition": { "const": "PROMOTED_TO_OBLIGATION" } } },
           "then": {
+            "type": "object",
             "required": ["obligationId"],
             "properties": { "obligationId": { "type": "string", "minLength": 1 } }
           }
         },
         {
-          "if": { "properties": { "disposition": { "const": "ACCEPTED_RISK" } } },
+          "if": { "type": "object", "properties": { "disposition": { "const": "ACCEPTED_RISK" } } },
           "then": {
+            "type": "object",
             "required": ["owner", "expiry", "acceptance"],
             "properties": {
               "owner": { "type": "string", "minLength": 1 },
@@ -405,8 +421,9 @@
           }
         },
         {
-          "if": { "properties": { "disposition": { "const": "BLOCKED" } } },
+          "if": { "type": "object", "properties": { "disposition": { "const": "BLOCKED" } } },
           "then": {
+            "type": "object",
             "required": ["blocker"],
             "properties": { "blocker": { "type": "string", "minLength": 1 } }
           }
