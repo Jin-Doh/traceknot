@@ -1278,9 +1278,73 @@
                       }
           }
       }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "outcome": { "const": "NOT_REQUIRED" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "findings": { "$ref": "#/$defs/nonmaterialFindingMap" },
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "object",
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "reviewerOutputs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "result": {
+                            "type": "object",
+                            "properties": {
+                              "findings": { "$ref": "#/$defs/nonmaterialFindingMap" }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "$defs": {
+    "nonmaterialFindingMap": {
+      "type": "object",
+      "patternProperties": {
+        "^.+$": {
+          "type": "object",
+          "required": ["materiality"],
+          "properties": {
+            "materiality": { "const": "nonmaterial" }
+          }
+        }
+      }
+    },
     "capabilityName": {
       "enum": [
         "executeCommands",

@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "risk-discovery-report/v1",
+  "requestId": "req-nonmaterial-not-required-001",
+  "snapshotId": "snap-20260731T030405Z",
+  "runtime": {
+    "host": "codex",
+    "mode": "multi-context",
+    "discoveryProfile": "codex",
+    "capabilities": {
+      "executeCommands": true,
+      "executeBrowser": false,
+      "captureArtifacts": true,
+      "bindSnapshot": true,
+      "provideIndependentEvidence": true,
+      "persistEvidence": true,
+      "approveExceptions": false,
+      "isolatedReadOnlyReview": false,
+      "enforcedStructuredOutput": true
+    },
+    "limitations": []
+  },
+  "triggerScan": {
+    "performed": true,
+    "initialRiskLevel": "R1",
+    "scopeUnknown": false,
+    "materialTrigger": false,
+    "syntheticBoundaryBypass": false,
+    "recurringDefectClusterOverlap": false,
+    "triggeredProfiles": {
+      "response-ordering": {
+        "evidence": [
+          "The bounded response-ordering partition was reviewed without material findings."
+        ],
+        "reviewerOutputs": [
+          {
+            "partition": "response ordering",
+            "obligation": {
+              "id": "obligation-response-ordering-nonmaterial-001",
+              "description": "Confirm the bounded response-ordering partition remains nonmaterial."
+            },
+            "producer": {
+              "id": "codex-reviewer-nonmaterial-1",
+              "independence": "separate-verification-context"
+            },
+            "artifact": {
+              "artifactId": "codex-reviewer-nonmaterial-output-001",
+              "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            "analysis": {
+              "taxonomy": ["NOT_APPLICABLE"],
+              "anchors": [
+                {
+                  "path": "src/store.ts",
+                  "startLine": 1,
+                  "lineCount": 1,
+                  "excerpt": "state.value"
+                }
+              ],
+              "failureMechanism": "The bounded partition does not apply to a material deployment surface.",
+              "coverageChecked": true,
+              "confirmationProbe": "Inspect the bounded partition and preserve the no-finding result.",
+              "uncertainty": "The runtime evidence does not establish behavior outside this partition."
+            },
+            "result": {
+              "kind": "NO_FINDINGS"
+            }
+          }
+        ]
+      }
+    },
+    "challenge": {
+      "outcome": "NOT_REQUIRED",
+      "mode": "current_context",
+      "evidence": [
+        {
+          "source": "trigger scan",
+          "detail": "The known R1 scope has only nonmaterial partitions and no material finding was reported."
+        }
+      ]
+    }
+  },
+  "findings": {}
+}

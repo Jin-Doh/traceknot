@@ -1,19 +1,19 @@
 {
   "base": "risk-discovery-report.valid.json",
   "operation": "replace",
-  "path": ["triggerScan", "initialRiskLevel"],
-  "value": "R2",
-  "expectedKeyword": "not",
+  "path": ["triggerScan", "challenge", "outcome"],
+  "value": "NOT_REQUIRED",
   "operations": [
     {
       "operation": "replace",
-      "path": ["triggerScan", "initialRiskLevel"],
-      "value": "R2"
+      "path": ["triggerScan", "materialTrigger"],
+      "value": false
     },
     {
       "operation": "replace",
       "path": ["triggerScan", "challenge", "outcome"],
       "value": "NOT_REQUIRED"
     }
-  ]
+  ],
+  "expectedKeyword": "const"
 }

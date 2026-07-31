@@ -3,5 +3,17 @@
   "operation": "replace",
   "path": ["triggerScan", "scopeUnknown"],
   "value": true,
-  "expectedKeyword": "not"
+  "expectedKeyword": "not",
+  "operations": [
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "scopeUnknown"],
+      "value": true
+    },
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "challenge", "outcome"],
+      "value": "NOT_REQUIRED"
+    }
+  ]
 }

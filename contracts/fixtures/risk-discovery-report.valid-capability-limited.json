@@ -25,7 +25,7 @@
     "performed": true,
     "initialRiskLevel": "R1",
     "scopeUnknown": false,
-    "materialTrigger": false,
+    "materialTrigger": true,
     "syntheticBoundaryBypass": false,
     "recurringDefectClusterOverlap": false,
     "triggeredProfiles": {

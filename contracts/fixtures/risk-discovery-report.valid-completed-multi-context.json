@@ -21,7 +21,7 @@
   },
   "triggerScan": {
     "performed": true,
-    "initialRiskLevel": "R1",
+    "initialRiskLevel": "R2",
     "scopeUnknown": false,
     "materialTrigger": false,
     "syntheticBoundaryBypass": false,
@@ -77,5 +77,36 @@
       ]
     }
   },
-  "findings": {}
+  "findings": {
+    "finding-escalated-material-001": {
+      "riskId": "risk-escalated-material",
+      "kind": "SOURCE_CANDIDATE",
+      "materiality": "material",
+      "disposition": {
+        "status": "PROMOTED_TO_OBLIGATION",
+        "obligationId": "obligation-escalated-material-001"
+      },
+      "evidence": [
+        {
+          "source": "src/store.ts:1",
+          "detail": "The completed multi-context profile preserves the material source candidate for follow-up confirmation."
+        }
+      ],
+      "details": {
+        "summary": "A material source candidate remains after the bounded multi-context challenge.",
+        "anchors": [
+          {
+            "path": "src/store.ts",
+            "startLine": 1,
+            "lineCount": 1,
+            "excerpt": "state.value"
+          }
+        ],
+        "failureMechanism": "The source candidate requires a follow-up confirmation probe.",
+        "coverageChecked": true,
+        "confirmationProbe": "Exercise the bounded source partition and confirm the expected result.",
+        "uncertainty": "The preserved review output does not establish behavior outside this partition."
+      }
+    }
+  }
 }

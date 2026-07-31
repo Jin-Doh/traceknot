@@ -30,6 +30,9 @@ const completedMultiContextReport = JSON.parse(
 const capabilityLimitedReport = JSON.parse(
   readFileSync(join(fixtureRoot, "risk-discovery-report.valid-capability-limited.json"), "utf8"),
 ) as unknown;
+const nonmaterialNotRequiredReport = JSON.parse(
+  readFileSync(join(fixtureRoot, "risk-discovery-report.valid-nonmaterial-not-required.json"), "utf8"),
+) as unknown;
 const ajv = new Ajv2020({ strict: true, allErrors: true });
 const validate = ajv.compile(schema);
 
@@ -88,6 +91,11 @@ describe("risk discovery report contract", () => {
     expect(validate.errors).toBeNull();
   });
 
+  test("accepts a nonmaterial NOT_REQUIRED report", () => {
+    expect(validate(nonmaterialNotRequiredReport)).toBe(true);
+    expect(validate.errors).toBeNull();
+  });
+
   const negativeFixtures = [
     ["risk-discovery-report.invalid-scan-bypass.json", "scan bypass"],
     ["risk-discovery-report.invalid-synthetic-boundary-no-challenge.json", "synthetic boundary challenge bypass"],
@@ -108,6 +116,8 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-unknown-scope-no-challenge.json", "unknown scope challenge bypass"],
     ["risk-discovery-report.invalid-material-trigger-no-challenge.json", "material trigger challenge bypass"],
     ["risk-discovery-report.invalid-material-profile-no-challenge.json", "material profile challenge bypass"],
+    ["risk-discovery-report.invalid-material-findings-not-required.json", "material aggregate with NOT_REQUIRED challenge"],
+    ["risk-discovery-report.invalid-nested-material-not-required.json", "nested material finding with NOT_REQUIRED challenge"],
     ["risk-discovery-report.invalid-empty-positive-trigger.json", "empty keyed profile for material trigger"],
     ["risk-discovery-report.invalid-artifact-capability-with-output.json", "reviewer output without artifact capability"],
     ["risk-discovery-report.invalid-triggered-profiles-array.json", "legacy positional triggered profiles"],

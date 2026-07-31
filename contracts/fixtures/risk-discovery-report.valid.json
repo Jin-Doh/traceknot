@@ -26,7 +26,7 @@
     "performed": true,
     "initialRiskLevel": "R1",
     "scopeUnknown": false,
-    "materialTrigger": false,
+    "materialTrigger": true,
     "syntheticBoundaryBypass": false,
     "recurringDefectClusterOverlap": false,
     "triggeredProfiles": {
@@ -42,12 +42,12 @@
       }
     },
     "challenge": {
-      "outcome": "NOT_REQUIRED",
+      "outcome": "BLOCKED",
       "mode": "current_context",
       "evidence": [
         {
           "source": "trigger scan",
-          "detail": "Initial R1 scope is known and all triggered profiles are nonmaterial."
+          "detail": "A material finding requires bounded confirmation, but this single-context runtime cannot complete the challenge."
         }
       ]
     }

@@ -3,5 +3,17 @@
   "operation": "replace",
   "path": ["triggerScan", "triggeredProfiles", "stale-writes", "material"],
   "value": true,
-  "expectedKeyword": "additionalProperties"
+  "expectedKeyword": "additionalProperties",
+  "operations": [
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "triggeredProfiles", "stale-writes", "material"],
+      "value": true
+    },
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "challenge", "outcome"],
+      "value": "NOT_REQUIRED"
+    }
+  ]
 }

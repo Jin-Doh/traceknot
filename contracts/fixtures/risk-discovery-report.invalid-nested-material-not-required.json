@@ -1,0 +1,58 @@
+{
+  "base": "risk-discovery-report.valid-completed-multi-context.json",
+  "operation": "replace",
+  "path": ["triggerScan", "challenge", "outcome"],
+  "value": "NOT_REQUIRED",
+  "operations": [
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "challenge", "outcome"],
+      "value": "NOT_REQUIRED"
+    },
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "challenge", "mode"],
+      "value": "current_context"
+    },
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "triggeredProfiles", "response-ordering", "reviewerOutputs", 0, "result"],
+      "value": {
+        "kind": "FINDINGS",
+        "findings": {
+          "nested-material-001": {
+            "riskId": "risk-nested-material",
+            "kind": "SOURCE_CANDIDATE",
+            "materiality": "material",
+            "disposition": {
+              "status": "PROMOTED_TO_OBLIGATION",
+              "obligationId": "obligation-nested-material-001"
+            },
+            "evidence": [
+              {
+                "source": "src/store.ts:1",
+                "detail": "The nested reviewer preserved a material source candidate."
+              }
+            ],
+            "details": {
+              "summary": "A nested material source candidate requires confirmation.",
+              "anchors": [
+                {
+                  "path": "src/store.ts",
+                  "startLine": 1,
+                  "lineCount": 1,
+                  "excerpt": "state.value"
+                }
+              ],
+              "failureMechanism": "The nested source candidate requires a follow-up confirmation probe.",
+              "coverageChecked": true,
+              "confirmationProbe": "Exercise the nested source partition and confirm the expected result.",
+              "uncertainty": "The nested output does not establish behavior outside this partition."
+            }
+          }
+        }
+      }
+    }
+  ],
+  "expectedKeyword": "const"
+}

@@ -39,6 +39,8 @@ Run a bounded adversarial challenge when any of these is true:
 
 A trigger-free `R0` or `R1` change may stop after recording the scan. Lowering the initial risk classification never removes a material trigger.
 
+`materialTrigger` remains the cheap-scan predicate and the sole material-trigger authority; it may be `false` after an R2/R3, unknown-scope, synthetic-boundary, or recurring-cluster escalation when the challenge outcome is not `NOT_REQUIRED`. A final `NOT_REQUIRED` challenge is permitted only when every aggregate finding and every finding in nested reviewer-output `FINDINGS` maps is `materiality: nonmaterial`.
+
 ## Challenge procedure
 
 1. State the changed contract and already-covered partitions.
