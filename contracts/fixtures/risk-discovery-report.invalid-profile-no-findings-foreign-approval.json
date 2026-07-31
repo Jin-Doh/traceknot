@@ -1,7 +1,7 @@
 {
-  "base": "risk-discovery-report.valid-completed-multi-context.json",
+  "base": "risk-discovery-report.valid-single-context-completed.json",
   "operation": "add",
-  "path": ["triggerScan", "triggeredProfiles", "response-ordering", "resolution", "approval"],
+  "path": ["triggerScan", "triggeredProfiles", "stale-writes", "resolution", "approval"],
   "value": {
     "approvedBy": "foreign-approval@example.test",
     "accountableOwner": "foreign-owner@example.test",
