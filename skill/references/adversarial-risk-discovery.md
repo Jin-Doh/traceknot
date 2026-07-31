@@ -62,7 +62,7 @@ The portable workflow is identical in every runtime. Record the selected executi
 
 ### Single-context profile
 
-Use this profile only when `runtime.mode` is `single-context`; the canonical report also requires `triggerScan.challenge.mode: current_context`. Perform the cheap scan and one bounded challenge in the current context, selecting only triggered profiles and stopping under the universal stop rules. Keep change facts, source reasoning, observed evidence, and inference distinct. Record `runtime.discoveryProfile: single-context` and the independence limit.
+Use this profile only when `runtime.mode` is `single-context`; the canonical report requires `triggerScan.challenge.mode: current_context` except when `challenge.outcome: CAPABILITY_LIMITED`, which uses `capability_limited` with its inline limitation. Perform the cheap scan and one bounded challenge in the current context, selecting only triggered profiles and stopping under the universal stop rules. Keep change facts, source reasoning, observed evidence, and inference distinct. Record `runtime.discoveryProfile: single-context` and the independence limit.
 
 A single-context challenge does not satisfy an obligation requiring `independent-producer`; the implementer's conclusion is not independent evidence. Every nested reviewer output in this profile uses `producer.independence: self-check`, and `independent-producer` is forbidden when `provideIndependentEvidence` is false. Report the missing capability as `CAPABILITY_LIMITED` and leave the affected mandatory obligation `BLOCKED`, or satisfy it with another advertised evidence mechanism. A single-context run may still discover candidates and promote confirmation obligations.
 
