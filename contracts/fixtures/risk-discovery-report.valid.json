@@ -23,20 +23,33 @@
     "performed": true,
     "initialRiskLevel": "R1",
     "scopeUnknown": false,
+    "materialTrigger": false,
     "triggeredProfiles": [
       {
         "profileId": "stale-writes",
+        "material": false,
         "evidence": [
           "The change updates a write path that can receive delayed responses."
         ]
       },
       {
         "profileId": "duplicate-identities",
+        "material": false,
         "evidence": [
           "The changed index derives identity from a user-controlled key."
         ]
       }
-    ]
+    ],
+    "challenge": {
+      "outcome": "NOT_REQUIRED",
+      "mode": "current_context",
+      "evidence": [
+        {
+          "source": "trigger scan",
+          "detail": "Initial R1 scope is known and all triggered profiles are nonmaterial."
+        }
+      ]
+    }
   },
   "findings": [
     {
@@ -58,6 +71,10 @@
       "kind": "SOURCE_CANDIDATE",
       "summary": "A stale response can overwrite a newer value.",
       "materiality": "material",
+      "disposition": {
+        "status": "PROMOTED_TO_OBLIGATION",
+        "obligationId": "obligation-stale-write-probe"
+      },
       "evidence": [
         {
           "source": "src/store.ts:88-94",
@@ -82,6 +99,12 @@
       "kind": "CONFIRMED_DEFECT",
       "summary": "Duplicate keys replace one another in the identity map.",
       "materiality": "material",
+      "disposition": {
+        "status": "ACCEPTED_RISK",
+        "owner": "release-owner@example.test",
+        "expiry": "2026-08-15T00:00:00Z",
+        "acceptance": "Accepted for the bounded release while the follow-up patch is scheduled."
+      },
       "evidence": [
         {
           "source": "artifacts/duplicate-key-reproduction.txt",
@@ -97,6 +120,10 @@
       "kind": "POLICY_QUESTION",
       "summary": "The product policy for partial stream loss is unspecified.",
       "materiality": "material",
+      "disposition": {
+        "status": "BLOCKED",
+        "blocker": "Product owner decision is required before a completion condition can be written."
+      },
       "evidence": [
         {
           "source": "docs/streaming.md",

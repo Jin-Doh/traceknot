@@ -61,8 +61,14 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-scan-bypass.json", "scan bypass"],
     ["risk-discovery-report.invalid-source-candidate.json", "incomplete source candidate"],
     ["risk-discovery-report.invalid-unaccepted-material-risk.json", "unaccepted material risk"],
+    ["risk-discovery-report.invalid-deleted-material-disposition.json", "deleted material finding disposition"],
     ["risk-discovery-report.invalid-invented-capability.json", "invented capability"],
     ["risk-discovery-report.invalid-empty-trigger-evidence.json", "empty trigger evidence"],
+    ["risk-discovery-report.invalid-r2-no-challenge.json", "R2 challenge bypass"],
+    ["risk-discovery-report.invalid-r3-no-challenge.json", "R3 challenge bypass"],
+    ["risk-discovery-report.invalid-unknown-scope-no-challenge.json", "unknown scope challenge bypass"],
+    ["risk-discovery-report.invalid-material-trigger-no-challenge.json", "material trigger challenge bypass"],
+    ["risk-discovery-report.invalid-material-profile-no-challenge.json", "material profile challenge bypass"],
   ] as const;
 
   for (const [fileName, description] of negativeFixtures) {

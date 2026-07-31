@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": ["triggerScan", "initialRiskLevel"],
+  "value": "R3",
+  "expectedKeyword": "not"
+}

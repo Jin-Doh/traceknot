@@ -84,23 +84,73 @@
     "triggerScan": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["performed", "initialRiskLevel", "scopeUnknown", "triggeredProfiles"],
+      "required": ["performed", "initialRiskLevel", "scopeUnknown", "materialTrigger", "triggeredProfiles", "challenge"],
       "properties": {
         "performed": { "const": true },
         "initialRiskLevel": { "enum": ["R0", "R1", "R2", "R3"] },
         "scopeUnknown": { "type": "boolean" },
+        "materialTrigger": { "type": "boolean" },
         "triggeredProfiles": {
           "type": "array",
           "items": { "$ref": "#/$defs/triggeredProfile" }
+        },
+        "challenge": { "$ref": "#/$defs/challenge" }
+      },
+      "allOf": [
+          {
+            "if": {
+              "anyOf": [
+                { "properties": { "initialRiskLevel": { "enum": ["R2", "R3"] } } },
+                { "properties": { "scopeUnknown": { "const": true } } },
+                { "properties": { "materialTrigger": { "const": true } } },
+                {
+                  "properties": {
+                    "triggeredProfiles": {
+                      "contains": {
+                        "type": "object",
+                        "required": ["material"],
+                        "properties": { "material": { "const": true } }
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "then": {
+              "properties": {
+                "challenge": {
+                  "type": "object",
+                  "properties": {
+                    "outcome": { "not": { "const": "NOT_REQUIRED" } }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "challenge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "mode", "evidence"],
+      "properties": {
+        "outcome": { "enum": ["NOT_REQUIRED", "COMPLETED", "BLOCKED", "CAPABILITY_LIMITED"] },
+        "mode": { "enum": ["current_context", "separate_context", "capability_limited"] },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/evidence" }
         }
       }
     },
     "triggeredProfile": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["profileId", "evidence"],
+      "required": ["profileId", "material", "evidence"],
       "properties": {
         "profileId": { "type": "string", "minLength": 1 },
+        "material": { "type": "boolean" },
         "evidence": {
           "type": "array",
           "minItems": 1,
@@ -148,6 +198,7 @@
         },
         "summary": { "type": "string", "minLength": 1 },
         "materiality": { "enum": ["material", "nonmaterial"] },
+        "disposition": { "$ref": "#/$defs/materialDisposition" },
         "evidence": {
           "type": "array",
           "minItems": 1,
@@ -178,6 +229,15 @@
         }
       },
       "allOf": [
+        {
+          "if": { "properties": { "materiality": { "const": "material" } } },
+          "then": {
+            "required": ["disposition"],
+            "properties": {
+              "disposition": { "$ref": "#/$defs/materialDisposition" }
+            }
+          }
+        },
         {
           "if": { "properties": { "kind": { "const": "COVERAGE_GAP" } } },
           "then": {
@@ -252,6 +312,54 @@
                 "uniqueItems": true
               }
             }
+          }
+        }
+      ]
+    },
+    "materialDisposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "enum": ["PROMOTED_TO_OBLIGATION", "ACCEPTED_RISK", "BLOCKED"]
+        },
+        "obligationId": { "type": "string", "minLength": 1 },
+        "owner": { "type": "string", "minLength": 1 },
+        "expiry": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
+        },
+        "acceptance": { "type": "string", "minLength": 1 },
+        "blocker": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "PROMOTED_TO_OBLIGATION" } } },
+          "then": {
+            "required": ["obligationId"],
+            "properties": { "obligationId": { "type": "string", "minLength": 1 } }
+          }
+        },
+        {
+          "if": { "properties": { "status": { "const": "ACCEPTED_RISK" } } },
+          "then": {
+            "required": ["owner", "expiry", "acceptance"],
+            "properties": {
+              "owner": { "type": "string", "minLength": 1 },
+              "expiry": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
+              },
+              "acceptance": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "status": { "const": "BLOCKED" } } },
+          "then": {
+            "required": ["blocker"],
+            "properties": { "blocker": { "type": "string", "minLength": 1 } }
           }
         }
       ]
