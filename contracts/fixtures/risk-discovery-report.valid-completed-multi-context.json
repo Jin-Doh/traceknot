@@ -45,7 +45,7 @@
               "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
             },
             "analysis": {
-              "taxonomy": ["NOT_APPLICABLE"],
+              "taxonomy": ["SOURCE_CANDIDATE"],
               "anchors": [
                 {
                   "path": "src/store.ts",
@@ -54,23 +54,55 @@
                   "excerpt": "state.value"
                 }
               ],
-              "failureMechanism": "The bounded partition may diverge from its expected behavior.",
+              "failureMechanism": "The source candidate requires a follow-up confirmation probe.",
               "coverageChecked": true,
-              "confirmationProbe": "Exercise the bounded partition and inspect the preserved result.",
-              "uncertainty": "The runtime evidence does not establish behavior outside this partition."
+              "confirmationProbe": "Exercise the bounded source partition and confirm the expected result.",
+              "uncertainty": "The preserved review output does not establish behavior outside this partition."
             },
             "result": {
-              "kind": "NO_FINDINGS"
+              "kind": "FINDINGS",
+              "findings": {
+                "finding-escalated-material-001": {
+                  "riskId": "risk-escalated-material",
+                  "kind": "SOURCE_CANDIDATE",
+                  "materiality": "material",
+                  "disposition": {
+                    "status": "PROMOTED_TO_OBLIGATION",
+                    "obligationId": "obligation-escalated-material-001"
+                  },
+                  "evidence": [
+                    {
+                      "source": "src/store.ts:1",
+                      "detail": "The completed multi-context profile preserves the material source candidate for follow-up confirmation."
+                    }
+                  ],
+                  "details": {
+                    "summary": "A material source candidate remains after the bounded multi-context challenge.",
+                    "anchors": [
+                      {
+                        "path": "src/store.ts",
+                        "startLine": 1,
+                        "lineCount": 1,
+                        "excerpt": "state.value"
+                      }
+                    ],
+                    "failureMechanism": "The source candidate requires a follow-up confirmation probe.",
+                    "coverageChecked": true,
+                    "confirmationProbe": "Exercise the bounded source partition and confirm the expected result.",
+                    "uncertainty": "The preserved review output does not establish behavior outside this partition."
+                  }
+                }
+              }
             }
           }
         ],
         "resolution": {
-          "status": "NO_FINDINGS",
-          "detail": "The response-ordering partition completed without a finding.",
+          "status": "PROMOTED",
+          "detail": "The response-ordering partition preserved a material SOURCE_CANDIDATE promoted to obligation.",
           "evidence": [
             {
               "source": "codex reviewer artifact",
-              "detail": "The preserved reviewer output is an explicit NO_FINDINGS result."
+              "detail": "The preserved reviewer output records finding-escalated-material-001 as a material source candidate promoted to obligation."
             }
           ]
         }
