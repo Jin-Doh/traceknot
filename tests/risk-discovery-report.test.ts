@@ -3,12 +3,16 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-type Mutation = {
-  base: string;
+type MutationOperation = {
   operation: "replace" | "remove" | "add";
   path: Array<string | number>;
   value?: unknown;
+};
+
+type Mutation = MutationOperation & {
+  base: string;
   expectedKeyword: string;
+  operations?: MutationOperation[];
 };
 
 const fixtureRoot = resolve(import.meta.dir, "../contracts/fixtures");
@@ -24,29 +28,32 @@ const validate = ajv.compile(schema);
 
 function applyMutation(value: unknown, mutation: Mutation): unknown {
   const mutated = JSON.parse(JSON.stringify(value)) as unknown;
-  if (typeof mutated !== "object" || mutated === null) throw new Error("mutation base must be an object");
-  let parent: Record<string, unknown> | unknown[] = Array.isArray(mutated)
-    ? mutated
-    : (mutated as Record<string, unknown>);
-  for (const segment of mutation.path.slice(0, -1)) {
-    const child = Array.isArray(parent)
-      ? typeof segment === "number"
-        ? parent[segment]
-        : undefined
-      : parent[String(segment)];
-    if (typeof child !== "object" || child === null) throw new Error("mutation path does not address an object");
-    parent = Array.isArray(child) ? child : (child as Record<string, unknown>);
-  }
-  const key = mutation.path.at(-1);
-  if (key === undefined) throw new Error("mutation path must not be empty");
-  if (Array.isArray(parent)) {
-    if (typeof key !== "number") throw new Error("array mutation key must be numeric");
-    if (mutation.operation === "remove") parent.splice(key, 1);
-    else parent[key] = mutation.value;
-  } else if (mutation.operation === "remove") {
-    delete parent[String(key)];
-  } else {
-    parent[String(key)] = mutation.value;
+  const operations: MutationOperation[] = mutation.operations ?? [mutation];
+  for (const operation of operations) {
+    if (typeof mutated !== "object" || mutated === null) throw new Error("mutation base must be an object");
+    let parent: Record<string, unknown> | unknown[] = Array.isArray(mutated)
+      ? mutated
+      : (mutated as Record<string, unknown>);
+    for (const segment of operation.path.slice(0, -1)) {
+      const child = Array.isArray(parent)
+        ? typeof segment === "number"
+          ? parent[segment]
+          : undefined
+        : parent[String(segment)];
+      if (typeof child !== "object" || child === null) throw new Error("mutation path does not address an object");
+      parent = Array.isArray(child) ? child : (child as Record<string, unknown>);
+    }
+    const key = operation.path.at(-1);
+    if (key === undefined) throw new Error("mutation path must not be empty");
+    if (Array.isArray(parent)) {
+      if (typeof key !== "number") throw new Error("array mutation key must be numeric");
+      if (operation.operation === "remove") parent.splice(key, 1);
+      else parent[key] = operation.value;
+    } else if (operation.operation === "remove") {
+      delete parent[String(key)];
+    } else {
+      parent[String(key)] = operation.value;
+    }
   }
   return mutated;
 }
@@ -72,6 +79,7 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-material-trigger-no-challenge.json", "material trigger challenge bypass"],
     ["risk-discovery-report.invalid-material-profile-no-challenge.json", "material profile challenge bypass"],
     ["risk-discovery-report.invalid-omp-profile-missing-capability.json", "OMP profile capability bypass"],
+    ["risk-discovery-report.invalid-omp-completed-current-context.json", "OMP completed current-context challenge"],
     ["risk-discovery-report.invalid-single-context-profile-multi-context.json", "single-context profile multi-context contradiction"],
     ["risk-discovery-report.invalid-single-context-profile-separate-context.json", "single-context profile separate-context contradiction"],
     ["risk-discovery-report.invalid-codex-profile-missing-capability.json", "Codex profile capability bypass"],
@@ -82,6 +90,8 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-material-finding-no-risk-id.json", "material finding without risk ID"],
     ["risk-discovery-report.invalid-nonmaterial-risk-id.json", "nonmaterial finding risk ID"],
     ["risk-discovery-report.invalid-nonmaterial-disposition.json", "nonmaterial finding disposition"],
+    ["risk-discovery-report.invalid-deferred-summary.json", "legacy deferred summary"],
+    ["risk-discovery-report.invalid-material-finding-deferred-risk.json", "material finding deferred risk"],
   ] as const;
 
   for (const [fileName, description] of negativeFixtures) {

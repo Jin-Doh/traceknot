@@ -10,8 +10,7 @@
     "snapshotId",
     "runtime",
     "triggerScan",
-    "findings",
-    "deferredNonmaterialRisks"
+    "findings"
   ],
   "properties": {
     "schemaVersion": { "const": "risk-discovery-report/v1" },
@@ -20,12 +19,11 @@
     "runtime": { "$ref": "#/$defs/runtime" },
     "triggerScan": { "$ref": "#/$defs/triggerScan" },
     "findings": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/finding" }
-    },
-    "deferredNonmaterialRisks": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/deferredNonmaterialRisk" }
+      "type": "object",
+      "patternProperties": {
+        "^.+$": { "$ref": "#/$defs/finding" }
+      },
+      "additionalProperties": false
     }
   },
   "allOf": [
@@ -183,6 +181,46 @@
                 "type": "object",
                 "properties": {
                   "mode": { "const": "current_context" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "runtime": {
+            "type": "object",
+            "properties": {
+              "discoveryProfile": { "const": "omp" }
+            }
+          },
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "outcome": { "const": "COMPLETED" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "mode": { "const": "separate_context" }
                 }
               }
             }
@@ -402,9 +440,8 @@
     "finding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "kind", "summary", "materiality", "evidence"],
+      "required": ["kind", "summary", "materiality", "evidence"],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
         "riskId": { "type": "string", "minLength": 1 },
         "kind": {
           "enum": [
@@ -420,6 +457,7 @@
         "summary": { "type": "string", "minLength": 1 },
         "materiality": { "enum": ["material", "nonmaterial"] },
         "disposition": { "$ref": "#/$defs/materialDisposition" },
+        "deferredRisk": { "$ref": "#/$defs/deferredRisk" },
         "evidence": {
           "type": "array",
           "minItems": 1,
@@ -458,6 +496,13 @@
             "properties": {
               "riskId": { "type": "string", "minLength": 1 },
               "disposition": { "$ref": "#/$defs/materialDisposition" }
+            },
+            "not": {
+              "type": "object",
+              "required": ["deferredRisk"],
+              "properties": {
+                "deferredRisk": { "$ref": "#/$defs/deferredRisk" }
+              }
             }
           }
         },
@@ -626,13 +671,12 @@
         }
       ]
     },
-    "deferredNonmaterialRisk": {
+    "deferredRisk": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["riskId", "findingId", "reason"],
+      "required": ["riskId", "reason"],
       "properties": {
         "riskId": { "type": "string", "minLength": 1 },
-        "findingId": { "type": "string", "minLength": 1 },
         "reason": { "type": "string", "minLength": 1 }
       }
     }

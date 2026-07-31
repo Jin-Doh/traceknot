@@ -1,7 +1,7 @@
 {
   "base": "risk-discovery-report.valid.json",
   "operation": "add",
-  "path": ["findings", 0, "disposition"],
+  "path": ["findings", "finding-coverage-001", "disposition"],
   "value": {
     "status": "ACCEPTED_RISK",
     "owner": "release-owner@example.test",

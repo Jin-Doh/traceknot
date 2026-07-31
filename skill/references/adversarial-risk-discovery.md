@@ -64,7 +64,7 @@ A single-context challenge does not satisfy an obligation requiring `independent
 
 ### OMP profile
 
-Use this profile only when `runtime.mode` is `multi-context` and the runtime capability handshake sets `bindSnapshot`, `persistEvidence`, `isolatedReadOnlyReview`, and `enforcedStructuredOutput` to `true`. Perform one triage pass in the current context first. Then, only for triggered material partitions, use at most three scoped read-only reviewers as bounded guidance. Give each reviewer one explicit slice; no reviewer may spawn another reviewer. This cap is OMP profile guidance, not a portable reviewer-count requirement, and no reviewer fan-out is required for a trigger-free `R0` or `R1` change.
+Use this profile only when `runtime.mode` is `multi-context` and the runtime capability handshake sets `bindSnapshot`, `persistEvidence`, `isolatedReadOnlyReview`, and `enforcedStructuredOutput` to `true`. A mandatory challenge that completes (`challenge.outcome: COMPLETED`) must use `challenge.mode: separate_context`; a trigger-free `NOT_REQUIRED` discovery may remain `current_context`. Perform one triage pass in the current context first. Then, only for triggered material partitions, use at most three scoped read-only reviewers as bounded guidance. Give each reviewer one explicit slice; no reviewer may spawn another reviewer. This cap is OMP profile guidance, not a portable reviewer-count requirement, and no reviewer fan-out is required for a trigger-free `R0` or `R1` change.
 
 Require strict structured output from each reviewer (`enforcedStructuredOutput`, represented as canonical JSON or the host's equivalent record, never free-form completion prose). At minimum, bind the target snapshot (`bindSnapshot`), triggered profile, partition, taxonomy, exact source anchors, failure mechanism, existing coverage checked, confirmation probe, uncertainty, and artifact references persisted through `persistEvidence`. Preserve every complete reviewer output, including a negative or no-finding output, as an artifact; do not reduce it to a completion status or discard it after summarization. If the handshake does not provide all four named capabilities, use the single-context profile or report `CAPABILITY_LIMITED`.
 
@@ -91,6 +91,7 @@ Every profile retains the universal scan, escalation criteria, finding taxonomy,
 - `DUPLICATE_CLUSTER`: the candidate shares the root cause of an existing finding.
 
 A source candidate must include exact anchors, the failure mechanism, existing coverage checked, a confirmation probe, and uncertainty. Promote a material source candidate to a mandatory confirmation obligation; do not relabel it as a confirmed defect.
+The canonical report keys `findings` by finding ID, so the key is the sole identity and is not repeated inside the finding. Material findings carry `riskId` and a closed status-specific `disposition`; nonmaterial findings may carry a closed `deferredRisk` with `riskId` and `reason`. Material findings cannot carry `deferredRisk`, and the report has no separate deferred-risk summary array.
 
 ## Stop rules
 

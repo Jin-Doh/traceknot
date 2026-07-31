@@ -1,0 +1,39 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": ["runtime", "discoveryProfile"],
+  "value": "omp",
+  "operations": [
+    {
+      "operation": "replace",
+      "path": ["runtime", "discoveryProfile"],
+      "value": "omp"
+    },
+    {
+      "operation": "replace",
+      "path": ["runtime", "mode"],
+      "value": "multi-context"
+    },
+    {
+      "operation": "replace",
+      "path": ["runtime", "capabilities", "isolatedReadOnlyReview"],
+      "value": true
+    },
+    {
+      "operation": "replace",
+      "path": ["runtime", "capabilities", "enforcedStructuredOutput"],
+      "value": true
+    },
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "materialTrigger"],
+      "value": true
+    },
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "challenge", "outcome"],
+      "value": "COMPLETED"
+    }
+  ],
+  "expectedKeyword": "const"
+}

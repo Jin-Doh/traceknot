@@ -56,12 +56,15 @@
       ]
     }
   },
-  "findings": [
-    {
-      "id": "finding-coverage-001",
+  "findings": {
+    "finding-coverage-001": {
       "kind": "COVERAGE_GAP",
       "summary": "Crash recovery is not covered by an existing verification condition.",
       "materiality": "nonmaterial",
+      "deferredRisk": {
+        "riskId": "risk-crash-recovery",
+        "reason": "Crash recovery is outside this change's nonmaterial scope and is queued for a later pass."
+      },
       "evidence": [
         {
           "source": "tests/recovery.test.ts",
@@ -71,8 +74,7 @@
       "coverageGap": "No condition exercises persistence recovery after an interrupted write.",
       "coverageChecked": true
     },
-    {
-      "id": "finding-source-001",
+    "finding-source-001": {
       "riskId": "risk-stale-write",
       "kind": "SOURCE_CANDIDATE",
       "summary": "A stale response can overwrite a newer value.",
@@ -100,8 +102,7 @@
       "confirmationProbe": "Inject two responses in reverse completion order and assert the latest request wins.",
       "uncertainty": "The production transport may serialize responses, which has not been established."
     },
-    {
-      "id": "finding-defect-001",
+    "finding-defect-001": {
       "riskId": "risk-duplicate-identity",
       "kind": "CONFIRMED_DEFECT",
       "summary": "Duplicate keys replace one another in the identity map.",
@@ -122,8 +123,7 @@
       "actual": "The second record replaces the first record.",
       "reproduction": "Create records A and B with the same external key, then query both identities."
     },
-    {
-      "id": "finding-policy-001",
+    "finding-policy-001": {
       "riskId": "risk-stream-policy",
       "kind": "POLICY_QUESTION",
       "summary": "The product policy for partial stream loss is unspecified.",
@@ -140,8 +140,7 @@
       ],
       "question": "Should a reconnecting consumer expose a gap marker or silently continue?"
     },
-    {
-      "id": "finding-na-001",
+    "finding-na-001": {
       "kind": "NOT_APPLICABLE",
       "summary": "Production deployment boundaries do not apply to this library-only change.",
       "materiality": "nonmaterial",
@@ -153,11 +152,14 @@
       ],
       "reason": "The changed files are not part of a deployable service."
     },
-    {
-      "id": "finding-capability-001",
+    "finding-capability-001": {
       "kind": "CAPABILITY_LIMITED",
       "summary": "Browser-specific behavior could not be exercised.",
       "materiality": "nonmaterial",
+      "deferredRisk": {
+        "riskId": "risk-browser-coverage",
+        "reason": "Browser coverage is deferred until a runtime with executeBrowser is available."
+      },
       "evidence": [
         {
           "source": "runtime handshake",
@@ -167,8 +169,7 @@
       "capability": "executeBrowser",
       "limitation": "No browser execution or independent browser artifact is available."
     },
-    {
-      "id": "finding-duplicate-001",
+    "finding-duplicate-001": {
       "kind": "DUPLICATE_CLUSTER",
       "summary": "Two candidate findings describe the same stale-write partition.",
       "materiality": "nonmaterial",
@@ -180,17 +181,5 @@
       ],
       "clusterMemberIds": ["finding-source-001", "finding-coverage-001"]
     }
-  ],
-  "deferredNonmaterialRisks": [
-    {
-      "riskId": "risk-crash-recovery",
-      "findingId": "finding-coverage-001",
-      "reason": "Crash recovery is outside this change's nonmaterial scope and is queued for a later pass."
-    },
-    {
-      "riskId": "risk-browser-coverage",
-      "findingId": "finding-capability-001",
-      "reason": "Browser coverage is deferred until a runtime with executeBrowser is available."
-    }
-  ]
+  }
 }

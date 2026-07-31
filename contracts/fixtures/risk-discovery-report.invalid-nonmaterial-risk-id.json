@@ -1,7 +1,7 @@
 {
   "base": "risk-discovery-report.valid.json",
   "operation": "add",
-  "path": ["findings", 0, "riskId"],
+  "path": ["findings", "finding-coverage-001", "riskId"],
   "value": "risk-illegal-nonmaterial",
   "expectedKeyword": "not"
 }
