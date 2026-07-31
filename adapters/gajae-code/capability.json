@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "quality-capability/v1",
+  "schemaVersion": "quality-capability/v2",
   "host": "gajae-code",
   "adapterVersion": "portable-v1",
   "capabilities": {

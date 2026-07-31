@@ -41,7 +41,7 @@ Findings retain distinct meanings: `COVERAGE_GAP` is missing evidence, not a def
 | Portable ISTQB-aligned Skill | Implemented |
 | Canonical QA record schemas | Implemented and schema-validated |
 | Host-neutral deterministic verdict core | Implemented and tested |
-| Harness capability manifests | Implemented; runtime capabilities default to none |
+| Harness capability manifests | Implemented; static adapter records use `quality-capability/v2` |
 | Completion-authority contracts and models | Preserved as an optional extension |
 | Native OMP/Codex/Claude/OpenCode integration | Not implemented |
 | Phase B completion enforcement | Not authorized; `phase1Authorized: false` |
@@ -267,6 +267,7 @@ Discovery changes the disposition of risk, not the deterministic precedence: def
 │       └── adversarial-risk-discovery.md
 ├── contracts/
 │   ├── capability.schema.json
+│   ├── capability-v2.schema.json
 │   ├── verification-request.schema.json
 │   ├── verification-plan.schema.json
 │   ├── evidence.schema.json
@@ -302,7 +303,7 @@ Start with [skill/SKILL.md](skill/SKILL.md). Detailed guidance, including the di
 
 Closed JSON Schema Draft 2020-12 records shared by a Skill, harness adapter, core validator, or external implementation:
 
-- host capability;
+- host capability v1 (legacy) and v2 (adapter);
 - verification request;
 - verification plan;
 - evidence;
@@ -311,10 +312,11 @@ Closed JSON Schema Draft 2020-12 records shared by a Skill, harness adapter, cor
 - optional snapshot-bound risk-discovery report (`risk-discovery-report/v1`), validated when produced.
 
 Host names grant no capability. A runtime handshake must advertise and prove each capability.
+`contracts/capability.schema.json` preserves the closed `quality-capability/v1` shape for existing records. `contracts/capability-v2.schema.json` is the adapter contract: it requires all nine host-neutral capability booleans, including `isolatedReadOnlyReview` and `enforcedStructuredOutput`. Static adapter manifests use v2 and explicitly set those fields to `false`; old v1 records remain valid without them.
 
 ### `adapters/`
 
-Conservative capability manifests for supported harness names. All default capabilities are `false`; this prevents accidental trust escalation. A real adapter must provide current runtime capabilities and evidence without taking over the harness's agent policy.
+Conservative v2 capability manifests for supported harness names. All default capabilities are `false`; this prevents accidental trust escalation. A real adapter must provide current runtime capabilities and evidence without taking over the harness's agent policy.
 
 ### `system/core/`
 
@@ -361,7 +363,7 @@ bun install --frozen-lockfile --ignore-scripts
 bun run ci
 ```
 
-The gate runs the portable installer lifecycle, JSON and Draft 2020-12 schema validation, capability validation, prompt-injection risk classification, core tests, strict type checking, and whitespace checks. `high` and `critical` prompt-risk findings block the gate. Narrow, expiring exceptions require an owner, reason, mitigation, and exact line fingerprint in `security/prompt-injection-exceptions.json`.
+The gate runs the portable installer lifecycle, JSON and Draft 2020-12 schema validation (including both capability schema versions), v2 capability-record validation, prompt-injection risk classification, core tests, strict type checking, and whitespace checks. `high` and `critical` prompt-risk findings block the gate. Narrow, expiring exceptions require an owner, reason, mitigation, and exact line fingerprint in `security/prompt-injection-exceptions.json`.
 
 Run an individual core check while developing:
 

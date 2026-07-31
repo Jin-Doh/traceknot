@@ -41,7 +41,7 @@ Finding의 의미는 구분합니다. `COVERAGE_GAP`은 evidence가 부족한 �
 | Portable ISTQB 기반 Skill | 구현 완료 |
 | Canonical QA record schema | 구현 및 schema 검증 완료 |
 | Host-neutral deterministic verdict core | 구현 및 테스트 완료 |
-| 하네스 capability manifest | 구현 완료; runtime capability 기본값은 없음 |
+| 하네스 capability manifest | 구현 완료; 정적 adapter record는 `quality-capability/v2` 사용 |
 | Completion-authority 계약과 모델 | 선택적 extension으로 보존 |
 | OMP/Codex/Claude/OpenCode native 연동 | 미구현 |
 | Phase B completion enforcement | 미승인; `phase1Authorized: false` |
@@ -267,6 +267,7 @@ Discovery는 risk disposition을 바꾸지만 결정적 precedence는 바꾸지 
 │       └── adversarial-risk-discovery.md
 ├── contracts/
 │   ├── capability.schema.json
+│   ├── capability-v2.schema.json
 │   ├── verification-request.schema.json
 │   ├── verification-plan.schema.json
 │   ├── evidence.schema.json
@@ -302,7 +303,7 @@ Portable host-neutral workflow입니다. Test basis, initial/final risk classifi
 
 Skill, harness adapter, core validator 또는 외부 구현이 공유하는 closed JSON Schema Draft 2020-12 record입니다.
 
-- host capability
+- host capability v1(legacy) 및 v2(adapter)
 - verification request
 - verification plan
 - evidence
@@ -311,10 +312,11 @@ Skill, harness adapter, core validator 또는 외부 구현이 공유하는 clos
 - 선택적 snapshot-bound risk-discovery report (`risk-discovery-report/v1`); 생성할 때 schema 검증
 
 하네스 이름은 capability를 자동으로 부여하지 않습니다. Runtime handshake가 각 capability를 선언하고 증명해야 합니다.
+`contracts/capability.schema.json`은 기존 record를 위한 닫힌 `quality-capability/v1` 형태를 그대로 보존합니다. `contracts/capability-v2.schema.json`은 adapter 계약으로 `isolatedReadOnlyReview`와 `enforcedStructuredOutput`을 포함한 9개 host-neutral capability boolean을 모두 요구합니다. 정적 adapter manifest는 v2를 사용하며 이 필드도 명시적으로 `false`로 기록합니다. 기존 v1 record는 이 두 필드 없이도 계속 유효합니다.
 
 ### `adapters/`
 
-지원 대상 하네스 이름에 대한 보수적인 capability manifest입니다. 모든 기본 capability는 `false`이며 accidental trust escalation을 방지합니다. 실제 adapter는 하네스의 agent policy를 인수하지 않고 현재 runtime capability와 evidence만 제공해야 합니다.
+지원 대상 하네스 이름에 대한 보수적인 v2 capability manifest입니다. 모든 기본 capability는 `false`이며 accidental trust escalation을 방지합니다. 실제 adapter는 하네스의 agent policy를 인수하지 않고 현재 runtime capability와 evidence만 제공해야 합니다.
 
 ### `system/core/`
 
@@ -369,7 +371,7 @@ bun install --frozen-lockfile --ignore-scripts
 bun run ci
 ```
 
-이 gate는 portable installer lifecycle, JSON 및 Draft 2020-12 schema 검증, capability 검증, prompt-injection 위험 분류, core test, strict typecheck, 공백 검사를 실행합니다. `high`와 `critical` prompt-risk finding은 gate를 차단합니다. 예외는 범위를 좁히고 만료일을 지정해야 하며, `security/prompt-injection-exceptions.json`에 owner, reason, mitigation, 정확한 line fingerprint를 기록해야 합니다.
+이 gate는 portable installer lifecycle, JSON 및 Draft 2020-12 schema 검증(두 capability schema version 포함), v2 capability record 검증, prompt-injection 위험 분류, core test, strict typecheck, 공백 검사를 실행합니다. `high`와 `critical` prompt-risk finding은 gate를 차단합니다. 예외는 범위를 좁히고 만료일을 지정해야 하며, `security/prompt-injection-exceptions.json`에 owner, reason, mitigation, 정확한 line fingerprint를 기록해야 합니다.
 
 개발 중 개별 core check를 실행하려면:
 
