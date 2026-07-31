@@ -483,6 +483,7 @@
         "clusterMembers": {
           "type": "array",
           "minItems": 2,
+          "uniqueItems": true,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -623,6 +624,7 @@
               "clusterMembers": {
                 "type": "array",
                 "minItems": 2,
+                "uniqueItems": true,
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
