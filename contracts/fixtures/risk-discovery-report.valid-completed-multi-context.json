@@ -63,7 +63,17 @@
               "kind": "NO_FINDINGS"
             }
           }
-        ]
+        ],
+        "resolution": {
+          "status": "NO_FINDINGS",
+          "detail": "The response-ordering partition completed without a finding.",
+          "evidence": [
+            {
+              "source": "codex reviewer artifact",
+              "detail": "The preserved reviewer output is an explicit NO_FINDINGS result."
+            }
+          ]
+        }
       }
     },
     "challenge": {

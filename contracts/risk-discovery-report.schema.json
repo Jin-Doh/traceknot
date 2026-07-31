@@ -1289,6 +1289,45 @@
               "challenge": {
                 "type": "object",
                 "properties": {
+                  "outcome": { "const": "COMPLETED" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "object",
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": {
+                  "type": "object",
+                  "required": ["resolution"],
+                  "properties": {
+                    "resolution": { "$ref": "#/$defs/profileResolution" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
                   "outcome": { "const": "NOT_REQUIRED" }
                 }
               }
@@ -1844,6 +1883,21 @@
           "description": "Each output inherits the enclosing report snapshotId; a separate snapshot field is forbidden.",
           "type": "array",
           "items": { "$ref": "#/$defs/reviewerOutput" }
+        },
+        "resolution": { "$ref": "#/$defs/profileResolution" }
+      }
+    },
+    "profileResolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "detail", "evidence"],
+      "properties": {
+        "status": { "enum": ["NO_FINDINGS", "PROMOTED", "ACCEPTED_RISK"] },
+        "detail": { "type": "string", "minLength": 1 },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/evidence" }
         }
       }
     },
@@ -2137,10 +2191,29 @@
         }
       ]
     },
+    "approvalEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "detail", "artifact"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "detail": { "type": "string", "minLength": 1 },
+        "artifact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "sha256"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+          }
+        }
+      }
+    },
     "approval": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["approvedBy", "accountableOwner", "reason", "scope", "mitigation", "expiresAtUnixSeconds", "evidenceId", "independence"],
+      "required": ["approvedBy", "accountableOwner", "reason", "scope", "mitigation", "expiresAtUnixSeconds", "evidence", "independence"],
       "properties": {
         "approvedBy": { "type": "string", "minLength": 1 },
         "accountableOwner": { "type": "string", "minLength": 1 },
@@ -2148,7 +2221,7 @@
         "scope": { "type": "string", "minLength": 1 },
         "mitigation": { "type": "string", "minLength": 1 },
         "expiresAtUnixSeconds": { "type": "integer", "minimum": 1 },
-        "evidenceId": { "type": "string", "minLength": 1 },
+        "evidence": { "$ref": "#/$defs/approvalEvidence" },
         "independence": { "const": "external-approval" }
       }
     },

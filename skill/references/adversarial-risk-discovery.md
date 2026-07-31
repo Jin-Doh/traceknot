@@ -78,6 +78,8 @@ Require strict structured output from each reviewer (`enforcedStructuredOutput`,
 
 `triggeredProfiles` is a closed object keyed by nonempty profile ID; each value carries evidence and optional reviewer outputs, and the key is the profile identity. The root `materialTrigger` flag is the sole material-trigger authority; profile values do not carry a duplicate `material` field.
 
+When `challenge.outcome: COMPLETED`, every keyed `triggeredProfile` carries a closed `resolution` with nonempty `detail` and canonical evidence. Its status is `NO_FINDINGS`, `PROMOTED`, or `ACCEPTED_RISK`; it is a profile-level summary and must not duplicate findings. Agreement between a profile resolution, reviewer outputs, and aggregate findings remains a semantic boundary.
+
 The closed common `analysis` object on every reviewer output contains a nonempty unique `taxonomy` drawn from the seven finding kinds, nonempty `anchors` using the canonical `anchor` shape, a nonempty `failureMechanism`, `coverageChecked: true`, a nonempty `confirmationProbe`, and a nonempty `uncertainty`.
 
 OMP agent or job completion, timeout, cancellation, retry, and other lifecycle events are observations about execution only: timeout or cancellation alone proves nothing about coverage, independence, or a finding. Evaluate any preserved structured output bound to the target snapshot under the normal evidence rules. If no output is preserved, it contributes no evidence; partial output may support only the claims it actually establishes and cannot be upgraded by timeout, completion, cancellation, or retry status. Report missing or partial output and apply the stop and residual-risk rules.
@@ -124,8 +126,11 @@ The host owns time, model, concurrency, retry, and agent limits. Traceknot must 
 - A nonmaterial deferred partition may remain reported as untested scope.
 - A material deferred risk without external approval prevents `PASS` and remains `INCOMPLETE` or `BLOCKED` according to the missing prerequisite.
 - A material deferred risk with valid, unexpired external approval (a future `expiresAtUnixSeconds` value) yields `PASS_WITH_ACCEPTED_RISK` only after mandatory obligations pass.
+
 - A confirmed open material defect yields `FAIL`.
 - A material source candidate that still needs confirmation keeps the related mandatory obligation incomplete.
+
+An accepted-risk approval's closed `evidence` object inherits the enclosing report snapshot and contains only `id`, `source`, `detail`, and an `artifact` with `id` and a 64-hex `sha256`. Retrieval, hash verification, evidence authority, evidence-ID uniqueness, and expiry-clock interpretation remain semantic boundaries; a nested snapshot or legacy `evidenceId` is not valid.
 
 The portable Skill requires this discovery activity and completion-report disclosure, but the existing deterministic v1 core does not enforce it: native v1 callers can omit the scan or discovery record. Such omission is outside portable Skill compliance and must be disclosed rather than represented as completed discovery. The optional canonical discovery record validates its shape when produced; native enforcement requires a separate runtime integration, and `verification-plan/v1`, `qa-verdict/v1`, and deterministic verdict semantics remain unchanged.
 

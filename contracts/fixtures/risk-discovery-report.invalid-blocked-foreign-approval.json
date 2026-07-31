@@ -9,7 +9,15 @@
     "scope": "Invalid blocked disposition",
     "mitigation": "None",
     "expiresAtUnixSeconds": 1786752000,
-    "evidenceId": "approval-foreign-002",
+    "evidence": {
+      "id": "approval-foreign-002",
+      "source": "foreign approval",
+      "detail": "Foreign approval field.",
+      "artifact": {
+        "id": "approval-artifact-foreign-002",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    },
     "independence": "external-approval"
   },
   "expectedKeyword": "additionalProperties"

@@ -33,6 +33,9 @@ const capabilityLimitedReport = JSON.parse(
 const nonmaterialNotRequiredReport = JSON.parse(
   readFileSync(join(fixtureRoot, "risk-discovery-report.valid-nonmaterial-not-required.json"), "utf8"),
 ) as unknown;
+const singleContextCompletedReport = JSON.parse(
+  readFileSync(join(fixtureRoot, "risk-discovery-report.valid-single-context-completed.json"), "utf8"),
+) as unknown;
 const ajv = new Ajv2020({ strict: true, allErrors: true });
 const validate = ajv.compile(schema);
 
@@ -96,6 +99,11 @@ describe("risk discovery report contract", () => {
     expect(validate.errors).toBeNull();
   });
 
+  test("accepts a completed single-context report with profile resolution", () => {
+    expect(validate(singleContextCompletedReport)).toBe(true);
+    expect(validate.errors).toBeNull();
+  });
+
   const negativeFixtures = [
     ["risk-discovery-report.invalid-scan-bypass.json", "scan bypass"],
     ["risk-discovery-report.invalid-synthetic-boundary-no-challenge.json", "synthetic boundary challenge bypass"],
@@ -105,6 +113,10 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-accepted-risk-missing-approval.json", "missing accepted-risk approval"],
     ["risk-discovery-report.invalid-accepted-risk-missing-owner.json", "missing accountable approval owner"],
     ["risk-discovery-report.invalid-accepted-risk-incomplete-approval.json", "incomplete accepted-risk approval"],
+    ["risk-discovery-report.invalid-legacy-approval-evidence-id.json", "legacy accepted-risk evidence ID"],
+    ["risk-discovery-report.invalid-accepted-risk-missing-evidence.json", "missing accepted-risk evidence"],
+    ["risk-discovery-report.invalid-approval-artifact-hash.json", "malformed accepted-risk artifact hash"],
+    ["risk-discovery-report.invalid-approval-foreign-snapshot.json", "foreign accepted-risk evidence snapshot"],
     ["risk-discovery-report.invalid-promoted-foreign-approval.json", "promoted foreign approval field"],
     ["risk-discovery-report.invalid-accepted-foreign-obligation.json", "accepted foreign obligation field"],
     ["risk-discovery-report.invalid-blocked-foreign-approval.json", "blocked foreign approval field"],
@@ -132,6 +144,11 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-not-required-capability-limited.json", "NOT_REQUIRED capability-limited mode contradiction"],
     ["risk-discovery-report.invalid-capability-limited-missing-limitation.json", "missing capability-limited limitation"],
     ["risk-discovery-report.invalid-non-capability-challenge-limitation.json", "limitation on non-capability outcome"],
+    ["risk-discovery-report.invalid-completed-resolution-missing.json", "missing completed profile resolution"],
+    ["risk-discovery-report.invalid-completed-resolution-empty-detail.json", "empty completed profile resolution detail"],
+    ["risk-discovery-report.invalid-completed-resolution-empty-evidence.json", "empty completed profile resolution evidence"],
+    ["risk-discovery-report.invalid-completed-resolution-blocked-status.json", "blocked completed profile resolution"],
+    ["risk-discovery-report.invalid-completed-resolution-capability-status.json", "capability-limited completed profile resolution"],
     ["risk-discovery-report.invalid-duplicate-material-summary.json", "duplicate material summary"],
     ["risk-discovery-report.invalid-material-finding-no-risk-id.json", "material finding without risk ID"],
     ["risk-discovery-report.invalid-nonmaterial-risk-id.json", "nonmaterial finding risk ID"],

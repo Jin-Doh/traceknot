@@ -9,7 +9,15 @@
     "scope": "Invalid promoted disposition",
     "mitigation": "None",
     "expiresAtUnixSeconds": 1786752000,
-    "evidenceId": "approval-foreign-001",
+    "evidence": {
+      "id": "approval-foreign-001",
+      "source": "foreign approval",
+      "detail": "Foreign approval field.",
+      "artifact": {
+        "id": "approval-artifact-foreign-001",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
     "independence": "external-approval"
   },
   "expectedKeyword": "additionalProperties"

@@ -54,6 +54,34 @@
           }
         ]
       }
+    },
+    {
+      "operation": "add",
+      "path": ["triggerScan", "triggeredProfiles", "stale-writes", "resolution"],
+      "value": {
+        "status": "NO_FINDINGS",
+        "detail": "The stale-writes partition produced no preserved findings.",
+        "evidence": [
+          {
+            "source": "reviewer harness",
+            "detail": "The bounded stale-writes review completed with no findings."
+          }
+        ]
+      }
+    },
+    {
+      "operation": "add",
+      "path": ["triggerScan", "triggeredProfiles", "duplicate-identities", "resolution"],
+      "value": {
+        "status": "NO_FINDINGS",
+        "detail": "The duplicate-identities partition produced no preserved findings.",
+        "evidence": [
+          {
+            "source": "reviewer harness",
+            "detail": "The bounded duplicate-identities review completed with no findings."
+          }
+        ]
+      }
     }
   ],
   "expectedKeyword": "required"

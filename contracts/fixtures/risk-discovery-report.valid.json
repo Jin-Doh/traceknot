@@ -115,7 +115,15 @@
           "scope": "Duplicate identity handling in the bounded release.",
           "mitigation": "Schedule the duplicate-key follow-up patch before the approval expires.",
           "expiresAtUnixSeconds": 1786752000,
-          "evidenceId": "approval-duplicate-identity-001",
+          "evidence": {
+            "id": "approval-duplicate-identity-001",
+            "source": "release approval",
+            "detail": "The approval artifact records the accepted-risk decision for the bounded release.",
+            "artifact": {
+              "id": "approval-artifact-duplicate-identity-001",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          },
           "independence": "external-approval"
         }
       },

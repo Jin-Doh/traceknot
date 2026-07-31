@@ -109,6 +109,34 @@
           }
         }
       ]
+    },
+    {
+      "operation": "add",
+      "path": ["triggerScan", "triggeredProfiles", "stale-writes", "resolution"],
+      "value": {
+        "status": "NO_FINDINGS",
+        "detail": "The stale-writes partition resolution is recorded separately from the invalid output.",
+        "evidence": [
+          {
+            "source": "reviewer harness",
+            "detail": "The stale-writes partition has a preserved resolution record."
+          }
+        ]
+      }
+    },
+    {
+      "operation": "add",
+      "path": ["triggerScan", "triggeredProfiles", "duplicate-identities", "resolution"],
+      "value": {
+        "status": "NO_FINDINGS",
+        "detail": "The duplicate-identities partition resolution is recorded separately from the invalid output.",
+        "evidence": [
+          {
+            "source": "reviewer harness",
+            "detail": "The duplicate-identities partition has a preserved resolution record."
+          }
+        ]
+      }
     }
   ],
   "expectedKeyword": "required"

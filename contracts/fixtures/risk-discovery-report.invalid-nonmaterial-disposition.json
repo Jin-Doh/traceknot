@@ -11,7 +11,15 @@
       "scope": "Invalid nonmaterial disposition",
       "mitigation": "None",
       "expiresAtUnixSeconds": 1786752000,
-      "evidenceId": "approval-invalid-nonmaterial-001",
+      "evidence": {
+        "id": "approval-invalid-nonmaterial-001",
+        "source": "foreign approval",
+        "detail": "This disposition must not be attached to a nonmaterial finding.",
+        "artifact": {
+          "id": "approval-artifact-invalid-nonmaterial-001",
+          "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      },
       "independence": "external-approval"
     }
   },

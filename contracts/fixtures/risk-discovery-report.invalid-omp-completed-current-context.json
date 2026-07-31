@@ -33,6 +33,34 @@
       "operation": "replace",
       "path": ["triggerScan", "challenge", "outcome"],
       "value": "COMPLETED"
+    },
+    {
+      "operation": "add",
+      "path": ["triggerScan", "triggeredProfiles", "stale-writes", "resolution"],
+      "value": {
+        "status": "NO_FINDINGS",
+        "detail": "The stale-writes partition resolution is preserved for the mode regression.",
+        "evidence": [
+          {
+            "source": "challenge",
+            "detail": "The stale-writes partition has a preserved resolution record."
+          }
+        ]
+      }
+    },
+    {
+      "operation": "add",
+      "path": ["triggerScan", "triggeredProfiles", "duplicate-identities", "resolution"],
+      "value": {
+        "status": "NO_FINDINGS",
+        "detail": "The duplicate-identities partition resolution is preserved for the mode regression.",
+        "evidence": [
+          {
+            "source": "challenge",
+            "detail": "The duplicate-identities partition has a preserved resolution record."
+          }
+        ]
+      }
     }
   ],
   "expectedKeyword": "const"
