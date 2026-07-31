@@ -58,6 +58,17 @@ function applyMutation(value: unknown, mutation: Mutation): unknown {
   return mutated;
 }
 
+function replaceCapabilityName(value: unknown, capabilityName: string): unknown {
+  if (value === "executeBrowser") return capabilityName;
+  if (Array.isArray(value)) return value.map((entry) => replaceCapabilityName(entry, capabilityName));
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, replaceCapabilityName(entry, capabilityName)]),
+    );
+  }
+  return value;
+}
+
 describe("risk discovery report contract", () => {
   test("accepts the representative snapshot-bound report", () => {
     expect(validate(validReport)).toBe(true);
@@ -144,7 +155,7 @@ describe("risk discovery report contract", () => {
               path: ["runtime", "capabilities", capabilityName],
               value: true,
             }
-          : { ...operation, value: capabilityName },
+          : { ...operation, value: replaceCapabilityName(operation.value, capabilityName) },
       );
       const mutated = applyMutation(validReport, { ...capabilityFixture, operations });
       expect(validate(mutated)).toBe(false);

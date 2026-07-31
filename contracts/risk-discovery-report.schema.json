@@ -316,8 +316,42 @@
                 }
               }
             }
+          },
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "reviewerOutputs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "result": {
+                            "type": "object",
+                            "properties": {
+                              "findings": {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^.+$": {
+                                    "not": { "$ref": "#/$defs/capabilityLimitedExecuteCommands" }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+                      }
           }
-        }
       }
     },
     {
@@ -359,8 +393,42 @@
                 }
               }
             }
+          },
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "reviewerOutputs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "result": {
+                            "type": "object",
+                            "properties": {
+                              "findings": {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^.+$": {
+                                    "not": { "$ref": "#/$defs/capabilityLimitedExecuteBrowser" }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+                      }
           }
-        }
       }
     },
     {
@@ -402,8 +470,42 @@
                 }
               }
             }
+          },
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "reviewerOutputs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "result": {
+                            "type": "object",
+                            "properties": {
+                              "findings": {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^.+$": {
+                                    "not": { "$ref": "#/$defs/capabilityLimitedCaptureArtifacts" }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+                      }
           }
-        }
       }
     },
     {
@@ -445,8 +547,42 @@
                 }
               }
             }
+          },
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "reviewerOutputs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "result": {
+                            "type": "object",
+                            "properties": {
+                              "findings": {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^.+$": {
+                                    "not": { "$ref": "#/$defs/capabilityLimitedBindSnapshot" }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+                      }
           }
-        }
       }
     },
     {
@@ -488,8 +624,42 @@
                 }
               }
             }
+          },
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "reviewerOutputs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "result": {
+                            "type": "object",
+                            "properties": {
+                              "findings": {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^.+$": {
+                                    "not": { "$ref": "#/$defs/capabilityLimitedProvideIndependentEvidence" }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+                      }
           }
-        }
       }
     },
     {
@@ -531,8 +701,42 @@
                 }
               }
             }
+          },
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "reviewerOutputs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "result": {
+                            "type": "object",
+                            "properties": {
+                              "findings": {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^.+$": {
+                                    "not": { "$ref": "#/$defs/capabilityLimitedPersistEvidence" }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+                      }
           }
-        }
       }
     },
     {
@@ -574,8 +778,42 @@
                 }
               }
             }
+          },
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "reviewerOutputs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "result": {
+                            "type": "object",
+                            "properties": {
+                              "findings": {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^.+$": {
+                                    "not": { "$ref": "#/$defs/capabilityLimitedApproveExceptions" }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+                      }
           }
-        }
       }
     },
     {
@@ -617,8 +855,42 @@
                 }
               }
             }
+          },
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "reviewerOutputs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "result": {
+                            "type": "object",
+                            "properties": {
+                              "findings": {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^.+$": {
+                                    "not": { "$ref": "#/$defs/capabilityLimitedIsolatedReadOnlyReview" }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+                      }
           }
-        }
       }
     },
     {
@@ -660,8 +932,42 @@
                 }
               }
             }
+          },
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "reviewerOutputs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "result": {
+                            "type": "object",
+                            "properties": {
+                              "findings": {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^.+$": {
+                                    "not": { "$ref": "#/$defs/capabilityLimitedEnforcedStructuredOutput" }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+                      }
           }
-        }
       }
     }
   ],
@@ -678,6 +984,132 @@
         "isolatedReadOnlyReview",
         "enforcedStructuredOutput"
       ]
+    },
+    "capabilityLimitedExecuteCommands": {
+      "type": "object",
+      "required": ["kind", "details"],
+      "properties": {
+        "kind": { "const": "CAPABILITY_LIMITED" },
+        "details": {
+          "type": "object",
+          "required": ["capability"],
+          "properties": {
+            "capability": { "const": "executeCommands" }
+          }
+        }
+      }
+    },
+    "capabilityLimitedExecuteBrowser": {
+      "type": "object",
+      "required": ["kind", "details"],
+      "properties": {
+        "kind": { "const": "CAPABILITY_LIMITED" },
+        "details": {
+          "type": "object",
+          "required": ["capability"],
+          "properties": {
+            "capability": { "const": "executeBrowser" }
+          }
+        }
+      }
+    },
+    "capabilityLimitedCaptureArtifacts": {
+      "type": "object",
+      "required": ["kind", "details"],
+      "properties": {
+        "kind": { "const": "CAPABILITY_LIMITED" },
+        "details": {
+          "type": "object",
+          "required": ["capability"],
+          "properties": {
+            "capability": { "const": "captureArtifacts" }
+          }
+        }
+      }
+    },
+    "capabilityLimitedBindSnapshot": {
+      "type": "object",
+      "required": ["kind", "details"],
+      "properties": {
+        "kind": { "const": "CAPABILITY_LIMITED" },
+        "details": {
+          "type": "object",
+          "required": ["capability"],
+          "properties": {
+            "capability": { "const": "bindSnapshot" }
+          }
+        }
+      }
+    },
+    "capabilityLimitedProvideIndependentEvidence": {
+      "type": "object",
+      "required": ["kind", "details"],
+      "properties": {
+        "kind": { "const": "CAPABILITY_LIMITED" },
+        "details": {
+          "type": "object",
+          "required": ["capability"],
+          "properties": {
+            "capability": { "const": "provideIndependentEvidence" }
+          }
+        }
+      }
+    },
+    "capabilityLimitedPersistEvidence": {
+      "type": "object",
+      "required": ["kind", "details"],
+      "properties": {
+        "kind": { "const": "CAPABILITY_LIMITED" },
+        "details": {
+          "type": "object",
+          "required": ["capability"],
+          "properties": {
+            "capability": { "const": "persistEvidence" }
+          }
+        }
+      }
+    },
+    "capabilityLimitedApproveExceptions": {
+      "type": "object",
+      "required": ["kind", "details"],
+      "properties": {
+        "kind": { "const": "CAPABILITY_LIMITED" },
+        "details": {
+          "type": "object",
+          "required": ["capability"],
+          "properties": {
+            "capability": { "const": "approveExceptions" }
+          }
+        }
+      }
+    },
+    "capabilityLimitedIsolatedReadOnlyReview": {
+      "type": "object",
+      "required": ["kind", "details"],
+      "properties": {
+        "kind": { "const": "CAPABILITY_LIMITED" },
+        "details": {
+          "type": "object",
+          "required": ["capability"],
+          "properties": {
+            "capability": { "const": "isolatedReadOnlyReview" }
+          }
+        }
+      }
+    },
+    "capabilityLimitedEnforcedStructuredOutput": {
+      "type": "object",
+      "required": ["kind", "details"],
+      "properties": {
+        "kind": { "const": "CAPABILITY_LIMITED" },
+        "details": {
+          "type": "object",
+          "required": ["capability"],
+          "properties": {
+            "capability": { "const": "enforcedStructuredOutput" }
+          }
+        }
+      }
     },
     "runtime": {
       "type": "object",
