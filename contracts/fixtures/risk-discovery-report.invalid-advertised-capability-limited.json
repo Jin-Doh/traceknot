@@ -1,0 +1,19 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": ["runtime", "capabilities", "executeBrowser"],
+  "value": true,
+  "operations": [
+    {
+      "operation": "replace",
+      "path": ["runtime", "capabilities", "executeBrowser"],
+      "value": true
+    },
+    {
+      "operation": "replace",
+      "path": ["findings", "finding-capability-001", "details", "capability"],
+      "value": "executeBrowser"
+    }
+  ],
+  "expectedKeyword": "not"
+}

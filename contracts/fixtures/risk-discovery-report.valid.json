@@ -114,6 +114,7 @@
         "status": "ACCEPTED_RISK",
         "approval": {
           "approvedBy": "release-approval@example.test",
+          "accountableOwner": "release-owner@example.test",
           "reason": "Accepted for the bounded release while the follow-up patch is scheduled.",
           "scope": "Duplicate identity handling in the bounded release.",
           "mitigation": "Schedule the duplicate-key follow-up patch before the approval expires.",

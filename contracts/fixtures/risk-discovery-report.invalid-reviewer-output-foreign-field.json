@@ -1,0 +1,84 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": ["runtime"],
+  "value": {
+    "host": "omp",
+    "mode": "multi-context",
+    "discoveryProfile": "omp",
+    "capabilities": {
+      "executeCommands": true,
+      "executeBrowser": false,
+      "captureArtifacts": true,
+      "bindSnapshot": true,
+      "provideIndependentEvidence": false,
+      "persistEvidence": true,
+      "approveExceptions": false,
+      "isolatedReadOnlyReview": true,
+      "enforcedStructuredOutput": true
+    },
+    "limitations": []
+  },
+  "operations": [
+    {
+      "operation": "replace",
+      "path": ["runtime"],
+      "value": {
+        "host": "omp",
+        "mode": "multi-context",
+        "discoveryProfile": "omp",
+        "capabilities": {
+          "executeCommands": true,
+          "executeBrowser": false,
+          "captureArtifacts": true,
+          "bindSnapshot": true,
+          "provideIndependentEvidence": false,
+          "persistEvidence": true,
+          "approveExceptions": false,
+          "isolatedReadOnlyReview": true,
+          "enforcedStructuredOutput": true
+        },
+        "limitations": []
+      }
+    },
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "challenge"],
+      "value": {
+        "outcome": "COMPLETED",
+        "mode": "separate_context",
+        "evidence": [
+          {
+            "source": "reviewer harness",
+            "detail": "The bounded challenge produced an output with a foreign field."
+          }
+        ],
+        "reviewerOutputs": [
+          {
+            "triggeredProfileId": "stale-writes",
+            "partition": "response ordering",
+            "obligationId": "obligation-stale-write-probe",
+            "producer": {
+              "id": "reviewer-1",
+              "independence": "separate-verification-context"
+            },
+            "artifact": {
+              "artifactId": "reviewer-output-001",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "result": {
+              "kind": "FINDINGS",
+              "findingKeys": ["finding-source-001"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "operation": "add",
+      "path": ["triggerScan", "challenge", "reviewerOutputs", 0, "snapshotId"],
+      "value": "foreign-snapshot"
+    }
+  ],
+  "expectedKeyword": "additionalProperties"
+}

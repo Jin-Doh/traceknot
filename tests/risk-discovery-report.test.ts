@@ -71,6 +71,7 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-source-candidate.json", "incomplete source candidate"],
     ["risk-discovery-report.invalid-unaccepted-material-risk.json", "unaccepted material risk"],
     ["risk-discovery-report.invalid-accepted-risk-missing-approval.json", "missing accepted-risk approval"],
+    ["risk-discovery-report.invalid-accepted-risk-missing-owner.json", "missing accountable approval owner"],
     ["risk-discovery-report.invalid-accepted-risk-incomplete-approval.json", "incomplete accepted-risk approval"],
     ["risk-discovery-report.invalid-promoted-foreign-approval.json", "promoted foreign approval field"],
     ["risk-discovery-report.invalid-accepted-foreign-obligation.json", "accepted foreign obligation field"],
@@ -104,6 +105,10 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-legacy-approval-timestamp.json", "legacy approval timestamp"],
     ["risk-discovery-report.invalid-impossible-approval-expiry.json", "impossible approval expiry"],
     ["risk-discovery-report.invalid-cluster-member-evidence.json", "cluster member evidence"],
+    ["risk-discovery-report.invalid-reviewer-output-missing.json", "missing reviewer output"],
+    ["risk-discovery-report.invalid-reviewer-output-generic.json", "generic reviewer result"],
+    ["risk-discovery-report.invalid-reviewer-output-no-finding-keys.json", "no-finding result with finding keys"],
+    ["risk-discovery-report.invalid-reviewer-output-foreign-field.json", "foreign reviewer output field"],
   ] as const;
 
   for (const [fileName, description] of negativeFixtures) {
@@ -112,6 +117,37 @@ describe("risk discovery report contract", () => {
       const mutated = applyMutation(validReport, mutation);
       expect(validate(mutated)).toBe(false);
       expect(validate.errors?.some((error) => error.keyword === mutation.expectedKeyword)).toBe(true);
+    });
+  }
+  const capabilityNames = [
+    "executeCommands",
+    "executeBrowser",
+    "captureArtifacts",
+    "bindSnapshot",
+    "provideIndependentEvidence",
+    "persistEvidence",
+    "approveExceptions",
+    "isolatedReadOnlyReview",
+    "enforcedStructuredOutput",
+  ] as const;
+  const capabilityFixture = JSON.parse(
+    readFileSync(join(fixtureRoot, "risk-discovery-report.invalid-advertised-capability-limited.json"), "utf8"),
+  ) as Mutation;
+
+  for (const capabilityName of capabilityNames) {
+    test(`rejects capability-limited finding when ${capabilityName} is advertised`, () => {
+      const operations = (capabilityFixture.operations ?? []).map((operation, index) =>
+        index === 0
+          ? {
+              ...operation,
+              path: ["runtime", "capabilities", capabilityName],
+              value: true,
+            }
+          : { ...operation, value: capabilityName },
+      );
+      const mutated = applyMutation(validReport, { ...capabilityFixture, operations });
+      expect(validate(mutated)).toBe(false);
+      expect(validate.errors?.some((error) => error.keyword === capabilityFixture.expectedKeyword)).toBe(true);
     });
   }
 });

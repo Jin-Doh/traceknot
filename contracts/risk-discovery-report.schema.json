@@ -227,6 +227,402 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "runtime": {
+            "type": "object",
+            "properties": {
+              "discoveryProfile": { "enum": ["omp", "codex"] }
+            }
+          },
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "outcome": { "const": "COMPLETED" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "required": ["reviewerOutputs"],
+                "properties": {
+                  "reviewerOutputs": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": { "$ref": "#/$defs/reviewerOutput" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "capabilities": {
+                "properties": {
+                  "executeCommands": { "const": true }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "findings": {
+            "patternProperties": {
+              "^.+$": {
+                "not": {
+                  "type": "object",
+                  "required": ["kind", "details"],
+                  "properties": {
+                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "details": {
+                      "type": "object",
+                      "required": ["capability"],
+                      "properties": {
+                        "capability": { "const": "executeCommands" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "capabilities": {
+                "properties": {
+                  "executeBrowser": { "const": true }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "findings": {
+            "patternProperties": {
+              "^.+$": {
+                "not": {
+                  "type": "object",
+                  "required": ["kind", "details"],
+                  "properties": {
+                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "details": {
+                      "type": "object",
+                      "required": ["capability"],
+                      "properties": {
+                        "capability": { "const": "executeBrowser" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "capabilities": {
+                "properties": {
+                  "captureArtifacts": { "const": true }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "findings": {
+            "patternProperties": {
+              "^.+$": {
+                "not": {
+                  "type": "object",
+                  "required": ["kind", "details"],
+                  "properties": {
+                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "details": {
+                      "type": "object",
+                      "required": ["capability"],
+                      "properties": {
+                        "capability": { "const": "captureArtifacts" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "capabilities": {
+                "properties": {
+                  "bindSnapshot": { "const": true }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "findings": {
+            "patternProperties": {
+              "^.+$": {
+                "not": {
+                  "type": "object",
+                  "required": ["kind", "details"],
+                  "properties": {
+                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "details": {
+                      "type": "object",
+                      "required": ["capability"],
+                      "properties": {
+                        "capability": { "const": "bindSnapshot" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "capabilities": {
+                "properties": {
+                  "provideIndependentEvidence": { "const": true }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "findings": {
+            "patternProperties": {
+              "^.+$": {
+                "not": {
+                  "type": "object",
+                  "required": ["kind", "details"],
+                  "properties": {
+                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "details": {
+                      "type": "object",
+                      "required": ["capability"],
+                      "properties": {
+                        "capability": { "const": "provideIndependentEvidence" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "capabilities": {
+                "properties": {
+                  "persistEvidence": { "const": true }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "findings": {
+            "patternProperties": {
+              "^.+$": {
+                "not": {
+                  "type": "object",
+                  "required": ["kind", "details"],
+                  "properties": {
+                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "details": {
+                      "type": "object",
+                      "required": ["capability"],
+                      "properties": {
+                        "capability": { "const": "persistEvidence" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "capabilities": {
+                "properties": {
+                  "approveExceptions": { "const": true }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "findings": {
+            "patternProperties": {
+              "^.+$": {
+                "not": {
+                  "type": "object",
+                  "required": ["kind", "details"],
+                  "properties": {
+                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "details": {
+                      "type": "object",
+                      "required": ["capability"],
+                      "properties": {
+                        "capability": { "const": "approveExceptions" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "capabilities": {
+                "properties": {
+                  "isolatedReadOnlyReview": { "const": true }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "findings": {
+            "patternProperties": {
+              "^.+$": {
+                "not": {
+                  "type": "object",
+                  "required": ["kind", "details"],
+                  "properties": {
+                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "details": {
+                      "type": "object",
+                      "required": ["capability"],
+                      "properties": {
+                        "capability": { "const": "isolatedReadOnlyReview" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "capabilities": {
+                "properties": {
+                  "enforcedStructuredOutput": { "const": true }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "findings": {
+            "patternProperties": {
+              "^.+$": {
+                "not": {
+                  "type": "object",
+                  "required": ["kind", "details"],
+                  "properties": {
+                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "details": {
+                      "type": "object",
+                      "required": ["capability"],
+                      "properties": {
+                        "capability": { "const": "enforcedStructuredOutput" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "$defs": {
@@ -399,6 +795,65 @@
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/evidence" }
+        },
+        "reviewerOutputs": {
+          "description": "Each output inherits the enclosing report snapshotId; a separate snapshot field is forbidden.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/reviewerOutput" }
+        }
+      }
+    },
+    "reviewerOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["triggeredProfileId", "partition", "obligationId", "producer", "artifact", "result"],
+      "properties": {
+        "triggeredProfileId": { "type": "string", "minLength": 1 },
+        "partition": { "type": "string", "minLength": 1 },
+        "obligationId": { "type": "string", "minLength": 1 },
+        "producer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "independence"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "independence": { "enum": ["separate-verification-context", "independent-producer"] }
+          }
+        },
+        "artifact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["artifactId", "sha256"],
+          "properties": {
+            "artifactId": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+          }
+        },
+        "result": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "findingKeys"],
+              "properties": {
+                "kind": { "const": "FINDINGS" },
+                "findingKeys": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind"],
+              "properties": {
+                "kind": { "const": "NO_FINDINGS" }
+              }
+            }
+          ]
         }
       }
     },
@@ -710,9 +1165,10 @@
     "approval": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["approvedBy", "reason", "scope", "mitigation", "expiresAtUnixSeconds", "evidenceId", "independence"],
+      "required": ["approvedBy", "accountableOwner", "reason", "scope", "mitigation", "expiresAtUnixSeconds", "evidenceId", "independence"],
       "properties": {
         "approvedBy": { "type": "string", "minLength": 1 },
+        "accountableOwner": { "type": "string", "minLength": 1 },
         "reason": { "type": "string", "minLength": 1 },
         "scope": { "type": "string", "minLength": 1 },
         "mitigation": { "type": "string", "minLength": 1 },
