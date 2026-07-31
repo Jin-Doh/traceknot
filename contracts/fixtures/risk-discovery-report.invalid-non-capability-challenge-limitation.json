@@ -13,6 +13,14 @@
       "operation": "replace",
       "path": ["triggerScan", "challenge", "mode"],
       "value": "current_context"
+    },
+    {
+      "operation": "remove",
+      "path": ["triggerScan", "triggeredProfiles", "stale-writes", "blockingCapabilities"]
+    },
+    {
+      "operation": "remove",
+      "path": ["triggerScan", "triggeredProfiles", "duplicate-identities", "blockingCapabilities"]
     }
   ],
   "expectedKeyword": "not"

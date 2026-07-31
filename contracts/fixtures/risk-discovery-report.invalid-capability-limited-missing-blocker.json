@@ -1,0 +1,6 @@
+{
+  "base": "risk-discovery-report.valid-capability-limited.json",
+  "operation": "remove",
+  "path": ["triggerScan", "triggeredProfiles", "stale-writes", "blockingCapabilities"],
+  "expectedKeyword": "required"
+}

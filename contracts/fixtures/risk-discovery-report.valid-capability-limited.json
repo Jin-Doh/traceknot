@@ -32,12 +32,14 @@
       "stale-writes": {
         "evidence": [
           "The change updates a write path that can receive delayed responses."
-        ]
+        ],
+        "blockingCapabilities": ["executeBrowser"]
       },
       "duplicate-identities": {
         "evidence": [
           "The changed index derives identity from a user-controlled key."
-        ]
+        ],
+        "blockingCapabilities": ["executeBrowser"]
       }
     },
     "challenge": {

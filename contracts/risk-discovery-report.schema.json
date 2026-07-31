@@ -360,6 +360,104 @@
       "if": {
         "type": "object",
         "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "const": "capability_limited"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "blockingCapabilities"
+                  ],
+                  "properties": {
+                    "blockingCapabilities": {
+                      "type": "array",
+                      "minItems": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "current_context",
+                      "separate_context"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "not": {
+                    "required": [
+                      "blockingCapabilities"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
           "runtime": {
             "type": "object",
             "properties": {
@@ -478,6 +576,14 @@
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
+                    "blockingCapabilities": {
+                      "type": "array",
+                      "not": {
+                        "contains": {
+                          "const": "executeCommands"
+                        }
+                      }
+                    },
                     "reviewerOutputs": {
                       "type": "object",
                       "propertyNames": {
@@ -627,6 +733,14 @@
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
+                    "blockingCapabilities": {
+                      "type": "array",
+                      "not": {
+                        "contains": {
+                          "const": "executeBrowser"
+                        }
+                      }
+                    },
                     "reviewerOutputs": {
                       "type": "object",
                       "propertyNames": {
@@ -745,6 +859,14 @@
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
+                    "blockingCapabilities": {
+                      "type": "array",
+                      "not": {
+                        "contains": {
+                          "const": "captureArtifacts"
+                        }
+                      }
+                    },
                     "reviewerOutputs": {
                       "type": "object",
                       "propertyNames": {
@@ -863,6 +985,14 @@
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
+                    "blockingCapabilities": {
+                      "type": "array",
+                      "not": {
+                        "contains": {
+                          "const": "bindSnapshot"
+                        }
+                      }
+                    },
                     "reviewerOutputs": {
                       "type": "object",
                       "propertyNames": {
@@ -981,6 +1111,14 @@
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
+                    "blockingCapabilities": {
+                      "type": "array",
+                      "not": {
+                        "contains": {
+                          "const": "provideIndependentEvidence"
+                        }
+                      }
+                    },
                     "reviewerOutputs": {
                       "type": "object",
                       "propertyNames": {
@@ -1099,6 +1237,14 @@
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
+                    "blockingCapabilities": {
+                      "type": "array",
+                      "not": {
+                        "contains": {
+                          "const": "persistEvidence"
+                        }
+                      }
+                    },
                     "reviewerOutputs": {
                       "type": "object",
                       "propertyNames": {
@@ -1217,6 +1363,14 @@
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
+                    "blockingCapabilities": {
+                      "type": "array",
+                      "not": {
+                        "contains": {
+                          "const": "approveExceptions"
+                        }
+                      }
+                    },
                     "reviewerOutputs": {
                       "type": "object",
                       "propertyNames": {
@@ -1335,6 +1489,14 @@
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
+                    "blockingCapabilities": {
+                      "type": "array",
+                      "not": {
+                        "contains": {
+                          "const": "isolatedReadOnlyReview"
+                        }
+                      }
+                    },
                     "reviewerOutputs": {
                       "type": "object",
                       "propertyNames": {
@@ -1453,6 +1615,14 @@
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
+                    "blockingCapabilities": {
+                      "type": "array",
+                      "not": {
+                        "contains": {
+                          "const": "enforcedStructuredOutput"
+                        }
+                      }
+                    },
                     "reviewerOutputs": {
                       "type": "object",
                       "propertyNames": {
@@ -2596,6 +2766,15 @@
           "items": {
             "type": "string",
             "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "blockingCapabilities": {
+          "description": "Capabilities that prevented the bounded challenge for this profile; required only for capability_limited challenges.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/capabilityName"
           },
           "uniqueItems": true
         },

@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid-capability-limited.json",
+  "operation": "replace",
+  "path": ["triggerScan", "triggeredProfiles", "stale-writes", "blockingCapabilities"],
+  "value": [],
+  "expectedKeyword": "minItems"
+}

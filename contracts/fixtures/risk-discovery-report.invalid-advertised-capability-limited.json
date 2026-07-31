@@ -243,6 +243,26 @@
       "operation": "add",
       "path": [
         "triggerScan",
+        "triggeredProfiles",
+        "stale-writes",
+        "blockingCapabilities"
+      ],
+      "value": ["executeBrowser"]
+    },
+    {
+      "operation": "add",
+      "path": [
+        "triggerScan",
+        "triggeredProfiles",
+        "duplicate-identities",
+        "blockingCapabilities"
+      ],
+      "value": ["executeBrowser"]
+    },
+    {
+      "operation": "add",
+      "path": [
+        "triggerScan",
         "challenge",
         "limitation"
       ],

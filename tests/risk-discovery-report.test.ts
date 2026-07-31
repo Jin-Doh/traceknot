@@ -157,8 +157,15 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-separate-context-single-context.json", "single-context separate challenge contradiction"],
     ["risk-discovery-report.invalid-completed-capability-limited.json", "completed capability-limited contradiction"],
     ["risk-discovery-report.invalid-capability-limited-current-context.json", "capability-limited current-context contradiction"],
+    ["risk-discovery-report.invalid-current-context-blocking-capabilities.json", "blocking capabilities in current-context challenge"],
+    ["risk-discovery-report.invalid-separate-context-blocking-capabilities.json", "blocking capabilities in separate-context challenge"],
     ["risk-discovery-report.invalid-not-required-capability-limited.json", "NOT_REQUIRED capability-limited mode contradiction"],
     ["risk-discovery-report.invalid-capability-limited-missing-limitation.json", "missing capability-limited limitation"],
+    ["risk-discovery-report.invalid-capability-limited-missing-blocker.json", "missing capability blocker per profile"],
+    ["risk-discovery-report.invalid-capability-limited-empty-blocker.json", "empty capability blocker list"],
+    ["risk-discovery-report.invalid-capability-limited-duplicate-blocker.json", "duplicate capability blocker"],
+    ["risk-discovery-report.invalid-capability-limited-unknown-blocker.json", "unknown capability blocker"],
+    ["risk-discovery-report.invalid-capability-limited-empty-profiles.json", "empty capability-limited profile map"],
     ["risk-discovery-report.invalid-non-capability-challenge-limitation.json", "limitation on non-capability outcome"],
     ["risk-discovery-report.invalid-completed-resolution-missing.json", "missing completed profile resolution"],
     ["risk-discovery-report.invalid-completed-resolution-empty-detail.json", "empty completed profile resolution detail"],
@@ -246,6 +253,37 @@ describe("risk discovery report contract", () => {
         path: ["triggerScan", "challenge", "limitation", "details", "capability"],
         value: capabilityName,
       });
+      const mutated = applyMutation(capabilityLimitedReport, {
+        base: "risk-discovery-report.valid-capability-limited.json",
+        operation: "replace",
+        path: ["runtime", "capabilities", capabilityNames[0]],
+        expectedKeyword: "not",
+        operations,
+      });
+      expect(validate(mutated)).toBe(false);
+      expect(validate.errors?.some((error) => error.keyword === "not")).toBe(true);
+    });
+  }
+
+  for (const capabilityName of capabilityNames) {
+    test(`rejects a blocking capability when ${capabilityName} is advertised`, () => {
+      const operations: MutationOperation[] = [
+        {
+          operation: "replace",
+          path: ["runtime", "capabilities", capabilityName],
+          value: true,
+        },
+        {
+          operation: "replace",
+          path: ["triggerScan", "triggeredProfiles", "stale-writes", "blockingCapabilities"],
+          value: [capabilityName],
+        },
+        {
+          operation: "replace",
+          path: ["triggerScan", "triggeredProfiles", "duplicate-identities", "blockingCapabilities"],
+          value: [capabilityName],
+        },
+      ];
       const mutated = applyMutation(capabilityLimitedReport, {
         base: "risk-discovery-report.valid-capability-limited.json",
         operation: "replace",
