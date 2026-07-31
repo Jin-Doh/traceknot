@@ -109,9 +109,15 @@
       "materiality": "material",
       "disposition": {
         "status": "ACCEPTED_RISK",
-        "owner": "release-owner@example.test",
-        "expiry": "2026-08-15T00:00:00Z",
-        "acceptance": "Accepted for the bounded release while the follow-up patch is scheduled."
+        "approval": {
+          "approvedBy": "release-approval@example.test",
+          "reason": "Accepted for the bounded release while the follow-up patch is scheduled.",
+          "scope": "Duplicate identity handling in the bounded release.",
+          "mitigation": "Schedule the duplicate-key follow-up patch before the approval expires.",
+          "expiresAt": "2026-08-15T00:00:00Z",
+          "evidenceId": "approval-duplicate-identity-001",
+          "independence": "external-approval"
+        }
       },
       "evidence": [
         {
@@ -179,7 +185,26 @@
           "detail": "The candidates share the same source anchor and failure mechanism."
         }
       ],
-      "clusterMemberIds": ["finding-source-001", "finding-coverage-001"]
+      "clusterMembers": [
+        {
+          "summary": "The stale-write source candidate shares the changed response handler partition.",
+          "evidence": [
+            {
+              "source": "src/store.ts:88-94",
+              "detail": "The candidate uses the same source anchor and failure mechanism."
+            }
+          ]
+        },
+        {
+          "summary": "The coverage gap concerns the same stale-write partition.",
+          "evidence": [
+            {
+              "source": "tests/recovery.test.ts",
+              "detail": "Existing coverage checks clean shutdown but not stale response ordering."
+            }
+          ]
+        }
+      ]
     }
   }
 }

@@ -91,7 +91,7 @@ Every profile retains the universal scan, escalation criteria, finding taxonomy,
 - `DUPLICATE_CLUSTER`: the candidate shares the root cause of an existing finding.
 
 A source candidate must include exact anchors, the failure mechanism, existing coverage checked, a confirmation probe, and uncertainty. Promote a material source candidate to a mandatory confirmation obligation; do not relabel it as a confirmed defect.
-The canonical report keys `findings` by finding ID, so the key is the sole identity and is not repeated inside the finding. Material findings carry `riskId` and a closed status-specific `disposition`; nonmaterial findings may carry a closed `deferredRisk` with `riskId` and `reason`. Material findings cannot carry `deferredRisk`, and the report has no separate deferred-risk summary array.
+The canonical report keys `findings` by finding ID, so the key is the sole identity and is not repeated inside the finding. Material findings carry `riskId` and a closed status-specific `disposition`; `ACCEPTED_RISK` requires a closed external `approval` containing `approvedBy`, `reason`, `scope`, `mitigation`, `expiresAt`, `evidenceId`, and `independence: external-approval`. Nonmaterial findings may carry a closed `deferredRisk` with `riskId` and `reason`. Material findings cannot carry `deferredRisk`, and the report has no separate deferred-risk summary array. Duplicate clusters carry inline `clusterMembers`, each with a summary and nonempty evidence, rather than IDs that can dangle or self-reference.
 
 ## Stop rules
 
@@ -108,8 +108,8 @@ The host owns time, model, concurrency, retry, and agent limits. Traceknot must 
 ## Verdict interaction
 
 - A nonmaterial deferred partition may remain reported as untested scope.
-- A material deferred risk without acceptance prevents `PASS` and remains `INCOMPLETE` or `BLOCKED` according to the missing prerequisite.
-- A material deferred risk with valid, unexpired acceptance yields `PASS_WITH_ACCEPTED_RISK` only after mandatory obligations pass.
+- A material deferred risk without external approval prevents `PASS` and remains `INCOMPLETE` or `BLOCKED` according to the missing prerequisite.
+- A material deferred risk with valid, unexpired external approval yields `PASS_WITH_ACCEPTED_RISK` only after mandatory obligations pass.
 - A confirmed open material defect yields `FAIL`.
 - A material source candidate that still needs confirmation keeps the related mandatory obligation incomplete.
 

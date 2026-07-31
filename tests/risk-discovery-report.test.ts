@@ -70,6 +70,11 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-recurring-cluster-no-challenge.json", "recurring defect cluster challenge bypass"],
     ["risk-discovery-report.invalid-source-candidate.json", "incomplete source candidate"],
     ["risk-discovery-report.invalid-unaccepted-material-risk.json", "unaccepted material risk"],
+    ["risk-discovery-report.invalid-accepted-risk-missing-approval.json", "missing accepted-risk approval"],
+    ["risk-discovery-report.invalid-accepted-risk-incomplete-approval.json", "incomplete accepted-risk approval"],
+    ["risk-discovery-report.invalid-promoted-foreign-approval.json", "promoted foreign approval field"],
+    ["risk-discovery-report.invalid-accepted-foreign-obligation.json", "accepted foreign obligation field"],
+    ["risk-discovery-report.invalid-blocked-foreign-approval.json", "blocked foreign approval field"],
     ["risk-discovery-report.invalid-deleted-material-disposition.json", "deleted material finding disposition"],
     ["risk-discovery-report.invalid-invented-capability.json", "invented capability"],
     ["risk-discovery-report.invalid-empty-trigger-evidence.json", "empty trigger evidence"],
@@ -92,6 +97,8 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-nonmaterial-disposition.json", "nonmaterial finding disposition"],
     ["risk-discovery-report.invalid-deferred-summary.json", "legacy deferred summary"],
     ["risk-discovery-report.invalid-material-finding-deferred-risk.json", "material finding deferred risk"],
+    ["risk-discovery-report.invalid-legacy-cluster-member-ids.json", "legacy cluster member IDs"],
+    ["risk-discovery-report.invalid-cluster-member-evidence.json", "cluster member evidence"],
   ] as const;
 
   for (const [fileName, description] of negativeFixtures) {

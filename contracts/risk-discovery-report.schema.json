@@ -480,11 +480,22 @@
         "reason": { "type": "string", "minLength": 1 },
         "capability": { "$ref": "#/$defs/capabilityName" },
         "limitation": { "type": "string", "minLength": 1 },
-        "clusterMemberIds": {
+        "clusterMembers": {
           "type": "array",
           "minItems": 2,
-          "items": { "type": "string", "minLength": 1 },
-          "uniqueItems": true
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["summary", "evidence"],
+            "properties": {
+              "summary": { "type": "string", "minLength": 1 },
+              "evidence": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/evidence" }
+              }
+            }
+          }
         }
       },
       "allOf": [
@@ -607,13 +618,24 @@
           "if": { "type": "object", "properties": { "kind": { "const": "DUPLICATE_CLUSTER" } } },
           "then": {
             "type": "object",
-            "required": ["clusterMemberIds"],
+            "required": ["clusterMembers"],
             "properties": {
-              "clusterMemberIds": {
+              "clusterMembers": {
                 "type": "array",
                 "minItems": 2,
-                "items": { "type": "string", "minLength": 1 },
-                "uniqueItems": true
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["summary", "evidence"],
+                  "properties": {
+                    "summary": { "type": "string", "minLength": 1 },
+                    "evidence": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": { "$ref": "#/$defs/evidence" }
+                    }
+                  }
+                }
               }
             }
           }
@@ -621,55 +643,52 @@
       ]
     },
     "materialDisposition": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["status"],
-      "properties": {
-        "status": {
-          "enum": ["PROMOTED_TO_OBLIGATION", "ACCEPTED_RISK", "BLOCKED"]
-        },
-        "obligationId": { "type": "string", "minLength": 1 },
-        "owner": { "type": "string", "minLength": 1 },
-        "expiry": {
-          "type": "string",
-          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
-        },
-        "acceptance": { "type": "string", "minLength": 1 },
-        "blocker": { "type": "string", "minLength": 1 }
-      },
-      "allOf": [
+      "oneOf": [
         {
-          "if": { "type": "object", "properties": { "status": { "const": "PROMOTED_TO_OBLIGATION" } } },
-          "then": {
-            "type": "object",
-            "required": ["obligationId"],
-            "properties": { "obligationId": { "type": "string", "minLength": 1 } }
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "obligationId"],
+          "properties": {
+            "status": { "const": "PROMOTED_TO_OBLIGATION" },
+            "obligationId": { "type": "string", "minLength": 1 }
           }
         },
         {
-          "if": { "type": "object", "properties": { "status": { "const": "ACCEPTED_RISK" } } },
-          "then": {
-            "type": "object",
-            "required": ["owner", "expiry", "acceptance"],
-            "properties": {
-              "owner": { "type": "string", "minLength": 1 },
-              "expiry": {
-                "type": "string",
-                "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
-              },
-              "acceptance": { "type": "string", "minLength": 1 }
-            }
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "approval"],
+          "properties": {
+            "status": { "const": "ACCEPTED_RISK" },
+            "approval": { "$ref": "#/$defs/approval" }
           }
         },
         {
-          "if": { "type": "object", "properties": { "status": { "const": "BLOCKED" } } },
-          "then": {
-            "type": "object",
-            "required": ["blocker"],
-            "properties": { "blocker": { "type": "string", "minLength": 1 } }
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "blocker"],
+          "properties": {
+            "status": { "const": "BLOCKED" },
+            "blocker": { "type": "string", "minLength": 1 }
           }
         }
       ]
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approvedBy", "reason", "scope", "mitigation", "expiresAt", "evidenceId", "independence"],
+      "properties": {
+        "approvedBy": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "scope": { "type": "string", "minLength": 1 },
+        "mitigation": { "type": "string", "minLength": 1 },
+        "expiresAt": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
+        },
+        "evidenceId": { "type": "string", "minLength": 1 },
+        "independence": { "const": "external-approval" }
+      }
     },
     "deferredRisk": {
       "type": "object",

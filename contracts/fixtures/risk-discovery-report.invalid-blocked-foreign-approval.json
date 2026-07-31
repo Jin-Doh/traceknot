@@ -1,0 +1,15 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "add",
+  "path": ["findings", "finding-policy-001", "disposition", "approval"],
+  "value": {
+    "approvedBy": "release-approval@example.test",
+    "reason": "Foreign approval field.",
+    "scope": "Invalid blocked disposition",
+    "mitigation": "None",
+    "expiresAt": "2026-08-15T00:00:00Z",
+    "evidenceId": "approval-foreign-002",
+    "independence": "external-approval"
+  },
+  "expectedKeyword": "additionalProperties"
+}

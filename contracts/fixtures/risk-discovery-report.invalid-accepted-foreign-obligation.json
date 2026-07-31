@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "add",
+  "path": ["findings", "finding-defect-001", "disposition", "obligationId"],
+  "value": "obligation-foreign-accepted-risk",
+  "expectedKeyword": "additionalProperties"
+}
