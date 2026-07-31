@@ -1,0 +1,23 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": ["runtime"],
+  "value": {
+    "host": "codex",
+    "mode": "multi-context",
+    "discoveryProfile": "single-context",
+    "capabilities": {
+      "executeCommands": true,
+      "executeBrowser": false,
+      "captureArtifacts": true,
+      "bindSnapshot": true,
+      "provideIndependentEvidence": false,
+      "persistEvidence": true,
+      "approveExceptions": false,
+      "isolatedReadOnlyReview": false,
+      "enforcedStructuredOutput": false
+    },
+    "limitations": ["The runtime has no independent review context."]
+  },
+  "expectedKeyword": "const"
+}

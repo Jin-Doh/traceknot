@@ -1,0 +1,23 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": ["runtime"],
+  "value": {
+    "host": "codex",
+    "mode": "multi-context",
+    "discoveryProfile": "codex",
+    "capabilities": {
+      "executeCommands": true,
+      "executeBrowser": false,
+      "captureArtifacts": false,
+      "bindSnapshot": true,
+      "provideIndependentEvidence": false,
+      "persistEvidence": true,
+      "approveExceptions": false,
+      "isolatedReadOnlyReview": false,
+      "enforcedStructuredOutput": false
+    },
+    "limitations": ["The Codex capability handshake is incomplete."]
+  },
+  "expectedKeyword": "const"
+}

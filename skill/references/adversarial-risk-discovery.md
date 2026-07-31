@@ -58,7 +58,7 @@ The portable workflow is identical in every runtime. Record the selected executi
 
 ### Single-context profile
 
-Use this profile when no independent context or producer is advertised, when artifact persistence is unavailable, or when the host chooses not to fan out. Perform the cheap scan and one bounded challenge in the current context, selecting only triggered profiles and stopping under the universal stop rules. Keep change facts, source reasoning, observed evidence, and inference distinct. Record `runtime.discoveryProfile: single-context`, `challenge_mode: current_context`, and the independence limit.
+Use this profile only when `runtime.mode` is `single-context`; the canonical report also requires `triggerScan.challenge.mode: current_context`. Perform the cheap scan and one bounded challenge in the current context, selecting only triggered profiles and stopping under the universal stop rules. Keep change facts, source reasoning, observed evidence, and inference distinct. Record `runtime.discoveryProfile: single-context` and the independence limit.
 
 A single-context challenge does not satisfy an obligation requiring `independent-producer`; the implementer's conclusion is not independent evidence. Report the missing capability as `CAPABILITY_LIMITED` and leave the affected mandatory obligation `BLOCKED`, or satisfy it with another advertised evidence mechanism. A single-context run may still discover candidates and promote confirmation obligations.
 
@@ -72,7 +72,7 @@ OMP agent or job completion, timeout, cancellation, retry, and other lifecycle e
 
 ### Codex profile
 
-Use this profile only when the capability handshake advertises independently bounded contexts or slices and the snapshot and artifact bindings needed by the challenge. When those capabilities are available, the host may use independent bounded slices, each limited to one triggered profile or partition, an immutable target snapshot, and the exact structured-output contract. Do not fan out merely because Codex can create another turn or context.
+Use this profile only when `runtime.mode` is `multi-context` and the runtime capability handshake sets `provideIndependentEvidence`, `bindSnapshot`, `captureArtifacts`, `persistEvidence`, and `enforcedStructuredOutput` to `true`. When those capabilities are available, the host may use independent bounded slices, each limited to one triggered profile or partition, an immutable target snapshot, and the exact structured-output contract. Do not fan out merely because Codex can create another turn or context.
 
 Apply full-history and context-ownership cautions. A new turn, thread, model session, or worktree that receives the implementer's full history, shares mutable context or a worktree, or has the same producer is not automatically independent. Avoid passing the full implementation history when independence is required; if it is passed or ownership is unclear, downgrade the independence claim and report the limitation. Model identity, model version, and model name never establish producer independence.
 

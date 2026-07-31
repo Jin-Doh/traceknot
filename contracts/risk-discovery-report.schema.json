@@ -154,7 +154,42 @@
           }
         }
       }
-    }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "runtime": {
+            "type": "object",
+            "properties": {
+              "discoveryProfile": { "const": "single-context" }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "runtime": {
+            "type": "object",
+            "properties": {
+              "mode": { "const": "single-context" }
+            }
+          },
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "mode": { "const": "current_context" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
   ],
   "$defs": {
     "capabilityName": {
@@ -228,6 +263,30 @@
                   "bindSnapshot": { "const": true },
                   "persistEvidence": { "const": true },
                   "isolatedReadOnlyReview": { "const": true },
+                  "enforcedStructuredOutput": { "const": true }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "discoveryProfile": { "const": "codex" }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "mode": { "const": "multi-context" },
+              "capabilities": {
+                "type": "object",
+                "properties": {
+                  "provideIndependentEvidence": { "const": true },
+                  "bindSnapshot": { "const": true },
+                  "captureArtifacts": { "const": true },
+                  "persistEvidence": { "const": true },
                   "enforcedStructuredOutput": { "const": true }
                 }
               }
@@ -399,6 +458,35 @@
             "properties": {
               "riskId": { "type": "string", "minLength": 1 },
               "disposition": { "$ref": "#/$defs/materialDisposition" }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "materiality": { "const": "nonmaterial" }
+            }
+          },
+          "then": {
+            "type": "object",
+            "not": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["riskId"],
+                  "properties": {
+                    "riskId": { "type": "string", "minLength": 1 }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["disposition"],
+                  "properties": {
+                    "disposition": { "$ref": "#/$defs/materialDisposition" }
+                  }
+                }
+              ]
             }
           }
         },

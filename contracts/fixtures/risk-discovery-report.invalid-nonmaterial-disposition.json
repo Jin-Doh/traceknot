@@ -1,0 +1,12 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "add",
+  "path": ["findings", 0, "disposition"],
+  "value": {
+    "status": "ACCEPTED_RISK",
+    "owner": "release-owner@example.test",
+    "expiry": "2026-08-15T00:00:00Z",
+    "acceptance": "This disposition must not be attached to a nonmaterial finding."
+  },
+  "expectedKeyword": "not"
+}

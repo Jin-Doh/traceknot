@@ -72,11 +72,16 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-material-trigger-no-challenge.json", "material trigger challenge bypass"],
     ["risk-discovery-report.invalid-material-profile-no-challenge.json", "material profile challenge bypass"],
     ["risk-discovery-report.invalid-omp-profile-missing-capability.json", "OMP profile capability bypass"],
+    ["risk-discovery-report.invalid-single-context-profile-multi-context.json", "single-context profile multi-context contradiction"],
+    ["risk-discovery-report.invalid-single-context-profile-separate-context.json", "single-context profile separate-context contradiction"],
+    ["risk-discovery-report.invalid-codex-profile-missing-capability.json", "Codex profile capability bypass"],
     ["risk-discovery-report.invalid-separate-context-single-context.json", "single-context separate challenge contradiction"],
     ["risk-discovery-report.invalid-completed-capability-limited.json", "completed capability-limited contradiction"],
     ["risk-discovery-report.invalid-capability-limited-current-context.json", "capability-limited current-context contradiction"],
     ["risk-discovery-report.invalid-duplicate-material-summary.json", "duplicate material summary"],
     ["risk-discovery-report.invalid-material-finding-no-risk-id.json", "material finding without risk ID"],
+    ["risk-discovery-report.invalid-nonmaterial-risk-id.json", "nonmaterial finding risk ID"],
+    ["risk-discovery-report.invalid-nonmaterial-disposition.json", "nonmaterial finding disposition"],
   ] as const;
 
   for (const [fileName, description] of negativeFixtures) {
