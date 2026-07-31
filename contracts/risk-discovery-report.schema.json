@@ -277,8 +277,10 @@
       "if": {
         "properties": {
           "runtime": {
+            "type": "object",
             "properties": {
               "capabilities": {
+                "type": "object",
                 "properties": {
                   "executeCommands": { "const": true }
                 }
@@ -288,8 +290,10 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "findings": {
+            "type": "object",
             "patternProperties": {
               "^.+$": {
                 "not": {
@@ -316,8 +320,10 @@
       "if": {
         "properties": {
           "runtime": {
+            "type": "object",
             "properties": {
               "capabilities": {
+                "type": "object",
                 "properties": {
                   "executeBrowser": { "const": true }
                 }
@@ -327,8 +333,10 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "findings": {
+            "type": "object",
             "patternProperties": {
               "^.+$": {
                 "not": {
@@ -355,8 +363,10 @@
       "if": {
         "properties": {
           "runtime": {
+            "type": "object",
             "properties": {
               "capabilities": {
+                "type": "object",
                 "properties": {
                   "captureArtifacts": { "const": true }
                 }
@@ -366,8 +376,10 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "findings": {
+            "type": "object",
             "patternProperties": {
               "^.+$": {
                 "not": {
@@ -394,8 +406,10 @@
       "if": {
         "properties": {
           "runtime": {
+            "type": "object",
             "properties": {
               "capabilities": {
+                "type": "object",
                 "properties": {
                   "bindSnapshot": { "const": true }
                 }
@@ -405,8 +419,10 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "findings": {
+            "type": "object",
             "patternProperties": {
               "^.+$": {
                 "not": {
@@ -433,8 +449,10 @@
       "if": {
         "properties": {
           "runtime": {
+            "type": "object",
             "properties": {
               "capabilities": {
+                "type": "object",
                 "properties": {
                   "provideIndependentEvidence": { "const": true }
                 }
@@ -444,8 +462,10 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "findings": {
+            "type": "object",
             "patternProperties": {
               "^.+$": {
                 "not": {
@@ -472,8 +492,10 @@
       "if": {
         "properties": {
           "runtime": {
+            "type": "object",
             "properties": {
               "capabilities": {
+                "type": "object",
                 "properties": {
                   "persistEvidence": { "const": true }
                 }
@@ -483,8 +505,10 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "findings": {
+            "type": "object",
             "patternProperties": {
               "^.+$": {
                 "not": {
@@ -511,8 +535,10 @@
       "if": {
         "properties": {
           "runtime": {
+            "type": "object",
             "properties": {
               "capabilities": {
+                "type": "object",
                 "properties": {
                   "approveExceptions": { "const": true }
                 }
@@ -522,8 +548,10 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "findings": {
+            "type": "object",
             "patternProperties": {
               "^.+$": {
                 "not": {
@@ -550,8 +578,10 @@
       "if": {
         "properties": {
           "runtime": {
+            "type": "object",
             "properties": {
               "capabilities": {
+                "type": "object",
                 "properties": {
                   "isolatedReadOnlyReview": { "const": true }
                 }
@@ -561,8 +591,10 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "findings": {
+            "type": "object",
             "patternProperties": {
               "^.+$": {
                 "not": {
@@ -589,8 +621,10 @@
       "if": {
         "properties": {
           "runtime": {
+            "type": "object",
             "properties": {
               "capabilities": {
+                "type": "object",
                 "properties": {
                   "enforcedStructuredOutput": { "const": true }
                 }
@@ -600,8 +634,10 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "findings": {
+            "type": "object",
             "patternProperties": {
               "^.+$": {
                 "not": {
