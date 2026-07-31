@@ -165,6 +165,35 @@
           }
         }
       ]
+    },
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "challenge", "outcome"],
+      "value": "CAPABILITY_LIMITED"
+    },
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "challenge", "mode"],
+      "value": "capability_limited"
+    },
+    {
+      "operation": "add",
+      "path": ["triggerScan", "challenge", "limitation"],
+      "value": {
+        "kind": "CAPABILITY_LIMITED",
+        "materiality": "nonmaterial",
+        "evidence": [
+          {
+            "source": "trigger scan",
+            "detail": "The advertised browser capability is unavailable to the bounded challenge."
+          }
+        ],
+        "details": {
+          "summary": "The bounded challenge cannot run without the advertised browser capability.",
+          "capability": "executeBrowser",
+          "limitation": "The runtime cannot provide the required capability."
+        }
+      }
     }
   ],
   "expectedKeyword": "not"

@@ -516,6 +516,22 @@
                     }
                   }
                 }
+              },
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "limitation": {
+                    "type": "object",
+                    "properties": {
+                      "details": {
+                        "type": "object",
+                        "properties": {
+                          "capability": { "not": { "const": "executeCommands" } }
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
                       }
@@ -589,6 +605,22 @@
                               }
                             }
                           }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "limitation": {
+                    "type": "object",
+                    "properties": {
+                      "details": {
+                        "type": "object",
+                        "properties": {
+                          "capability": { "not": { "const": "executeBrowser" } }
                         }
                       }
                     }
@@ -672,6 +704,22 @@
                     }
                   }
                 }
+              },
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "limitation": {
+                    "type": "object",
+                    "properties": {
+                      "details": {
+                        "type": "object",
+                        "properties": {
+                          "capability": { "not": { "const": "captureArtifacts" } }
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
                       }
@@ -745,6 +793,22 @@
                               }
                             }
                           }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "limitation": {
+                    "type": "object",
+                    "properties": {
+                      "details": {
+                        "type": "object",
+                        "properties": {
+                          "capability": { "not": { "const": "bindSnapshot" } }
                         }
                       }
                     }
@@ -828,6 +892,22 @@
                     }
                   }
                 }
+              },
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "limitation": {
+                    "type": "object",
+                    "properties": {
+                      "details": {
+                        "type": "object",
+                        "properties": {
+                          "capability": { "not": { "const": "provideIndependentEvidence" } }
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
                       }
@@ -901,6 +981,22 @@
                               }
                             }
                           }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "limitation": {
+                    "type": "object",
+                    "properties": {
+                      "details": {
+                        "type": "object",
+                        "properties": {
+                          "capability": { "not": { "const": "persistEvidence" } }
                         }
                       }
                     }
@@ -984,6 +1080,22 @@
                     }
                   }
                 }
+              },
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "limitation": {
+                    "type": "object",
+                    "properties": {
+                      "details": {
+                        "type": "object",
+                        "properties": {
+                          "capability": { "not": { "const": "approveExceptions" } }
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
                       }
@@ -1062,6 +1174,22 @@
                     }
                   }
                 }
+              },
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "limitation": {
+                    "type": "object",
+                    "properties": {
+                      "details": {
+                        "type": "object",
+                        "properties": {
+                          "capability": { "not": { "const": "isolatedReadOnlyReview" } }
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
                       }
@@ -1135,6 +1263,22 @@
                               }
                             }
                           }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "limitation": {
+                    "type": "object",
+                    "properties": {
+                      "details": {
+                        "type": "object",
+                        "properties": {
+                          "capability": { "not": { "const": "enforcedStructuredOutput" } }
                         }
                       }
                     }
@@ -1510,8 +1654,63 @@
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/evidence" }
+        },
+        "limitation": { "$ref": "#/$defs/challengeLimitation" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": { "const": "NOT_REQUIRED" }
+            }
+          },
+          "then": {
+            "properties": {
+              "mode": { "const": "current_context" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": { "const": "CAPABILITY_LIMITED" }
+            }
+          },
+          "then": {
+            "required": ["limitation"],
+            "properties": {
+              "mode": { "const": "capability_limited" },
+              "limitation": {}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": { "enum": ["NOT_REQUIRED", "COMPLETED", "BLOCKED"] }
+            }
+          },
+          "then": {
+            "not": {
+              "type": "object",
+              "required": ["limitation"],
+              "properties": { "limitation": {} }
+            }
+          }
         }
-      }
+      ]
+    },
+    "challengeLimitation": {
+      "allOf": [
+        { "$ref": "#/$defs/finding" },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "CAPABILITY_LIMITED" },
+            "materiality": { "const": "nonmaterial" }
+          }
+        }
+      ]
     },
     "reviewerOutput": {
       "type": "object",

@@ -52,6 +52,10 @@ A trigger-free `R0` or `R1` change may stop after recording the scan. Lowering t
 
 Use a separate verification context when the runtime exposes one and the risk justifies it. Multi-agent execution is optional. The single-context fallback repeats the challenge from change facts and test basis without treating the implementer's conclusion as evidence.
 
+The challenge contract is closed around its outcome: `NOT_REQUIRED` uses `current_context` and has no `limitation`; `CAPABILITY_LIMITED` uses `capability_limited` and carries an inline nonmaterial `limitation` finding whose `kind` is `CAPABILITY_LIMITED`; `COMPLETED` and `BLOCKED` carry no limitation. `separate_context` is valid only with `runtime.mode: multi-context`, and a completed challenge never uses `capability_limited`.
+
+Capability-limited findings use only the canonical handshake names: `executeCommands`, `executeBrowser`, `captureArtifacts`, `bindSnapshot`, `provideIndependentEvidence`, `persistEvidence`, `approveExceptions`, `isolatedReadOnlyReview`, or `enforcedStructuredOutput`. If a runtime advertises one of these capabilities as `true`, a `CAPABILITY_LIMITED` finding may not cite that same capability in its inline challenge limitation or any nested reviewer finding.
+
 ## Execution profiles
 
 The portable workflow is identical in every runtime. Record the selected execution profile in `runtime.discoveryProfile` as `single-context`, `omp`, or `codex`, and select it only from the runtime capability handshake. `host=omp`, `host=codex`, a model name, or a lifecycle event alone selects no profile or capability. A runtime may use the `single-context` profile even when it advertises a host label. These profiles are bounded execution guidance, not a new obligation or a fixed reviewer-count protocol.

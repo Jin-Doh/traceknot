@@ -3,7 +3,7 @@
   "operation": "replace",
   "path": ["triggerScan", "challenge"],
   "value": {
-    "outcome": "BLOCKED",
+    "outcome": "NOT_REQUIRED",
     "mode": "separate_context",
     "evidence": [
       {
