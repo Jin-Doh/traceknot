@@ -1,18 +1,20 @@
 {
-  "base": "risk-discovery-report.valid-capability-limited.json",
+  "base": "risk-discovery-report.valid-nonmaterial-not-required.json",
   "operation": "replace",
-  "path": ["triggerScan", "challenge", "outcome"],
-  "value": "NOT_REQUIRED",
+  "path": ["triggerScan", "challenge", "mode"],
+  "value": "capability_limited",
   "operations": [
     {
-      "operation": "replace",
-      "path": ["triggerScan", "challenge", "outcome"],
-      "value": "NOT_REQUIRED"
+      "operation": "add",
+      "path": ["triggerScan", "triggeredProfiles", "response-ordering", "blockingCapabilities"],
+      "value": ["executeBrowser"]
     },
     {
-      "operation": "remove",
-      "path": ["triggerScan", "challenge", "limitation"]
+      "operation": "replace",
+      "path": ["triggerScan", "challenge", "mode"],
+      "value": "capability_limited"
     }
   ],
-  "expectedKeyword": "const"
+  "expectedKeyword": "const",
+  "expectedInstancePath": "/triggerScan/challenge/mode"
 }

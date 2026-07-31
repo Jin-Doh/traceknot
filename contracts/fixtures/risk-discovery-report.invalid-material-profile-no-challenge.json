@@ -1,12 +1,12 @@
 {
   "base": "risk-discovery-report.valid.json",
-  "operation": "replace",
+  "operation": "add",
   "path": ["triggerScan", "triggeredProfiles", "stale-writes", "material"],
   "value": true,
   "expectedKeyword": "additionalProperties",
   "operations": [
     {
-      "operation": "replace",
+      "operation": "add",
       "path": ["triggerScan", "triggeredProfiles", "stale-writes", "material"],
       "value": true
     },

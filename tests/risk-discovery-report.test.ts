@@ -11,9 +11,9 @@ type MutationOperation = {
 
 type Mutation = MutationOperation & {
   base: string;
-  expectedKeyword: string;
   operations?: MutationOperation[];
   fields?: string[];
+  expectedInstancePath?: string;
 };
 
 const fixtureRoot = resolve(import.meta.dir, "../contracts/fixtures");
@@ -26,6 +26,9 @@ const validReport = JSON.parse(
 
 const completedMultiContextReport = JSON.parse(
   readFileSync(join(fixtureRoot, "risk-discovery-report.valid-completed-multi-context.json"), "utf8"),
+) as unknown;
+const completedOmpReport = JSON.parse(
+  readFileSync(join(fixtureRoot, "risk-discovery-report.valid-completed-omp.json"), "utf8"),
 ) as unknown;
 const capabilityLimitedReport = JSON.parse(
   readFileSync(join(fixtureRoot, "risk-discovery-report.valid-capability-limited.json"), "utf8"),
@@ -65,6 +68,13 @@ function applyMutation(value: unknown, mutation: Mutation): unknown {
     }
     const key = operation.path.at(-1);
     if (key === undefined) throw new Error("mutation path must not be empty");
+    const hasOwnTarget = Object.prototype.hasOwnProperty.call(parent, key);
+    if (operation.operation === "add" && hasOwnTarget) {
+      throw new Error("mutation add target already exists");
+    }
+    if (operation.operation !== "add" && !hasOwnTarget) {
+      throw new Error("mutation replace/remove target does not exist");
+    }
     if (Array.isArray(parent)) {
       if (typeof key !== "number") throw new Error("array mutation key must be numeric");
       if (operation.operation === "remove") parent.splice(key, 1);
@@ -92,6 +102,11 @@ describe("risk discovery report contract", () => {
 
   test("accepts a completed Codex multi-context report", () => {
     expect(validate(completedMultiContextReport)).toBe(true);
+    expect(validate.errors).toBeNull();
+  });
+
+  test("accepts a completed OMP multi-context report", () => {
+    expect(validate(completedOmpReport)).toBe(true);
     expect(validate.errors).toBeNull();
   });
 
@@ -150,16 +165,28 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-artifact-capability-with-output.json", "reviewer output without artifact capability"],
     ["risk-discovery-report.invalid-triggered-profiles-array.json", "legacy positional triggered profiles"],
     ["risk-discovery-report.invalid-omp-profile-missing-capability.json", "OMP profile capability bypass"],
+    ["risk-discovery-report.invalid-omp-profile-missing-capture-artifacts.json", "OMP profile missing captureArtifacts"],
+    ["risk-discovery-report.invalid-omp-profile-missing-persist-evidence.json", "OMP profile missing persistEvidence"],
+    ["risk-discovery-report.invalid-omp-profile-missing-isolated-review.json", "OMP profile missing isolatedReadOnlyReview"],
+    ["risk-discovery-report.invalid-omp-profile-missing-structured-output.json", "OMP profile missing enforcedStructuredOutput"],
     ["risk-discovery-report.invalid-omp-completed-current-context.json", "OMP completed current-context challenge"],
     ["risk-discovery-report.invalid-single-context-profile-multi-context.json", "single-context profile multi-context contradiction"],
     ["risk-discovery-report.invalid-single-context-profile-separate-context.json", "single-context profile separate-context contradiction"],
     ["risk-discovery-report.invalid-codex-profile-missing-capability.json", "Codex profile capability bypass"],
+    ["risk-discovery-report.invalid-codex-profile-missing-bind-snapshot.json", "Codex profile missing bindSnapshot"],
+    ["risk-discovery-report.invalid-codex-profile-missing-capture-artifacts.json", "Codex profile missing captureArtifacts"],
+    ["risk-discovery-report.invalid-codex-profile-missing-persist-evidence.json", "Codex profile missing persistEvidence"],
+    ["risk-discovery-report.invalid-codex-profile-missing-structured-output.json", "Codex profile missing enforcedStructuredOutput"],
     ["risk-discovery-report.invalid-separate-context-single-context.json", "single-context separate challenge contradiction"],
     ["risk-discovery-report.invalid-completed-capability-limited.json", "completed capability-limited contradiction"],
     ["risk-discovery-report.invalid-capability-limited-current-context.json", "capability-limited current-context contradiction"],
     ["risk-discovery-report.invalid-current-context-blocking-capabilities.json", "blocking capabilities in current-context challenge"],
     ["risk-discovery-report.invalid-separate-context-blocking-capabilities.json", "blocking capabilities in separate-context challenge"],
     ["risk-discovery-report.invalid-not-required-capability-limited.json", "NOT_REQUIRED capability-limited mode contradiction"],
+    ["risk-discovery-report.invalid-not-required-profile-resolution.json", "profile resolution forbidden for NOT_REQUIRED"],
+    ["risk-discovery-report.invalid-blocked-profile-resolution.json", "profile resolution forbidden for BLOCKED"],
+    ["risk-discovery-report.invalid-capability-limited-profile-resolution.json", "profile resolution forbidden for CAPABILITY_LIMITED"],
+    ["risk-discovery-report.invalid-capability-limited-inline-blocker-mismatch.json", "inline capability not blocked by every profile"],
     ["risk-discovery-report.invalid-capability-limited-missing-limitation.json", "missing capability-limited limitation"],
     ["risk-discovery-report.invalid-capability-limited-missing-blocker.json", "missing capability blocker per profile"],
     ["risk-discovery-report.invalid-capability-limited-empty-blocker.json", "empty capability blocker list"],
@@ -214,6 +241,13 @@ describe("risk discovery report contract", () => {
       const mutated = applyMutation(loadBaseReport(mutation.base), mutation);
       expect(validate(mutated)).toBe(false);
       expect(validate.errors?.some((error) => error.keyword === mutation.expectedKeyword)).toBe(true);
+      if (mutation.expectedInstancePath) {
+        expect(
+          validate.errors?.some(
+            (error) => error.keyword === mutation.expectedKeyword && error.instancePath === mutation.expectedInstancePath,
+          ),
+        ).toBe(true);
+      }
     });
   }
 
@@ -242,36 +276,22 @@ describe("risk discovery report contract", () => {
     "enforcedStructuredOutput",
   ] as const;
   for (const capabilityName of capabilityNames) {
-    test(`rejects an inline limitation when ${capabilityName} is advertised`, () => {
+    test(`rejects an inline limitation when only ${capabilityName} is advertised`, () => {
       const operations: MutationOperation[] = capabilityNames.map((name) => ({
         operation: "replace",
         path: ["runtime", "capabilities", name],
-        value: true,
+        value: false,
       }));
-      operations.push({
-        operation: "replace",
-        path: ["triggerScan", "challenge", "limitation", "details", "capability"],
-        value: capabilityName,
-      });
-      const mutated = applyMutation(capabilityLimitedReport, {
-        base: "risk-discovery-report.valid-capability-limited.json",
-        operation: "replace",
-        path: ["runtime", "capabilities", capabilityNames[0]],
-        expectedKeyword: "not",
-        operations,
-      });
-      expect(validate(mutated)).toBe(false);
-      expect(validate.errors?.some((error) => error.keyword === "not")).toBe(true);
-    });
-  }
-
-  for (const capabilityName of capabilityNames) {
-    test(`rejects a blocking capability when ${capabilityName} is advertised`, () => {
-      const operations: MutationOperation[] = [
+      operations.push(
         {
           operation: "replace",
           path: ["runtime", "capabilities", capabilityName],
           value: true,
+        },
+        {
+          operation: "replace",
+          path: ["triggerScan", "challenge", "limitation", "details", "capability"],
+          value: capabilityName,
         },
         {
           operation: "replace",
@@ -283,16 +303,71 @@ describe("risk discovery report contract", () => {
           path: ["triggerScan", "triggeredProfiles", "duplicate-identities", "blockingCapabilities"],
           value: [capabilityName],
         },
-      ];
+      );
       const mutated = applyMutation(capabilityLimitedReport, {
         base: "risk-discovery-report.valid-capability-limited.json",
         operation: "replace",
-        path: ["runtime", "capabilities", capabilityNames[0]],
+        path: ["runtime", "capabilities", capabilityName],
         expectedKeyword: "not",
         operations,
       });
       expect(validate(mutated)).toBe(false);
-      expect(validate.errors?.some((error) => error.keyword === "not")).toBe(true);
+      expect(
+        validate.errors?.some(
+          (error) =>
+            error.keyword === "not" &&
+            error.instancePath === "/triggerScan/challenge/limitation/details/capability" &&
+            error.schemaPath.endsWith("/capability/not"),
+        ),
+      ).toBe(true);
+    });
+  }
+
+  for (const capabilityName of capabilityNames) {
+    test(`rejects a blocking capability when only ${capabilityName} is advertised`, () => {
+      const operations: MutationOperation[] = capabilityNames.map((name) => ({
+        operation: "replace",
+        path: ["runtime", "capabilities", name],
+        value: false,
+      }));
+      operations.push(
+        {
+          operation: "replace",
+          path: ["runtime", "capabilities", capabilityName],
+          value: true,
+        },
+        {
+          operation: "replace",
+          path: ["triggerScan", "challenge", "limitation", "details", "capability"],
+          value: capabilityName,
+        },
+        {
+          operation: "replace",
+          path: ["triggerScan", "triggeredProfiles", "stale-writes", "blockingCapabilities"],
+          value: [capabilityName],
+        },
+        {
+          operation: "replace",
+          path: ["triggerScan", "triggeredProfiles", "duplicate-identities", "blockingCapabilities"],
+          value: [capabilityName],
+        },
+      );
+      const mutated = applyMutation(capabilityLimitedReport, {
+        base: "risk-discovery-report.valid-capability-limited.json",
+        operation: "replace",
+        path: ["runtime", "capabilities", capabilityName],
+        expectedKeyword: "not",
+        operations,
+      });
+      expect(validate(mutated)).toBe(false);
+      expect(
+        validate.errors?.some(
+          (error) =>
+            error.keyword === "not" &&
+            error.instancePath === "/triggerScan/triggeredProfiles/stale-writes/blockingCapabilities" &&
+            error.schemaPath.endsWith("/blockingCapabilities/not"),
+        ),
+      ).toBe(true);
     });
   }
 

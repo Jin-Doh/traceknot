@@ -1,0 +1,17 @@
+{
+  "base": "risk-discovery-report.valid-nonmaterial-not-required.json",
+  "operation": "add",
+  "path": ["triggerScan", "triggeredProfiles", "response-ordering", "resolution"],
+  "value": {
+    "status": "NO_FINDINGS",
+    "detail": "A profile resolution is forbidden for NOT_REQUIRED.",
+    "evidence": [
+      {
+        "source": "invalid fixture",
+        "detail": "This resolution must be rejected for a NOT_REQUIRED challenge."
+      }
+    ]
+  },
+  "expectedKeyword": "not",
+  "expectedInstancePath": "/triggerScan/triggeredProfiles/response-ordering/resolution"
+}

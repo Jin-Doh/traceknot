@@ -1,8 +1,8 @@
 {
   "base": "risk-discovery-report.valid-completed-omp.json",
   "operation": "replace",
-  "path": ["runtime", "capabilities", "bindSnapshot"],
+  "path": ["runtime", "capabilities", "isolatedReadOnlyReview"],
   "value": false,
   "expectedKeyword": "const",
-  "expectedInstancePath": "/runtime/capabilities/bindSnapshot"
+  "expectedInstancePath": "/runtime/capabilities/isolatedReadOnlyReview"
 }

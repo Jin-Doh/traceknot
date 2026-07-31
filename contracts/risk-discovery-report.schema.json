@@ -1858,6 +1858,463 @@
                 "type": "object",
                 "properties": {
                   "outcome": {
+                    "enum": [
+                      "NOT_REQUIRED",
+                      "BLOCKED",
+                      "CAPABILITY_LIMITED"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "not": {
+                    "required": [
+                      "resolution"
+                    ],
+                    "properties": {
+                      "resolution": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "challenge": {
+                "properties": {
+                  "limitation": {
+                    "properties": {
+                      "details": {
+                        "properties": {
+                          "capability": {
+                            "const": "executeCommands"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "triggeredProfiles": {
+                "additionalProperties": {
+                  "properties": {
+                    "blockingCapabilities": {
+                      "contains": {
+                        "const": "executeCommands"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "challenge": {
+                "properties": {
+                  "limitation": {
+                    "properties": {
+                      "details": {
+                        "properties": {
+                          "capability": {
+                            "const": "executeBrowser"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "triggeredProfiles": {
+                "additionalProperties": {
+                  "properties": {
+                    "blockingCapabilities": {
+                      "contains": {
+                        "const": "executeBrowser"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "challenge": {
+                "properties": {
+                  "limitation": {
+                    "properties": {
+                      "details": {
+                        "properties": {
+                          "capability": {
+                            "const": "captureArtifacts"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "triggeredProfiles": {
+                "additionalProperties": {
+                  "properties": {
+                    "blockingCapabilities": {
+                      "contains": {
+                        "const": "captureArtifacts"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "challenge": {
+                "properties": {
+                  "limitation": {
+                    "properties": {
+                      "details": {
+                        "properties": {
+                          "capability": {
+                            "const": "bindSnapshot"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "triggeredProfiles": {
+                "additionalProperties": {
+                  "properties": {
+                    "blockingCapabilities": {
+                      "contains": {
+                        "const": "bindSnapshot"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "challenge": {
+                "properties": {
+                  "limitation": {
+                    "properties": {
+                      "details": {
+                        "properties": {
+                          "capability": {
+                            "const": "provideIndependentEvidence"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "triggeredProfiles": {
+                "additionalProperties": {
+                  "properties": {
+                    "blockingCapabilities": {
+                      "contains": {
+                        "const": "provideIndependentEvidence"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "challenge": {
+                "properties": {
+                  "limitation": {
+                    "properties": {
+                      "details": {
+                        "properties": {
+                          "capability": {
+                            "const": "persistEvidence"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "triggeredProfiles": {
+                "additionalProperties": {
+                  "properties": {
+                    "blockingCapabilities": {
+                      "contains": {
+                        "const": "persistEvidence"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "challenge": {
+                "properties": {
+                  "limitation": {
+                    "properties": {
+                      "details": {
+                        "properties": {
+                          "capability": {
+                            "const": "approveExceptions"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "triggeredProfiles": {
+                "additionalProperties": {
+                  "properties": {
+                    "blockingCapabilities": {
+                      "contains": {
+                        "const": "approveExceptions"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "challenge": {
+                "properties": {
+                  "limitation": {
+                    "properties": {
+                      "details": {
+                        "properties": {
+                          "capability": {
+                            "const": "isolatedReadOnlyReview"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "triggeredProfiles": {
+                "additionalProperties": {
+                  "properties": {
+                    "blockingCapabilities": {
+                      "contains": {
+                        "const": "isolatedReadOnlyReview"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "challenge": {
+                "properties": {
+                  "limitation": {
+                    "properties": {
+                      "details": {
+                        "properties": {
+                          "capability": {
+                            "const": "enforcedStructuredOutput"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "triggerScan": {
+            "properties": {
+              "triggeredProfiles": {
+                "additionalProperties": {
+                  "properties": {
+                    "blockingCapabilities": {
+                      "contains": {
+                        "const": "enforcedStructuredOutput"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "outcome": {
                     "const": "NOT_REQUIRED"
                   }
                 }
