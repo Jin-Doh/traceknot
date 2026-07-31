@@ -445,7 +445,10 @@
                   "not": {
                     "required": [
                       "blockingCapabilities"
-                    ]
+                    ],
+                    "properties": {
+                      "blockingCapabilities": true
+                    }
                   }
                 }
               }
@@ -576,14 +579,6 @@
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
-                    "blockingCapabilities": {
-                      "type": "array",
-                      "not": {
-                        "contains": {
-                          "const": "executeCommands"
-                        }
-                      }
-                    },
                     "reviewerOutputs": {
                       "type": "object",
                       "propertyNames": {
@@ -737,7 +732,7 @@
                       "type": "array",
                       "not": {
                         "contains": {
-                          "const": "executeBrowser"
+                          "const": "executeCommands"
                         }
                       }
                     },
@@ -863,7 +858,7 @@
                       "type": "array",
                       "not": {
                         "contains": {
-                          "const": "captureArtifacts"
+                          "const": "executeBrowser"
                         }
                       }
                     },
@@ -989,7 +984,7 @@
                       "type": "array",
                       "not": {
                         "contains": {
-                          "const": "bindSnapshot"
+                          "const": "captureArtifacts"
                         }
                       }
                     },
@@ -1115,7 +1110,7 @@
                       "type": "array",
                       "not": {
                         "contains": {
-                          "const": "provideIndependentEvidence"
+                          "const": "bindSnapshot"
                         }
                       }
                     },
@@ -1241,7 +1236,7 @@
                       "type": "array",
                       "not": {
                         "contains": {
-                          "const": "persistEvidence"
+                          "const": "provideIndependentEvidence"
                         }
                       }
                     },
@@ -1367,7 +1362,7 @@
                       "type": "array",
                       "not": {
                         "contains": {
-                          "const": "approveExceptions"
+                          "const": "persistEvidence"
                         }
                       }
                     },
@@ -1493,7 +1488,7 @@
                       "type": "array",
                       "not": {
                         "contains": {
-                          "const": "isolatedReadOnlyReview"
+                          "const": "approveExceptions"
                         }
                       }
                     },
@@ -1619,7 +1614,7 @@
                       "type": "array",
                       "not": {
                         "contains": {
-                          "const": "enforcedStructuredOutput"
+                          "const": "isolatedReadOnlyReview"
                         }
                       }
                     },
@@ -1741,6 +1736,14 @@
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
+                    "blockingCapabilities": {
+                      "type": "array",
+                      "not": {
+                        "contains": {
+                          "const": "enforcedStructuredOutput"
+                        }
+                      }
+                    },
                     "reviewerOutputs": {
                       "type": "object",
                       "propertyNames": {
