@@ -106,8 +106,9 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-impossible-approval-expiry.json", "impossible approval expiry"],
     ["risk-discovery-report.invalid-cluster-member-evidence.json", "cluster member evidence"],
     ["risk-discovery-report.invalid-reviewer-output-missing.json", "missing reviewer output"],
+    ["risk-discovery-report.invalid-reviewer-output-profile-missing.json", "triggered profile without reviewer output"],
     ["risk-discovery-report.invalid-reviewer-output-generic.json", "generic reviewer result"],
-    ["risk-discovery-report.invalid-reviewer-output-no-finding-keys.json", "no-finding result with finding keys"],
+    ["risk-discovery-report.invalid-reviewer-output-no-finding-keys.json", "no-finding result with findings field"],
     ["risk-discovery-report.invalid-reviewer-output-foreign-field.json", "foreign reviewer output field"],
   ] as const;
 

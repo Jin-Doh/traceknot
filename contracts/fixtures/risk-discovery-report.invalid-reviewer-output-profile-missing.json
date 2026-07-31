@@ -50,7 +50,7 @@
         "evidence": [
           {
             "source": "reviewer harness",
-            "detail": "The bounded challenge produced an output with a foreign snapshot field."
+            "detail": "One triggered profile has a preserved output while another does not."
           }
         ]
       }
@@ -91,51 +91,10 @@
                 }
               }
             }
-          },
-          "snapshotId": "foreign-snapshot"
-        }
-      ]
-    },
-    {
-      "operation": "add",
-      "path": ["triggerScan", "triggeredProfiles", 1, "reviewerOutputs"],
-      "value": [
-        {
-          "partition": "response ordering",
-          "obligation": {
-            "id": "obligation-stale-write-probe",
-            "description": "Confirm stale responses cannot overwrite newer values."
-          },
-          "producer": {
-            "id": "reviewer-1",
-            "independence": "separate-verification-context"
-          },
-          "artifact": {
-            "artifactId": "reviewer-output-001",
-            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-          },
-          "result": {
-            "kind": "FINDINGS",
-            "findings": {
-              "reviewer-finding-001": {
-                "kind": "NOT_APPLICABLE",
-                "materiality": "nonmaterial",
-                "evidence": [
-                  {
-                    "source": "reviewer",
-                    "detail": "No additional applicable deployment boundary was found."
-                  }
-                ],
-                "details": {
-                  "summary": "The reviewer found no additional deployment boundary.",
-                  "reason": "The bounded partition is library-only."
-                }
-              }
-            }
           }
         }
       ]
     }
   ],
-  "expectedKeyword": "additionalProperties"
+  "expectedKeyword": "required"
 }

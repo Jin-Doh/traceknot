@@ -257,14 +257,18 @@
           "triggerScan": {
             "type": "object",
             "properties": {
-              "challenge": {
-                "type": "object",
-                "required": ["reviewerOutputs"],
-                "properties": {
-                  "reviewerOutputs": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": { "$ref": "#/$defs/reviewerOutput" }
+              "triggeredProfiles": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["reviewerOutputs"],
+                  "properties": {
+                    "reviewerOutputs": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": { "$ref": "#/$defs/reviewerOutput" }
+                    }
                   }
                 }
               }
@@ -831,22 +835,24 @@
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/evidence" }
-        },
-        "reviewerOutputs": {
-          "description": "Each output inherits the enclosing report snapshotId; a separate snapshot field is forbidden.",
-          "type": "array",
-          "items": { "$ref": "#/$defs/reviewerOutput" }
         }
       }
     },
     "reviewerOutput": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["triggeredProfileId", "partition", "obligationId", "producer", "artifact", "result"],
+      "required": ["partition", "obligation", "producer", "artifact", "result"],
       "properties": {
-        "triggeredProfileId": { "type": "string", "minLength": 1 },
         "partition": { "type": "string", "minLength": 1 },
-        "obligationId": { "type": "string", "minLength": 1 },
+        "obligation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "description"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "description": { "type": "string", "minLength": 1 }
+          }
+        },
         "producer": {
           "type": "object",
           "additionalProperties": false,
@@ -870,14 +876,16 @@
             {
               "type": "object",
               "additionalProperties": false,
-              "required": ["kind", "findingKeys"],
+              "required": ["kind", "findings"],
               "properties": {
                 "kind": { "const": "FINDINGS" },
-                "findingKeys": {
-                  "type": "array",
-                  "minItems": 1,
-                  "uniqueItems": true,
-                  "items": { "type": "string", "minLength": 1 }
+                "findings": {
+                  "type": "object",
+                  "minProperties": 1,
+                  "patternProperties": {
+                    "^.+$": { "$ref": "#/$defs/finding" }
+                  },
+                  "additionalProperties": false
                 }
               }
             },
@@ -905,6 +913,11 @@
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
+        },
+        "reviewerOutputs": {
+          "description": "Each output inherits the enclosing report snapshotId; a separate snapshot field is forbidden.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/reviewerOutput" }
         }
       }
     },

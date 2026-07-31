@@ -50,28 +50,58 @@
         "evidence": [
           {
             "source": "reviewer harness",
-            "detail": "The bounded challenge completed with a generic completion record."
-          }
-        ],
-        "reviewerOutputs": [
-          {
-            "triggeredProfileId": "stale-writes",
-            "partition": "response ordering",
-            "obligationId": "obligation-stale-write-probe",
-            "producer": {
-              "id": "reviewer-1",
-              "independence": "separate-verification-context"
-            },
-            "artifact": {
-              "artifactId": "reviewer-output-001",
-              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-            },
-            "result": {
-              "status": "COMPLETED"
-            }
+            "detail": "The bounded challenge completed with a generic result record."
           }
         ]
       }
+    },
+    {
+      "operation": "add",
+      "path": ["triggerScan", "triggeredProfiles", 0, "reviewerOutputs"],
+      "value": [
+        {
+          "partition": "response ordering",
+          "obligation": {
+            "id": "obligation-stale-write-probe",
+            "description": "Confirm stale responses cannot overwrite newer values."
+          },
+          "producer": {
+            "id": "reviewer-1",
+            "independence": "separate-verification-context"
+          },
+          "artifact": {
+            "artifactId": "reviewer-output-001",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "result": {
+            "status": "COMPLETED"
+          }
+        }
+      ]
+    },
+    {
+      "operation": "add",
+      "path": ["triggerScan", "triggeredProfiles", 1, "reviewerOutputs"],
+      "value": [
+        {
+          "partition": "response ordering",
+          "obligation": {
+            "id": "obligation-stale-write-probe",
+            "description": "Confirm stale responses cannot overwrite newer values."
+          },
+          "producer": {
+            "id": "reviewer-1",
+            "independence": "separate-verification-context"
+          },
+          "artifact": {
+            "artifactId": "reviewer-output-001",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "result": {
+            "status": "COMPLETED"
+          }
+        }
+      ]
     }
   ],
   "expectedKeyword": "oneOf"

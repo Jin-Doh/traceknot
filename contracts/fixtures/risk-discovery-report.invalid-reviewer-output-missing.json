@@ -50,7 +50,7 @@
         "evidence": [
           {
             "source": "reviewer harness",
-            "detail": "The bounded challenge completed without a preserved output."
+            "detail": "The bounded challenge completed without preserving outputs on its triggered profiles."
           }
         ]
       }

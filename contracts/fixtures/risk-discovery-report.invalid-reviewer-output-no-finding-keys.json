@@ -50,29 +50,60 @@
         "evidence": [
           {
             "source": "reviewer harness",
-            "detail": "The bounded challenge produced an invalid no-finding variant."
-          }
-        ],
-        "reviewerOutputs": [
-          {
-            "triggeredProfileId": "stale-writes",
-            "partition": "response ordering",
-            "obligationId": "obligation-stale-write-probe",
-            "producer": {
-              "id": "reviewer-1",
-              "independence": "separate-verification-context"
-            },
-            "artifact": {
-              "artifactId": "reviewer-output-001",
-              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-            },
-            "result": {
-              "kind": "NO_FINDINGS",
-              "findingKeys": []
-            }
+            "detail": "The bounded challenge produced an invalid no-finding result with findings."
           }
         ]
       }
+    },
+    {
+      "operation": "add",
+      "path": ["triggerScan", "triggeredProfiles", 0, "reviewerOutputs"],
+      "value": [
+        {
+          "partition": "response ordering",
+          "obligation": {
+            "id": "obligation-stale-write-probe",
+            "description": "Confirm stale responses cannot overwrite newer values."
+          },
+          "producer": {
+            "id": "reviewer-1",
+            "independence": "separate-verification-context"
+          },
+          "artifact": {
+            "artifactId": "reviewer-output-001",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "result": {
+            "kind": "NO_FINDINGS",
+            "findings": {}
+          }
+        }
+      ]
+    },
+    {
+      "operation": "add",
+      "path": ["triggerScan", "triggeredProfiles", 1, "reviewerOutputs"],
+      "value": [
+        {
+          "partition": "response ordering",
+          "obligation": {
+            "id": "obligation-stale-write-probe",
+            "description": "Confirm stale responses cannot overwrite newer values."
+          },
+          "producer": {
+            "id": "reviewer-1",
+            "independence": "separate-verification-context"
+          },
+          "artifact": {
+            "artifactId": "reviewer-output-001",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "result": {
+            "kind": "NO_FINDINGS",
+            "findings": {}
+          }
+        }
+      ]
     }
   ],
   "expectedKeyword": "additionalProperties"
