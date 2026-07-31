@@ -194,7 +194,7 @@ describe("risk discovery report contract", () => {
       });
       const mutated = applyMutation(capabilityLimitedReport, {
         base: "risk-discovery-report.valid-capability-limited.json",
-        operation: operations[0],
+        operation: "replace",
         expectedKeyword: "not",
         operations,
       });
