@@ -397,6 +397,7 @@
             "type": "object",
             "required": ["riskId", "disposition"],
             "properties": {
+              "riskId": { "type": "string", "minLength": 1 },
               "disposition": { "$ref": "#/$defs/materialDisposition" }
             }
           }
