@@ -60,6 +60,81 @@
       "if": {
         "type": "object",
         "properties": {
+          "runtime": {
+            "type": "object",
+            "properties": {
+              "mode": { "const": "single-context" }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "reviewerOutputs": {
+                      "type": "array",
+                      "items": { "$ref": "#/$defs/reviewerOutputSelfCheck" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "runtime": {
+            "type": "object",
+            "properties": {
+              "capabilities": {
+                "type": "object",
+                "properties": {
+                  "provideIndependentEvidence": { "const": false }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "reviewerOutputs": {
+                      "type": "array",
+                      "items": { "$ref": "#/$defs/reviewerOutputNoIndependentProducer" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
           "triggerScan": {
             "type": "object",
             "properties": {
@@ -195,7 +270,7 @@
           "runtime": {
             "type": "object",
             "properties": {
-              "discoveryProfile": { "const": "omp" }
+              "discoveryProfile": { "enum": ["omp", "codex"] }
             }
           },
           "triggerScan": {
@@ -221,6 +296,52 @@
                 "type": "object",
                 "properties": {
                   "mode": { "const": "separate_context" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "runtime": {
+            "type": "object",
+            "properties": {
+              "discoveryProfile": { "enum": ["omp", "codex"] }
+            }
+          },
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "outcome": { "const": "COMPLETED" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "reviewerOutputs": {
+                      "type": "array",
+                      "items": { "$ref": "#/$defs/reviewerOutputIndependentProducer" }
+                    }
+                  }
                 }
               }
             }
@@ -985,6 +1106,80 @@
         "enforcedStructuredOutput"
       ]
     },
+    "reviewerAnalysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "taxonomy",
+        "anchors",
+        "failureMechanism",
+        "coverageChecked",
+        "confirmationProbe",
+        "uncertainty"
+      ],
+      "properties": {
+        "taxonomy": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "COVERAGE_GAP",
+              "SOURCE_CANDIDATE",
+              "CONFIRMED_DEFECT",
+              "POLICY_QUESTION",
+              "NOT_APPLICABLE",
+              "CAPABILITY_LIMITED",
+              "DUPLICATE_CLUSTER"
+            ]
+          }
+        },
+        "anchors": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/anchor" }
+        },
+        "failureMechanism": { "type": "string", "minLength": 1 },
+        "coverageChecked": { "const": true },
+        "confirmationProbe": { "type": "string", "minLength": 1 },
+        "uncertainty": { "type": "string", "minLength": 1 }
+      }
+    },
+    "reviewerOutputSelfCheck": {
+      "type": "object",
+      "properties": {
+        "producer": {
+          "type": "object",
+          "properties": {
+            "independence": { "const": "self-check" }
+          }
+        }
+      }
+    },
+    "reviewerOutputNoIndependentProducer": {
+      "type": "object",
+      "properties": {
+        "producer": {
+          "type": "object",
+          "properties": {
+            "independence": { "not": { "const": "independent-producer" } }
+          }
+        }
+      }
+    },
+    "reviewerOutputIndependentProducer": {
+      "type": "object",
+      "properties": {
+        "producer": {
+          "type": "object",
+          "properties": {
+            "independence": {
+              "enum": ["separate-verification-context", "independent-producer"]
+            }
+          }
+        }
+      }
+    },
     "capabilityLimitedExecuteCommands": {
       "type": "object",
       "required": ["kind", "details"],
@@ -1273,7 +1468,7 @@
     "reviewerOutput": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["partition", "obligation", "producer", "artifact", "result"],
+      "required": ["partition", "obligation", "producer", "artifact", "analysis", "result"],
       "properties": {
         "partition": { "type": "string", "minLength": 1 },
         "obligation": {
@@ -1291,7 +1486,7 @@
           "required": ["id", "independence"],
           "properties": {
             "id": { "type": "string", "minLength": 1 },
-            "independence": { "enum": ["separate-verification-context", "independent-producer"] }
+            "independence": { "enum": ["separate-verification-context", "independent-producer", "self-check"] }
           }
         },
         "artifact": {
@@ -1303,6 +1498,7 @@
             "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
           }
         },
+        "analysis": { "$ref": "#/$defs/reviewerAnalysis" },
         "result": {
           "oneOf": [
             {

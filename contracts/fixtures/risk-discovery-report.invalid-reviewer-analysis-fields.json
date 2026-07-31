@@ -1,0 +1,14 @@
+{
+  "base": "risk-discovery-report.valid-completed-multi-context.json",
+  "operation": "remove",
+  "path": ["triggerScan", "triggeredProfiles", 0, "reviewerOutputs", 0, "analysis"],
+  "fields": [
+    "taxonomy",
+    "anchors",
+    "failureMechanism",
+    "coverageChecked",
+    "confirmationProbe",
+    "uncertainty"
+  ],
+  "expectedKeyword": "required"
+}

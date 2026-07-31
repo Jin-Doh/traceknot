@@ -13,6 +13,7 @@ type Mutation = MutationOperation & {
   base: string;
   expectedKeyword: string;
   operations?: MutationOperation[];
+  fields?: string[];
 };
 
 const fixtureRoot = resolve(import.meta.dir, "../contracts/fixtures");
@@ -21,6 +22,10 @@ const schema = JSON.parse(
 ) as object;
 const validReport = JSON.parse(
   readFileSync(join(fixtureRoot, "risk-discovery-report.valid.json"), "utf8"),
+) as unknown;
+
+const completedMultiContextReport = JSON.parse(
+  readFileSync(join(fixtureRoot, "risk-discovery-report.valid-completed-multi-context.json"), "utf8"),
 ) as unknown;
 const ajv = new Ajv2020({ strict: true, allErrors: true });
 const validate = ajv.compile(schema);
@@ -69,9 +74,19 @@ function replaceCapabilityName(value: unknown, capabilityName: string): unknown 
   return value;
 }
 
+function loadBaseReport(base: string): unknown {
+  if (base === "risk-discovery-report.valid.json") return validReport;
+  return JSON.parse(readFileSync(join(fixtureRoot, base), "utf8")) as unknown;
+}
+
 describe("risk discovery report contract", () => {
   test("accepts the representative snapshot-bound report", () => {
     expect(validate(validReport)).toBe(true);
+    expect(validate.errors).toBeNull();
+  });
+
+  test("accepts a completed Codex multi-context report", () => {
+    expect(validate(completedMultiContextReport)).toBe(true);
     expect(validate.errors).toBeNull();
   });
 
@@ -121,14 +136,32 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-reviewer-output-generic.json", "generic reviewer result"],
     ["risk-discovery-report.invalid-reviewer-output-no-finding-keys.json", "no-finding result with findings field"],
     ["risk-discovery-report.invalid-reviewer-output-foreign-field.json", "foreign reviewer output field"],
+    ["risk-discovery-report.invalid-codex-current-context.json", "Codex current-context completion"],
+    ["risk-discovery-report.invalid-codex-completed-self-check.json", "Codex completed self-check producer"],
+    ["risk-discovery-report.invalid-single-context-reviewer-independence.json", "single-context non-self-check producer"],
+    ["risk-discovery-report.invalid-independent-producer-without-capability.json", "independent producer without capability"],
   ] as const;
 
   for (const [fileName, description] of negativeFixtures) {
     test(`rejects ${description}`, () => {
       const mutation = JSON.parse(readFileSync(join(fixtureRoot, fileName), "utf8")) as Mutation;
-      const mutated = applyMutation(validReport, mutation);
+      const mutated = applyMutation(loadBaseReport(mutation.base), mutation);
       expect(validate(mutated)).toBe(false);
       expect(validate.errors?.some((error) => error.keyword === mutation.expectedKeyword)).toBe(true);
+    });
+  }
+
+  const analysisFieldsFixture = JSON.parse(
+    readFileSync(join(fixtureRoot, "risk-discovery-report.invalid-reviewer-analysis-fields.json"), "utf8"),
+  ) as Mutation & { fields: string[] };
+  for (const field of analysisFieldsFixture.fields) {
+    test(`rejects reviewer analysis without ${field}`, () => {
+      const mutated = applyMutation(loadBaseReport(analysisFieldsFixture.base), {
+        ...analysisFieldsFixture,
+        path: [...analysisFieldsFixture.path, field],
+      });
+      expect(validate(mutated)).toBe(false);
+      expect(validate.errors?.some((error) => error.keyword === analysisFieldsFixture.expectedKeyword)).toBe(true);
     });
   }
   const capabilityNames = [

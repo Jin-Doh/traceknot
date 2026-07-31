@@ -73,6 +73,21 @@
             "artifactId": "reviewer-output-001",
             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
           },
+          "analysis": {
+            "taxonomy": ["NOT_APPLICABLE"],
+            "anchors": [
+              {
+                "path": "src/store.ts",
+                "startLine": 1,
+                "lineCount": 1,
+                "excerpt": "state.value"
+              }
+            ],
+            "failureMechanism": "The bounded partition may diverge from its expected behavior.",
+            "coverageChecked": true,
+            "confirmationProbe": "Exercise the bounded partition and inspect the preserved result.",
+            "uncertainty": "The runtime evidence does not establish behavior outside this partition."
+          },
           "result": {
             "kind": "FINDINGS",
             "findings": {
@@ -113,6 +128,21 @@
           "artifact": {
             "artifactId": "reviewer-output-001",
             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "analysis": {
+            "taxonomy": ["NOT_APPLICABLE"],
+            "anchors": [
+              {
+                "path": "src/store.ts",
+                "startLine": 1,
+                "lineCount": 1,
+                "excerpt": "state.value"
+              }
+            ],
+            "failureMechanism": "The bounded partition may diverge from its expected behavior.",
+            "coverageChecked": true,
+            "confirmationProbe": "Exercise the bounded partition and inspect the preserved result.",
+            "uncertainty": "The runtime evidence does not establish behavior outside this partition."
           },
           "result": {
             "kind": "FINDINGS",
