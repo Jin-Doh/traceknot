@@ -1,0 +1,27 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "add",
+  "path": ["findings", "finding-coverage-001", "disposition"],
+  "value": {
+    "status": "ACCEPTED_RISK",
+    "approval": {
+      "approvedBy": "release-approval@example.test",
+      "accountableOwner": "release-owner@example.test",
+      "reason": "This disposition must not be attached to a nonmaterial finding.",
+      "scope": "Invalid nonmaterial disposition",
+      "mitigation": "None",
+      "expiresAtUnixSeconds": 1786752000,
+      "evidence": {
+        "id": "approval-invalid-nonmaterial-001",
+        "source": "foreign approval",
+        "detail": "This disposition must not be attached to a nonmaterial finding.",
+        "artifact": {
+          "id": "approval-artifact-invalid-nonmaterial-001",
+          "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      },
+      "independence": "external-approval"
+    }
+  },
+  "expectedKeyword": "not"
+}

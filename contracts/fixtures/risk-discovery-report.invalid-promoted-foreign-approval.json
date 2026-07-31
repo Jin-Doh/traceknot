@@ -1,0 +1,24 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "add",
+  "path": ["findings", "finding-source-001", "disposition", "approval"],
+  "value": {
+    "approvedBy": "release-approval@example.test",
+    "accountableOwner": "release-owner@example.test",
+    "reason": "Foreign approval field.",
+    "scope": "Invalid promoted disposition",
+    "mitigation": "None",
+    "expiresAtUnixSeconds": 1786752000,
+    "evidence": {
+      "id": "approval-foreign-001",
+      "source": "foreign approval",
+      "detail": "Foreign approval field.",
+      "artifact": {
+        "id": "approval-artifact-foreign-001",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    "independence": "external-approval"
+  },
+  "expectedKeyword": "additionalProperties"
+}

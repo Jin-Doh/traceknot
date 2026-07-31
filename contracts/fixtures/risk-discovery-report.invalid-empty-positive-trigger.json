@@ -1,0 +1,19 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": ["triggerScan", "materialTrigger"],
+  "value": true,
+  "operations": [
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "materialTrigger"],
+      "value": true
+    },
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "triggeredProfiles"],
+      "value": {}
+    }
+  ],
+  "expectedKeyword": "minProperties"
+}

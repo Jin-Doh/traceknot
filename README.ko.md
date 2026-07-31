@@ -26,6 +26,14 @@ Traceknot(트레이스노트)은 OMP, Codex, Claude Code, OpenCode, GajaeCode �
 
 Traceknot은 테스트 기준에서 판정까지의 추적성, 증거와 독립성 요건, 결함과 잔여 위험 처리, 판정 우선순위를 정의합니다. 각 판정은 선언한 증거에 연결되며, 수명 주기 이벤트만으로는 검증을 입증할 수 없습니다.
 
+## 선언된 위험의 사각지대와 bounded discovery
+
+Risk classification은 위험 우주가 완전하다는 증명이 아니라 가설입니다. 변경된 contract, boundary 또는 synthetic test fixture가 material partition을 숨긴 채 변경이 `R0`이나 `R1`처럼 보일 수 있습니다. 따라서 portable Skill은 test basis를 모은 뒤 최종 product-risk classification 전에 **모든 R0–R3 실행에서 cheap universal trigger scan**을 수행합니다. 초기 low-risk label은 면제 사유가 아닙니다.
+
+Scan은 trigger된 profile과 material scope의 미확정 여부만 기록합니다. Surface가 `R2`/`R3`이거나, material security·persistence·concurrency·irreversible-write·public-contract·compatibility·deployment trigger가 발견되거나, scope를 알 수 없거나, mock·synthetic fixture가 변경된 contract를 우회하거나, 반복 defect cluster와 겹칠 때만 bounded adversarial challenge로 escalation합니다. Trigger가 없는 `R0`/`R1`은 scan 기록 후 멈출 수 있습니다. 이는 portable process의 요구이지 exhaustive testing이나 agent 생성 지시가 아닙니다.
+
+Finding의 의미는 구분합니다. `COVERAGE_GAP`은 evidence가 부족한 것이며 defect 자체가 아닙니다. `SOURCE_CANDIDATE`는 source에 concrete failure mechanism이 있지만 runtime confirmation이 없는 상태이고, `CONFIRMED_DEFECT`는 실행으로 deviation이 관찰된 상태입니다. `POLICY_QUESTION`, `NOT_APPLICABLE`, `CAPABILITY_LIMITED`, `DUPLICATE_CLUSTER`는 다른 disposition을 기록합니다. Material source candidate는 defect로 바꾸지 않고 confirmation obligation으로 승격합니다.
+
 ## 현재 상태
 
 | 영역 | 상태 |
@@ -33,11 +41,13 @@ Traceknot은 테스트 기준에서 판정까지의 추적성, 증거와 독립�
 | Portable ISTQB 기반 Skill | 구현 완료 |
 | Canonical QA record schema | 구현 및 schema 검증 완료 |
 | Host-neutral deterministic verdict core | 구현 및 테스트 완료 |
-| 하네스 capability manifest | 구현 완료; runtime capability 기본값은 없음 |
+| 하네스 capability manifest | 구현 완료; 정적 adapter record는 `quality-capability/v2` 사용 |
 | Completion-authority 계약과 모델 | 선택적 extension으로 보존 |
 | OMP/Codex/Claude/OpenCode native 연동 | 미구현 |
 | Phase B completion enforcement | 미승인; `phase1Authorized: false` |
 | 사용자 영역 installer와 uninstaller | 구현 완료; registry 배포와 public CLI는 미구현 |
+| Portable bounded adversarial discovery | Skill에 구현; universal scan은 필수, bounded challenge는 escalation trigger에서만 수행 |
+| Snapshot-bound discovery report (`risk-discovery-report/v1`) | 선택 사항; 생성할 때 schema 검증 |
 
 휴대형 Skill과 호스트 중립 코어는 지금 평가와 개발에 사용할 수 있습니다. 하네스 완료를 확정할 권한은 별도의 후속 통합이 필요합니다.
 
@@ -143,8 +153,10 @@ fi
 flowchart LR
     U[사용자 요청과 repository change] --> H[Harness]
     H --> S[Portable Skill]
-    S --> B[Test basis와 product risk]
-    B --> P[Test condition과 verification plan]
+    S --> B[Test basis와 initial risk hypothesis]
+    B --> D[Universal trigger scan과 bounded discovery]
+    D --> R[최종 product-risk classification]
+    R --> P[Test condition과 verification plan]
     P --> X{Core 사용 가능?}
     X -->|아니오| E[Evidence-only 실행과 보고]
     X -->|예| C[Host-neutral QA core]
@@ -171,6 +183,7 @@ flowchart TB
     end
 
     subgraph TK[Traceknot이 소유]
+      QX[Adversarial discovery process]
       QB[Test basis와 risk]
       QP[Test condition과 obligation]
       QE[Evidence requirement]
@@ -182,22 +195,27 @@ flowchart TB
     TK -->|agent 지시가 아닌 QA verdict 반환| Harness
 ```
 
-Traceknot은 evidence requirement와 최소 independence 수준을 선언합니다. 특정 subagent 생성, 특정 모델 사용 또는 특정 병렬 정책을 하네스에 지시하지 않습니다.
+Traceknot은 discovery process, evidence requirement과 최소 independence 수준을 선언합니다. Portable Skill은 scan, triggered challenge과 completion-report disclosure를 요구하지만 host-neutral v1 core가 이 과정을 enforce하거나 reviewer를 orchestrate하지는 않습니다. Native `verification-plan/v1`과 `qa-verdict/v1` caller는 discovery를 생략할 수 있으며, 이는 portable Skill compliance 밖의 상태로 완료된 discovery라고 표시해서는 안 됩니다.
+
+하나의 portable workflow를 runtime-selected profile로 실행합니다. 독립 capability가 광고되지 않으면 single-context가 fallback이며, 그 자체로 `independent-producer` obligation을 충족할 수 없습니다. OMP는 capability handshake가 isolation, snapshot binding, persistence, structured output을 증명한 뒤에만 최대 3개의 scoped read-only reviewer를 사용할 수 있고, Codex는 해당 capability가 광고될 때만 independently bounded slice를 사용할 수 있습니다. Reviewer output은 structured하고 snapshot-bound로 보존해야 하며 lifecycle event와 timeout은 observation이지 evidence가 아닙니다. Host/model/lifecycle 이름만으로 capability가 부여되지 않으며 Traceknot은 automatic subagent orchestration이나 고정 reviewer 수를 요구하지 않습니다.
 
 ## QA 프로세스
 
 ```mermaid
 flowchart LR
-    A[Test basis] --> B[Product risk]
-    B --> C[Test condition]
-    C --> D[Test technique]
-    D --> E[Mandatory obligation]
-    E --> F[Entry criteria]
-    F --> G[실행과 evidence]
-    G --> H[Defect와 regression]
-    H --> I[Exit criteria]
-    I --> J[Residual risk]
-    J --> K[QA verdict]
+    A[Test basis] --> B[Initial risk hypothesis]
+    B --> C[Universal trigger scan]
+    C --> D[Trigger 시 bounded challenge]
+    D --> E[최종 risk classification]
+    E --> F[Test condition]
+    F --> G[Test technique]
+    G --> H[Mandatory obligation]
+    H --> I[Entry criteria]
+    I --> J[실행과 evidence]
+    J --> K[Defect와 regression]
+    K --> L[Exit criteria]
+    L --> M[Residual risk]
+    M --> N[QA verdict]
 ```
 
 Skill은 다음 7가지 테스트 원칙을 적용합니다.
@@ -233,6 +251,7 @@ FAIL → BLOCKED → INCOMPLETE → PASS_WITH_ACCEPTED_RISK → PASS
 ```
 
 Host-neutral core는 항상 `authoritative: false`를 출력합니다. 별도로 통합된 completion-authority extension만 하네스 수준의 권위를 주장할 수 있습니다.
+Discovery는 risk disposition을 바꾸지만 결정적 precedence는 바꾸지 않습니다. Deferred nonmaterial scope는 보고된 untested scope로 남을 수 있습니다. Valid acceptance가 없는 material deferred risk는 `PASS`를 막고 `INCOMPLETE` 또는 `BLOCKED`로 남습니다. 유효하고 만료되지 않은 acceptance가 있으면 mandatory obligation 통과 후에만 `PASS_WITH_ACCEPTED_RISK`가 될 수 있습니다. Open confirmed material defect는 `FAIL`이며, confirmation 대기 중인 source candidate는 관련 obligation을 incomplete로 유지합니다.
 
 ## Repository 구조
 
@@ -245,19 +264,26 @@ Host-neutral core는 항상 `authoritative: false`를 출력합니다. 별도로
 ├── skill/
 │   ├── SKILL.md
 │   └── references/
+│       └── adversarial-risk-discovery.md
 ├── contracts/
 │   ├── capability.schema.json
+│   ├── capability-v2.schema.json
 │   ├── verification-request.schema.json
 │   ├── verification-plan.schema.json
 │   ├── evidence.schema.json
 │   ├── defect.schema.json
-│   └── verdict.schema.json
+│   ├── verdict.schema.json
+│   ├── risk-discovery-report.schema.json
+│   └── fixtures/
+│       └── risk-discovery-report.*.json
 ├── adapters/
 │   ├── omp/
 │   ├── codex/
 │   ├── claude-code/
 │   ├── opencode/
 │   └── gajae-code/
+├── tests/
+│   └── risk-discovery-report.test.ts
 └── system/
     ├── core/
     │   ├── qa-core.ts
@@ -269,30 +295,32 @@ Host-neutral core는 항상 `authoritative: false`를 출력합니다. 별도로
 
 ### `skill/`
 
-Portable host-neutral workflow입니다. Test basis, risk 분석, test design, entry/exit criteria, evidence, defect lifecycle, traceability, residual risk와 completion report를 다룹니다.
+Portable host-neutral workflow입니다. Test basis, initial/final risk classification, universal trigger scan, bounded adversarial discovery, test design, entry/exit criteria, evidence, defect lifecycle, traceability, residual risk와 completion report를 다룹니다.
 
-[skill/SKILL.md](skill/SKILL.md)에서 시작합니다. 상세 지침은 [skill/references](skill/references/)에 있습니다.
+[skill/SKILL.md](skill/SKILL.md)에서 시작합니다. Discovery profile을 포함한 상세 지침은 [skill/references](skill/references/)에 있습니다.
 
 ### `contracts/`
 
 Skill, harness adapter, core validator 또는 외부 구현이 공유하는 closed JSON Schema Draft 2020-12 record입니다.
 
-- host capability
+- host capability v1(legacy) 및 v2(adapter)
 - verification request
 - verification plan
 - evidence
 - defect
 - QA verdict
+- 선택적 snapshot-bound risk-discovery report (`risk-discovery-report/v1`); 생성할 때 schema 검증
 
 하네스 이름은 capability를 자동으로 부여하지 않습니다. Runtime handshake가 각 capability를 선언하고 증명해야 합니다.
+`contracts/capability.schema.json`은 기존 record를 위한 닫힌 `quality-capability/v1` 형태를 그대로 보존합니다. `contracts/capability-v2.schema.json`은 adapter 계약으로 `isolatedReadOnlyReview`와 `enforcedStructuredOutput`을 포함한 9개 host-neutral capability boolean을 모두 요구합니다. 정적 adapter manifest는 v2를 사용하며 이 필드도 명시적으로 `false`로 기록합니다. 기존 v1 record는 이 두 필드 없이도 계속 유효합니다.
 
 ### `adapters/`
 
-지원 대상 하네스 이름에 대한 보수적인 capability manifest입니다. 모든 기본 capability는 `false`이며 accidental trust escalation을 방지합니다. 실제 adapter는 하네스의 agent policy를 인수하지 않고 현재 runtime capability와 evidence만 제공해야 합니다.
+지원 대상 하네스 이름에 대한 보수적인 v2 capability manifest입니다. 모든 기본 capability는 `false`이며 accidental trust escalation을 방지합니다. 실제 adapter는 하네스의 agent policy를 인수하지 않고 현재 runtime capability와 evidence만 제공해야 합니다.
 
 ### `system/core/`
 
-Host-neutral TypeScript verdict resolver입니다. 다음을 거부하거나 비통과 상태로 처리합니다.
+Host-neutral TypeScript verdict resolver입니다. 다음을 거부하거나 비통과 상태로 처리하지만 portable discovery scan을 enforce하거나 discovery record와 reviewer orchestration을 요구하지는 않습니다.
 
 - obligation 결과 중복
 - 다른 snapshot의 evidence
@@ -316,14 +344,19 @@ Host-neutral TypeScript verdict resolver입니다. 다음을 거부하거나 비
 
 1. target snapshot과 변경 범위를 식별합니다.
 2. explicit/derived test-basis item을 수집합니다.
-3. product risk를 분류합니다.
-4. observable test condition과 expected result를 도출합니다.
-5. test technique과 mandatory obligation을 선택합니다.
-6. entry criteria를 확인합니다.
-7. 하네스가 자체 orchestration 정책으로 검증을 실행합니다.
-8. evidence와 defect를 기록합니다.
-9. coverage, exit criteria와 residual risk를 평가합니다.
-10. harness completion과 별도로 QA verdict를 발행합니다.
+3. initial risk hypothesis를 기록합니다.
+4. universal trigger scan을 수행합니다.
+5. escalation 조건이 충족될 때만 bounded challenge를 수행합니다.
+6. product-risk classification을 확정하고 material candidate를 confirmation obligation으로 승격합니다.
+7. observable test condition과 expected result를 도출합니다.
+8. test technique과 mandatory obligation을 선택합니다.
+9. entry criteria를 확인합니다.
+10. 하네스가 자체 orchestration 정책으로 검증을 실행합니다.
+11. evidence와 defect를 기록합니다.
+12. coverage, exit criteria, residual risk와 deferred scope를 평가합니다.
+13. harness completion과 별도로 QA verdict를 발행합니다.
+
+기존 `verification-plan/v1`과 `qa-verdict/v1` 사용자는 기존 record를 migration하지 않고 이 portable workflow를 얻습니다. Standalone structured discovery report는 선택 사항이며, 생성하면 `contracts/risk-discovery-report.schema.json`에 대해 검증해야 합니다. 이는 native v1 enforcement를 추가하지 않습니다. Caller는 discovery를 생략할 수 있고, 생략 사실을 공개해야 하며 완료된 discovery로 표시해서는 안 됩니다.
 
 ## Core 개발
 
@@ -338,7 +371,7 @@ bun install --frozen-lockfile --ignore-scripts
 bun run ci
 ```
 
-이 gate는 portable installer lifecycle, JSON 및 Draft 2020-12 schema 검증, capability 검증, prompt-injection 위험 분류, core test, strict typecheck, 공백 검사를 실행합니다. `high`와 `critical` prompt-risk finding은 gate를 차단합니다. 예외는 범위를 좁히고 만료일을 지정해야 하며, `security/prompt-injection-exceptions.json`에 owner, reason, mitigation, 정확한 line fingerprint를 기록해야 합니다.
+이 gate는 portable installer lifecycle, JSON 및 Draft 2020-12 schema 검증(두 capability schema version 포함), v2 capability record 검증, prompt-injection 위험 분류, core test, strict typecheck, 공백 검사를 실행합니다. `high`와 `critical` prompt-risk finding은 gate를 차단합니다. 예외는 범위를 좁히고 만료일을 지정해야 하며, `security/prompt-injection-exceptions.json`에 owner, reason, mitigation, 정확한 line fingerprint를 기록해야 합니다.
 
 개발 중 개별 core check를 실행하려면:
 

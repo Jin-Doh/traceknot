@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": ["triggerScan", "performed"],
+  "value": false,
+  "expectedKeyword": "const"
+}

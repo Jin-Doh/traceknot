@@ -7,8 +7,8 @@
   "scripts": {
     "ci": "sh scripts/ci",
     "prose-quality": "bun scripts/audit-prose-quality.ts --config prose-quality.config.json",
-    "test": "bun test system/core/qa-core.test.ts tests/prompt-injection-scanner.test.ts tests/prose-quality.test.ts",
-    "typecheck": "tsc --ignoreConfig --noEmit --strict --types bun --target ES2022 --module ESNext --moduleResolution Bundler system/core/qa-core.ts scripts/audit-prompt-injection.ts scripts/audit-prose-quality.ts tests/prompt-injection-scanner.test.ts tests/prose-quality.test.ts"
+    "test": "bun test system/core/qa-core.test.ts tests/prompt-injection-scanner.test.ts tests/prose-quality.test.ts tests/risk-discovery-report.test.ts",
+    "typecheck": "tsc --ignoreConfig --noEmit --strict --types bun --target ES2022 --module ESNext --moduleResolution Bundler system/core/qa-core.ts scripts/audit-prompt-injection.ts scripts/audit-prose-quality.ts tests/prompt-injection-scanner.test.ts tests/prose-quality.test.ts tests/risk-discovery-report.test.ts"
   },
   "devDependencies": {
     "@babel/parser": "8.0.4",

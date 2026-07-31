@@ -1,0 +1,47 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "add",
+  "path": [
+    "triggerScan",
+    "triggeredProfiles",
+    "stale-writes",
+    "reviewerOutputs"
+  ],
+  "value": {
+    "single-context-output-001": {
+      "partition": "response ordering",
+      "obligation": {
+        "id": "obligation-single-context-001",
+        "description": "Confirm the bounded response-ordering partition remains safe."
+      },
+      "producer": {
+        "id": "single-context-reviewer-1",
+        "independence": "separate-verification-context"
+      },
+      "artifact": {
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "analysis": {
+        "taxonomy": [
+          "NOT_APPLICABLE"
+        ],
+        "anchors": [
+          {
+            "path": "src/store.ts",
+            "startLine": 1,
+            "lineCount": 1,
+            "excerpt": "state.value"
+          }
+        ],
+        "failureMechanism": "The bounded partition may diverge from its expected behavior.",
+        "coverageChecked": true,
+        "confirmationProbe": "Exercise the bounded partition and inspect the preserved result.",
+        "uncertainty": "The runtime evidence does not establish behavior outside this partition."
+      },
+      "result": {
+        "kind": "NO_FINDINGS"
+      }
+    }
+  },
+  "expectedKeyword": "const"
+}

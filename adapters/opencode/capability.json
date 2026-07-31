@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "quality-capability/v1",
+  "schemaVersion": "quality-capability/v2",
   "host": "opencode",
   "adapterVersion": "portable-v1",
   "capabilities": {
@@ -9,7 +9,9 @@
     "bindSnapshot": false,
     "provideIndependentEvidence": false,
     "persistEvidence": false,
-    "approveExceptions": false
+    "approveExceptions": false,
+    "isolatedReadOnlyReview": false,
+    "enforcedStructuredOutput": false
   },
   "limitations": [
     "Capabilities must be supplied by a runtime handshake; the host name grants none.",

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "risk-discovery-report/v1",
+  "requestId": "req-single-context-completed-001",
+  "snapshotId": "snap-20260731T040506Z",
+  "runtime": {
+    "host": "codex",
+    "mode": "single-context",
+    "discoveryProfile": "single-context",
+    "capabilities": {
+      "executeCommands": true,
+      "executeBrowser": false,
+      "captureArtifacts": true,
+      "bindSnapshot": true,
+      "provideIndependentEvidence": false,
+      "persistEvidence": true,
+      "approveExceptions": false,
+      "isolatedReadOnlyReview": false,
+      "enforcedStructuredOutput": false
+    },
+    "limitations": [
+      "A second independent evidence producer is unavailable."
+    ]
+  },
+  "triggerScan": {
+    "performed": true,
+    "initialRiskLevel": "R1",
+    "scopeUnknown": false,
+    "materialTrigger": false,
+    "syntheticBoundaryBypass": false,
+    "recurringDefectClusterOverlap": false,
+    "triggeredProfiles": {
+      "stale-writes": {
+        "evidence": [
+          "The changed write path was reviewed in the current context."
+        ],
+        "resolution": {
+          "status": "NO_FINDINGS",
+          "detail": "The stale-writes partition completed without a finding.",
+          "evidence": [
+            {
+              "source": "single-context review",
+              "detail": "The bounded current-context review recorded no finding for stale writes."
+            }
+          ]
+        }
+      }
+    },
+    "challenge": {
+      "outcome": "COMPLETED",
+      "mode": "current_context",
+      "evidence": [
+        {
+          "source": "single-context review",
+          "detail": "The bounded current-context challenge completed with its profile resolution preserved."
+        }
+      ]
+    }
+  },
+  "findings": {}
+}

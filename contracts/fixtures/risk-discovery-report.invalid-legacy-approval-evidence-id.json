@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "add",
+  "path": ["findings", "finding-defect-001", "disposition", "approval", "evidenceId"],
+  "value": "approval-legacy-001",
+  "expectedKeyword": "additionalProperties"
+}

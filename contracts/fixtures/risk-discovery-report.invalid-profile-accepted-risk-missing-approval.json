@@ -1,0 +1,6 @@
+{
+  "base": "risk-discovery-report.valid-completed-accepted-risk.json",
+  "operation": "remove",
+  "path": ["triggerScan", "triggeredProfiles", "identity-duplicate", "resolution", "approval"],
+  "expectedKeyword": "required"
+}

@@ -1,0 +1,15 @@
+{
+  "base": "risk-discovery-report.valid-completed-multi-context.json",
+  "operation": "replace",
+  "path": [
+    "triggerScan",
+    "triggeredProfiles",
+    "response-ordering",
+    "reviewerOutputs",
+    "codex-reviewer-output-001",
+    "producer",
+    "independence"
+  ],
+  "value": "self-check",
+  "expectedKeyword": "enum"
+}

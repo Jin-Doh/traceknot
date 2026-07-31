@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": ["findings", "finding-defect-001", "disposition", "approval", "evidence", "artifact", "sha256"],
+  "value": "not-a-sha256",
+  "expectedKeyword": "pattern"
+}

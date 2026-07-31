@@ -1,0 +1,10 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "add",
+  "path": ["findings", "finding-source-001", "deferredRisk"],
+  "value": {
+    "riskId": "risk-illegal-material-deferral",
+    "reason": "Material findings cannot use deferred nonmaterial risk records."
+  },
+  "expectedKeyword": "not"
+}

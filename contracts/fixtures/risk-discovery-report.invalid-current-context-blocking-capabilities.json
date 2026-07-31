@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid-single-context-completed.json",
+  "operation": "add",
+  "path": ["triggerScan", "triggeredProfiles", "stale-writes", "blockingCapabilities"],
+  "value": ["executeBrowser"],
+  "expectedKeyword": "not"
+}

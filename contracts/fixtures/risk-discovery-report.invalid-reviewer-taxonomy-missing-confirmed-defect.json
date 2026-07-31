@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid-reviewer-output-all-kinds.json",
+  "operation": "remove",
+  "path": ["triggerScan", "triggeredProfiles", "response-ordering", "reviewerOutputs", "codex-reviewer-all-kinds-output-001", "analysis", "taxonomy", 2],
+  "expectedKeyword": "contains",
+  "expectedInstancePath": "/triggerScan/triggeredProfiles/response-ordering/reviewerOutputs/codex-reviewer-all-kinds-output-001/analysis/taxonomy"
+}

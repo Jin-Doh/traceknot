@@ -1,0 +1,8 @@
+{
+  "base": "risk-discovery-report.valid-completed-multi-context.json",
+  "operation": "replace",
+  "path": ["runtime", "capabilities", "captureArtifacts"],
+  "value": false,
+  "expectedKeyword": "const",
+  "expectedInstancePath": "/runtime/capabilities/captureArtifacts"
+}

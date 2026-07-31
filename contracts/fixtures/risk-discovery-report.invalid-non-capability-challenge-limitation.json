@@ -1,0 +1,27 @@
+{
+  "base": "risk-discovery-report.valid-capability-limited.json",
+  "operation": "replace",
+  "path": ["triggerScan", "challenge", "outcome"],
+  "value": "NOT_REQUIRED",
+  "operations": [
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "challenge", "outcome"],
+      "value": "NOT_REQUIRED"
+    },
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "challenge", "mode"],
+      "value": "current_context"
+    },
+    {
+      "operation": "remove",
+      "path": ["triggerScan", "triggeredProfiles", "stale-writes", "blockingCapabilities"]
+    },
+    {
+      "operation": "remove",
+      "path": ["triggerScan", "triggeredProfiles", "duplicate-identities", "blockingCapabilities"]
+    }
+  ],
+  "expectedKeyword": "not"
+}

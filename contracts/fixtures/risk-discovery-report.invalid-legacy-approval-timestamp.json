@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "add",
+  "path": ["findings", "finding-defect-001", "disposition", "approval", "expiresAt"],
+  "value": "2026-08-15T00:00:00Z",
+  "expectedKeyword": "additionalProperties"
+}

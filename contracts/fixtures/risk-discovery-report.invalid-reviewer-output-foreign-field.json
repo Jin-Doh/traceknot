@@ -1,0 +1,228 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": [
+    "runtime"
+  ],
+  "value": {
+    "host": "omp",
+    "mode": "multi-context",
+    "discoveryProfile": "omp",
+    "capabilities": {
+      "executeCommands": true,
+      "executeBrowser": false,
+      "captureArtifacts": true,
+      "bindSnapshot": true,
+      "provideIndependentEvidence": false,
+      "persistEvidence": true,
+      "approveExceptions": false,
+      "isolatedReadOnlyReview": true,
+      "enforcedStructuredOutput": true
+    },
+    "limitations": []
+  },
+  "operations": [
+    {
+      "operation": "replace",
+      "path": [
+        "runtime"
+      ],
+      "value": {
+        "host": "omp",
+        "mode": "multi-context",
+        "discoveryProfile": "omp",
+        "capabilities": {
+          "executeCommands": true,
+          "executeBrowser": false,
+          "captureArtifacts": true,
+          "bindSnapshot": true,
+          "provideIndependentEvidence": false,
+          "persistEvidence": true,
+          "approveExceptions": false,
+          "isolatedReadOnlyReview": true,
+          "enforcedStructuredOutput": true
+        },
+        "limitations": []
+      }
+    },
+    {
+      "operation": "replace",
+      "path": [
+        "triggerScan",
+        "challenge"
+      ],
+      "value": {
+        "outcome": "COMPLETED",
+        "mode": "separate_context",
+        "evidence": [
+          {
+            "source": "reviewer harness",
+            "detail": "The bounded challenge produced an output with a foreign snapshot field."
+          }
+        ]
+      }
+    },
+    {
+      "operation": "add",
+      "path": [
+        "triggerScan",
+        "triggeredProfiles",
+        "stale-writes",
+        "reviewerOutputs"
+      ],
+      "value": {
+        "reviewer-output-001": {
+          "partition": "response ordering",
+          "obligation": {
+            "id": "obligation-stale-write-probe",
+            "description": "Confirm stale responses cannot overwrite newer values."
+          },
+          "producer": {
+            "id": "reviewer-1",
+            "independence": "separate-verification-context"
+          },
+          "artifact": {
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "analysis": {
+            "taxonomy": [
+              "NOT_APPLICABLE"
+            ],
+            "anchors": [
+              {
+                "path": "src/store.ts",
+                "startLine": 1,
+                "lineCount": 1,
+                "excerpt": "state.value"
+              }
+            ],
+            "failureMechanism": "The bounded partition may diverge from its expected behavior.",
+            "coverageChecked": true,
+            "confirmationProbe": "Exercise the bounded partition and inspect the preserved result.",
+            "uncertainty": "The runtime evidence does not establish behavior outside this partition."
+          },
+          "result": {
+            "kind": "FINDINGS",
+            "findings": {
+              "reviewer-finding-001": {
+                "kind": "NOT_APPLICABLE",
+                "materiality": "nonmaterial",
+                "evidence": [
+                  {
+                    "source": "reviewer",
+                    "detail": "No additional applicable deployment boundary was found."
+                  }
+                ],
+                "details": {
+                  "summary": "The reviewer found no additional deployment boundary.",
+                  "reason": "The bounded partition is library-only."
+                }
+              }
+            }
+          },
+          "snapshotId": "foreign-snapshot"
+        }
+      }
+    },
+    {
+      "operation": "add",
+      "path": [
+        "triggerScan",
+        "triggeredProfiles",
+        "duplicate-identities",
+        "reviewerOutputs"
+      ],
+      "value": {
+        "reviewer-output-001": {
+          "partition": "response ordering",
+          "obligation": {
+            "id": "obligation-stale-write-probe",
+            "description": "Confirm stale responses cannot overwrite newer values."
+          },
+          "producer": {
+            "id": "reviewer-1",
+            "independence": "separate-verification-context"
+          },
+          "artifact": {
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "analysis": {
+            "taxonomy": [
+              "NOT_APPLICABLE"
+            ],
+            "anchors": [
+              {
+                "path": "src/store.ts",
+                "startLine": 1,
+                "lineCount": 1,
+                "excerpt": "state.value"
+              }
+            ],
+            "failureMechanism": "The bounded partition may diverge from its expected behavior.",
+            "coverageChecked": true,
+            "confirmationProbe": "Exercise the bounded partition and inspect the preserved result.",
+            "uncertainty": "The runtime evidence does not establish behavior outside this partition."
+          },
+          "result": {
+            "kind": "FINDINGS",
+            "findings": {
+              "reviewer-finding-001": {
+                "kind": "NOT_APPLICABLE",
+                "materiality": "nonmaterial",
+                "evidence": [
+                  {
+                    "source": "reviewer",
+                    "detail": "No additional applicable deployment boundary was found."
+                  }
+                ],
+                "details": {
+                  "summary": "The reviewer found no additional deployment boundary.",
+                  "reason": "The bounded partition is library-only."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "operation": "add",
+      "path": [
+        "triggerScan",
+        "triggeredProfiles",
+        "stale-writes",
+        "resolution"
+      ],
+      "value": {
+        "status": "NO_FINDINGS",
+        "detail": "The stale-writes partition resolution is recorded separately from the invalid output.",
+        "evidence": [
+          {
+            "source": "reviewer harness",
+            "detail": "The stale-writes partition has a preserved resolution record."
+          }
+        ]
+      }
+    },
+    {
+      "operation": "add",
+      "path": [
+        "triggerScan",
+        "triggeredProfiles",
+        "duplicate-identities",
+        "resolution"
+      ],
+      "value": {
+        "status": "NO_FINDINGS",
+        "detail": "The duplicate-identities partition resolution is recorded separately from the invalid output.",
+        "evidence": [
+          {
+            "source": "reviewer harness",
+            "detail": "The duplicate-identities partition has a preserved resolution record."
+          }
+        ]
+      }
+    }
+  ],
+  "expectedKeyword": "additionalProperties"
+}

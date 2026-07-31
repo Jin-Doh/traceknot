@@ -1,0 +1,287 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": [
+    "runtime",
+    "capabilities",
+    "executeBrowser"
+  ],
+  "value": true,
+  "operations": [
+    {
+      "operation": "replace",
+      "path": [
+        "runtime",
+        "capabilities",
+        "executeBrowser"
+      ],
+      "value": true
+    },
+    {
+      "operation": "replace",
+      "path": [
+        "runtime",
+        "mode"
+      ],
+      "value": "multi-context"
+    },
+    {
+      "operation": "replace",
+      "path": [
+        "runtime",
+        "discoveryProfile"
+      ],
+      "value": "omp"
+    },
+    {
+      "operation": "replace",
+      "path": [
+        "runtime",
+        "capabilities",
+        "provideIndependentEvidence"
+      ],
+      "value": true
+    },
+    {
+      "operation": "replace",
+      "path": [
+        "runtime",
+        "capabilities",
+        "approveExceptions"
+      ],
+      "value": true
+    },
+    {
+      "operation": "replace",
+      "path": [
+        "runtime",
+        "capabilities",
+        "isolatedReadOnlyReview"
+      ],
+      "value": true
+    },
+    {
+      "operation": "replace",
+      "path": [
+        "runtime",
+        "capabilities",
+        "enforcedStructuredOutput"
+      ],
+      "value": true
+    },
+    {
+      "operation": "replace",
+      "path": [
+        "triggerScan",
+        "challenge",
+        "outcome"
+      ],
+      "value": "COMPLETED"
+    },
+    {
+      "operation": "replace",
+      "path": [
+        "triggerScan",
+        "challenge",
+        "mode"
+      ],
+      "value": "separate_context"
+    },
+    {
+      "operation": "replace",
+      "path": [
+        "findings",
+        "finding-capability-001",
+        "details",
+        "capability"
+      ],
+      "value": "executeBrowser"
+    },
+    {
+      "operation": "add",
+      "path": [
+        "triggerScan",
+        "triggeredProfiles",
+        "stale-writes",
+        "reviewerOutputs"
+      ],
+      "value": {
+        "reviewer-capability-output-1": {
+          "partition": "response ordering",
+          "obligation": {
+            "id": "obligation-capability-probe-1",
+            "description": "Confirm the advertised capability is sufficient for the bounded probe."
+          },
+          "producer": {
+            "id": "reviewer-capability-1",
+            "independence": "separate-verification-context"
+          },
+          "artifact": {
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "analysis": {
+            "taxonomy": [
+              "CAPABILITY_LIMITED"
+            ],
+            "anchors": [
+              {
+                "path": "src/store.ts",
+                "startLine": 1,
+                "lineCount": 1,
+                "excerpt": "state.value"
+              }
+            ],
+            "failureMechanism": "The bounded probe cannot establish behavior without the advertised capability.",
+            "coverageChecked": true,
+            "confirmationProbe": "Exercise the bounded partition and inspect the preserved result.",
+            "uncertainty": "The runtime evidence does not establish behavior outside this partition."
+          },
+          "result": {
+            "kind": "FINDINGS",
+            "findings": {
+              "reviewer-capability-finding-1": {
+                "kind": "CAPABILITY_LIMITED",
+                "materiality": "nonmaterial",
+                "evidence": [
+                  {
+                    "source": "reviewer harness",
+                    "detail": "The bounded probe requires the advertised capability."
+                  }
+                ],
+                "details": {
+                  "summary": "The bounded probe cannot run without the advertised capability.",
+                  "capability": "executeBrowser",
+                  "limitation": "The runtime cannot provide the required capability."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "operation": "add",
+      "path": [
+        "triggerScan",
+        "triggeredProfiles",
+        "duplicate-identities",
+        "reviewerOutputs"
+      ],
+      "value": {
+        "reviewer-capability-output-2": {
+          "partition": "identity ordering",
+          "obligation": {
+            "id": "obligation-capability-probe-2",
+            "description": "Confirm the advertised capability is sufficient for the bounded probe."
+          },
+          "producer": {
+            "id": "reviewer-capability-2",
+            "independence": "separate-verification-context"
+          },
+          "artifact": {
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "analysis": {
+            "taxonomy": [
+              "CAPABILITY_LIMITED"
+            ],
+            "anchors": [
+              {
+                "path": "src/store.ts",
+                "startLine": 1,
+                "lineCount": 1,
+                "excerpt": "state.value"
+              }
+            ],
+            "failureMechanism": "The bounded probe cannot establish behavior without the advertised capability.",
+            "coverageChecked": true,
+            "confirmationProbe": "Exercise the bounded partition and inspect the preserved result.",
+            "uncertainty": "The runtime evidence does not establish behavior outside this partition."
+          },
+          "result": {
+            "kind": "FINDINGS",
+            "findings": {
+              "reviewer-capability-finding-2": {
+                "kind": "CAPABILITY_LIMITED",
+                "materiality": "nonmaterial",
+                "evidence": [
+                  {
+                    "source": "reviewer harness",
+                    "detail": "The bounded probe requires the advertised capability."
+                  }
+                ],
+                "details": {
+                  "summary": "The bounded probe cannot run without the advertised capability.",
+                  "capability": "executeBrowser",
+                  "limitation": "The runtime cannot provide the required capability."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "operation": "replace",
+      "path": [
+        "triggerScan",
+        "challenge",
+        "outcome"
+      ],
+      "value": "CAPABILITY_LIMITED"
+    },
+    {
+      "operation": "replace",
+      "path": [
+        "triggerScan",
+        "challenge",
+        "mode"
+      ],
+      "value": "capability_limited"
+    },
+    {
+      "operation": "add",
+      "path": [
+        "triggerScan",
+        "triggeredProfiles",
+        "stale-writes",
+        "blockingCapabilities"
+      ],
+      "value": ["executeBrowser"]
+    },
+    {
+      "operation": "add",
+      "path": [
+        "triggerScan",
+        "triggeredProfiles",
+        "duplicate-identities",
+        "blockingCapabilities"
+      ],
+      "value": ["executeBrowser"]
+    },
+    {
+      "operation": "add",
+      "path": [
+        "triggerScan",
+        "challenge",
+        "limitation"
+      ],
+      "value": {
+        "kind": "CAPABILITY_LIMITED",
+        "materiality": "nonmaterial",
+        "evidence": [
+          {
+            "source": "trigger scan",
+            "detail": "The advertised browser capability is unavailable to the bounded challenge."
+          }
+        ],
+        "details": {
+          "summary": "The bounded challenge cannot run without the advertised browser capability.",
+          "capability": "executeBrowser",
+          "limitation": "The runtime cannot provide the required capability."
+        }
+      }
+    }
+  ],
+  "expectedKeyword": "not"
+}

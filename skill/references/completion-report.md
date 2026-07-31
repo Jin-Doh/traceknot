@@ -6,18 +6,20 @@ Report the QA decision independently from harness task completion.
 
 1. Target snapshot and change scope.
 2. Test basis and derived acceptance criteria.
-3. Initial and residual product risks.
-4. Test conditions and selected techniques.
-5. Mandatory and optional obligations.
-6. Entry-criteria deviations.
-7. Exact commands and scenarios executed.
-8. Evidence counts, artifacts, and producer independence.
-9. Basis, risk, condition, and obligation coverage with uncovered IDs.
-10. Defects by severity and status.
-11. Accepted exceptions with owner and expiry.
-12. Untested scope, unavailable evidence, and residual risk.
-13. Final QA verdict and rationale.
-14. Separate harness completion status when the host supplies it.
+3. Risk-discovery execution profile (`single-context`, `omp`, or `codex`), capability handshake and independence basis, universal trigger scan, and triggered profiles.
+4. Discovery findings by taxonomy, material unknowns, and capability limits.
+5. Initial and residual product risks.
+6. Test conditions and selected techniques.
+7. Mandatory and optional obligations, including promoted confirmation obligations.
+8. Entry-criteria deviations.
+9. Exact commands and scenarios executed.
+10. Evidence counts, preserved structured reviewer or bounded-slice artifacts, and producer independence; report lifecycle and timeout events separately as non-evidence.
+11. Basis, risk, condition, and obligation coverage with uncovered IDs.
+12. Defects by severity and status.
+13. Accepted exceptions with owner and expiry.
+14. Untested scope, unavailable evidence, and residual risk.
+15. Final QA verdict and rationale.
+16. Separate harness completion status when the host supplies it.
 
 ## Verdict precedence
 

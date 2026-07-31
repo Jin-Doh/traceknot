@@ -1,0 +1,31 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": ["triggerScan", "challenge"],
+  "value": {
+    "outcome": "CAPABILITY_LIMITED",
+    "mode": "current_context",
+    "evidence": [
+      {
+        "source": "runtime handshake",
+        "detail": "The required challenge capability is unavailable."
+      }
+      ],
+      "limitation": {
+        "kind": "CAPABILITY_LIMITED",
+        "materiality": "nonmaterial",
+        "evidence": [
+          {
+            "source": "runtime handshake",
+            "detail": "The required browser capability is unavailable."
+          }
+        ],
+        "details": {
+          "summary": "The bounded challenge cannot run without the browser capability.",
+          "capability": "executeBrowser",
+          "limitation": "The runtime cannot provide the required capability."
+        }
+      }
+  },
+  "expectedKeyword": "const"
+}

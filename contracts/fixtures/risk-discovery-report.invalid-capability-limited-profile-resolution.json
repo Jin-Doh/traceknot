@@ -1,0 +1,17 @@
+{
+  "base": "risk-discovery-report.valid-capability-limited.json",
+  "operation": "add",
+  "path": ["triggerScan", "triggeredProfiles", "stale-writes", "resolution"],
+  "value": {
+    "status": "NO_FINDINGS",
+    "detail": "A profile resolution is forbidden for CAPABILITY_LIMITED.",
+    "evidence": [
+      {
+        "source": "invalid fixture",
+        "detail": "This resolution must be rejected for a CAPABILITY_LIMITED challenge."
+      }
+    ]
+  },
+  "expectedKeyword": "false schema",
+  "expectedInstancePath": "/triggerScan/triggeredProfiles/stale-writes/resolution"
+}

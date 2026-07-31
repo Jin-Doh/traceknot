@@ -1,0 +1,229 @@
+{
+  "schemaVersion": "risk-discovery-report/v1",
+  "requestId": "req-adversarial-001",
+  "snapshotId": "snap-20260731T010203Z",
+  "runtime": {
+    "host": "codex",
+    "mode": "single-context",
+    "discoveryProfile": "single-context",
+    "capabilities": {
+      "executeCommands": true,
+      "executeBrowser": false,
+      "captureArtifacts": true,
+      "bindSnapshot": true,
+      "provideIndependentEvidence": false,
+      "persistEvidence": true,
+      "approveExceptions": false,
+      "isolatedReadOnlyReview": false,
+      "enforcedStructuredOutput": false
+    },
+    "limitations": [
+      "No browser session is available in this runtime.",
+      "A second independent evidence producer is unavailable."
+    ]
+  },
+  "triggerScan": {
+    "performed": true,
+    "initialRiskLevel": "R1",
+    "scopeUnknown": false,
+    "materialTrigger": true,
+    "syntheticBoundaryBypass": false,
+    "recurringDefectClusterOverlap": false,
+    "triggeredProfiles": {
+      "stale-writes": {
+        "evidence": [
+          "The change updates a write path that can receive delayed responses."
+        ]
+      },
+      "duplicate-identities": {
+        "evidence": [
+          "The changed index derives identity from a user-controlled key."
+        ]
+      }
+    },
+    "challenge": {
+      "outcome": "BLOCKED",
+      "mode": "current_context",
+      "evidence": [
+        {
+          "source": "trigger scan",
+          "detail": "A material finding requires bounded confirmation, but this single-context runtime cannot complete the challenge."
+        }
+      ]
+    }
+  },
+  "findings": {
+    "finding-coverage-001": {
+      "kind": "COVERAGE_GAP",
+      "materiality": "nonmaterial",
+      "deferredRisk": {
+        "riskId": "risk-crash-recovery",
+        "reason": "Crash recovery is outside this change's nonmaterial scope and is queued for a later pass."
+      },
+      "evidence": [
+        {
+          "source": "tests/recovery.test.ts",
+          "detail": "The suite covers clean shutdown but not a process crash during persistence."
+        }
+      ],
+      "details": {
+        "summary": "Crash recovery is not covered by an existing verification condition.",
+        "coverageGap": "No condition exercises persistence recovery after an interrupted write.",
+        "coverageChecked": true
+      }
+    },
+    "finding-source-001": {
+      "riskId": "risk-stale-write",
+      "kind": "SOURCE_CANDIDATE",
+      "materiality": "material",
+      "disposition": {
+        "status": "PROMOTED_TO_OBLIGATION",
+        "obligationId": "obligation-stale-write-probe"
+      },
+      "evidence": [
+        {
+          "source": "src/store.ts:88-94",
+          "detail": "The response handler assigns without comparing request generations."
+        }
+      ],
+      "details": {
+        "summary": "A stale response can overwrite a newer value.",
+        "anchors": [
+          {
+            "path": "src/store.ts",
+            "startLine": 88,
+            "lineCount": 7,
+            "excerpt": "state.value = response.value"
+          }
+        ],
+        "failureMechanism": "A slower earlier request can commit after a faster later request.",
+        "coverageChecked": true,
+        "confirmationProbe": "Inject two responses in reverse completion order and assert the latest request wins.",
+        "uncertainty": "The production transport may serialize responses, which has not been established."
+      }
+    },
+    "finding-defect-001": {
+      "riskId": "risk-duplicate-identity",
+      "kind": "CONFIRMED_DEFECT",
+      "materiality": "material",
+      "disposition": {
+        "status": "ACCEPTED_RISK",
+        "approval": {
+          "approvedBy": "release-approval@example.test",
+          "accountableOwner": "release-owner@example.test",
+          "reason": "Accepted for the bounded release while the follow-up patch is scheduled.",
+          "scope": "Duplicate identity handling in the bounded release.",
+          "mitigation": "Schedule the duplicate-key follow-up patch before the approval expires.",
+          "expiresAtUnixSeconds": 1786752000,
+          "evidence": {
+            "id": "approval-duplicate-identity-001",
+            "source": "release approval",
+            "detail": "The approval artifact records the accepted-risk decision for the bounded release.",
+            "artifact": {
+              "id": "approval-artifact-duplicate-identity-001",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          },
+          "independence": "external-approval"
+        }
+      },
+      "evidence": [
+        {
+          "source": "artifacts/duplicate-key-reproduction.txt",
+          "detail": "Two records with the same key leave one entry in the map."
+        }
+      ],
+      "details": {
+        "summary": "Duplicate keys replace one another in the identity map.",
+        "expected": "Both records remain addressable by their distinct source identities.",
+        "actual": "The second record replaces the first record.",
+        "reproduction": "Create records A and B with the same external key, then query both identities."
+      }
+    },
+    "finding-policy-001": {
+      "riskId": "risk-stream-policy",
+      "kind": "POLICY_QUESTION",
+      "materiality": "material",
+      "disposition": {
+        "status": "BLOCKED",
+        "blocker": "Product owner decision is required before a completion condition can be written."
+      },
+      "evidence": [
+        {
+          "source": "docs/streaming.md",
+          "detail": "The document describes reconnect behavior but does not define data-loss tolerance."
+        }
+      ],
+      "details": {
+        "summary": "The product policy for partial stream loss is unspecified.",
+        "question": "Should a reconnecting consumer expose a gap marker or silently continue?"
+      }
+    },
+    "finding-na-001": {
+      "kind": "NOT_APPLICABLE",
+      "materiality": "nonmaterial",
+      "evidence": [
+        {
+          "source": "request scope",
+          "detail": "No deployment manifests or runtime configuration are changed."
+        }
+      ],
+      "details": {
+        "summary": "Production deployment boundaries do not apply to this library-only change.",
+        "reason": "The changed files are not part of a deployable service."
+      }
+    },
+    "finding-capability-001": {
+      "kind": "CAPABILITY_LIMITED",
+      "materiality": "nonmaterial",
+      "deferredRisk": {
+        "riskId": "risk-browser-coverage",
+        "reason": "Browser coverage is deferred until a runtime with executeBrowser is available."
+      },
+      "evidence": [
+        {
+          "source": "runtime handshake",
+          "detail": "executeBrowser is false for this host."
+        }
+      ],
+      "details": {
+        "summary": "Browser-specific behavior could not be exercised.",
+        "capability": "executeBrowser",
+        "limitation": "No browser execution or independent browser artifact is available."
+      }
+    },
+    "finding-duplicate-001": {
+      "kind": "DUPLICATE_CLUSTER",
+      "materiality": "nonmaterial",
+      "evidence": [
+        {
+          "source": "triage notes",
+          "detail": "The candidates share the same source anchor and failure mechanism."
+        }
+      ],
+      "details": {
+        "summary": "Two candidate findings describe the same stale-write partition.",
+        "clusterMembers": [
+          {
+            "summary": "The stale-write source candidate shares the changed response handler partition.",
+            "evidence": [
+              {
+                "source": "src/store.ts:88-94",
+                "detail": "The candidate uses the same source anchor and failure mechanism."
+              }
+            ]
+          },
+          {
+            "summary": "The coverage gap concerns the same stale-write partition.",
+            "evidence": [
+              {
+                "source": "tests/recovery.test.ts",
+                "detail": "Existing coverage checks clean shutdown but not stale response ordering."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

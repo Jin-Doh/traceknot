@@ -1,0 +1,16 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": ["triggerScan", "challenge"],
+  "value": {
+    "outcome": "NOT_REQUIRED",
+    "mode": "separate_context",
+    "evidence": [
+      {
+        "source": "challenge",
+        "detail": "The separate context was unavailable."
+      }
+    ]
+  },
+  "expectedKeyword": "not"
+}

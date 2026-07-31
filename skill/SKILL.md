@@ -33,7 +33,15 @@ If no explicit acceptance criteria exist, derive observable criteria from the re
 
 See `references/test-process.md`.
 
-### 2. Analyze product risk
+### 2. Challenge the declared risk universe
+
+Perform the universal cheap trigger scan in `references/adversarial-risk-discovery.md` before finalizing product-risk classification. Every QA run records the scan, including an initially classified `R0` or `R1` change. A lower initial classification never exempts a material trigger.
+
+Escalate to a bounded adversarial challenge for `R2` or `R3`, a material trigger, unknown scope, synthetic evidence that bypasses the changed contract, or an affected defect cluster. Use only runtime-advertised capabilities and select `single-context`, `omp`, or `codex` execution guidance only from the capability handshake; see `references/adversarial-risk-discovery.md`. Multi-agent execution is optional; a separate or current-context challenge remains valid when its independence limit is reported.
+
+Distinguish coverage gaps, source candidates, confirmed defects, policy questions, non-applicable profiles, capability limits, and duplicate clusters. Promote material source candidates to confirmation obligations rather than calling unexecuted source reasoning a confirmed defect.
+
+### 3. Analyze product risk
 
 Classify each affected surface:
 
@@ -42,9 +50,9 @@ Classify each affected surface:
 - `R2`: runtime behavior, persistence, UI, concurrency, security, compatibility, or public contract.
 - `R3`: release, migration, destructive operation, production infrastructure, or unknown material scope.
 
-Unknown scope resolves upward. Record impact, likelihood, affected basis IDs, and rationale. Use `references/risk-classification.md` for repeatable decisions.
+Unknown scope resolves upward. Record impact, likelihood, affected basis IDs, trigger-scan findings, and rationale. Use `references/risk-classification.md` for repeatable decisions.
 
-### 3. Derive test conditions and techniques
+### 4. Derive test conditions and techniques
 
 For every material basis or risk item, create at least one observable test condition with an expected result. Select techniques appropriate to the surface: equivalence partitions, boundary values, decision tables, state transitions, scenarios, negative tests, error guessing, compatibility, recovery, concurrency, or regression.
 
@@ -54,7 +62,7 @@ Use `references/test-techniques.md`. Maintain bidirectional traceability:
 test basis ↔ risk ↔ test condition ↔ obligation ↔ evidence ↔ defect
 ```
 
-### 4. Build mandatory verification obligations
+### 5. Build mandatory verification obligations
 
 Each obligation declares:
 
@@ -77,11 +85,11 @@ Minimum independence levels:
 
 Default minimums: R0=`self-check`, R1=`separate-verification-context`, R2=`independent-producer`, R3=`independent-producer` plus explicit risk acceptance for unresolved material risk.
 
-### 5. Check entry criteria
+### 6. Check entry criteria
 
 Before execution confirm the target snapshot, environment, dependencies, test data, expected results, and required tools are available. A missing mandatory prerequisite makes the obligation `BLOCKED`, not PASS.
 
-### 6. Execute and capture evidence
+### 7. Execute and capture evidence
 
 - Investigation: run the experiment and preserve its observed output.
 - UI change: exercise the changed flow in a real browser and inspect the rendered result.
@@ -95,11 +103,11 @@ Start with the direct changed path, then broaden to package or repository gates 
 
 Record command or scenario identity, target snapshot, timestamps, exit status, structured counts, relevant output, artifacts, producer kind, and linked obligation ID. A timeout, cancellation, unavailable dependency, missing output, or unfinished mandatory obligation is not a pass.
 
-### 7. Record and manage defects
+### 8. Record and manage defects
 
 Record every material anomaly using `references/defect-lifecycle.md`. Include expected and actual results, reproduction, severity, priority, environment, evidence links, owner, status, and disposition. Confirm fixes with the original reproduction and appropriate regression.
 
-### 8. Evaluate exit criteria and residual risk
+### 9. Evaluate exit criteria and residual risk
 
 All mandatory obligations must reach a terminal state. Evaluate open defects, accepted exceptions, untested risks, coverage gaps, unavailable evidence, deviations, and regression scope.
 
@@ -113,13 +121,13 @@ Verdicts:
 
 Precedence is `FAIL` → `BLOCKED` → `INCOMPLETE` → `PASS_WITH_ACCEPTED_RISK` → `PASS`.
 
-### 9. Produce the completion report
+### 10. Produce the completion report
 
-Follow `references/completion-report.md`. Report scope, basis, risks, conditions, obligations, evidence, defects, deviations, coverage, residual risk, exact commands or scenarios, observed counts, unavailable evidence, and final verdict. Separate observed facts from inference.
+Follow `references/completion-report.md`. Report scope, basis, discovery mode and triggered profiles, risks, conditions, obligations, evidence, defects, deviations, coverage, material unknowns, capability limits, residual risk, exact commands or scenarios, observed counts, unavailable evidence, and final verdict. Separate observed facts from inference.
 
 ## Host capability rule
 
-Default to `evidence-only`. A host adapter MAY advertise command execution, browser execution, artifact capture, snapshot binding, independent evidence, evidence persistence, or exception approval. The host name never implies a capability.
+Default to `evidence-only`. A runtime handshake MAY advertise command execution, browser execution, artifact capture, snapshot binding, independent evidence, evidence persistence, or exception approval. The host name or model name never implies a capability or producer independence.
 
 The Skill never:
 
@@ -132,4 +140,4 @@ The Skill never:
 
 ## Optional system integration
 
-The sibling `../system/core/` validates canonical QA records and resolves deterministic QA verdicts. `../system/extensions/harness-completion-authority/` contains optional lifecycle, quiescence, lease, receipt, and terminal-authority contracts for hosts that explicitly integrate them. Ordinary Skill use does not require or activate that extension.
+The sibling `../system/core/` validates canonical QA records and resolves deterministic QA verdicts. `../system/extensions/harness-completion-authority/` contains optional lifecycle, quiescence, lease, receipt, and terminal-authority contracts for hosts that explicitly integrate them. Ordinary Skill use does not require or activate that extension. Existing deterministic v1 callers can technically omit discovery because the v1 contracts do not enforce it; such runs are outside portable Skill compliance and must disclose the omission rather than claim discovery completed. This does not change `verification-plan/v1`, `qa-verdict/v1`, or deterministic core semantics.

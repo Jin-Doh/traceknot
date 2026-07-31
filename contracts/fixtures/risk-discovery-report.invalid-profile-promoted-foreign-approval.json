@@ -1,0 +1,24 @@
+{
+  "base": "risk-discovery-report.valid-completed-multi-context.json",
+  "operation": "add",
+  "path": ["triggerScan", "triggeredProfiles", "response-ordering", "resolution", "approval"],
+  "value": {
+    "approvedBy": "foreign-approval@example.test",
+    "accountableOwner": "foreign-owner@example.test",
+    "reason": "A promoted profile must not carry an external accepted-risk approval.",
+    "scope": "Foreign profile resolution approval.",
+    "mitigation": "None.",
+    "expiresAtUnixSeconds": 1786752000,
+    "evidence": {
+      "id": "approval-foreign-profile-promoted-001",
+      "source": "foreign approval",
+      "detail": "This approval is invalid on a PROMOTED profile resolution.",
+      "artifact": {
+        "id": "approval-artifact-foreign-profile-promoted-001",
+        "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    "independence": "external-approval"
+  },
+  "expectedKeyword": "not"
+}

@@ -1,0 +1,20 @@
+{
+  "base": "risk-discovery-report.valid-capability-limited.json",
+  "operation": "replace",
+  "path": ["runtime", "capabilities", "executeCommands"],
+  "value": false,
+  "operations": [
+    {
+      "operation": "replace",
+      "path": ["runtime", "capabilities", "executeCommands"],
+      "value": false
+    },
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "challenge", "limitation", "details", "capability"],
+      "value": "executeCommands"
+    }
+  ],
+  "expectedKeyword": "contains",
+  "expectedInstancePath": "/triggerScan/triggeredProfiles/stale-writes/blockingCapabilities"
+}

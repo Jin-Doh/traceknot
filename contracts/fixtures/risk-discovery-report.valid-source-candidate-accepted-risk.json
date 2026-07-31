@@ -1,0 +1,122 @@
+{
+  "schemaVersion": "risk-discovery-report/v1",
+  "requestId": "req-source-candidate-accepted-001",
+  "snapshotId": "snap-20260731T050607Z",
+  "runtime": {
+    "host": "codex",
+    "mode": "single-context",
+    "discoveryProfile": "single-context",
+    "capabilities": {
+      "executeCommands": true,
+      "executeBrowser": false,
+      "captureArtifacts": true,
+      "bindSnapshot": true,
+      "provideIndependentEvidence": false,
+      "persistEvidence": true,
+      "approveExceptions": false,
+      "isolatedReadOnlyReview": false,
+      "enforcedStructuredOutput": false
+    },
+    "limitations": ["A second independent evidence producer is unavailable."]
+  },
+  "triggerScan": {
+    "performed": true,
+    "initialRiskLevel": "R1",
+    "scopeUnknown": false,
+    "materialTrigger": false,
+    "syntheticBoundaryBypass": false,
+    "recurringDefectClusterOverlap": false,
+    "triggeredProfiles": {
+      "source-candidate": {
+        "evidence": ["The source-candidate partition was reviewed in the current context."],
+        "resolution": {
+          "status": "ACCEPTED_RISK",
+          "detail": "The material source candidate is accepted for the bounded release with external approval.",
+          "evidence": [
+            {
+              "source": "single-context review",
+              "detail": "The bounded source-candidate review preserved the accepted-risk decision."
+            }
+          ],
+          "approval": {
+            "approvedBy": "release-approval@example.test",
+            "accountableOwner": "release-owner@example.test",
+            "reason": "Accepted for the bounded release while confirmation work is scheduled.",
+            "scope": "Source-candidate handling in the bounded release.",
+            "mitigation": "Schedule the source-candidate confirmation before the approval expires.",
+            "expiresAtUnixSeconds": 1786752000,
+            "evidence": {
+              "id": "approval-source-candidate-001",
+              "source": "release approval",
+              "detail": "The approval artifact records the accepted-risk decision for the source candidate.",
+              "artifact": {
+                "id": "approval-artifact-source-candidate-001",
+                "sha256": "9999999999999999999999999999999999999999999999999999999999999999"
+              }
+            },
+            "independence": "external-approval"
+          }
+        }
+      }
+    },
+    "challenge": {
+      "outcome": "COMPLETED",
+      "mode": "current_context",
+      "evidence": [
+        {
+          "source": "single-context review",
+          "detail": "The bounded current-context challenge completed with its accepted-risk profile resolution preserved."
+        }
+      ]
+    }
+  },
+  "findings": {
+    "finding-source-candidate-accepted-001": {
+      "riskId": "risk-source-candidate-accepted",
+      "kind": "SOURCE_CANDIDATE",
+      "materiality": "material",
+      "disposition": {
+        "status": "ACCEPTED_RISK",
+        "approval": {
+          "approvedBy": "release-approval@example.test",
+          "accountableOwner": "release-owner@example.test",
+          "reason": "Accepted for the bounded release while confirmation work is scheduled.",
+          "scope": "Source-candidate handling in the bounded release.",
+          "mitigation": "Schedule the source-candidate confirmation before the approval expires.",
+          "expiresAtUnixSeconds": 1786752000,
+          "evidence": {
+            "id": "approval-source-candidate-001",
+            "source": "release approval",
+            "detail": "The approval artifact records the accepted-risk decision for the source candidate.",
+            "artifact": {
+              "id": "approval-artifact-source-candidate-001",
+              "sha256": "9999999999999999999999999999999999999999999999999999999999999999"
+            }
+          },
+          "independence": "external-approval"
+        }
+      },
+      "evidence": [
+        {
+          "source": "src/identity-map.ts:12",
+          "detail": "The source candidate identifies a possible duplicate-key replacement path."
+        }
+      ],
+      "details": {
+        "summary": "A source candidate may replace an existing identity on duplicate external keys.",
+        "anchors": [
+          {
+            "path": "src/identity-map.ts",
+            "startLine": 12,
+            "lineCount": 4,
+            "excerpt": "identityMap.set(externalKey, record)"
+          }
+        ],
+        "failureMechanism": "Duplicate external keys may replace one another in the identity map.",
+        "coverageChecked": true,
+        "confirmationProbe": "Create records A and B with the same external key, then query both identities.",
+        "uncertainty": "The source candidate has not been confirmed outside this bounded release snapshot."
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "add",
+  "path": ["runtime", "capabilities", "inventedCapability"],
+  "value": true,
+  "expectedKeyword": "additionalProperties"
+}

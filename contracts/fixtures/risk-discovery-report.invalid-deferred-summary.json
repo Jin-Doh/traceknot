@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "add",
+  "path": ["deferredNonmaterialRisks"],
+  "value": [],
+  "expectedKeyword": "additionalProperties"
+}

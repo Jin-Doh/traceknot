@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid-single-context-completed.json",
+  "operation": "add",
+  "path": ["triggerScan", "triggeredProfiles", "stale-writes", "resolution", "obligationId"],
+  "value": "foreign-obligation-no-findings-001",
+  "expectedKeyword": "not"
+}

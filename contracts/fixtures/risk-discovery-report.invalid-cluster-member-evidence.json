@@ -1,0 +1,6 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "remove",
+  "path": ["findings", "finding-duplicate-001", "details", "clusterMembers", 0, "evidence"],
+  "expectedKeyword": "required"
+}
