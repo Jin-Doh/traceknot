@@ -1,22 +1,41 @@
 {
   "base": "risk-discovery-report.valid-completed-multi-context.json",
   "operation": "replace",
-  "path": ["triggerScan", "challenge", "outcome"],
+  "path": [
+    "triggerScan",
+    "challenge",
+    "outcome"
+  ],
   "value": "NOT_REQUIRED",
   "operations": [
     {
       "operation": "replace",
-      "path": ["triggerScan", "challenge", "outcome"],
+      "path": [
+        "triggerScan",
+        "challenge",
+        "outcome"
+      ],
       "value": "NOT_REQUIRED"
     },
     {
       "operation": "replace",
-      "path": ["triggerScan", "challenge", "mode"],
+      "path": [
+        "triggerScan",
+        "challenge",
+        "mode"
+      ],
       "value": "current_context"
     },
     {
       "operation": "replace",
-      "path": ["triggerScan", "triggeredProfiles", "response-ordering", "reviewerOutputs", 0, "result"],
+      "path": [
+        "triggerScan",
+        "triggeredProfiles",
+        "response-ordering",
+        "reviewerOutputs",
+        "codex-reviewer-output-001",
+        "result"
+      ],
       "value": {
         "kind": "FINDINGS",
         "findings": {

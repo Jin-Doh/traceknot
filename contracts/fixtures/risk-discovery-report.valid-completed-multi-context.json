@@ -28,9 +28,11 @@
     "recurringDefectClusterOverlap": false,
     "triggeredProfiles": {
       "response-ordering": {
-        "evidence": ["The bounded response-ordering partition was selected for confirmation."],
-        "reviewerOutputs": [
-          {
+        "evidence": [
+          "The bounded response-ordering partition was selected for confirmation."
+        ],
+        "reviewerOutputs": {
+          "codex-reviewer-output-001": {
             "partition": "response ordering",
             "obligation": {
               "id": "obligation-response-ordering-001",
@@ -41,11 +43,12 @@
               "independence": "separate-verification-context"
             },
             "artifact": {
-              "artifactId": "codex-reviewer-output-001",
               "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
             },
             "analysis": {
-              "taxonomy": ["SOURCE_CANDIDATE"],
+              "taxonomy": [
+                "SOURCE_CANDIDATE"
+              ],
               "anchors": [
                 {
                   "path": "src/store.ts",
@@ -95,9 +98,10 @@
               }
             }
           }
-        ],
+        },
         "resolution": {
           "status": "PROMOTED",
+          "obligationId": "obligation-escalated-material-001",
           "detail": "The response-ordering partition preserved a material SOURCE_CANDIDATE promoted to obligation.",
           "evidence": [
             {

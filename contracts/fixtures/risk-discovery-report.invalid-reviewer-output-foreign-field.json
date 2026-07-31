@@ -1,7 +1,9 @@
 {
   "base": "risk-discovery-report.valid.json",
   "operation": "replace",
-  "path": ["runtime"],
+  "path": [
+    "runtime"
+  ],
   "value": {
     "host": "omp",
     "mode": "multi-context",
@@ -22,7 +24,9 @@
   "operations": [
     {
       "operation": "replace",
-      "path": ["runtime"],
+      "path": [
+        "runtime"
+      ],
       "value": {
         "host": "omp",
         "mode": "multi-context",
@@ -43,7 +47,10 @@
     },
     {
       "operation": "replace",
-      "path": ["triggerScan", "challenge"],
+      "path": [
+        "triggerScan",
+        "challenge"
+      ],
       "value": {
         "outcome": "COMPLETED",
         "mode": "separate_context",
@@ -57,9 +64,14 @@
     },
     {
       "operation": "add",
-      "path": ["triggerScan", "triggeredProfiles", "stale-writes", "reviewerOutputs"],
-      "value": [
-        {
+      "path": [
+        "triggerScan",
+        "triggeredProfiles",
+        "stale-writes",
+        "reviewerOutputs"
+      ],
+      "value": {
+        "reviewer-output-001": {
           "partition": "response ordering",
           "obligation": {
             "id": "obligation-stale-write-probe",
@@ -70,11 +82,12 @@
             "independence": "separate-verification-context"
           },
           "artifact": {
-            "artifactId": "reviewer-output-001",
             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
           },
           "analysis": {
-            "taxonomy": ["NOT_APPLICABLE"],
+            "taxonomy": [
+              "NOT_APPLICABLE"
+            ],
             "anchors": [
               {
                 "path": "src/store.ts",
@@ -109,13 +122,18 @@
           },
           "snapshotId": "foreign-snapshot"
         }
-      ]
+      }
     },
     {
       "operation": "add",
-      "path": ["triggerScan", "triggeredProfiles", "duplicate-identities", "reviewerOutputs"],
-      "value": [
-        {
+      "path": [
+        "triggerScan",
+        "triggeredProfiles",
+        "duplicate-identities",
+        "reviewerOutputs"
+      ],
+      "value": {
+        "reviewer-output-001": {
           "partition": "response ordering",
           "obligation": {
             "id": "obligation-stale-write-probe",
@@ -126,11 +144,12 @@
             "independence": "separate-verification-context"
           },
           "artifact": {
-            "artifactId": "reviewer-output-001",
             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
           },
           "analysis": {
-            "taxonomy": ["NOT_APPLICABLE"],
+            "taxonomy": [
+              "NOT_APPLICABLE"
+            ],
             "anchors": [
               {
                 "path": "src/store.ts",
@@ -164,11 +183,16 @@
             }
           }
         }
-      ]
+      }
     },
     {
       "operation": "add",
-      "path": ["triggerScan", "triggeredProfiles", "stale-writes", "resolution"],
+      "path": [
+        "triggerScan",
+        "triggeredProfiles",
+        "stale-writes",
+        "resolution"
+      ],
       "value": {
         "status": "NO_FINDINGS",
         "detail": "The stale-writes partition resolution is recorded separately from the invalid output.",
@@ -182,7 +206,12 @@
     },
     {
       "operation": "add",
-      "path": ["triggerScan", "triggeredProfiles", "duplicate-identities", "resolution"],
+      "path": [
+        "triggerScan",
+        "triggeredProfiles",
+        "duplicate-identities",
+        "resolution"
+      ],
       "value": {
         "status": "NO_FINDINGS",
         "detail": "The duplicate-identities partition resolution is recorded separately from the invalid output.",

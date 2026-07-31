@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid-completed-accepted-risk.json",
+  "operation": "add",
+  "path": ["triggerScan", "triggeredProfiles", "identity-duplicate", "resolution", "obligationId"],
+  "value": "foreign-obligation-accepted-risk-001",
+  "expectedKeyword": "not"
+}

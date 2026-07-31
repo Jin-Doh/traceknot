@@ -13,15 +13,29 @@
     "findings"
   ],
   "properties": {
-    "schemaVersion": { "const": "risk-discovery-report/v1" },
-    "requestId": { "type": "string", "minLength": 1 },
-    "snapshotId": { "type": "string", "minLength": 1 },
-    "runtime": { "$ref": "#/$defs/runtime" },
-    "triggerScan": { "$ref": "#/$defs/triggerScan" },
+    "schemaVersion": {
+      "const": "risk-discovery-report/v1"
+    },
+    "requestId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "snapshotId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime": {
+      "$ref": "#/$defs/runtime"
+    },
+    "triggerScan": {
+      "$ref": "#/$defs/triggerScan"
+    },
     "findings": {
       "type": "object",
       "patternProperties": {
-        "^.+$": { "$ref": "#/$defs/finding" }
+        "^.+$": {
+          "$ref": "#/$defs/finding"
+        }
       },
       "additionalProperties": false
     }
@@ -34,7 +48,9 @@
           "runtime": {
             "type": "object",
             "properties": {
-              "mode": { "const": "single-context" }
+              "mode": {
+                "const": "single-context"
+              }
             }
           }
         }
@@ -48,7 +64,11 @@
               "challenge": {
                 "type": "object",
                 "properties": {
-                  "mode": { "not": { "const": "separate_context" } }
+                  "mode": {
+                    "not": {
+                      "const": "separate_context"
+                    }
+                  }
                 }
               }
             }
@@ -63,7 +83,9 @@
           "runtime": {
             "type": "object",
             "properties": {
-              "mode": { "const": "single-context" }
+              "mode": {
+                "const": "single-context"
+              }
             }
           }
         }
@@ -76,13 +98,22 @@
             "properties": {
               "triggeredProfiles": {
                 "type": "object",
-                "propertyNames": { "type": "string", "minLength": 1 },
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
-                      "type": "array",
-                      "items": { "$ref": "#/$defs/reviewerOutputSelfCheck" }
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
+                        "$ref": "#/$defs/reviewerOutputSelfCheck"
+                      }
                     }
                   }
                 }
@@ -102,7 +133,9 @@
               "capabilities": {
                 "type": "object",
                 "properties": {
-                  "provideIndependentEvidence": { "const": false }
+                  "provideIndependentEvidence": {
+                    "const": false
+                  }
                 }
               }
             }
@@ -117,13 +150,22 @@
             "properties": {
               "triggeredProfiles": {
                 "type": "object",
-                "propertyNames": { "type": "string", "minLength": 1 },
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
-                      "type": "array",
-                      "items": { "$ref": "#/$defs/reviewerOutputNoIndependentProducer" }
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
+                        "$ref": "#/$defs/reviewerOutputNoIndependentProducer"
+                      }
                     }
                   }
                 }
@@ -143,9 +185,27 @@
               "capabilities": {
                 "type": "object",
                 "anyOf": [
-                  { "properties": { "captureArtifacts": { "const": false } } },
-                  { "properties": { "bindSnapshot": { "const": false } } },
-                  { "properties": { "persistEvidence": { "const": false } } }
+                  {
+                    "properties": {
+                      "captureArtifacts": {
+                        "const": false
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "bindSnapshot": {
+                        "const": false
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "persistEvidence": {
+                        "const": false
+                      }
+                    }
+                  }
                 ]
               }
             }
@@ -160,13 +220,20 @@
             "properties": {
               "triggeredProfiles": {
                 "type": "object",
-                "propertyNames": { "type": "string", "minLength": 1 },
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "additionalProperties": {
                   "type": "object",
                   "not": {
                     "type": "object",
-                    "required": ["reviewerOutputs"],
-                    "properties": { "reviewerOutputs": {} }
+                    "required": [
+                      "reviewerOutputs"
+                    ],
+                    "properties": {
+                      "reviewerOutputs": {}
+                    }
                   }
                 }
               }
@@ -185,7 +252,9 @@
               "challenge": {
                 "type": "object",
                 "properties": {
-                  "mode": { "const": "separate_context" }
+                  "mode": {
+                    "const": "separate_context"
+                  }
                 }
               }
             }
@@ -198,40 +267,8 @@
           "runtime": {
             "type": "object",
             "properties": {
-              "mode": { "const": "multi-context" }
-            }
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "type": "object",
-        "properties": {
-          "triggerScan": {
-            "type": "object",
-            "properties": {
-              "challenge": {
-                "type": "object",
-                "properties": {
-                  "outcome": { "enum": ["COMPLETED", "BLOCKED"] }
-                }
-              }
-            }
-          }
-        }
-      },
-      "then": {
-        "type": "object",
-        "properties": {
-          "triggerScan": {
-            "type": "object",
-            "properties": {
-              "challenge": {
-                "type": "object",
-                "properties": {
-                  "mode": { "not": { "const": "capability_limited" } }
-                }
+              "mode": {
+                "const": "multi-context"
               }
             }
           }
@@ -248,7 +285,12 @@
               "challenge": {
                 "type": "object",
                 "properties": {
-                  "outcome": { "const": "CAPABILITY_LIMITED" }
+                  "outcome": {
+                    "enum": [
+                      "COMPLETED",
+                      "BLOCKED"
+                    ]
+                  }
                 }
               }
             }
@@ -264,7 +306,49 @@
               "challenge": {
                 "type": "object",
                 "properties": {
-                  "mode": { "const": "capability_limited" }
+                  "mode": {
+                    "not": {
+                      "const": "capability_limited"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "outcome": {
+                    "const": "CAPABILITY_LIMITED"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "const": "capability_limited"
+                  }
                 }
               }
             }
@@ -279,7 +363,9 @@
           "runtime": {
             "type": "object",
             "properties": {
-              "discoveryProfile": { "const": "single-context" }
+              "discoveryProfile": {
+                "const": "single-context"
+              }
             }
           }
         }
@@ -290,7 +376,9 @@
           "runtime": {
             "type": "object",
             "properties": {
-              "mode": { "const": "single-context" }
+              "mode": {
+                "const": "single-context"
+              }
             }
           }
         }
@@ -303,7 +391,12 @@
           "runtime": {
             "type": "object",
             "properties": {
-              "discoveryProfile": { "enum": ["omp", "codex"] }
+              "discoveryProfile": {
+                "enum": [
+                  "omp",
+                  "codex"
+                ]
+              }
             }
           },
           "triggerScan": {
@@ -312,7 +405,9 @@
               "challenge": {
                 "type": "object",
                 "properties": {
-                  "outcome": { "const": "COMPLETED" }
+                  "outcome": {
+                    "const": "COMPLETED"
+                  }
                 }
               }
             }
@@ -328,7 +423,9 @@
               "challenge": {
                 "type": "object",
                 "properties": {
-                  "mode": { "const": "separate_context" }
+                  "mode": {
+                    "const": "separate_context"
+                  }
                 }
               }
             }
@@ -343,7 +440,12 @@
           "runtime": {
             "type": "object",
             "properties": {
-              "discoveryProfile": { "enum": ["omp", "codex"] }
+              "discoveryProfile": {
+                "enum": [
+                  "omp",
+                  "codex"
+                ]
+              }
             }
           },
           "triggerScan": {
@@ -352,7 +454,9 @@
               "challenge": {
                 "type": "object",
                 "properties": {
-                  "outcome": { "const": "COMPLETED" }
+                  "outcome": {
+                    "const": "COMPLETED"
+                  }
                 }
               }
             }
@@ -367,13 +471,22 @@
             "properties": {
               "triggeredProfiles": {
                 "type": "object",
-                "propertyNames": { "type": "string", "minLength": 1 },
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
-                      "type": "array",
-                      "items": { "$ref": "#/$defs/reviewerOutputIndependentProducer" }
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
+                        "$ref": "#/$defs/reviewerOutputIndependentProducer"
+                      }
                     }
                   }
                 }
@@ -390,7 +503,12 @@
           "runtime": {
             "type": "object",
             "properties": {
-              "discoveryProfile": { "enum": ["omp", "codex"] }
+              "discoveryProfile": {
+                "enum": [
+                  "omp",
+                  "codex"
+                ]
+              }
             }
           },
           "triggerScan": {
@@ -399,7 +517,9 @@
               "challenge": {
                 "type": "object",
                 "properties": {
-                  "outcome": { "const": "COMPLETED" }
+                  "outcome": {
+                    "const": "COMPLETED"
+                  }
                 }
               }
             }
@@ -415,15 +535,26 @@
               "triggeredProfiles": {
                 "type": "object",
                 "minProperties": 1,
-                "propertyNames": { "type": "string", "minLength": 1 },
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "additionalProperties": {
                   "type": "object",
-                  "required": ["reviewerOutputs"],
+                  "required": [
+                    "reviewerOutputs"
+                  ],
                   "properties": {
                     "reviewerOutputs": {
-                      "type": "array",
-                      "minItems": 1,
-                      "items": { "$ref": "#/$defs/reviewerOutput" }
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "minProperties": 1,
+                      "additionalProperties": {
+                        "$ref": "#/$defs/reviewerOutput"
+                      }
                     }
                   }
                 }
@@ -442,7 +573,9 @@
               "capabilities": {
                 "type": "object",
                 "properties": {
-                  "executeCommands": { "const": true }
+                  "executeCommands": {
+                    "const": true
+                  }
                 }
               }
             }
@@ -458,14 +591,23 @@
               "^.+$": {
                 "not": {
                   "type": "object",
-                  "required": ["kind", "details"],
+                  "required": [
+                    "kind",
+                    "details"
+                  ],
                   "properties": {
-                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "kind": {
+                      "const": "CAPABILITY_LIMITED"
+                    },
                     "details": {
                       "type": "object",
-                      "required": ["capability"],
+                      "required": [
+                        "capability"
+                      ],
                       "properties": {
-                        "capability": { "const": "executeCommands" }
+                        "capability": {
+                          "const": "executeCommands"
+                        }
                       }
                     }
                   }
@@ -478,13 +620,20 @@
             "properties": {
               "triggeredProfiles": {
                 "type": "object",
-                "propertyNames": { "type": "string", "minLength": 1 },
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
-                      "type": "array",
-                      "items": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
                         "type": "object",
                         "properties": {
                           "result": {
@@ -494,7 +643,9 @@
                                 "type": "object",
                                 "patternProperties": {
                                   "^.+$": {
-                                    "not": { "$ref": "#/$defs/capabilityLimitedExecuteCommands" }
+                                    "not": {
+                                      "$ref": "#/$defs/capabilityLimitedExecuteCommands"
+                                    }
                                   }
                                 }
                               }
@@ -515,7 +666,11 @@
                       "details": {
                         "type": "object",
                         "properties": {
-                          "capability": { "not": { "const": "executeCommands" } }
+                          "capability": {
+                            "not": {
+                              "const": "executeCommands"
+                            }
+                          }
                         }
                       }
                     }
@@ -523,8 +678,8 @@
                 }
               }
             }
-                      }
           }
+        }
       }
     },
     {
@@ -536,7 +691,9 @@
               "capabilities": {
                 "type": "object",
                 "properties": {
-                  "executeBrowser": { "const": true }
+                  "executeBrowser": {
+                    "const": true
+                  }
                 }
               }
             }
@@ -552,14 +709,23 @@
               "^.+$": {
                 "not": {
                   "type": "object",
-                  "required": ["kind", "details"],
+                  "required": [
+                    "kind",
+                    "details"
+                  ],
                   "properties": {
-                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "kind": {
+                      "const": "CAPABILITY_LIMITED"
+                    },
                     "details": {
                       "type": "object",
-                      "required": ["capability"],
+                      "required": [
+                        "capability"
+                      ],
                       "properties": {
-                        "capability": { "const": "executeBrowser" }
+                        "capability": {
+                          "const": "executeBrowser"
+                        }
                       }
                     }
                   }
@@ -572,13 +738,20 @@
             "properties": {
               "triggeredProfiles": {
                 "type": "object",
-                "propertyNames": { "type": "string", "minLength": 1 },
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
-                      "type": "array",
-                      "items": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
                         "type": "object",
                         "properties": {
                           "result": {
@@ -588,7 +761,9 @@
                                 "type": "object",
                                 "patternProperties": {
                                   "^.+$": {
-                                    "not": { "$ref": "#/$defs/capabilityLimitedExecuteBrowser" }
+                                    "not": {
+                                      "$ref": "#/$defs/capabilityLimitedExecuteBrowser"
+                                    }
                                   }
                                 }
                               }
@@ -609,7 +784,11 @@
                       "details": {
                         "type": "object",
                         "properties": {
-                          "capability": { "not": { "const": "executeBrowser" } }
+                          "capability": {
+                            "not": {
+                              "const": "executeBrowser"
+                            }
+                          }
                         }
                       }
                     }
@@ -617,8 +796,8 @@
                 }
               }
             }
-                      }
           }
+        }
       }
     },
     {
@@ -630,7 +809,9 @@
               "capabilities": {
                 "type": "object",
                 "properties": {
-                  "captureArtifacts": { "const": true }
+                  "captureArtifacts": {
+                    "const": true
+                  }
                 }
               }
             }
@@ -646,14 +827,23 @@
               "^.+$": {
                 "not": {
                   "type": "object",
-                  "required": ["kind", "details"],
+                  "required": [
+                    "kind",
+                    "details"
+                  ],
                   "properties": {
-                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "kind": {
+                      "const": "CAPABILITY_LIMITED"
+                    },
                     "details": {
                       "type": "object",
-                      "required": ["capability"],
+                      "required": [
+                        "capability"
+                      ],
                       "properties": {
-                        "capability": { "const": "captureArtifacts" }
+                        "capability": {
+                          "const": "captureArtifacts"
+                        }
                       }
                     }
                   }
@@ -666,13 +856,20 @@
             "properties": {
               "triggeredProfiles": {
                 "type": "object",
-                "propertyNames": { "type": "string", "minLength": 1 },
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
-                      "type": "array",
-                      "items": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
                         "type": "object",
                         "properties": {
                           "result": {
@@ -682,7 +879,9 @@
                                 "type": "object",
                                 "patternProperties": {
                                   "^.+$": {
-                                    "not": { "$ref": "#/$defs/capabilityLimitedCaptureArtifacts" }
+                                    "not": {
+                                      "$ref": "#/$defs/capabilityLimitedCaptureArtifacts"
+                                    }
                                   }
                                 }
                               }
@@ -703,7 +902,11 @@
                       "details": {
                         "type": "object",
                         "properties": {
-                          "capability": { "not": { "const": "captureArtifacts" } }
+                          "capability": {
+                            "not": {
+                              "const": "captureArtifacts"
+                            }
+                          }
                         }
                       }
                     }
@@ -711,8 +914,8 @@
                 }
               }
             }
-                      }
           }
+        }
       }
     },
     {
@@ -724,7 +927,9 @@
               "capabilities": {
                 "type": "object",
                 "properties": {
-                  "bindSnapshot": { "const": true }
+                  "bindSnapshot": {
+                    "const": true
+                  }
                 }
               }
             }
@@ -740,14 +945,23 @@
               "^.+$": {
                 "not": {
                   "type": "object",
-                  "required": ["kind", "details"],
+                  "required": [
+                    "kind",
+                    "details"
+                  ],
                   "properties": {
-                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "kind": {
+                      "const": "CAPABILITY_LIMITED"
+                    },
                     "details": {
                       "type": "object",
-                      "required": ["capability"],
+                      "required": [
+                        "capability"
+                      ],
                       "properties": {
-                        "capability": { "const": "bindSnapshot" }
+                        "capability": {
+                          "const": "bindSnapshot"
+                        }
                       }
                     }
                   }
@@ -760,13 +974,20 @@
             "properties": {
               "triggeredProfiles": {
                 "type": "object",
-                "propertyNames": { "type": "string", "minLength": 1 },
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
-                      "type": "array",
-                      "items": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
                         "type": "object",
                         "properties": {
                           "result": {
@@ -776,7 +997,9 @@
                                 "type": "object",
                                 "patternProperties": {
                                   "^.+$": {
-                                    "not": { "$ref": "#/$defs/capabilityLimitedBindSnapshot" }
+                                    "not": {
+                                      "$ref": "#/$defs/capabilityLimitedBindSnapshot"
+                                    }
                                   }
                                 }
                               }
@@ -797,7 +1020,11 @@
                       "details": {
                         "type": "object",
                         "properties": {
-                          "capability": { "not": { "const": "bindSnapshot" } }
+                          "capability": {
+                            "not": {
+                              "const": "bindSnapshot"
+                            }
+                          }
                         }
                       }
                     }
@@ -805,8 +1032,8 @@
                 }
               }
             }
-                      }
           }
+        }
       }
     },
     {
@@ -818,7 +1045,9 @@
               "capabilities": {
                 "type": "object",
                 "properties": {
-                  "provideIndependentEvidence": { "const": true }
+                  "provideIndependentEvidence": {
+                    "const": true
+                  }
                 }
               }
             }
@@ -834,14 +1063,23 @@
               "^.+$": {
                 "not": {
                   "type": "object",
-                  "required": ["kind", "details"],
+                  "required": [
+                    "kind",
+                    "details"
+                  ],
                   "properties": {
-                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "kind": {
+                      "const": "CAPABILITY_LIMITED"
+                    },
                     "details": {
                       "type": "object",
-                      "required": ["capability"],
+                      "required": [
+                        "capability"
+                      ],
                       "properties": {
-                        "capability": { "const": "provideIndependentEvidence" }
+                        "capability": {
+                          "const": "provideIndependentEvidence"
+                        }
                       }
                     }
                   }
@@ -854,13 +1092,20 @@
             "properties": {
               "triggeredProfiles": {
                 "type": "object",
-                "propertyNames": { "type": "string", "minLength": 1 },
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
-                      "type": "array",
-                      "items": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
                         "type": "object",
                         "properties": {
                           "result": {
@@ -870,7 +1115,9 @@
                                 "type": "object",
                                 "patternProperties": {
                                   "^.+$": {
-                                    "not": { "$ref": "#/$defs/capabilityLimitedProvideIndependentEvidence" }
+                                    "not": {
+                                      "$ref": "#/$defs/capabilityLimitedProvideIndependentEvidence"
+                                    }
                                   }
                                 }
                               }
@@ -891,7 +1138,11 @@
                       "details": {
                         "type": "object",
                         "properties": {
-                          "capability": { "not": { "const": "provideIndependentEvidence" } }
+                          "capability": {
+                            "not": {
+                              "const": "provideIndependentEvidence"
+                            }
+                          }
                         }
                       }
                     }
@@ -899,8 +1150,8 @@
                 }
               }
             }
-                      }
           }
+        }
       }
     },
     {
@@ -912,7 +1163,9 @@
               "capabilities": {
                 "type": "object",
                 "properties": {
-                  "persistEvidence": { "const": true }
+                  "persistEvidence": {
+                    "const": true
+                  }
                 }
               }
             }
@@ -928,14 +1181,23 @@
               "^.+$": {
                 "not": {
                   "type": "object",
-                  "required": ["kind", "details"],
+                  "required": [
+                    "kind",
+                    "details"
+                  ],
                   "properties": {
-                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "kind": {
+                      "const": "CAPABILITY_LIMITED"
+                    },
                     "details": {
                       "type": "object",
-                      "required": ["capability"],
+                      "required": [
+                        "capability"
+                      ],
                       "properties": {
-                        "capability": { "const": "persistEvidence" }
+                        "capability": {
+                          "const": "persistEvidence"
+                        }
                       }
                     }
                   }
@@ -948,13 +1210,20 @@
             "properties": {
               "triggeredProfiles": {
                 "type": "object",
-                "propertyNames": { "type": "string", "minLength": 1 },
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
-                      "type": "array",
-                      "items": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
                         "type": "object",
                         "properties": {
                           "result": {
@@ -964,7 +1233,9 @@
                                 "type": "object",
                                 "patternProperties": {
                                   "^.+$": {
-                                    "not": { "$ref": "#/$defs/capabilityLimitedPersistEvidence" }
+                                    "not": {
+                                      "$ref": "#/$defs/capabilityLimitedPersistEvidence"
+                                    }
                                   }
                                 }
                               }
@@ -985,7 +1256,11 @@
                       "details": {
                         "type": "object",
                         "properties": {
-                          "capability": { "not": { "const": "persistEvidence" } }
+                          "capability": {
+                            "not": {
+                              "const": "persistEvidence"
+                            }
+                          }
                         }
                       }
                     }
@@ -993,8 +1268,8 @@
                 }
               }
             }
-                      }
           }
+        }
       }
     },
     {
@@ -1006,7 +1281,9 @@
               "capabilities": {
                 "type": "object",
                 "properties": {
-                  "approveExceptions": { "const": true }
+                  "approveExceptions": {
+                    "const": true
+                  }
                 }
               }
             }
@@ -1022,14 +1299,23 @@
               "^.+$": {
                 "not": {
                   "type": "object",
-                  "required": ["kind", "details"],
+                  "required": [
+                    "kind",
+                    "details"
+                  ],
                   "properties": {
-                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "kind": {
+                      "const": "CAPABILITY_LIMITED"
+                    },
                     "details": {
                       "type": "object",
-                      "required": ["capability"],
+                      "required": [
+                        "capability"
+                      ],
                       "properties": {
-                        "capability": { "const": "approveExceptions" }
+                        "capability": {
+                          "const": "approveExceptions"
+                        }
                       }
                     }
                   }
@@ -1042,13 +1328,20 @@
             "properties": {
               "triggeredProfiles": {
                 "type": "object",
-                "propertyNames": { "type": "string", "minLength": 1 },
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
-                      "type": "array",
-                      "items": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
                         "type": "object",
                         "properties": {
                           "result": {
@@ -1058,7 +1351,9 @@
                                 "type": "object",
                                 "patternProperties": {
                                   "^.+$": {
-                                    "not": { "$ref": "#/$defs/capabilityLimitedApproveExceptions" }
+                                    "not": {
+                                      "$ref": "#/$defs/capabilityLimitedApproveExceptions"
+                                    }
                                   }
                                 }
                               }
@@ -1079,7 +1374,11 @@
                       "details": {
                         "type": "object",
                         "properties": {
-                          "capability": { "not": { "const": "approveExceptions" } }
+                          "capability": {
+                            "not": {
+                              "const": "approveExceptions"
+                            }
+                          }
                         }
                       }
                     }
@@ -1087,8 +1386,8 @@
                 }
               }
             }
-                      }
           }
+        }
       }
     },
     {
@@ -1100,7 +1399,9 @@
               "capabilities": {
                 "type": "object",
                 "properties": {
-                  "isolatedReadOnlyReview": { "const": true }
+                  "isolatedReadOnlyReview": {
+                    "const": true
+                  }
                 }
               }
             }
@@ -1116,14 +1417,23 @@
               "^.+$": {
                 "not": {
                   "type": "object",
-                  "required": ["kind", "details"],
+                  "required": [
+                    "kind",
+                    "details"
+                  ],
                   "properties": {
-                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "kind": {
+                      "const": "CAPABILITY_LIMITED"
+                    },
                     "details": {
                       "type": "object",
-                      "required": ["capability"],
+                      "required": [
+                        "capability"
+                      ],
                       "properties": {
-                        "capability": { "const": "isolatedReadOnlyReview" }
+                        "capability": {
+                          "const": "isolatedReadOnlyReview"
+                        }
                       }
                     }
                   }
@@ -1136,13 +1446,20 @@
             "properties": {
               "triggeredProfiles": {
                 "type": "object",
-                "propertyNames": { "type": "string", "minLength": 1 },
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
-                      "type": "array",
-                      "items": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
                         "type": "object",
                         "properties": {
                           "result": {
@@ -1152,7 +1469,9 @@
                                 "type": "object",
                                 "patternProperties": {
                                   "^.+$": {
-                                    "not": { "$ref": "#/$defs/capabilityLimitedIsolatedReadOnlyReview" }
+                                    "not": {
+                                      "$ref": "#/$defs/capabilityLimitedIsolatedReadOnlyReview"
+                                    }
                                   }
                                 }
                               }
@@ -1173,7 +1492,11 @@
                       "details": {
                         "type": "object",
                         "properties": {
-                          "capability": { "not": { "const": "isolatedReadOnlyReview" } }
+                          "capability": {
+                            "not": {
+                              "const": "isolatedReadOnlyReview"
+                            }
+                          }
                         }
                       }
                     }
@@ -1181,8 +1504,8 @@
                 }
               }
             }
-                      }
           }
+        }
       }
     },
     {
@@ -1194,7 +1517,9 @@
               "capabilities": {
                 "type": "object",
                 "properties": {
-                  "enforcedStructuredOutput": { "const": true }
+                  "enforcedStructuredOutput": {
+                    "const": true
+                  }
                 }
               }
             }
@@ -1210,14 +1535,23 @@
               "^.+$": {
                 "not": {
                   "type": "object",
-                  "required": ["kind", "details"],
+                  "required": [
+                    "kind",
+                    "details"
+                  ],
                   "properties": {
-                    "kind": { "const": "CAPABILITY_LIMITED" },
+                    "kind": {
+                      "const": "CAPABILITY_LIMITED"
+                    },
                     "details": {
                       "type": "object",
-                      "required": ["capability"],
+                      "required": [
+                        "capability"
+                      ],
                       "properties": {
-                        "capability": { "const": "enforcedStructuredOutput" }
+                        "capability": {
+                          "const": "enforcedStructuredOutput"
+                        }
                       }
                     }
                   }
@@ -1230,13 +1564,20 @@
             "properties": {
               "triggeredProfiles": {
                 "type": "object",
-                "propertyNames": { "type": "string", "minLength": 1 },
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
-                      "type": "array",
-                      "items": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
                         "type": "object",
                         "properties": {
                           "result": {
@@ -1246,7 +1587,9 @@
                                 "type": "object",
                                 "patternProperties": {
                                   "^.+$": {
-                                    "not": { "$ref": "#/$defs/capabilityLimitedEnforcedStructuredOutput" }
+                                    "not": {
+                                      "$ref": "#/$defs/capabilityLimitedEnforcedStructuredOutput"
+                                    }
                                   }
                                 }
                               }
@@ -1267,7 +1610,11 @@
                       "details": {
                         "type": "object",
                         "properties": {
-                          "capability": { "not": { "const": "enforcedStructuredOutput" } }
+                          "capability": {
+                            "not": {
+                              "const": "enforcedStructuredOutput"
+                            }
+                          }
                         }
                       }
                     }
@@ -1275,8 +1622,8 @@
                 }
               }
             }
-                      }
           }
+        }
       }
     },
     {
@@ -1289,7 +1636,9 @@
               "challenge": {
                 "type": "object",
                 "properties": {
-                  "outcome": { "const": "COMPLETED" }
+                  "outcome": {
+                    "const": "COMPLETED"
+                  }
                 }
               }
             }
@@ -1304,12 +1653,19 @@
             "properties": {
               "triggeredProfiles": {
                 "type": "object",
-                "propertyNames": { "type": "string", "minLength": 1 },
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "additionalProperties": {
                   "type": "object",
-                  "required": ["resolution"],
+                  "required": [
+                    "resolution"
+                  ],
                   "properties": {
-                    "resolution": { "$ref": "#/$defs/profileResolution" }
+                    "resolution": {
+                      "$ref": "#/$defs/profileResolution"
+                    }
                   }
                 }
               }
@@ -1328,7 +1684,9 @@
               "challenge": {
                 "type": "object",
                 "properties": {
-                  "outcome": { "const": "NOT_REQUIRED" }
+                  "outcome": {
+                    "const": "NOT_REQUIRED"
+                  }
                 }
               }
             }
@@ -1338,25 +1696,36 @@
       "then": {
         "type": "object",
         "properties": {
-          "findings": { "$ref": "#/$defs/nonmaterialFindingMap" },
+          "findings": {
+            "$ref": "#/$defs/nonmaterialFindingMap"
+          },
           "triggerScan": {
             "type": "object",
             "properties": {
               "triggeredProfiles": {
                 "type": "object",
-                "propertyNames": { "type": "string", "minLength": 1 },
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
-                      "type": "array",
-                      "items": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
                         "type": "object",
                         "properties": {
                           "result": {
                             "type": "object",
                             "properties": {
-                              "findings": { "$ref": "#/$defs/nonmaterialFindingMap" }
+                              "findings": {
+                                "$ref": "#/$defs/nonmaterialFindingMap"
+                              }
                             }
                           }
                         }
@@ -1377,9 +1746,13 @@
       "patternProperties": {
         "^.+$": {
           "type": "object",
-          "required": ["materiality"],
+          "required": [
+            "materiality"
+          ],
           "properties": {
-            "materiality": { "const": "nonmaterial" }
+            "materiality": {
+              "const": "nonmaterial"
+            }
           }
         }
       }
@@ -1428,12 +1801,25 @@
         "anchors": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/anchor" }
+          "items": {
+            "$ref": "#/$defs/anchor"
+          }
         },
-        "failureMechanism": { "type": "string", "minLength": 1 },
-        "coverageChecked": { "const": true },
-        "confirmationProbe": { "type": "string", "minLength": 1 },
-        "uncertainty": { "type": "string", "minLength": 1 }
+        "failureMechanism": {
+          "type": "string",
+          "minLength": 1
+        },
+        "coverageChecked": {
+          "const": true
+        },
+        "confirmationProbe": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uncertainty": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "reviewerOutputSelfCheck": {
@@ -1442,7 +1828,9 @@
         "producer": {
           "type": "object",
           "properties": {
-            "independence": { "const": "self-check" }
+            "independence": {
+              "const": "self-check"
+            }
           }
         }
       }
@@ -1453,7 +1841,11 @@
         "producer": {
           "type": "object",
           "properties": {
-            "independence": { "not": { "const": "independent-producer" } }
+            "independence": {
+              "not": {
+                "const": "independent-producer"
+              }
+            }
           }
         }
       }
@@ -1465,7 +1857,10 @@
           "type": "object",
           "properties": {
             "independence": {
-              "enum": ["separate-verification-context", "independent-producer"]
+              "enum": [
+                "separate-verification-context",
+                "independent-producer"
+              ]
             }
           }
         }
@@ -1473,126 +1868,207 @@
     },
     "capabilityLimitedExecuteCommands": {
       "type": "object",
-      "required": ["kind", "details"],
+      "required": [
+        "kind",
+        "details"
+      ],
       "properties": {
-        "kind": { "const": "CAPABILITY_LIMITED" },
+        "kind": {
+          "const": "CAPABILITY_LIMITED"
+        },
         "details": {
           "type": "object",
-          "required": ["capability"],
+          "required": [
+            "capability"
+          ],
           "properties": {
-            "capability": { "const": "executeCommands" }
+            "capability": {
+              "const": "executeCommands"
+            }
           }
         }
       }
     },
     "capabilityLimitedExecuteBrowser": {
       "type": "object",
-      "required": ["kind", "details"],
+      "required": [
+        "kind",
+        "details"
+      ],
       "properties": {
-        "kind": { "const": "CAPABILITY_LIMITED" },
+        "kind": {
+          "const": "CAPABILITY_LIMITED"
+        },
         "details": {
           "type": "object",
-          "required": ["capability"],
+          "required": [
+            "capability"
+          ],
           "properties": {
-            "capability": { "const": "executeBrowser" }
+            "capability": {
+              "const": "executeBrowser"
+            }
           }
         }
       }
     },
     "capabilityLimitedCaptureArtifacts": {
       "type": "object",
-      "required": ["kind", "details"],
+      "required": [
+        "kind",
+        "details"
+      ],
       "properties": {
-        "kind": { "const": "CAPABILITY_LIMITED" },
+        "kind": {
+          "const": "CAPABILITY_LIMITED"
+        },
         "details": {
           "type": "object",
-          "required": ["capability"],
+          "required": [
+            "capability"
+          ],
           "properties": {
-            "capability": { "const": "captureArtifacts" }
+            "capability": {
+              "const": "captureArtifacts"
+            }
           }
         }
       }
     },
     "capabilityLimitedBindSnapshot": {
       "type": "object",
-      "required": ["kind", "details"],
+      "required": [
+        "kind",
+        "details"
+      ],
       "properties": {
-        "kind": { "const": "CAPABILITY_LIMITED" },
+        "kind": {
+          "const": "CAPABILITY_LIMITED"
+        },
         "details": {
           "type": "object",
-          "required": ["capability"],
+          "required": [
+            "capability"
+          ],
           "properties": {
-            "capability": { "const": "bindSnapshot" }
+            "capability": {
+              "const": "bindSnapshot"
+            }
           }
         }
       }
     },
     "capabilityLimitedProvideIndependentEvidence": {
       "type": "object",
-      "required": ["kind", "details"],
+      "required": [
+        "kind",
+        "details"
+      ],
       "properties": {
-        "kind": { "const": "CAPABILITY_LIMITED" },
+        "kind": {
+          "const": "CAPABILITY_LIMITED"
+        },
         "details": {
           "type": "object",
-          "required": ["capability"],
+          "required": [
+            "capability"
+          ],
           "properties": {
-            "capability": { "const": "provideIndependentEvidence" }
+            "capability": {
+              "const": "provideIndependentEvidence"
+            }
           }
         }
       }
     },
     "capabilityLimitedPersistEvidence": {
       "type": "object",
-      "required": ["kind", "details"],
+      "required": [
+        "kind",
+        "details"
+      ],
       "properties": {
-        "kind": { "const": "CAPABILITY_LIMITED" },
+        "kind": {
+          "const": "CAPABILITY_LIMITED"
+        },
         "details": {
           "type": "object",
-          "required": ["capability"],
+          "required": [
+            "capability"
+          ],
           "properties": {
-            "capability": { "const": "persistEvidence" }
+            "capability": {
+              "const": "persistEvidence"
+            }
           }
         }
       }
     },
     "capabilityLimitedApproveExceptions": {
       "type": "object",
-      "required": ["kind", "details"],
+      "required": [
+        "kind",
+        "details"
+      ],
       "properties": {
-        "kind": { "const": "CAPABILITY_LIMITED" },
+        "kind": {
+          "const": "CAPABILITY_LIMITED"
+        },
         "details": {
           "type": "object",
-          "required": ["capability"],
+          "required": [
+            "capability"
+          ],
           "properties": {
-            "capability": { "const": "approveExceptions" }
+            "capability": {
+              "const": "approveExceptions"
+            }
           }
         }
       }
     },
     "capabilityLimitedIsolatedReadOnlyReview": {
       "type": "object",
-      "required": ["kind", "details"],
+      "required": [
+        "kind",
+        "details"
+      ],
       "properties": {
-        "kind": { "const": "CAPABILITY_LIMITED" },
+        "kind": {
+          "const": "CAPABILITY_LIMITED"
+        },
         "details": {
           "type": "object",
-          "required": ["capability"],
+          "required": [
+            "capability"
+          ],
           "properties": {
-            "capability": { "const": "isolatedReadOnlyReview" }
+            "capability": {
+              "const": "isolatedReadOnlyReview"
+            }
           }
         }
       }
     },
     "capabilityLimitedEnforcedStructuredOutput": {
       "type": "object",
-      "required": ["kind", "details"],
+      "required": [
+        "kind",
+        "details"
+      ],
       "properties": {
-        "kind": { "const": "CAPABILITY_LIMITED" },
+        "kind": {
+          "const": "CAPABILITY_LIMITED"
+        },
         "details": {
           "type": "object",
-          "required": ["capability"],
+          "required": [
+            "capability"
+          ],
           "properties": {
-            "capability": { "const": "enforcedStructuredOutput" }
+            "capability": {
+              "const": "enforcedStructuredOutput"
+            }
           }
         }
       }
@@ -1600,11 +2076,31 @@
     "runtime": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["host", "mode", "discoveryProfile", "capabilities", "limitations"],
+      "required": [
+        "host",
+        "mode",
+        "discoveryProfile",
+        "capabilities",
+        "limitations"
+      ],
       "properties": {
-        "host": { "type": "string", "minLength": 1 },
-        "mode": { "enum": ["single-context", "multi-context"] },
-        "discoveryProfile": { "enum": ["single-context", "omp", "codex"] },
+        "host": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "enum": [
+            "single-context",
+            "multi-context"
+          ]
+        },
+        "discoveryProfile": {
+          "enum": [
+            "single-context",
+            "omp",
+            "codex"
+          ]
+        },
         "capabilities": {
           "type": "object",
           "additionalProperties": false,
@@ -1620,20 +2116,41 @@
             "enforcedStructuredOutput"
           ],
           "properties": {
-            "executeCommands": { "type": "boolean" },
-            "executeBrowser": { "type": "boolean" },
-            "captureArtifacts": { "type": "boolean" },
-            "bindSnapshot": { "type": "boolean" },
-            "provideIndependentEvidence": { "type": "boolean" },
-            "persistEvidence": { "type": "boolean" },
-            "approveExceptions": { "type": "boolean" },
-            "isolatedReadOnlyReview": { "type": "boolean" },
-            "enforcedStructuredOutput": { "type": "boolean" }
+            "executeCommands": {
+              "type": "boolean"
+            },
+            "executeBrowser": {
+              "type": "boolean"
+            },
+            "captureArtifacts": {
+              "type": "boolean"
+            },
+            "bindSnapshot": {
+              "type": "boolean"
+            },
+            "provideIndependentEvidence": {
+              "type": "boolean"
+            },
+            "persistEvidence": {
+              "type": "boolean"
+            },
+            "approveExceptions": {
+              "type": "boolean"
+            },
+            "isolatedReadOnlyReview": {
+              "type": "boolean"
+            },
+            "enforcedStructuredOutput": {
+              "type": "boolean"
+            }
           }
         },
         "limitations": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "uniqueItems": true
         }
       },
@@ -1642,21 +2159,35 @@
           "if": {
             "type": "object",
             "properties": {
-              "discoveryProfile": { "const": "omp" }
+              "discoveryProfile": {
+                "const": "omp"
+              }
             }
           },
           "then": {
             "type": "object",
             "properties": {
-              "mode": { "const": "multi-context" },
+              "mode": {
+                "const": "multi-context"
+              },
               "capabilities": {
                 "type": "object",
                 "properties": {
-                  "bindSnapshot": { "const": true },
-                  "captureArtifacts": { "const": true },
-                  "persistEvidence": { "const": true },
-                  "isolatedReadOnlyReview": { "const": true },
-                  "enforcedStructuredOutput": { "const": true }
+                  "bindSnapshot": {
+                    "const": true
+                  },
+                  "captureArtifacts": {
+                    "const": true
+                  },
+                  "persistEvidence": {
+                    "const": true
+                  },
+                  "isolatedReadOnlyReview": {
+                    "const": true
+                  },
+                  "enforcedStructuredOutput": {
+                    "const": true
+                  }
                 }
               }
             }
@@ -1666,21 +2197,35 @@
           "if": {
             "type": "object",
             "properties": {
-              "discoveryProfile": { "const": "codex" }
+              "discoveryProfile": {
+                "const": "codex"
+              }
             }
           },
           "then": {
             "type": "object",
             "properties": {
-              "mode": { "const": "multi-context" },
+              "mode": {
+                "const": "multi-context"
+              },
               "capabilities": {
                 "type": "object",
                 "properties": {
-                  "provideIndependentEvidence": { "const": true },
-                  "bindSnapshot": { "const": true },
-                  "captureArtifacts": { "const": true },
-                  "persistEvidence": { "const": true },
-                  "enforcedStructuredOutput": { "const": true }
+                  "provideIndependentEvidence": {
+                    "const": true
+                  },
+                  "bindSnapshot": {
+                    "const": true
+                  },
+                  "captureArtifacts": {
+                    "const": true
+                  },
+                  "persistEvidence": {
+                    "const": true
+                  },
+                  "enforcedStructuredOutput": {
+                    "const": true
+                  }
                 }
               }
             }
@@ -1691,30 +2236,101 @@
     "triggerScan": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["performed", "initialRiskLevel", "scopeUnknown", "materialTrigger", "syntheticBoundaryBypass", "recurringDefectClusterOverlap", "triggeredProfiles", "challenge"],
+      "required": [
+        "performed",
+        "initialRiskLevel",
+        "scopeUnknown",
+        "materialTrigger",
+        "syntheticBoundaryBypass",
+        "recurringDefectClusterOverlap",
+        "triggeredProfiles",
+        "challenge"
+      ],
       "properties": {
-        "performed": { "const": true },
-        "initialRiskLevel": { "enum": ["R0", "R1", "R2", "R3"] },
-        "scopeUnknown": { "type": "boolean" },
-        "materialTrigger": { "type": "boolean" },
-        "syntheticBoundaryBypass": { "type": "boolean" },
-        "recurringDefectClusterOverlap": { "type": "boolean" },
+        "performed": {
+          "const": true
+        },
+        "initialRiskLevel": {
+          "enum": [
+            "R0",
+            "R1",
+            "R2",
+            "R3"
+          ]
+        },
+        "scopeUnknown": {
+          "type": "boolean"
+        },
+        "materialTrigger": {
+          "type": "boolean"
+        },
+        "syntheticBoundaryBypass": {
+          "type": "boolean"
+        },
+        "recurringDefectClusterOverlap": {
+          "type": "boolean"
+        },
         "triggeredProfiles": {
           "type": "object",
-          "propertyNames": { "type": "string", "minLength": 1 },
-          "additionalProperties": { "$ref": "#/$defs/triggeredProfile" }
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/triggeredProfile"
+          }
         },
-        "challenge": { "$ref": "#/$defs/challenge" }
+        "challenge": {
+          "$ref": "#/$defs/challenge"
+        }
       },
       "allOf": [
         {
           "if": {
             "anyOf": [
-              { "type": "object", "properties": { "initialRiskLevel": { "enum": ["R2", "R3"] } } },
-              { "type": "object", "properties": { "scopeUnknown": { "const": true } } },
-              { "type": "object", "properties": { "materialTrigger": { "const": true } } },
-              { "type": "object", "properties": { "syntheticBoundaryBypass": { "const": true } } },
-              { "type": "object", "properties": { "recurringDefectClusterOverlap": { "const": true } } }
+              {
+                "type": "object",
+                "properties": {
+                  "initialRiskLevel": {
+                    "enum": [
+                      "R2",
+                      "R3"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "scopeUnknown": {
+                    "const": true
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "materialTrigger": {
+                    "const": true
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "syntheticBoundaryBypass": {
+                    "const": true
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "recurringDefectClusterOverlap": {
+                    "const": true
+                  }
+                }
+              }
             ]
           },
           "then": {
@@ -1727,7 +2343,11 @@
               "challenge": {
                 "type": "object",
                 "properties": {
-                  "outcome": { "not": { "const": "NOT_REQUIRED" } }
+                  "outcome": {
+                    "not": {
+                      "const": "NOT_REQUIRED"
+                    }
+                  }
                 }
               }
             }
@@ -1738,40 +2358,71 @@
     "challenge": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["outcome", "mode", "evidence"],
+      "required": [
+        "outcome",
+        "mode",
+        "evidence"
+      ],
       "properties": {
-        "outcome": { "enum": ["NOT_REQUIRED", "COMPLETED", "BLOCKED", "CAPABILITY_LIMITED"] },
-        "mode": { "enum": ["current_context", "separate_context", "capability_limited"] },
+        "outcome": {
+          "enum": [
+            "NOT_REQUIRED",
+            "COMPLETED",
+            "BLOCKED",
+            "CAPABILITY_LIMITED"
+          ]
+        },
+        "mode": {
+          "enum": [
+            "current_context",
+            "separate_context",
+            "capability_limited"
+          ]
+        },
         "evidence": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/evidence" }
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
         },
-        "limitation": { "$ref": "#/$defs/challengeLimitation" }
+        "limitation": {
+          "$ref": "#/$defs/challengeLimitation"
+        }
       },
       "allOf": [
         {
           "if": {
             "properties": {
-              "outcome": { "const": "NOT_REQUIRED" }
+              "outcome": {
+                "const": "NOT_REQUIRED"
+              }
             }
           },
           "then": {
             "properties": {
-              "mode": { "const": "current_context" }
+              "mode": {
+                "const": "current_context"
+              }
             }
           }
         },
         {
           "if": {
             "properties": {
-              "outcome": { "const": "CAPABILITY_LIMITED" }
+              "outcome": {
+                "const": "CAPABILITY_LIMITED"
+              }
             }
           },
           "then": {
-            "required": ["limitation"],
+            "required": [
+              "limitation"
+            ],
             "properties": {
-              "mode": { "const": "capability_limited" },
+              "mode": {
+                "const": "capability_limited"
+              },
               "limitation": {}
             }
           }
@@ -1779,14 +2430,24 @@
         {
           "if": {
             "properties": {
-              "outcome": { "enum": ["NOT_REQUIRED", "COMPLETED", "BLOCKED"] }
+              "outcome": {
+                "enum": [
+                  "NOT_REQUIRED",
+                  "COMPLETED",
+                  "BLOCKED"
+                ]
+              }
             }
           },
           "then": {
             "not": {
               "type": "object",
-              "required": ["limitation"],
-              "properties": { "limitation": {} }
+              "required": [
+                "limitation"
+              ],
+              "properties": {
+                "limitation": {}
+              }
             }
           }
         }
@@ -1794,12 +2455,18 @@
     },
     "challengeLimitation": {
       "allOf": [
-        { "$ref": "#/$defs/finding" },
+        {
+          "$ref": "#/$defs/finding"
+        },
         {
           "type": "object",
           "properties": {
-            "kind": { "const": "CAPABILITY_LIMITED" },
-            "materiality": { "const": "nonmaterial" }
+            "kind": {
+              "const": "CAPABILITY_LIMITED"
+            },
+            "materiality": {
+              "const": "nonmaterial"
+            }
           }
         }
       ]
@@ -1807,50 +2474,94 @@
     "reviewerOutput": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["partition", "obligation", "producer", "artifact", "analysis", "result"],
+      "required": [
+        "partition",
+        "obligation",
+        "producer",
+        "artifact",
+        "analysis",
+        "result"
+      ],
       "properties": {
-        "partition": { "type": "string", "minLength": 1 },
+        "partition": {
+          "type": "string",
+          "minLength": 1
+        },
         "obligation": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["id", "description"],
+          "required": [
+            "id",
+            "description"
+          ],
           "properties": {
-            "id": { "type": "string", "minLength": 1 },
-            "description": { "type": "string", "minLength": 1 }
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         "producer": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["id", "independence"],
+          "required": [
+            "id",
+            "independence"
+          ],
           "properties": {
-            "id": { "type": "string", "minLength": 1 },
-            "independence": { "enum": ["separate-verification-context", "independent-producer", "self-check"] }
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "independence": {
+              "enum": [
+                "separate-verification-context",
+                "independent-producer",
+                "self-check"
+              ]
+            }
           }
         },
         "artifact": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["artifactId", "sha256"],
+          "required": [
+            "sha256"
+          ],
           "properties": {
-            "artifactId": { "type": "string", "minLength": 1 },
-            "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{64}$"
+            }
           }
         },
-        "analysis": { "$ref": "#/$defs/reviewerAnalysis" },
+        "analysis": {
+          "$ref": "#/$defs/reviewerAnalysis"
+        },
         "result": {
           "oneOf": [
             {
               "type": "object",
               "additionalProperties": false,
-              "required": ["kind", "findings"],
+              "required": [
+                "kind",
+                "findings"
+              ],
               "properties": {
-                "kind": { "const": "FINDINGS" },
+                "kind": {
+                  "const": "FINDINGS"
+                },
                 "findings": {
                   "type": "object",
                   "minProperties": 1,
                   "patternProperties": {
-                    "^.+$": { "$ref": "#/$defs/finding" }
+                    "^.+$": {
+                      "$ref": "#/$defs/finding"
+                    }
                   },
                   "additionalProperties": false
                 }
@@ -1859,9 +2570,13 @@
             {
               "type": "object",
               "additionalProperties": false,
-              "required": ["kind"],
+              "required": [
+                "kind"
+              ],
               "properties": {
-                "kind": { "const": "NO_FINDINGS" }
+                "kind": {
+                  "const": "NO_FINDINGS"
+                }
               }
             }
           ]
@@ -1871,49 +2586,89 @@
     "triggeredProfile": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["evidence"],
+      "required": [
+        "evidence"
+      ],
       "properties": {
         "evidence": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "uniqueItems": true
         },
         "reviewerOutputs": {
           "description": "Each output inherits the enclosing report snapshotId; a separate snapshot field is forbidden.",
-          "type": "array",
-          "items": { "$ref": "#/$defs/reviewerOutput" }
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/reviewerOutput"
+          }
         },
-        "resolution": { "$ref": "#/$defs/profileResolution" }
+        "resolution": {
+          "$ref": "#/$defs/profileResolution"
+        }
       }
     },
     "profileResolution": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "detail", "evidence"],
+      "required": [
+        "status",
+        "detail",
+        "evidence"
+      ],
       "properties": {
-        "status": { "enum": ["NO_FINDINGS", "PROMOTED", "ACCEPTED_RISK"] },
-        "detail": { "type": "string", "minLength": 1 },
+        "status": {
+          "enum": [
+            "NO_FINDINGS",
+            "PROMOTED",
+            "ACCEPTED_RISK"
+          ]
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        },
         "evidence": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/evidence" }
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
         },
-        "approval": { "$ref": "#/$defs/approval" }
+        "approval": {
+          "$ref": "#/$defs/approval"
+        },
+        "obligationId": {
+          "type": "string",
+          "minLength": 1
+        }
       },
       "allOf": [
         {
           "if": {
             "type": "object",
             "properties": {
-              "status": { "const": "ACCEPTED_RISK" }
+              "status": {
+                "const": "ACCEPTED_RISK"
+              }
             }
           },
           "then": {
             "type": "object",
-            "required": ["approval"],
+            "required": [
+              "approval"
+            ],
             "properties": {
-              "approval": { "$ref": "#/$defs/approval" }
+              "approval": {
+                "$ref": "#/$defs/approval"
+              }
             }
           }
         },
@@ -1921,15 +2676,73 @@
           "if": {
             "type": "object",
             "properties": {
-              "status": { "enum": ["NO_FINDINGS", "PROMOTED"] }
+              "status": {
+                "enum": [
+                  "NO_FINDINGS",
+                  "PROMOTED"
+                ]
+              }
             }
           },
           "then": {
             "not": {
               "type": "object",
-              "required": ["approval"],
+              "required": [
+                "approval"
+              ],
               "properties": {
-                "approval": { "$ref": "#/$defs/approval" }
+                "approval": {
+                  "$ref": "#/$defs/approval"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "const": "PROMOTED"
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "required": [
+              "obligationId"
+            ],
+            "properties": {
+              "obligationId": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "enum": [
+                  "NO_FINDINGS",
+                  "ACCEPTED_RISK"
+                ]
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "type": "object",
+              "required": [
+                "obligationId"
+              ],
+              "properties": {
+                "obligationId": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             }
           }
@@ -1939,29 +2752,63 @@
     "evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["source", "detail"],
+      "required": [
+        "source",
+        "detail"
+      ],
       "properties": {
-        "source": { "type": "string", "minLength": 1 },
-        "detail": { "type": "string", "minLength": 1 }
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "anchor": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "startLine", "lineCount", "excerpt"],
+      "required": [
+        "path",
+        "startLine",
+        "lineCount",
+        "excerpt"
+      ],
       "properties": {
-        "path": { "type": "string", "minLength": 1 },
-        "startLine": { "type": "integer", "minimum": 1 },
-        "lineCount": { "type": "integer", "minimum": 1 },
-        "excerpt": { "type": "string", "minLength": 1 }
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lineCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "excerpt": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "finding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "materiality", "details", "evidence"],
+      "required": [
+        "kind",
+        "materiality",
+        "details",
+        "evidence"
+      ],
       "properties": {
-        "riskId": { "type": "string", "minLength": 1 },
+        "riskId": {
+          "type": "string",
+          "minLength": 1
+        },
         "kind": {
           "enum": [
             "COVERAGE_GAP",
@@ -1973,31 +2820,63 @@
             "DUPLICATE_CLUSTER"
           ]
         },
-        "materiality": { "enum": ["material", "nonmaterial"] },
-        "disposition": { "$ref": "#/$defs/materialDisposition" },
-        "deferredRisk": { "$ref": "#/$defs/deferredRisk" },
-        "details": { "type": "object" },
+        "materiality": {
+          "enum": [
+            "material",
+            "nonmaterial"
+          ]
+        },
+        "disposition": {
+          "$ref": "#/$defs/materialDisposition"
+        },
+        "deferredRisk": {
+          "$ref": "#/$defs/deferredRisk"
+        },
+        "details": {
+          "type": "object"
+        },
         "evidence": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/evidence" }
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
         }
       },
       "allOf": [
         {
-          "if": { "type": "object", "properties": { "materiality": { "const": "material" } } },
+          "if": {
+            "type": "object",
+            "properties": {
+              "materiality": {
+                "const": "material"
+              }
+            }
+          },
           "then": {
             "type": "object",
-            "required": ["riskId", "disposition"],
+            "required": [
+              "riskId",
+              "disposition"
+            ],
             "properties": {
-              "riskId": { "type": "string", "minLength": 1 },
-              "disposition": { "$ref": "#/$defs/materialDisposition" }
+              "riskId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "disposition": {
+                "$ref": "#/$defs/materialDisposition"
+              }
             },
             "not": {
               "type": "object",
-              "required": ["deferredRisk"],
+              "required": [
+                "deferredRisk"
+              ],
               "properties": {
-                "deferredRisk": { "$ref": "#/$defs/deferredRisk" }
+                "deferredRisk": {
+                  "$ref": "#/$defs/deferredRisk"
+                }
               }
             }
           }
@@ -2005,21 +2884,37 @@
         {
           "if": {
             "type": "object",
-            "required": ["kind", "materiality"],
+            "required": [
+              "kind",
+              "materiality"
+            ],
             "properties": {
-              "kind": { "const": "SOURCE_CANDIDATE" },
-              "materiality": { "const": "material" }
+              "kind": {
+                "const": "SOURCE_CANDIDATE"
+              },
+              "materiality": {
+                "const": "material"
+              }
             }
           },
           "then": {
             "type": "object",
-            "required": ["disposition"],
+            "required": [
+              "disposition"
+            ],
             "properties": {
               "disposition": {
                 "type": "object",
-                "required": ["status"],
+                "required": [
+                  "status"
+                ],
                 "properties": {
-                  "status": { "enum": ["PROMOTED_TO_OBLIGATION", "ACCEPTED_RISK"] }
+                  "status": {
+                    "enum": [
+                      "PROMOTED_TO_OBLIGATION",
+                      "ACCEPTED_RISK"
+                    ]
+                  }
                 }
               }
             }
@@ -2029,7 +2924,9 @@
           "if": {
             "type": "object",
             "properties": {
-              "materiality": { "const": "nonmaterial" }
+              "materiality": {
+                "const": "nonmaterial"
+              }
             }
           },
           "then": {
@@ -2038,16 +2935,25 @@
               "anyOf": [
                 {
                   "type": "object",
-                  "required": ["riskId"],
+                  "required": [
+                    "riskId"
+                  ],
                   "properties": {
-                    "riskId": { "type": "string", "minLength": 1 }
+                    "riskId": {
+                      "type": "string",
+                      "minLength": 1
+                    }
                   }
                 },
                 {
                   "type": "object",
-                  "required": ["disposition"],
+                  "required": [
+                    "disposition"
+                  ],
                   "properties": {
-                    "disposition": { "$ref": "#/$defs/materialDisposition" }
+                    "disposition": {
+                      "$ref": "#/$defs/materialDisposition"
+                    }
                   }
                 }
               ]
@@ -2055,72 +2961,149 @@
           }
         },
         {
-          "if": { "type": "object", "properties": { "kind": { "const": "COVERAGE_GAP" } } },
+          "if": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "COVERAGE_GAP"
+              }
+            }
+          },
           "then": {
             "type": "object",
-            "required": ["details"],
+            "required": [
+              "details"
+            ],
             "properties": {
-              "details": { "$ref": "#/$defs/coverageGapDetails" }
+              "details": {
+                "$ref": "#/$defs/coverageGapDetails"
+              }
             }
           }
         },
         {
-          "if": { "type": "object", "properties": { "kind": { "const": "SOURCE_CANDIDATE" } } },
+          "if": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "SOURCE_CANDIDATE"
+              }
+            }
+          },
           "then": {
             "type": "object",
-            "required": ["details"],
+            "required": [
+              "details"
+            ],
             "properties": {
-              "details": { "$ref": "#/$defs/sourceCandidateDetails" }
+              "details": {
+                "$ref": "#/$defs/sourceCandidateDetails"
+              }
             }
           }
         },
         {
-          "if": { "type": "object", "properties": { "kind": { "const": "CONFIRMED_DEFECT" } } },
+          "if": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "CONFIRMED_DEFECT"
+              }
+            }
+          },
           "then": {
             "type": "object",
-            "required": ["details"],
+            "required": [
+              "details"
+            ],
             "properties": {
-              "details": { "$ref": "#/$defs/confirmedDefectDetails" }
+              "details": {
+                "$ref": "#/$defs/confirmedDefectDetails"
+              }
             }
           }
         },
         {
-          "if": { "type": "object", "properties": { "kind": { "const": "POLICY_QUESTION" } } },
+          "if": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "POLICY_QUESTION"
+              }
+            }
+          },
           "then": {
             "type": "object",
-            "required": ["details"],
+            "required": [
+              "details"
+            ],
             "properties": {
-              "details": { "$ref": "#/$defs/policyQuestionDetails" }
+              "details": {
+                "$ref": "#/$defs/policyQuestionDetails"
+              }
             }
           }
         },
         {
-          "if": { "type": "object", "properties": { "kind": { "const": "NOT_APPLICABLE" } } },
+          "if": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "NOT_APPLICABLE"
+              }
+            }
+          },
           "then": {
             "type": "object",
-            "required": ["details"],
+            "required": [
+              "details"
+            ],
             "properties": {
-              "details": { "$ref": "#/$defs/notApplicableDetails" }
+              "details": {
+                "$ref": "#/$defs/notApplicableDetails"
+              }
             }
           }
         },
         {
-          "if": { "type": "object", "properties": { "kind": { "const": "CAPABILITY_LIMITED" } } },
+          "if": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "CAPABILITY_LIMITED"
+              }
+            }
+          },
           "then": {
             "type": "object",
-            "required": ["details"],
+            "required": [
+              "details"
+            ],
             "properties": {
-              "details": { "$ref": "#/$defs/capabilityLimitedDetails" }
+              "details": {
+                "$ref": "#/$defs/capabilityLimitedDetails"
+              }
             }
           }
         },
         {
-          "if": { "type": "object", "properties": { "kind": { "const": "DUPLICATE_CLUSTER" } } },
+          "if": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "DUPLICATE_CLUSTER"
+              }
+            }
+          },
           "then": {
             "type": "object",
-            "required": ["details"],
+            "required": [
+              "details"
+            ],
             "properties": {
-              "details": { "$ref": "#/$defs/duplicateClusterDetails" }
+              "details": {
+                "$ref": "#/$defs/duplicateClusterDetails"
+              }
             }
           }
         }
@@ -2129,75 +3112,163 @@
     "coverageGapDetails": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["summary", "coverageGap", "coverageChecked"],
+      "required": [
+        "summary",
+        "coverageGap",
+        "coverageChecked"
+      ],
       "properties": {
-        "summary": { "type": "string", "minLength": 1 },
-        "coverageGap": { "type": "string", "minLength": 1 },
-        "coverageChecked": { "const": true }
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "coverageGap": {
+          "type": "string",
+          "minLength": 1
+        },
+        "coverageChecked": {
+          "const": true
+        }
       }
     },
     "sourceCandidateDetails": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["summary", "anchors", "failureMechanism", "coverageChecked", "confirmationProbe", "uncertainty"],
+      "required": [
+        "summary",
+        "anchors",
+        "failureMechanism",
+        "coverageChecked",
+        "confirmationProbe",
+        "uncertainty"
+      ],
       "properties": {
-        "summary": { "type": "string", "minLength": 1 },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
         "anchors": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/anchor" }
+          "items": {
+            "$ref": "#/$defs/anchor"
+          }
         },
-        "failureMechanism": { "type": "string", "minLength": 1 },
-        "coverageChecked": { "const": true },
-        "confirmationProbe": { "type": "string", "minLength": 1 },
-        "uncertainty": { "type": "string", "minLength": 1 }
+        "failureMechanism": {
+          "type": "string",
+          "minLength": 1
+        },
+        "coverageChecked": {
+          "const": true
+        },
+        "confirmationProbe": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uncertainty": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "confirmedDefectDetails": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["summary", "expected", "actual", "reproduction"],
+      "required": [
+        "summary",
+        "expected",
+        "actual",
+        "reproduction"
+      ],
       "properties": {
-        "summary": { "type": "string", "minLength": 1 },
-        "expected": { "type": "string", "minLength": 1 },
-        "actual": { "type": "string", "minLength": 1 },
-        "reproduction": { "type": "string", "minLength": 1 }
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actual": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reproduction": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "policyQuestionDetails": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["summary", "question"],
+      "required": [
+        "summary",
+        "question"
+      ],
       "properties": {
-        "summary": { "type": "string", "minLength": 1 },
-        "question": { "type": "string", "minLength": 1 }
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "notApplicableDetails": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["summary", "reason"],
+      "required": [
+        "summary",
+        "reason"
+      ],
       "properties": {
-        "summary": { "type": "string", "minLength": 1 },
-        "reason": { "type": "string", "minLength": 1 }
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "capabilityLimitedDetails": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["summary", "capability", "limitation"],
+      "required": [
+        "summary",
+        "capability",
+        "limitation"
+      ],
       "properties": {
-        "summary": { "type": "string", "minLength": 1 },
-        "capability": { "$ref": "#/$defs/capabilityName" },
-        "limitation": { "type": "string", "minLength": 1 }
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capability": {
+          "$ref": "#/$defs/capabilityName"
+        },
+        "limitation": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "duplicateClusterDetails": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["summary", "clusterMembers"],
+      "required": [
+        "summary",
+        "clusterMembers"
+      ],
       "properties": {
-        "summary": { "type": "string", "minLength": 1 },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
         "clusterMembers": {
           "type": "array",
           "minItems": 2,
@@ -2205,13 +3276,21 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["summary", "evidence"],
+            "required": [
+              "summary",
+              "evidence"
+            ],
             "properties": {
-              "summary": { "type": "string", "minLength": 1 },
+              "summary": {
+                "type": "string",
+                "minLength": 1
+              },
               "evidence": {
                 "type": "array",
                 "minItems": 1,
-                "items": { "$ref": "#/$defs/evidence" }
+                "items": {
+                  "$ref": "#/$defs/evidence"
+                }
               }
             }
           }
@@ -2223,28 +3302,51 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["status", "obligationId"],
+          "required": [
+            "status",
+            "obligationId"
+          ],
           "properties": {
-            "status": { "const": "PROMOTED_TO_OBLIGATION" },
-            "obligationId": { "type": "string", "minLength": 1 }
+            "status": {
+              "const": "PROMOTED_TO_OBLIGATION"
+            },
+            "obligationId": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["status", "approval"],
+          "required": [
+            "status",
+            "approval"
+          ],
           "properties": {
-            "status": { "const": "ACCEPTED_RISK" },
-            "approval": { "$ref": "#/$defs/approval" }
+            "status": {
+              "const": "ACCEPTED_RISK"
+            },
+            "approval": {
+              "$ref": "#/$defs/approval"
+            }
           }
         },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["status", "blocker"],
+          "required": [
+            "status",
+            "blocker"
+          ],
           "properties": {
-            "status": { "const": "BLOCKED" },
-            "blocker": { "type": "string", "minLength": 1 }
+            "status": {
+              "const": "BLOCKED"
+            },
+            "blocker": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         }
       ]
@@ -2252,18 +3354,41 @@
     "approvalEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "source", "detail", "artifact"],
+      "required": [
+        "id",
+        "source",
+        "detail",
+        "artifact"
+      ],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "source": { "type": "string", "minLength": 1 },
-        "detail": { "type": "string", "minLength": 1 },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        },
         "artifact": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["id", "sha256"],
+          "required": [
+            "id",
+            "sha256"
+          ],
           "properties": {
-            "id": { "type": "string", "minLength": 1 },
-            "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{64}$"
+            }
           }
         }
       }
@@ -2271,25 +3396,65 @@
     "approval": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["approvedBy", "accountableOwner", "reason", "scope", "mitigation", "expiresAtUnixSeconds", "evidence", "independence"],
+      "required": [
+        "approvedBy",
+        "accountableOwner",
+        "reason",
+        "scope",
+        "mitigation",
+        "expiresAtUnixSeconds",
+        "evidence",
+        "independence"
+      ],
       "properties": {
-        "approvedBy": { "type": "string", "minLength": 1 },
-        "accountableOwner": { "type": "string", "minLength": 1 },
-        "reason": { "type": "string", "minLength": 1 },
-        "scope": { "type": "string", "minLength": 1 },
-        "mitigation": { "type": "string", "minLength": 1 },
-        "expiresAtUnixSeconds": { "type": "integer", "minimum": 1 },
-        "evidence": { "$ref": "#/$defs/approvalEvidence" },
-        "independence": { "const": "external-approval" }
+        "approvedBy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accountableOwner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mitigation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expiresAtUnixSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "evidence": {
+          "$ref": "#/$defs/approvalEvidence"
+        },
+        "independence": {
+          "const": "external-approval"
+        }
       }
     },
     "deferredRisk": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["riskId", "reason"],
+      "required": [
+        "riskId",
+        "reason"
+      ],
       "properties": {
-        "riskId": { "type": "string", "minLength": 1 },
-        "reason": { "type": "string", "minLength": 1 }
+        "riskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     }
   }

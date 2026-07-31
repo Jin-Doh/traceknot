@@ -31,8 +31,8 @@
         "evidence": [
           "The bounded response-ordering partition was reviewed without material findings."
         ],
-        "reviewerOutputs": [
-          {
+        "reviewerOutputs": {
+          "codex-reviewer-nonmaterial-output-001": {
             "partition": "response ordering",
             "obligation": {
               "id": "obligation-response-ordering-nonmaterial-001",
@@ -43,11 +43,12 @@
               "independence": "separate-verification-context"
             },
             "artifact": {
-              "artifactId": "codex-reviewer-nonmaterial-output-001",
               "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
             },
             "analysis": {
-              "taxonomy": ["NOT_APPLICABLE"],
+              "taxonomy": [
+                "NOT_APPLICABLE"
+              ],
               "anchors": [
                 {
                   "path": "src/store.ts",
@@ -65,7 +66,7 @@
               "kind": "NO_FINDINGS"
             }
           }
-        ]
+        }
       }
     },
     "challenge": {

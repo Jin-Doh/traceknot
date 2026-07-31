@@ -1,9 +1,14 @@
 {
   "base": "risk-discovery-report.valid.json",
   "operation": "add",
-  "path": ["triggerScan", "triggeredProfiles", "stale-writes", "reviewerOutputs"],
-  "value": [
-    {
+  "path": [
+    "triggerScan",
+    "triggeredProfiles",
+    "stale-writes",
+    "reviewerOutputs"
+  ],
+  "value": {
+    "independent-output-001": {
       "partition": "response ordering",
       "obligation": {
         "id": "obligation-independent-001",
@@ -14,11 +19,12 @@
         "independence": "independent-producer"
       },
       "artifact": {
-        "artifactId": "independent-output-001",
         "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       },
       "analysis": {
-        "taxonomy": ["NOT_APPLICABLE"],
+        "taxonomy": [
+          "NOT_APPLICABLE"
+        ],
         "anchors": [
           {
             "path": "src/store.ts",
@@ -36,6 +42,6 @@
         "kind": "NO_FINDINGS"
       }
     }
-  ],
+  },
   "expectedKeyword": "not"
 }

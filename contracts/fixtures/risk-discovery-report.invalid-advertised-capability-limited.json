@@ -1,64 +1,112 @@
 {
   "base": "risk-discovery-report.valid.json",
   "operation": "replace",
-  "path": ["runtime", "capabilities", "executeBrowser"],
+  "path": [
+    "runtime",
+    "capabilities",
+    "executeBrowser"
+  ],
   "value": true,
   "operations": [
     {
       "operation": "replace",
-      "path": ["runtime", "capabilities", "executeBrowser"],
+      "path": [
+        "runtime",
+        "capabilities",
+        "executeBrowser"
+      ],
       "value": true
     },
     {
       "operation": "replace",
-      "path": ["runtime", "mode"],
+      "path": [
+        "runtime",
+        "mode"
+      ],
       "value": "multi-context"
     },
     {
       "operation": "replace",
-      "path": ["runtime", "discoveryProfile"],
+      "path": [
+        "runtime",
+        "discoveryProfile"
+      ],
       "value": "omp"
     },
     {
       "operation": "replace",
-      "path": ["runtime", "capabilities", "provideIndependentEvidence"],
+      "path": [
+        "runtime",
+        "capabilities",
+        "provideIndependentEvidence"
+      ],
       "value": true
     },
     {
       "operation": "replace",
-      "path": ["runtime", "capabilities", "approveExceptions"],
+      "path": [
+        "runtime",
+        "capabilities",
+        "approveExceptions"
+      ],
       "value": true
     },
     {
       "operation": "replace",
-      "path": ["runtime", "capabilities", "isolatedReadOnlyReview"],
+      "path": [
+        "runtime",
+        "capabilities",
+        "isolatedReadOnlyReview"
+      ],
       "value": true
     },
     {
       "operation": "replace",
-      "path": ["runtime", "capabilities", "enforcedStructuredOutput"],
+      "path": [
+        "runtime",
+        "capabilities",
+        "enforcedStructuredOutput"
+      ],
       "value": true
     },
     {
       "operation": "replace",
-      "path": ["triggerScan", "challenge", "outcome"],
+      "path": [
+        "triggerScan",
+        "challenge",
+        "outcome"
+      ],
       "value": "COMPLETED"
     },
     {
       "operation": "replace",
-      "path": ["triggerScan", "challenge", "mode"],
+      "path": [
+        "triggerScan",
+        "challenge",
+        "mode"
+      ],
       "value": "separate_context"
     },
     {
       "operation": "replace",
-      "path": ["findings", "finding-capability-001", "details", "capability"],
+      "path": [
+        "findings",
+        "finding-capability-001",
+        "details",
+        "capability"
+      ],
       "value": "executeBrowser"
     },
     {
       "operation": "add",
-      "path": ["triggerScan", "triggeredProfiles", "stale-writes", "reviewerOutputs"],
-      "value": [
-        {
+      "path": [
+        "triggerScan",
+        "triggeredProfiles",
+        "stale-writes",
+        "reviewerOutputs"
+      ],
+      "value": {
+        "reviewer-capability-output-1": {
           "partition": "response ordering",
           "obligation": {
             "id": "obligation-capability-probe-1",
@@ -69,11 +117,12 @@
             "independence": "separate-verification-context"
           },
           "artifact": {
-            "artifactId": "reviewer-capability-output-1",
             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
           },
           "analysis": {
-            "taxonomy": ["CAPABILITY_LIMITED"],
+            "taxonomy": [
+              "CAPABILITY_LIMITED"
+            ],
             "anchors": [
               {
                 "path": "src/store.ts",
@@ -108,13 +157,18 @@
             }
           }
         }
-      ]
+      }
     },
     {
       "operation": "add",
-      "path": ["triggerScan", "triggeredProfiles", "duplicate-identities", "reviewerOutputs"],
-      "value": [
-        {
+      "path": [
+        "triggerScan",
+        "triggeredProfiles",
+        "duplicate-identities",
+        "reviewerOutputs"
+      ],
+      "value": {
+        "reviewer-capability-output-2": {
           "partition": "identity ordering",
           "obligation": {
             "id": "obligation-capability-probe-2",
@@ -125,11 +179,12 @@
             "independence": "separate-verification-context"
           },
           "artifact": {
-            "artifactId": "reviewer-capability-output-2",
             "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
           },
           "analysis": {
-            "taxonomy": ["CAPABILITY_LIMITED"],
+            "taxonomy": [
+              "CAPABILITY_LIMITED"
+            ],
             "anchors": [
               {
                 "path": "src/store.ts",
@@ -164,21 +219,33 @@
             }
           }
         }
-      ]
+      }
     },
     {
       "operation": "replace",
-      "path": ["triggerScan", "challenge", "outcome"],
+      "path": [
+        "triggerScan",
+        "challenge",
+        "outcome"
+      ],
       "value": "CAPABILITY_LIMITED"
     },
     {
       "operation": "replace",
-      "path": ["triggerScan", "challenge", "mode"],
+      "path": [
+        "triggerScan",
+        "challenge",
+        "mode"
+      ],
       "value": "capability_limited"
     },
     {
       "operation": "add",
-      "path": ["triggerScan", "challenge", "limitation"],
+      "path": [
+        "triggerScan",
+        "challenge",
+        "limitation"
+      ],
       "value": {
         "kind": "CAPABILITY_LIMITED",
         "materiality": "nonmaterial",

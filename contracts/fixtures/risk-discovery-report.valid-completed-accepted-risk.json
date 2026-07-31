@@ -28,9 +28,11 @@
     "recurringDefectClusterOverlap": false,
     "triggeredProfiles": {
       "identity-duplicate": {
-        "evidence": ["The bounded identity-duplicate partition was selected for confirmation."],
-        "reviewerOutputs": [
-          {
+        "evidence": [
+          "The bounded identity-duplicate partition was selected for confirmation."
+        ],
+        "reviewerOutputs": {
+          "codex-reviewer-accepted-risk-output-001": {
             "partition": "identity duplicate",
             "obligation": {
               "id": "obligation-identity-duplicate-001",
@@ -41,11 +43,12 @@
               "independence": "separate-verification-context"
             },
             "artifact": {
-              "artifactId": "codex-reviewer-accepted-risk-output-001",
               "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
             },
             "analysis": {
-              "taxonomy": ["CONFIRMED_DEFECT"],
+              "taxonomy": [
+                "CONFIRMED_DEFECT"
+              ],
               "anchors": [
                 {
                   "path": "src/identity-map.ts",
@@ -103,7 +106,7 @@
               }
             }
           }
-        ],
+        },
         "resolution": {
           "status": "ACCEPTED_RISK",
           "detail": "The identity-duplicate partition found a material defect accepted for the bounded release.",
