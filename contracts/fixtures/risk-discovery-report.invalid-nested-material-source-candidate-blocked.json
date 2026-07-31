@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid-completed-multi-context.json",
+  "operation": "replace",
+  "path": ["triggerScan", "triggeredProfiles", "response-ordering", "reviewerOutputs", 0, "result", "findings", "finding-escalated-material-001", "disposition", "status"],
+  "value": "BLOCKED",
+  "expectedKeyword": "enum"
+}

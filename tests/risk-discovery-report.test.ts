@@ -39,6 +39,9 @@ const singleContextCompletedReport = JSON.parse(
 const completedAcceptedRiskReport = JSON.parse(
   readFileSync(join(fixtureRoot, "risk-discovery-report.valid-completed-accepted-risk.json"), "utf8"),
 ) as unknown;
+const acceptedSourceCandidateReport = JSON.parse(
+  readFileSync(join(fixtureRoot, "risk-discovery-report.valid-source-candidate-accepted-risk.json"), "utf8"),
+) as unknown;
 const ajv = new Ajv2020({ strict: true, allErrors: true });
 const validate = ajv.compile(schema);
 
@@ -112,6 +115,11 @@ describe("risk discovery report contract", () => {
     expect(validate.errors).toBeNull();
   });
 
+  test("accepts a material source candidate with an accepted-risk disposition", () => {
+    expect(validate(acceptedSourceCandidateReport)).toBe(true);
+    expect(validate.errors).toBeNull();
+  });
+
   const negativeFixtures = [
     ["risk-discovery-report.invalid-scan-bypass.json", "scan bypass"],
     ["risk-discovery-report.invalid-synthetic-boundary-no-challenge.json", "synthetic boundary challenge bypass"],
@@ -160,6 +168,8 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-profile-accepted-risk-missing-approval.json", "accepted-risk profile resolution without approval"],
     ["risk-discovery-report.invalid-profile-no-findings-foreign-approval.json", "NO_FINDINGS profile resolution with foreign approval"],
     ["risk-discovery-report.invalid-profile-promoted-foreign-approval.json", "PROMOTED profile resolution with foreign approval"],
+    ["risk-discovery-report.invalid-material-source-candidate-blocked.json", "blocked material source candidate disposition"],
+    ["risk-discovery-report.invalid-nested-material-source-candidate-blocked.json", "blocked nested material source candidate disposition"],
     ["risk-discovery-report.invalid-duplicate-material-summary.json", "duplicate material summary"],
     ["risk-discovery-report.invalid-material-finding-no-risk-id.json", "material finding without risk ID"],
     ["risk-discovery-report.invalid-nonmaterial-risk-id.json", "nonmaterial finding risk ID"],

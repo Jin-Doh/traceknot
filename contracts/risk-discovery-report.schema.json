@@ -2005,6 +2005,29 @@
         {
           "if": {
             "type": "object",
+            "required": ["kind", "materiality"],
+            "properties": {
+              "kind": { "const": "SOURCE_CANDIDATE" },
+              "materiality": { "const": "material" }
+            }
+          },
+          "then": {
+            "type": "object",
+            "required": ["disposition"],
+            "properties": {
+              "disposition": {
+                "type": "object",
+                "required": ["status"],
+                "properties": {
+                  "status": { "enum": ["PROMOTED_TO_OBLIGATION", "ACCEPTED_RISK"] }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
             "properties": {
               "materiality": { "const": "nonmaterial" }
             }
