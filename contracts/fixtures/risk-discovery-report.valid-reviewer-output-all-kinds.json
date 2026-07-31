@@ -1,0 +1,266 @@
+{
+  "schemaVersion": "risk-discovery-report/v1",
+  "requestId": "req-reviewer-all-kinds-001",
+  "snapshotId": "snap-20260731T030405Z",
+  "runtime": {
+    "host": "codex",
+    "mode": "multi-context",
+    "discoveryProfile": "codex",
+    "capabilities": {
+      "executeCommands": true,
+      "executeBrowser": false,
+      "captureArtifacts": true,
+      "bindSnapshot": true,
+      "provideIndependentEvidence": true,
+      "persistEvidence": true,
+      "approveExceptions": false,
+      "isolatedReadOnlyReview": false,
+      "enforcedStructuredOutput": true
+    },
+    "limitations": []
+  },
+  "triggerScan": {
+    "performed": true,
+    "initialRiskLevel": "R2",
+    "scopeUnknown": false,
+    "materialTrigger": true,
+    "syntheticBoundaryBypass": false,
+    "recurringDefectClusterOverlap": false,
+    "triggeredProfiles": {
+      "response-ordering": {
+        "evidence": [
+          "The bounded response-ordering partition was selected for taxonomy coverage."
+        ],
+        "reviewerOutputs": {
+          "codex-reviewer-all-kinds-output-001": {
+            "partition": "response ordering",
+            "obligation": {
+              "id": "obligation-reviewer-all-kinds-001",
+              "description": "Confirm every finding kind is represented and classified."
+            },
+            "producer": {
+              "id": "codex-reviewer-all-kinds-1",
+              "independence": "separate-verification-context"
+            },
+            "artifact": {
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "analysis": {
+              "taxonomy": [
+                "COVERAGE_GAP",
+                "SOURCE_CANDIDATE",
+                "CONFIRMED_DEFECT",
+                "POLICY_QUESTION",
+                "NOT_APPLICABLE",
+                "CAPABILITY_LIMITED",
+                "DUPLICATE_CLUSTER"
+              ],
+              "anchors": [
+                {
+                  "path": "src/store.ts",
+                  "startLine": 1,
+                  "lineCount": 1,
+                  "excerpt": "state.value"
+                }
+              ],
+              "failureMechanism": "The bounded taxonomy partition requires each emitted kind to be classified.",
+              "coverageChecked": true,
+              "confirmationProbe": "Exercise each bounded finding partition and confirm its kind classification.",
+              "uncertainty": "The taxonomy review does not establish behavior outside this partition."
+            },
+            "result": {
+              "kind": "FINDINGS",
+              "findings": {
+                "finding-coverage-gap-001": {
+                  "kind": "COVERAGE_GAP",
+                  "materiality": "nonmaterial",
+                  "details": {
+                    "summary": "A nonmaterial partition lacks a dedicated check.",
+                    "coverageGap": "The bounded partition is not directly exercised.",
+                    "coverageChecked": true
+                  },
+                  "evidence": [
+                    {
+                      "source": "src/store.ts:1",
+                      "detail": "The coverage gap was recorded during the bounded review."
+                    }
+                  ]
+                },
+                "finding-source-candidate-001": {
+                  "kind": "SOURCE_CANDIDATE",
+                  "materiality": "nonmaterial",
+                  "details": {
+                    "summary": "A source-level failure mechanism needs follow-up confirmation.",
+                    "anchors": [
+                      {
+                        "path": "src/store.ts",
+                        "startLine": 1,
+                        "lineCount": 1,
+                        "excerpt": "state.value"
+                      }
+                    ],
+                    "failureMechanism": "A delayed response may overwrite the bounded state.",
+                    "coverageChecked": true,
+                    "confirmationProbe": "Exercise delayed responses and inspect the preserved state.",
+                    "uncertainty": "Runtime behavior outside the bounded partition is unknown."
+                  },
+                  "evidence": [
+                    {
+                      "source": "src/store.ts:1",
+                      "detail": "The source candidate was recorded for bounded confirmation."
+                    }
+                  ]
+                },
+                "finding-confirmed-defect-001": {
+                  "kind": "CONFIRMED_DEFECT",
+                  "materiality": "nonmaterial",
+                  "details": {
+                    "summary": "The bounded fixture reproduces a nonmaterial deviation.",
+                    "expected": "The bounded state remains stable.",
+                    "actual": "The bounded state changes after the fixture completes.",
+                    "reproduction": "Run the deterministic bounded fixture once."
+                  },
+                  "evidence": [
+                    {
+                      "source": "tests/store.test.ts:1",
+                      "detail": "The deterministic fixture recorded the deviation."
+                    }
+                  ]
+                },
+                "finding-policy-question-001": {
+                  "kind": "POLICY_QUESTION",
+                  "materiality": "nonmaterial",
+                  "details": {
+                    "summary": "The bounded behavior needs a policy decision.",
+                    "question": "Should the bounded state preserve the first response?"
+                  },
+                  "evidence": [
+                    {
+                      "source": "policy/store.md:1",
+                      "detail": "The policy question is not resolved by the bounded review."
+                    }
+                  ]
+                },
+                "finding-not-applicable-001": {
+                  "kind": "NOT_APPLICABLE",
+                  "materiality": "nonmaterial",
+                  "details": {
+                    "summary": "The deployment-only check is outside this partition.",
+                    "reason": "No deployment behavior is exercised by the bounded review."
+                  },
+                  "evidence": [
+                    {
+                      "source": "deployment/README.md:1",
+                      "detail": "The deployment check was excluded from this partition."
+                    }
+                  ]
+                },
+                "finding-capability-limited-001": {
+                  "kind": "CAPABILITY_LIMITED",
+                  "materiality": "nonmaterial",
+                  "details": {
+                    "summary": "The bounded review cannot isolate an additional read-only reviewer.",
+                    "capability": "isolatedReadOnlyReview",
+                    "limitation": "The runtime does not advertise isolated read-only review."
+                  },
+                  "evidence": [
+                    {
+                      "source": "runtime handshake",
+                      "detail": "The isolated read-only review capability is unavailable."
+                    }
+                  ]
+                },
+                "finding-duplicate-cluster-001": {
+                  "kind": "DUPLICATE_CLUSTER",
+                  "materiality": "nonmaterial",
+                  "details": {
+                    "summary": "Two bounded observations describe the same partition.",
+                    "clusterMembers": [
+                      {
+                        "summary": "The first observation describes delayed response handling.",
+                        "evidence": [
+                          {
+                            "source": "src/store.ts:1",
+                            "detail": "The first observation references the delayed response path."
+                          }
+                        ]
+                      },
+                      {
+                        "summary": "The second observation describes the same delayed response handling.",
+                        "evidence": [
+                          {
+                            "source": "tests/store.test.ts:1",
+                            "detail": "The second observation references the same bounded behavior."
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "evidence": [
+                    {
+                      "source": "review/cluster.json",
+                      "detail": "The observations were grouped into one duplicate cluster."
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "resolution": {
+          "status": "PROMOTED",
+          "obligationId": "obligation-reviewer-all-kinds-001",
+          "detail": "The taxonomy partition was reviewed and preserved for confirmation.",
+          "evidence": [
+            {
+              "source": "codex reviewer artifact",
+              "detail": "The all-kinds reviewer output is preserved under the target snapshot."
+            }
+          ]
+        }
+      }
+    },
+    "challenge": {
+      "outcome": "COMPLETED",
+      "mode": "separate_context",
+      "evidence": [
+        {
+          "source": "codex reviewer artifact",
+          "detail": "The bounded taxonomy review completed with structured output."
+        }
+      ]
+    }
+  },
+  "findings": {
+    "finding-material-source-001": {
+      "riskId": "risk-reviewer-all-kinds",
+      "kind": "SOURCE_CANDIDATE",
+      "materiality": "material",
+      "disposition": {
+        "status": "PROMOTED_TO_OBLIGATION",
+        "obligationId": "obligation-reviewer-all-kinds-001"
+      },
+      "details": {
+        "summary": "The taxonomy review preserves a material source candidate.",
+        "anchors": [
+          {
+            "path": "src/store.ts",
+            "startLine": 1,
+            "lineCount": 1,
+            "excerpt": "state.value"
+          }
+        ],
+        "failureMechanism": "A delayed response may overwrite the bounded state.",
+        "coverageChecked": true,
+        "confirmationProbe": "Exercise delayed responses and inspect the preserved state.",
+        "uncertainty": "Runtime behavior outside the bounded partition is unknown."
+      },
+      "evidence": [
+        {
+          "source": "src/store.ts:1",
+          "detail": "The material source candidate is preserved for confirmation."
+        }
+      ]
+    }
+  }
+}

@@ -3287,7 +3287,359 @@
             }
           ]
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "FINDINGS"
+                  },
+                  "findings": {
+                    "type": "object",
+                    "not": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "not": {
+                          "type": "object",
+                          "required": [
+                            "kind"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "const": "COVERAGE_GAP"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "analysis": {
+                "type": "object",
+                "properties": {
+                  "taxonomy": {
+                    "type": "array",
+                    "contains": {
+                      "const": "COVERAGE_GAP"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "FINDINGS"
+                  },
+                  "findings": {
+                    "type": "object",
+                    "not": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "not": {
+                          "type": "object",
+                          "required": [
+                            "kind"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "const": "SOURCE_CANDIDATE"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "analysis": {
+                "type": "object",
+                "properties": {
+                  "taxonomy": {
+                    "type": "array",
+                    "contains": {
+                      "const": "SOURCE_CANDIDATE"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "FINDINGS"
+                  },
+                  "findings": {
+                    "type": "object",
+                    "not": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "not": {
+                          "type": "object",
+                          "required": [
+                            "kind"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "const": "CONFIRMED_DEFECT"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "analysis": {
+                "type": "object",
+                "properties": {
+                  "taxonomy": {
+                    "type": "array",
+                    "contains": {
+                      "const": "CONFIRMED_DEFECT"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "FINDINGS"
+                  },
+                  "findings": {
+                    "type": "object",
+                    "not": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "not": {
+                          "type": "object",
+                          "required": [
+                            "kind"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "const": "POLICY_QUESTION"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "analysis": {
+                "type": "object",
+                "properties": {
+                  "taxonomy": {
+                    "type": "array",
+                    "contains": {
+                      "const": "POLICY_QUESTION"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "FINDINGS"
+                  },
+                  "findings": {
+                    "type": "object",
+                    "not": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "not": {
+                          "type": "object",
+                          "required": [
+                            "kind"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "const": "NOT_APPLICABLE"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "analysis": {
+                "type": "object",
+                "properties": {
+                  "taxonomy": {
+                    "type": "array",
+                    "contains": {
+                      "const": "NOT_APPLICABLE"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "FINDINGS"
+                  },
+                  "findings": {
+                    "type": "object",
+                    "not": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "not": {
+                          "type": "object",
+                          "required": [
+                            "kind"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "const": "CAPABILITY_LIMITED"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "analysis": {
+                "type": "object",
+                "properties": {
+                  "taxonomy": {
+                    "type": "array",
+                    "contains": {
+                      "const": "CAPABILITY_LIMITED"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "FINDINGS"
+                  },
+                  "findings": {
+                    "type": "object",
+                    "not": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "not": {
+                          "type": "object",
+                          "required": [
+                            "kind"
+                          ],
+                          "properties": {
+                            "kind": {
+                              "const": "DUPLICATE_CLUSTER"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "analysis": {
+                "type": "object",
+                "properties": {
+                  "taxonomy": {
+                    "type": "array",
+                    "contains": {
+                      "const": "DUPLICATE_CLUSTER"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "triggeredProfile": {
       "type": "object",

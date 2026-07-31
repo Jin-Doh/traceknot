@@ -1,0 +1,8 @@
+{
+  "base": "risk-discovery-report.valid-reviewer-output-all-kinds.json",
+  "operation": "replace",
+  "path": ["triggerScan", "triggeredProfiles", "response-ordering", "reviewerOutputs", "codex-reviewer-all-kinds-output-001", "analysis", "taxonomy", 1],
+  "value": "COVERAGE_GAP",
+  "expectedKeyword": "uniqueItems",
+  "expectedInstancePath": "/triggerScan/triggeredProfiles/response-ordering/reviewerOutputs/codex-reviewer-all-kinds-output-001/analysis/taxonomy"
+}

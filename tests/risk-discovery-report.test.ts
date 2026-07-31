@@ -31,6 +31,9 @@ const completedMultiContextReport = JSON.parse(
 const completedOmpReport = JSON.parse(
   readFileSync(join(fixtureRoot, "risk-discovery-report.valid-completed-omp.json"), "utf8"),
 ) as unknown;
+const allKindsReviewerReport = JSON.parse(
+  readFileSync(join(fixtureRoot, "risk-discovery-report.valid-reviewer-output-all-kinds.json"), "utf8"),
+) as unknown;
 const capabilityLimitedReport = JSON.parse(
   readFileSync(join(fixtureRoot, "risk-discovery-report.valid-capability-limited.json"), "utf8"),
 ) as unknown;
@@ -103,6 +106,10 @@ describe("risk discovery report contract", () => {
 
   test("accepts a completed Codex multi-context report", () => {
     expect(validate(completedMultiContextReport)).toBe(true);
+    expect(validate.errors).toBeNull();
+  });
+  test("accepts reviewer findings whose taxonomy covers every emitted kind", () => {
+    expect(validate(allKindsReviewerReport)).toBe(true);
     expect(validate.errors).toBeNull();
   });
 
@@ -229,6 +236,14 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-reviewer-outputs-legacy-array.json", "legacy reviewer output array"],
     ["risk-discovery-report.invalid-reviewer-outputs-empty-key.json", "empty reviewer output artifact key"],
     ["risk-discovery-report.invalid-reviewer-output-nested-artifact-id.json", "nested reviewer artifact ID"],
+    ["risk-discovery-report.invalid-reviewer-taxonomy-missing-coverage-gap.json", "reviewer taxonomy missing COVERAGE_GAP"],
+    ["risk-discovery-report.invalid-reviewer-taxonomy-missing-source-candidate.json", "reviewer taxonomy missing SOURCE_CANDIDATE"],
+    ["risk-discovery-report.invalid-reviewer-taxonomy-missing-confirmed-defect.json", "reviewer taxonomy missing CONFIRMED_DEFECT"],
+    ["risk-discovery-report.invalid-reviewer-taxonomy-missing-policy-question.json", "reviewer taxonomy missing POLICY_QUESTION"],
+    ["risk-discovery-report.invalid-reviewer-taxonomy-missing-not-applicable.json", "reviewer taxonomy missing NOT_APPLICABLE"],
+    ["risk-discovery-report.invalid-reviewer-taxonomy-missing-capability-limited.json", "reviewer taxonomy missing CAPABILITY_LIMITED"],
+    ["risk-discovery-report.invalid-reviewer-taxonomy-missing-duplicate-cluster.json", "reviewer taxonomy missing DUPLICATE_CLUSTER"],
+    ["risk-discovery-report.invalid-reviewer-taxonomy-duplicate.json", "reviewer taxonomy duplicate item"],
     ["risk-discovery-report.invalid-codex-current-context.json", "Codex current-context completion"],
     ["risk-discovery-report.invalid-codex-completed-self-check.json", "Codex completed self-check producer"],
     ["risk-discovery-report.invalid-single-context-reviewer-independence.json", "single-context non-self-check producer"],
