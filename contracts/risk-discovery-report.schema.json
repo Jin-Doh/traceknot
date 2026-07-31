@@ -214,7 +214,7 @@
               "challenge": {
                 "type": "object",
                 "properties": {
-                  "outcome": { "const": "COMPLETED" }
+                  "outcome": { "enum": ["COMPLETED", "BLOCKED"] }
                 }
               }
             }
@@ -291,17 +291,6 @@
             "type": "object",
             "properties": {
               "mode": { "const": "single-context" }
-            }
-          },
-          "triggerScan": {
-            "type": "object",
-            "properties": {
-              "challenge": {
-                "type": "object",
-                "properties": {
-                  "mode": { "const": "current_context" }
-                }
-              }
             }
           }
         }
