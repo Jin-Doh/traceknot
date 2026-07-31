@@ -96,7 +96,7 @@ Every profile retains the universal scan, escalation criteria, finding taxonomy,
 
 ## Finding taxonomy
 
-- `COVERAGE_GAP`: a material partition has no adequate evidence. Missing coverage is not itself a defect.
+- `COVERAGE_GAP`: a scoped partition has no adequate evidence. Missing coverage is not itself a defect; materiality follows the affected partition and evidence.
 - `SOURCE_CANDIDATE`: source establishes a concrete failure mechanism, but the expected/actual runtime result has not been observed.
 - `CONFIRMED_DEFECT`: execution observed a material deviation from an established expected result.
 - `POLICY_QUESTION`: the expected behavior is not defined and needs a product decision.
