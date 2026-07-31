@@ -12,6 +12,6 @@
       }
     ]
   },
-  "expectedKeyword": "not",
-  "expectedInstancePath": "/triggerScan/triggeredProfiles/response-ordering"
+  "expectedKeyword": "false schema",
+  "expectedInstancePath": "/triggerScan/triggeredProfiles/response-ordering/resolution"
 }

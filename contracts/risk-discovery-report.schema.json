@@ -1884,13 +1884,8 @@
                 },
                 "additionalProperties": {
                   "type": "object",
-                  "not": {
-                    "required": [
-                      "resolution"
-                    ],
-                    "properties": {
-                      "resolution": true
-                    }
+                  "properties": {
+                    "resolution": false
                   }
                 }
               }

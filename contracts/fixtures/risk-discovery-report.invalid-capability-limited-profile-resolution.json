@@ -12,6 +12,6 @@
       }
     ]
   },
-  "expectedKeyword": "not",
-  "expectedInstancePath": "/triggerScan/triggeredProfiles/stale-writes"
+  "expectedKeyword": "false schema",
+  "expectedInstancePath": "/triggerScan/triggeredProfiles/stale-writes/resolution"
 }
