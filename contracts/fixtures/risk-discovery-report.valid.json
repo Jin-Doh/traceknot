@@ -59,7 +59,6 @@
   "findings": {
     "finding-coverage-001": {
       "kind": "COVERAGE_GAP",
-      "summary": "Crash recovery is not covered by an existing verification condition.",
       "materiality": "nonmaterial",
       "deferredRisk": {
         "riskId": "risk-crash-recovery",
@@ -71,13 +70,15 @@
           "detail": "The suite covers clean shutdown but not a process crash during persistence."
         }
       ],
-      "coverageGap": "No condition exercises persistence recovery after an interrupted write.",
-      "coverageChecked": true
+      "details": {
+        "summary": "Crash recovery is not covered by an existing verification condition.",
+        "coverageGap": "No condition exercises persistence recovery after an interrupted write.",
+        "coverageChecked": true
+      }
     },
     "finding-source-001": {
       "riskId": "risk-stale-write",
       "kind": "SOURCE_CANDIDATE",
-      "summary": "A stale response can overwrite a newer value.",
       "materiality": "material",
       "disposition": {
         "status": "PROMOTED_TO_OBLIGATION",
@@ -89,23 +90,25 @@
           "detail": "The response handler assigns without comparing request generations."
         }
       ],
-      "anchors": [
-        {
-          "path": "src/store.ts",
-          "startLine": 88,
-          "endLine": 94,
-          "excerpt": "state.value = response.value"
-        }
-      ],
-      "failureMechanism": "A slower earlier request can commit after a faster later request.",
-      "coverageChecked": true,
-      "confirmationProbe": "Inject two responses in reverse completion order and assert the latest request wins.",
-      "uncertainty": "The production transport may serialize responses, which has not been established."
+      "details": {
+        "summary": "A stale response can overwrite a newer value.",
+        "anchors": [
+          {
+            "path": "src/store.ts",
+            "startLine": 88,
+            "lineCount": 7,
+            "excerpt": "state.value = response.value"
+          }
+        ],
+        "failureMechanism": "A slower earlier request can commit after a faster later request.",
+        "coverageChecked": true,
+        "confirmationProbe": "Inject two responses in reverse completion order and assert the latest request wins.",
+        "uncertainty": "The production transport may serialize responses, which has not been established."
+      }
     },
     "finding-defect-001": {
       "riskId": "risk-duplicate-identity",
       "kind": "CONFIRMED_DEFECT",
-      "summary": "Duplicate keys replace one another in the identity map.",
       "materiality": "material",
       "disposition": {
         "status": "ACCEPTED_RISK",
@@ -114,7 +117,7 @@
           "reason": "Accepted for the bounded release while the follow-up patch is scheduled.",
           "scope": "Duplicate identity handling in the bounded release.",
           "mitigation": "Schedule the duplicate-key follow-up patch before the approval expires.",
-          "expiresAt": "2026-08-15T00:00:00Z",
+          "expiresAtUnixSeconds": 1786752000,
           "evidenceId": "approval-duplicate-identity-001",
           "independence": "external-approval"
         }
@@ -125,14 +128,16 @@
           "detail": "Two records with the same key leave one entry in the map."
         }
       ],
-      "expected": "Both records remain addressable by their distinct source identities.",
-      "actual": "The second record replaces the first record.",
-      "reproduction": "Create records A and B with the same external key, then query both identities."
+      "details": {
+        "summary": "Duplicate keys replace one another in the identity map.",
+        "expected": "Both records remain addressable by their distinct source identities.",
+        "actual": "The second record replaces the first record.",
+        "reproduction": "Create records A and B with the same external key, then query both identities."
+      }
     },
     "finding-policy-001": {
       "riskId": "risk-stream-policy",
       "kind": "POLICY_QUESTION",
-      "summary": "The product policy for partial stream loss is unspecified.",
       "materiality": "material",
       "disposition": {
         "status": "BLOCKED",
@@ -144,11 +149,13 @@
           "detail": "The document describes reconnect behavior but does not define data-loss tolerance."
         }
       ],
-      "question": "Should a reconnecting consumer expose a gap marker or silently continue?"
+      "details": {
+        "summary": "The product policy for partial stream loss is unspecified.",
+        "question": "Should a reconnecting consumer expose a gap marker or silently continue?"
+      }
     },
     "finding-na-001": {
       "kind": "NOT_APPLICABLE",
-      "summary": "Production deployment boundaries do not apply to this library-only change.",
       "materiality": "nonmaterial",
       "evidence": [
         {
@@ -156,11 +163,13 @@
           "detail": "No deployment manifests or runtime configuration are changed."
         }
       ],
-      "reason": "The changed files are not part of a deployable service."
+      "details": {
+        "summary": "Production deployment boundaries do not apply to this library-only change.",
+        "reason": "The changed files are not part of a deployable service."
+      }
     },
     "finding-capability-001": {
       "kind": "CAPABILITY_LIMITED",
-      "summary": "Browser-specific behavior could not be exercised.",
       "materiality": "nonmaterial",
       "deferredRisk": {
         "riskId": "risk-browser-coverage",
@@ -172,12 +181,14 @@
           "detail": "executeBrowser is false for this host."
         }
       ],
-      "capability": "executeBrowser",
-      "limitation": "No browser execution or independent browser artifact is available."
+      "details": {
+        "summary": "Browser-specific behavior could not be exercised.",
+        "capability": "executeBrowser",
+        "limitation": "No browser execution or independent browser artifact is available."
+      }
     },
     "finding-duplicate-001": {
       "kind": "DUPLICATE_CLUSTER",
-      "summary": "Two candidate findings describe the same stale-write partition.",
       "materiality": "nonmaterial",
       "evidence": [
         {
@@ -185,26 +196,29 @@
           "detail": "The candidates share the same source anchor and failure mechanism."
         }
       ],
-      "clusterMembers": [
-        {
-          "summary": "The stale-write source candidate shares the changed response handler partition.",
-          "evidence": [
-            {
-              "source": "src/store.ts:88-94",
-              "detail": "The candidate uses the same source anchor and failure mechanism."
-            }
-          ]
-        },
-        {
-          "summary": "The coverage gap concerns the same stale-write partition.",
-          "evidence": [
-            {
-              "source": "tests/recovery.test.ts",
-              "detail": "Existing coverage checks clean shutdown but not stale response ordering."
-            }
-          ]
-        }
-      ]
+      "details": {
+        "summary": "Two candidate findings describe the same stale-write partition.",
+        "clusterMembers": [
+          {
+            "summary": "The stale-write source candidate shares the changed response handler partition.",
+            "evidence": [
+              {
+                "source": "src/store.ts:88-94",
+                "detail": "The candidate uses the same source anchor and failure mechanism."
+              }
+            ]
+          },
+          {
+            "summary": "The coverage gap concerns the same stale-write partition.",
+            "evidence": [
+              {
+                "source": "tests/recovery.test.ts",
+                "detail": "Existing coverage checks clean shutdown but not stale response ordering."
+              }
+            ]
+          }
+        ]
+      }
     }
   }
 }

@@ -90,8 +90,8 @@ Every profile retains the universal scan, escalation criteria, finding taxonomy,
 - `CAPABILITY_LIMITED`: the required verification surface is unavailable from the runtime handshake.
 - `DUPLICATE_CLUSTER`: the candidate shares the root cause of an existing finding.
 
-A source candidate must include exact anchors, the failure mechanism, existing coverage checked, a confirmation probe, and uncertainty. Promote a material source candidate to a mandatory confirmation obligation; do not relabel it as a confirmed defect.
-The canonical report keys `findings` by finding ID, so the key is the sole identity and is not repeated inside the finding. Material findings carry `riskId` and a closed status-specific `disposition`; `ACCEPTED_RISK` requires a closed external `approval` containing `approvedBy`, `reason`, `scope`, `mitigation`, `expiresAt`, `evidenceId`, and `independence: external-approval`. Nonmaterial findings may carry a closed `deferredRisk` with `riskId` and `reason`. Material findings cannot carry `deferredRisk`, and the report has no separate deferred-risk summary array. Duplicate clusters carry inline `clusterMembers`, each with a summary and nonempty evidence, rather than IDs that can dangle or self-reference.
+A source candidate's `details` must include exact anchors with `path`, positive `startLine`, positive `lineCount`, and `excerpt`, plus the failure mechanism, existing coverage checked, a confirmation probe, and uncertainty. Promote a material source candidate to a mandatory confirmation obligation; do not relabel it as a confirmed defect.
+Each finding keeps kind-specific fields under required closed `details` selected by `kind`; common fields remain `riskId`, `materiality`, `disposition`, `deferredRisk`, and `evidence`. The canonical report keys `findings` by finding ID, so the key is the sole identity and is not repeated inside the finding. Material findings carry `riskId` and a closed status-specific `disposition`; `ACCEPTED_RISK` requires a closed external `approval` containing `approvedBy`, `reason`, `scope`, `mitigation`, positive `expiresAtUnixSeconds` Unix epoch seconds, `evidenceId`, and `independence: external-approval`. Nonmaterial findings may carry a closed `deferredRisk` with `riskId` and `reason`. Material findings cannot carry `deferredRisk`, and the report has no separate deferred-risk summary array. Duplicate clusters carry inline `clusterMembers`, each with a summary and nonempty evidence, rather than IDs that can dangle or self-reference.
 
 ## Stop rules
 
@@ -109,7 +109,7 @@ The host owns time, model, concurrency, retry, and agent limits. Traceknot must 
 
 - A nonmaterial deferred partition may remain reported as untested scope.
 - A material deferred risk without external approval prevents `PASS` and remains `INCOMPLETE` or `BLOCKED` according to the missing prerequisite.
-- A material deferred risk with valid, unexpired external approval yields `PASS_WITH_ACCEPTED_RISK` only after mandatory obligations pass.
+- A material deferred risk with valid, unexpired external approval (a future `expiresAtUnixSeconds` value) yields `PASS_WITH_ACCEPTED_RISK` only after mandatory obligations pass.
 - A confirmed open material defect yields `FAIL`.
 - A material source candidate that still needs confirmation keeps the related mandatory obligation incomplete.
 

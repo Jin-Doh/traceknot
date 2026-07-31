@@ -98,6 +98,11 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-deferred-summary.json", "legacy deferred summary"],
     ["risk-discovery-report.invalid-material-finding-deferred-risk.json", "material finding deferred risk"],
     ["risk-discovery-report.invalid-legacy-cluster-member-ids.json", "legacy cluster member IDs"],
+    ["risk-discovery-report.invalid-source-candidate-defect-details.json", "source candidate defect details"],
+    ["risk-discovery-report.invalid-legacy-anchor-end-line.json", "legacy anchor end line"],
+    ["risk-discovery-report.invalid-anchor-zero-line-count.json", "non-positive anchor line count"],
+    ["risk-discovery-report.invalid-legacy-approval-timestamp.json", "legacy approval timestamp"],
+    ["risk-discovery-report.invalid-impossible-approval-expiry.json", "impossible approval expiry"],
     ["risk-discovery-report.invalid-cluster-member-evidence.json", "cluster member evidence"],
   ] as const;
 

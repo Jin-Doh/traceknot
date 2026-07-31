@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "add",
+  "path": ["findings", "finding-source-001", "details", "reproduction"],
+  "value": "This defect-only field must stay inside confirmed-defect details.",
+  "expectedKeyword": "additionalProperties"
+}

@@ -1,6 +1,6 @@
 {
   "base": "risk-discovery-report.valid.json",
   "operation": "remove",
-  "path": ["findings", "finding-source-001", "confirmationProbe"],
+  "path": ["findings", "finding-source-001", "details", "confirmationProbe"],
   "expectedKeyword": "required"
 }

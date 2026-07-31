@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": ["findings", "finding-defect-001", "disposition", "approval", "expiresAtUnixSeconds"],
+  "value": 0,
+  "expectedKeyword": "minimum"
+}

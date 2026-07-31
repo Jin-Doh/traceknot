@@ -1,7 +1,7 @@
 {
   "base": "risk-discovery-report.valid.json",
   "operation": "add",
-  "path": ["findings", "finding-duplicate-001", "clusterMemberIds"],
+  "path": ["findings", "finding-duplicate-001", "details", "clusterMemberIds"],
   "value": ["finding-source-001", "finding-coverage-001"],
   "expectedKeyword": "additionalProperties"
 }

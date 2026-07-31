@@ -7,7 +7,7 @@
     "reason": "Foreign approval field.",
     "scope": "Invalid promoted disposition",
     "mitigation": "None",
-    "expiresAt": "2026-08-15T00:00:00Z",
+    "expiresAtUnixSeconds": 1786752000,
     "evidenceId": "approval-foreign-001",
     "independence": "external-approval"
   },
