@@ -1,0 +1,183 @@
+{
+  "schemaVersion": "risk-discovery-report/v1",
+  "requestId": "req-adversarial-001",
+  "snapshotId": "snap-20260731T010203Z",
+  "runtime": {
+    "host": "codex",
+    "mode": "single-context",
+    "capabilities": {
+      "executeCommands": true,
+      "executeBrowser": false,
+      "captureArtifacts": true,
+      "bindSnapshot": true,
+      "provideIndependentEvidence": false,
+      "persistEvidence": true,
+      "approveExceptions": false
+    },
+    "limitations": [
+      "No browser session is available in this runtime.",
+      "A second independent evidence producer is unavailable."
+    ]
+  },
+  "triggerScan": {
+    "performed": true,
+    "initialRiskLevel": "R1",
+    "scopeUnknown": false,
+    "triggeredProfiles": [
+      {
+        "profileId": "stale-writes",
+        "evidence": [
+          "The change updates a write path that can receive delayed responses."
+        ]
+      },
+      {
+        "profileId": "duplicate-identities",
+        "evidence": [
+          "The changed index derives identity from a user-controlled key."
+        ]
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "finding-coverage-001",
+      "kind": "COVERAGE_GAP",
+      "summary": "Crash recovery is not covered by an existing verification condition.",
+      "materiality": "nonmaterial",
+      "evidence": [
+        {
+          "source": "tests/recovery.test.ts",
+          "detail": "The suite covers clean shutdown but not a process crash during persistence."
+        }
+      ],
+      "coverageGap": "No condition exercises persistence recovery after an interrupted write.",
+      "coverageChecked": true
+    },
+    {
+      "id": "finding-source-001",
+      "kind": "SOURCE_CANDIDATE",
+      "summary": "A stale response can overwrite a newer value.",
+      "materiality": "material",
+      "evidence": [
+        {
+          "source": "src/store.ts:88-94",
+          "detail": "The response handler assigns without comparing request generations."
+        }
+      ],
+      "anchors": [
+        {
+          "path": "src/store.ts",
+          "startLine": 88,
+          "endLine": 94,
+          "excerpt": "state.value = response.value"
+        }
+      ],
+      "failureMechanism": "A slower earlier request can commit after a faster later request.",
+      "coverageChecked": true,
+      "confirmationProbe": "Inject two responses in reverse completion order and assert the latest request wins.",
+      "uncertainty": "The production transport may serialize responses, which has not been established."
+    },
+    {
+      "id": "finding-defect-001",
+      "kind": "CONFIRMED_DEFECT",
+      "summary": "Duplicate keys replace one another in the identity map.",
+      "materiality": "material",
+      "evidence": [
+        {
+          "source": "artifacts/duplicate-key-reproduction.txt",
+          "detail": "Two records with the same key leave one entry in the map."
+        }
+      ],
+      "expected": "Both records remain addressable by their distinct source identities.",
+      "actual": "The second record replaces the first record.",
+      "reproduction": "Create records A and B with the same external key, then query both identities."
+    },
+    {
+      "id": "finding-policy-001",
+      "kind": "POLICY_QUESTION",
+      "summary": "The product policy for partial stream loss is unspecified.",
+      "materiality": "material",
+      "evidence": [
+        {
+          "source": "docs/streaming.md",
+          "detail": "The document describes reconnect behavior but does not define data-loss tolerance."
+        }
+      ],
+      "question": "Should a reconnecting consumer expose a gap marker or silently continue?"
+    },
+    {
+      "id": "finding-na-001",
+      "kind": "NOT_APPLICABLE",
+      "summary": "Production deployment boundaries do not apply to this library-only change.",
+      "materiality": "nonmaterial",
+      "evidence": [
+        {
+          "source": "request scope",
+          "detail": "No deployment manifests or runtime configuration are changed."
+        }
+      ],
+      "reason": "The changed files are not part of a deployable service."
+    },
+    {
+      "id": "finding-capability-001",
+      "kind": "CAPABILITY_LIMITED",
+      "summary": "Browser-specific behavior could not be exercised.",
+      "materiality": "nonmaterial",
+      "evidence": [
+        {
+          "source": "runtime handshake",
+          "detail": "executeBrowser is false for this host."
+        }
+      ],
+      "capability": "executeBrowser",
+      "limitation": "No browser execution or independent browser artifact is available."
+    },
+    {
+      "id": "finding-duplicate-001",
+      "kind": "DUPLICATE_CLUSTER",
+      "summary": "Two candidate findings describe the same stale-write partition.",
+      "materiality": "nonmaterial",
+      "evidence": [
+        {
+          "source": "triage notes",
+          "detail": "The candidates share the same source anchor and failure mechanism."
+        }
+      ],
+      "clusterMemberIds": ["finding-source-001", "finding-coverage-001"]
+    }
+  ],
+  "unresolvedMaterialRisks": [
+    {
+      "riskId": "risk-stale-write",
+      "findingId": "finding-source-001",
+      "disposition": "PROMOTED_TO_OBLIGATION",
+      "obligationId": "obligation-stale-write-probe"
+    },
+    {
+      "riskId": "risk-duplicate-identity",
+      "findingId": "finding-defect-001",
+      "disposition": "ACCEPTED_RISK",
+      "owner": "release-owner@example.test",
+      "expiry": "2026-08-15T00:00:00Z",
+      "acceptance": "Accepted for the bounded release while the follow-up patch is scheduled."
+    },
+    {
+      "riskId": "risk-stream-policy",
+      "findingId": "finding-policy-001",
+      "disposition": "BLOCKED",
+      "blocker": "Product owner decision is required before a completion condition can be written."
+    }
+  ],
+  "deferredNonmaterialRisks": [
+    {
+      "riskId": "risk-crash-recovery",
+      "findingId": "finding-coverage-001",
+      "reason": "Crash recovery is outside this change's nonmaterial scope and is queued for a later pass."
+    },
+    {
+      "riskId": "risk-browser-coverage",
+      "findingId": "finding-capability-001",
+      "reason": "Browser coverage is deferred until a runtime with executeBrowser is available."
+    }
+  ]
+}

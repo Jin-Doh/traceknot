@@ -1,0 +1,7 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": ["unresolvedMaterialRisks", 0, "disposition"],
+  "value": "UNRESOLVED",
+  "expectedKeyword": "enum"
+}

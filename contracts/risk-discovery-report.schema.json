@@ -1,0 +1,320 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/risk-discovery-report.v1.json",
+  "title": "Traceknot bounded risk discovery report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requestId",
+    "snapshotId",
+    "runtime",
+    "triggerScan",
+    "findings",
+    "unresolvedMaterialRisks",
+    "deferredNonmaterialRisks"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "risk-discovery-report/v1" },
+    "requestId": { "type": "string", "minLength": 1 },
+    "snapshotId": { "type": "string", "minLength": 1 },
+    "runtime": { "$ref": "#/$defs/runtime" },
+    "triggerScan": { "$ref": "#/$defs/triggerScan" },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "unresolvedMaterialRisks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/unresolvedMaterialRisk" }
+    },
+    "deferredNonmaterialRisks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/deferredNonmaterialRisk" }
+    }
+  },
+  "$defs": {
+    "capabilityName": {
+      "enum": [
+        "executeCommands",
+        "executeBrowser",
+        "captureArtifacts",
+        "bindSnapshot",
+        "provideIndependentEvidence",
+        "persistEvidence",
+        "approveExceptions"
+      ]
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host", "mode", "capabilities", "limitations"],
+      "properties": {
+        "host": { "type": "string", "minLength": 1 },
+        "mode": { "enum": ["single-context", "multi-context"] },
+        "capabilities": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "executeCommands",
+            "executeBrowser",
+            "captureArtifacts",
+            "bindSnapshot",
+            "provideIndependentEvidence",
+            "persistEvidence",
+            "approveExceptions"
+          ],
+          "properties": {
+            "executeCommands": { "type": "boolean" },
+            "executeBrowser": { "type": "boolean" },
+            "captureArtifacts": { "type": "boolean" },
+            "bindSnapshot": { "type": "boolean" },
+            "provideIndependentEvidence": { "type": "boolean" },
+            "persistEvidence": { "type": "boolean" },
+            "approveExceptions": { "type": "boolean" }
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "triggerScan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["performed", "initialRiskLevel", "scopeUnknown", "triggeredProfiles"],
+      "properties": {
+        "performed": { "const": true },
+        "initialRiskLevel": { "enum": ["R0", "R1", "R2", "R3"] },
+        "scopeUnknown": { "type": "boolean" },
+        "triggeredProfiles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/triggeredProfile" }
+        }
+      }
+    },
+    "triggeredProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profileId", "evidence"],
+      "properties": {
+        "profileId": { "type": "string", "minLength": 1 },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "detail"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "startLine", "endLine", "excerpt"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "startLine": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 },
+        "excerpt": { "type": "string", "minLength": 1 }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "summary", "materiality", "evidence"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": {
+          "enum": [
+            "COVERAGE_GAP",
+            "SOURCE_CANDIDATE",
+            "CONFIRMED_DEFECT",
+            "POLICY_QUESTION",
+            "NOT_APPLICABLE",
+            "CAPABILITY_LIMITED",
+            "DUPLICATE_CLUSTER"
+          ]
+        },
+        "summary": { "type": "string", "minLength": 1 },
+        "materiality": { "enum": ["material", "nonmaterial"] },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/evidence" }
+        },
+        "anchors": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/anchor" }
+        },
+        "failureMechanism": { "type": "string", "minLength": 1 },
+        "coverageChecked": { "const": true },
+        "confirmationProbe": { "type": "string", "minLength": 1 },
+        "uncertainty": { "type": "string", "minLength": 1 },
+        "expected": { "type": "string", "minLength": 1 },
+        "actual": { "type": "string", "minLength": 1 },
+        "reproduction": { "type": "string", "minLength": 1 },
+        "coverageGap": { "type": "string", "minLength": 1 },
+        "question": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "capability": { "$ref": "#/$defs/capabilityName" },
+        "limitation": { "type": "string", "minLength": 1 },
+        "clusterMemberIds": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "COVERAGE_GAP" } } },
+          "then": {
+            "required": ["coverageGap", "coverageChecked"],
+            "properties": {
+              "coverageGap": { "type": "string", "minLength": 1 },
+              "coverageChecked": { "const": true }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "SOURCE_CANDIDATE" } } },
+          "then": {
+            "required": ["anchors", "failureMechanism", "coverageChecked", "confirmationProbe", "uncertainty"],
+            "properties": {
+              "anchors": { "$ref": "#/$defs/finding/properties/anchors" },
+              "failureMechanism": { "type": "string", "minLength": 1 },
+              "coverageChecked": { "const": true },
+              "confirmationProbe": { "type": "string", "minLength": 1 },
+              "uncertainty": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "CONFIRMED_DEFECT" } } },
+          "then": {
+            "required": ["expected", "actual", "reproduction"],
+            "properties": {
+              "expected": { "type": "string", "minLength": 1 },
+              "actual": { "type": "string", "minLength": 1 },
+              "reproduction": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "POLICY_QUESTION" } } },
+          "then": {
+            "required": ["question"],
+            "properties": {
+              "question": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "NOT_APPLICABLE" } } },
+          "then": {
+            "required": ["reason"],
+            "properties": {
+              "reason": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "CAPABILITY_LIMITED" } } },
+          "then": {
+            "required": ["capability", "limitation"],
+            "properties": {
+              "capability": { "$ref": "#/$defs/capabilityName" },
+              "limitation": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "DUPLICATE_CLUSTER" } } },
+          "then": {
+            "required": ["clusterMemberIds"],
+            "properties": {
+              "clusterMemberIds": {
+                "type": "array",
+                "minItems": 2,
+                "items": { "type": "string", "minLength": 1 },
+                "uniqueItems": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    "unresolvedMaterialRisk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["riskId", "findingId", "disposition"],
+      "properties": {
+        "riskId": { "type": "string", "minLength": 1 },
+        "findingId": { "type": "string", "minLength": 1 },
+        "disposition": {
+          "enum": ["PROMOTED_TO_OBLIGATION", "ACCEPTED_RISK", "BLOCKED"]
+        },
+        "obligationId": { "type": "string", "minLength": 1 },
+        "owner": { "type": "string", "minLength": 1 },
+        "expiry": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
+        },
+        "acceptance": { "type": "string", "minLength": 1 },
+        "blocker": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "disposition": { "const": "PROMOTED_TO_OBLIGATION" } } },
+          "then": {
+            "required": ["obligationId"],
+            "properties": { "obligationId": { "type": "string", "minLength": 1 } }
+          }
+        },
+        {
+          "if": { "properties": { "disposition": { "const": "ACCEPTED_RISK" } } },
+          "then": {
+            "required": ["owner", "expiry", "acceptance"],
+            "properties": {
+              "owner": { "type": "string", "minLength": 1 },
+              "expiry": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
+              },
+              "acceptance": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "disposition": { "const": "BLOCKED" } } },
+          "then": {
+            "required": ["blocker"],
+            "properties": { "blocker": { "type": "string", "minLength": 1 } }
+          }
+        }
+      ]
+    },
+    "deferredNonmaterialRisk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["riskId", "findingId", "reason"],
+      "properties": {
+        "riskId": { "type": "string", "minLength": 1 },
+        "findingId": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
