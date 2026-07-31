@@ -26,6 +26,14 @@ Coding-agent harnesses already orchestrate agents, tools, jobs, retries, and lif
 
 Traceknot supplies the missing test-process layer: traceability from basis through verdict, explicit evidence and independence requirements, defect and residual-risk handling, and deterministic verdict precedence. Each verdict remains linked to its declared evidence; lifecycle events are observations, not proof of verification.
 
+## Declared-risk blind spot and bounded discovery
+
+Risk classification is a hypothesis, not proof that the risk universe is complete. A change can appear `R0` or `R1` while a changed contract, boundary, or synthetic test fixture hides a material partition. The portable Skill therefore performs a cheap **universal trigger scan on every R0–R3 run**, after the test basis is assembled and before final product-risk classification. An initial low-risk label never exempts a change.
+
+The scan records only triggered profiles and whether material scope remains unknown. It escalates to a bounded adversarial challenge only when the surface is `R2`/`R3`, a material security, persistence, concurrency, irreversible-write, public-contract, compatibility, or deployment trigger is found, scope is unknown, evidence bypasses the changed contract through mocks or synthetic fixtures, or a recurring defect cluster is involved. A trigger-free `R0`/`R1` run may stop after recording the scan. This is a portable-process requirement, not exhaustive testing or an instruction to create agents.
+
+Findings retain distinct meanings: `COVERAGE_GAP` is missing evidence, not a defect; `SOURCE_CANDIDATE` is a source-level failure mechanism awaiting runtime confirmation; `CONFIRMED_DEFECT` is an observed deviation; `POLICY_QUESTION`, `NOT_APPLICABLE`, `CAPABILITY_LIMITED`, and `DUPLICATE_CLUSTER` record other dispositions. Material source candidates become confirmation obligations rather than being relabeled as defects.
+
 ## Status
 
 | Surface | Status |
@@ -38,6 +46,8 @@ Traceknot supplies the missing test-process layer: traceability from basis throu
 | Native OMP/Codex/Claude/OpenCode integration | Not implemented |
 | Phase B completion enforcement | Not authorized; `phase1Authorized: false` |
 | User-local installer and uninstaller | Implemented; registry release and public CLI are not implemented |
+| Portable bounded adversarial discovery | Implemented in Skill; universal scan required, bounded challenge only on escalation triggers |
+| Snapshot-bound discovery report (`risk-discovery-report/v1`) | Optional; schema-validated when produced |
 
 The portable Skill and host-neutral core are usable now. Authoritative harness completion remains an explicitly separate integration project.
 
@@ -143,8 +153,10 @@ Pass `--prefix DIR`, set `TRACEKNOT_PREFIX="$DIR"`, and repeat the active-update
 flowchart LR
     U[User request and repository change] --> H[Harness]
     H --> S[Portable Skill]
-    S --> B[Test basis and product risk]
-    B --> P[Test conditions and verification plan]
+    S --> B[Test basis and initial risk hypothesis]
+    B --> D[Universal trigger scan and bounded discovery]
+    D --> R[Final product-risk classification]
+    R --> P[Test conditions and verification plan]
     P --> X{Core available?}
     X -->|No| E[Evidence-only execution and report]
     X -->|Yes| C[Host-neutral QA core]
@@ -172,6 +184,7 @@ flowchart TB
 
     subgraph TK[Owned by Traceknot]
       QB[Test basis and risks]
+      QX[Adversarial discovery process]
       QP[Test conditions and obligations]
       QE[Evidence requirements]
       QD[Defects and accepted risk]
@@ -182,22 +195,27 @@ flowchart TB
     TK -->|returns QA verdict, never agent instructions| Harness
 ```
 
-Traceknot specifies evidence requirements and minimum independence. It never instructs a harness to create a particular subagent, use a particular model, or apply a particular concurrency policy.
+Traceknot specifies the discovery process, evidence requirements, and minimum independence. The portable Skill requires the scan, any triggered challenge, and completion-report disclosure, but the host-neutral v1 core does not enforce that process or spawn reviewers. Native `verification-plan/v1` and `qa-verdict/v1` callers may omit discovery; that is outside portable Skill compliance and must not be represented as completed discovery.
+
+Execution uses one portable workflow with a runtime-selected profile. Single-context is the fallback when no independent capability is advertised and cannot satisfy an `independent-producer` obligation by itself. OMP may use at most three scoped read-only reviewers only after a capability handshake proves isolation, snapshot binding, persistence, and structured output; Codex may use independently bounded slices only when those capabilities are advertised. Reviewer outputs are structured, snapshot-bound, and preserved; lifecycle events and timeouts are observations, not evidence. Host/model/lifecycle names do not grant capability, and Traceknot never requires automatic subagent orchestration or a fixed reviewer count.
 
 ## QA process
 
 ```mermaid
 flowchart LR
-    A[Test basis] --> B[Product risk]
-    B --> C[Test conditions]
-    C --> D[Test techniques]
-    D --> E[Mandatory obligations]
-    E --> F[Entry criteria]
-    F --> G[Execution and evidence]
-    G --> H[Defects and regression]
-    H --> I[Exit criteria]
-    I --> J[Residual risk]
-    J --> K[QA verdict]
+    A[Test basis] --> B[Initial risk hypothesis]
+    B --> C[Universal trigger scan]
+    C --> D[Bounded challenge when triggered]
+    D --> E[Final risk classification]
+    E --> F[Test conditions]
+    F --> G[Test techniques]
+    G --> H[Mandatory obligations]
+    H --> I[Entry criteria]
+    I --> J[Execution and evidence]
+    J --> K[Defects and regression]
+    K --> L[Exit criteria]
+    L --> M[Residual risk]
+    M --> N[QA verdict]
 ```
 
 The Skill applies seven foundational testing principles:
@@ -233,6 +251,7 @@ FAIL → BLOCKED → INCOMPLETE → PASS_WITH_ACCEPTED_RISK → PASS
 ```
 
 The host-neutral core always emits `authoritative: false`. Only a separately integrated completion-authority extension could make a harness-level authority claim.
+Discovery changes the disposition of risk, not the deterministic precedence: deferred nonmaterial scope may remain reported; a material deferred risk without valid acceptance prevents `PASS` and remains `INCOMPLETE` or `BLOCKED`; valid, unexpired acceptance can yield `PASS_WITH_ACCEPTED_RISK` only after mandatory obligations pass; an open confirmed material defect yields `FAIL`; and a source candidate awaiting confirmation keeps its obligation incomplete.
 
 ## Repository layout
 
@@ -245,19 +264,25 @@ The host-neutral core always emits `authoritative: false`. Only a separately int
 ├── skill/
 │   ├── SKILL.md
 │   └── references/
+│       └── adversarial-risk-discovery.md
 ├── contracts/
 │   ├── capability.schema.json
 │   ├── verification-request.schema.json
 │   ├── verification-plan.schema.json
 │   ├── evidence.schema.json
 │   ├── defect.schema.json
-│   └── verdict.schema.json
+│   ├── verdict.schema.json
+│   ├── risk-discovery-report.schema.json
+│   └── fixtures/
+│       └── risk-discovery-report.*.json
 ├── adapters/
 │   ├── omp/
 │   ├── codex/
 │   ├── claude-code/
 │   ├── opencode/
 │   └── gajae-code/
+├── tests/
+│   └── risk-discovery-report.test.ts
 └── system/
     ├── core/
     │   ├── qa-core.ts
@@ -269,9 +294,9 @@ The host-neutral core always emits `authoritative: false`. Only a separately int
 
 ### `skill/`
 
-The portable, host-neutral workflow. It covers test basis, risk analysis, test design, entry and exit criteria, evidence, defect lifecycle, traceability, residual risk, and completion reporting.
+The portable, host-neutral workflow. It covers test basis, initial and final risk classification, universal trigger scanning, bounded adversarial discovery, test design, entry and exit criteria, evidence, defect lifecycle, traceability, residual risk, and completion reporting.
 
-Start with [skill/SKILL.md](skill/SKILL.md). Detailed guidance is in [skill/references](skill/references/).
+Start with [skill/SKILL.md](skill/SKILL.md). Detailed guidance, including the discovery profiles, is in [skill/references](skill/references/).
 
 ### `contracts/`
 
@@ -282,7 +307,8 @@ Closed JSON Schema Draft 2020-12 records shared by a Skill, harness adapter, cor
 - verification plan;
 - evidence;
 - defect;
-- QA verdict.
+- QA verdict;
+- optional snapshot-bound risk-discovery report (`risk-discovery-report/v1`), validated when produced.
 
 Host names grant no capability. A runtime handshake must advertise and prove each capability.
 
@@ -292,7 +318,7 @@ Conservative capability manifests for supported harness names. All default capab
 
 ### `system/core/`
 
-A host-neutral TypeScript verdict resolver. It rejects duplicate obligation results, cross-snapshot evidence, insufficient producer independence, missing evidence identifiers, incomplete traceability coverage, open material defects, and expired risk acceptance.
+A host-neutral TypeScript verdict resolver. It rejects duplicate obligation results, cross-snapshot evidence, insufficient producer independence, missing evidence identifiers, incomplete traceability coverage, open material defects, and expired risk acceptance. It does not enforce the portable discovery scan, require a discovery record, or orchestrate reviewers.
 
 ### Completion-authority extension
 
@@ -308,14 +334,19 @@ The expected workflow is:
 
 1. identify the target snapshot and change scope;
 2. collect explicit and derived test-basis items;
-3. classify product risk;
-4. derive observable test conditions and expected results;
-5. select test techniques and mandatory obligations;
-6. verify entry criteria;
-7. let the harness execute checks under its own orchestration policy;
-8. capture evidence and defects;
-9. evaluate coverage, exit criteria, and residual risk;
-10. issue a QA verdict separately from harness completion.
+3. record an initial risk hypothesis;
+4. perform the universal trigger scan;
+5. run a bounded challenge only when escalation criteria are met;
+6. finalize product-risk classification and promote material candidates into confirmation obligations;
+7. derive observable test conditions and expected results;
+8. select test techniques and mandatory obligations;
+9. verify entry criteria;
+10. let the harness execute checks under its own orchestration policy;
+11. capture evidence and defects;
+12. evaluate coverage, exit criteria, residual risk, and deferred scope;
+13. issue a QA verdict separately from harness completion.
+
+Existing `verification-plan/v1` and `qa-verdict/v1` users gain this portable workflow without migrating existing records. The standalone structured discovery report is optional; when emitted, it must validate against `contracts/risk-discovery-report.schema.json`. This compatibility does not add native v1 enforcement: callers may omit discovery, and omission must be disclosed rather than represented as completed.
 
 ## Developing the core
 
