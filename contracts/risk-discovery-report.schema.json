@@ -1904,12 +1904,16 @@
         "type": "object",
         "properties": {
           "triggerScan": {
+            "type": "object",
             "properties": {
               "challenge": {
+              "type": "object",
                 "properties": {
                   "limitation": {
+                "type": "object",
                     "properties": {
                       "details": {
+                  "type": "object",
                         "properties": {
                           "capability": {
                             "const": "executeCommands"
@@ -1925,13 +1929,18 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "triggerScan": {
+          "type": "object",
             "properties": {
               "triggeredProfiles": {
+            "type": "object",
                 "additionalProperties": {
+              "type": "object",
                   "properties": {
                     "blockingCapabilities": {
+                "type": "array",
                       "contains": {
                         "const": "executeCommands"
                       }
@@ -1949,12 +1958,16 @@
         "type": "object",
         "properties": {
           "triggerScan": {
+            "type": "object",
             "properties": {
               "challenge": {
+              "type": "object",
                 "properties": {
                   "limitation": {
+                "type": "object",
                     "properties": {
                       "details": {
+                  "type": "object",
                         "properties": {
                           "capability": {
                             "const": "executeBrowser"
@@ -1970,13 +1983,18 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "triggerScan": {
+          "type": "object",
             "properties": {
               "triggeredProfiles": {
+            "type": "object",
                 "additionalProperties": {
+              "type": "object",
                   "properties": {
                     "blockingCapabilities": {
+                "type": "array",
                       "contains": {
                         "const": "executeBrowser"
                       }
@@ -1994,12 +2012,16 @@
         "type": "object",
         "properties": {
           "triggerScan": {
+            "type": "object",
             "properties": {
               "challenge": {
+              "type": "object",
                 "properties": {
                   "limitation": {
+                "type": "object",
                     "properties": {
                       "details": {
+                  "type": "object",
                         "properties": {
                           "capability": {
                             "const": "captureArtifacts"
@@ -2015,13 +2037,18 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "triggerScan": {
+          "type": "object",
             "properties": {
               "triggeredProfiles": {
+            "type": "object",
                 "additionalProperties": {
+              "type": "object",
                   "properties": {
                     "blockingCapabilities": {
+                "type": "array",
                       "contains": {
                         "const": "captureArtifacts"
                       }
@@ -2039,12 +2066,16 @@
         "type": "object",
         "properties": {
           "triggerScan": {
+            "type": "object",
             "properties": {
               "challenge": {
+              "type": "object",
                 "properties": {
                   "limitation": {
+                "type": "object",
                     "properties": {
                       "details": {
+                  "type": "object",
                         "properties": {
                           "capability": {
                             "const": "bindSnapshot"
@@ -2060,13 +2091,18 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "triggerScan": {
+          "type": "object",
             "properties": {
               "triggeredProfiles": {
+            "type": "object",
                 "additionalProperties": {
+              "type": "object",
                   "properties": {
                     "blockingCapabilities": {
+                "type": "array",
                       "contains": {
                         "const": "bindSnapshot"
                       }
@@ -2084,12 +2120,16 @@
         "type": "object",
         "properties": {
           "triggerScan": {
+            "type": "object",
             "properties": {
               "challenge": {
+              "type": "object",
                 "properties": {
                   "limitation": {
+                "type": "object",
                     "properties": {
                       "details": {
+                  "type": "object",
                         "properties": {
                           "capability": {
                             "const": "provideIndependentEvidence"
@@ -2105,13 +2145,18 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "triggerScan": {
+          "type": "object",
             "properties": {
               "triggeredProfiles": {
+            "type": "object",
                 "additionalProperties": {
+              "type": "object",
                   "properties": {
                     "blockingCapabilities": {
+                "type": "array",
                       "contains": {
                         "const": "provideIndependentEvidence"
                       }
@@ -2129,12 +2174,16 @@
         "type": "object",
         "properties": {
           "triggerScan": {
+            "type": "object",
             "properties": {
               "challenge": {
+              "type": "object",
                 "properties": {
                   "limitation": {
+                "type": "object",
                     "properties": {
                       "details": {
+                  "type": "object",
                         "properties": {
                           "capability": {
                             "const": "persistEvidence"
@@ -2150,13 +2199,18 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "triggerScan": {
+          "type": "object",
             "properties": {
               "triggeredProfiles": {
+            "type": "object",
                 "additionalProperties": {
+              "type": "object",
                   "properties": {
                     "blockingCapabilities": {
+                "type": "array",
                       "contains": {
                         "const": "persistEvidence"
                       }
@@ -2174,12 +2228,16 @@
         "type": "object",
         "properties": {
           "triggerScan": {
+            "type": "object",
             "properties": {
               "challenge": {
+              "type": "object",
                 "properties": {
                   "limitation": {
+                "type": "object",
                     "properties": {
                       "details": {
+                  "type": "object",
                         "properties": {
                           "capability": {
                             "const": "approveExceptions"
@@ -2195,13 +2253,18 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "triggerScan": {
+          "type": "object",
             "properties": {
               "triggeredProfiles": {
+            "type": "object",
                 "additionalProperties": {
+              "type": "object",
                   "properties": {
                     "blockingCapabilities": {
+                "type": "array",
                       "contains": {
                         "const": "approveExceptions"
                       }
@@ -2219,12 +2282,16 @@
         "type": "object",
         "properties": {
           "triggerScan": {
+            "type": "object",
             "properties": {
               "challenge": {
+              "type": "object",
                 "properties": {
                   "limitation": {
+                "type": "object",
                     "properties": {
                       "details": {
+                  "type": "object",
                         "properties": {
                           "capability": {
                             "const": "isolatedReadOnlyReview"
@@ -2240,13 +2307,18 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "triggerScan": {
+          "type": "object",
             "properties": {
               "triggeredProfiles": {
+            "type": "object",
                 "additionalProperties": {
+              "type": "object",
                   "properties": {
                     "blockingCapabilities": {
+                "type": "array",
                       "contains": {
                         "const": "isolatedReadOnlyReview"
                       }
@@ -2264,12 +2336,16 @@
         "type": "object",
         "properties": {
           "triggerScan": {
+            "type": "object",
             "properties": {
               "challenge": {
+              "type": "object",
                 "properties": {
                   "limitation": {
+                "type": "object",
                     "properties": {
                       "details": {
+                  "type": "object",
                         "properties": {
                           "capability": {
                             "const": "enforcedStructuredOutput"
@@ -2285,13 +2361,18 @@
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "triggerScan": {
+          "type": "object",
             "properties": {
               "triggeredProfiles": {
+            "type": "object",
                 "additionalProperties": {
+              "type": "object",
                   "properties": {
                     "blockingCapabilities": {
+                "type": "array",
                       "contains": {
                         "const": "enforcedStructuredOutput"
                       }
