@@ -75,8 +75,9 @@
             "type": "object",
             "properties": {
               "triggeredProfiles": {
-                "type": "array",
-                "items": {
+                "type": "object",
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
@@ -115,8 +116,9 @@
             "type": "object",
             "properties": {
               "triggeredProfiles": {
-                "type": "array",
-                "items": {
+                "type": "object",
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
@@ -124,6 +126,44 @@
                       "items": { "$ref": "#/$defs/reviewerOutputNoIndependentProducer" }
                     }
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "runtime": {
+            "type": "object",
+            "properties": {
+              "capabilities": {
+                "type": "object",
+                "anyOf": [
+                  { "properties": { "captureArtifacts": { "const": false } } },
+                  { "properties": { "bindSnapshot": { "const": false } } },
+                  { "properties": { "persistEvidence": { "const": false } } }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "object",
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": {
+                  "type": "object",
+                  "not": { "required": ["reviewerOutputs"] }
                 }
               }
             }
@@ -333,8 +373,9 @@
             "type": "object",
             "properties": {
               "triggeredProfiles": {
-                "type": "array",
-                "items": {
+                "type": "object",
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
@@ -379,9 +420,10 @@
             "type": "object",
             "properties": {
               "triggeredProfiles": {
-                "type": "array",
-                "minItems": 1,
-                "items": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": {
                   "type": "object",
                   "required": ["reviewerOutputs"],
                   "properties": {
@@ -442,8 +484,9 @@
             "type": "object",
             "properties": {
               "triggeredProfiles": {
-                "type": "array",
-                "items": {
+                "type": "object",
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
@@ -519,8 +562,9 @@
             "type": "object",
             "properties": {
               "triggeredProfiles": {
-                "type": "array",
-                "items": {
+                "type": "object",
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
@@ -596,8 +640,9 @@
             "type": "object",
             "properties": {
               "triggeredProfiles": {
-                "type": "array",
-                "items": {
+                "type": "object",
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
@@ -673,8 +718,9 @@
             "type": "object",
             "properties": {
               "triggeredProfiles": {
-                "type": "array",
-                "items": {
+                "type": "object",
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
@@ -750,8 +796,9 @@
             "type": "object",
             "properties": {
               "triggeredProfiles": {
-                "type": "array",
-                "items": {
+                "type": "object",
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
@@ -827,8 +874,9 @@
             "type": "object",
             "properties": {
               "triggeredProfiles": {
-                "type": "array",
-                "items": {
+                "type": "object",
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
@@ -904,8 +952,9 @@
             "type": "object",
             "properties": {
               "triggeredProfiles": {
-                "type": "array",
-                "items": {
+                "type": "object",
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
@@ -981,8 +1030,9 @@
             "type": "object",
             "properties": {
               "triggeredProfiles": {
-                "type": "array",
-                "items": {
+                "type": "object",
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
@@ -1058,8 +1108,9 @@
             "type": "object",
             "properties": {
               "triggeredProfiles": {
-                "type": "array",
-                "items": {
+                "type": "object",
+                "propertyNames": { "type": "string", "minLength": 1 },
+                "additionalProperties": {
                   "type": "object",
                   "properties": {
                     "reviewerOutputs": {
@@ -1362,6 +1413,7 @@
                 "type": "object",
                 "properties": {
                   "bindSnapshot": { "const": true },
+                  "captureArtifacts": { "const": true },
                   "persistEvidence": { "const": true },
                   "isolatedReadOnlyReview": { "const": true },
                   "enforcedStructuredOutput": { "const": true }
@@ -1408,8 +1460,9 @@
         "syntheticBoundaryBypass": { "type": "boolean" },
         "recurringDefectClusterOverlap": { "type": "boolean" },
         "triggeredProfiles": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/triggeredProfile" }
+          "type": "object",
+          "propertyNames": { "type": "string", "minLength": 1 },
+          "additionalProperties": { "$ref": "#/$defs/triggeredProfile" }
         },
         "challenge": { "$ref": "#/$defs/challenge" }
       },
@@ -1421,25 +1474,16 @@
               { "type": "object", "properties": { "scopeUnknown": { "const": true } } },
               { "type": "object", "properties": { "materialTrigger": { "const": true } } },
               { "type": "object", "properties": { "syntheticBoundaryBypass": { "const": true } } },
-              { "type": "object", "properties": { "recurringDefectClusterOverlap": { "const": true } } },
-              {
-                "type": "object",
-                "properties": {
-                  "triggeredProfiles": {
-                    "type": "array",
-                    "contains": {
-                      "type": "object",
-                      "required": ["material"],
-                      "properties": { "material": { "const": true } }
-                    }
-                  }
-                }
-              }
+              { "type": "object", "properties": { "recurringDefectClusterOverlap": { "const": true } } }
             ]
           },
           "then": {
             "type": "object",
             "properties": {
+              "triggeredProfiles": {
+                "type": "object",
+                "minProperties": 1
+              },
               "challenge": {
                 "type": "object",
                 "properties": {
@@ -1532,10 +1576,8 @@
     "triggeredProfile": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["profileId", "material", "evidence"],
+      "required": ["evidence"],
       "properties": {
-        "profileId": { "type": "string", "minLength": 1 },
-        "material": { "type": "boolean" },
         "evidence": {
           "type": "array",
           "minItems": 1,

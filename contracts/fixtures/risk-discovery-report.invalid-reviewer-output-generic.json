@@ -57,7 +57,7 @@
     },
     {
       "operation": "add",
-      "path": ["triggerScan", "triggeredProfiles", 0, "reviewerOutputs"],
+      "path": ["triggerScan", "triggeredProfiles", "stale-writes", "reviewerOutputs"],
       "value": [
         {
           "partition": "response ordering",
@@ -96,7 +96,7 @@
     },
     {
       "operation": "add",
-      "path": ["triggerScan", "triggeredProfiles", 1, "reviewerOutputs"],
+      "path": ["triggerScan", "triggeredProfiles", "duplicate-identities", "reviewerOutputs"],
       "value": [
         {
           "partition": "response ordering",

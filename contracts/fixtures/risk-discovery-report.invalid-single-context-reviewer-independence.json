@@ -1,7 +1,7 @@
 {
   "base": "risk-discovery-report.valid.json",
   "operation": "add",
-  "path": ["triggerScan", "triggeredProfiles", 0, "reviewerOutputs"],
+  "path": ["triggerScan", "triggeredProfiles", "stale-writes", "reviewerOutputs"],
   "value": [
     {
       "partition": "response ordering",

@@ -29,22 +29,18 @@
     "materialTrigger": false,
     "syntheticBoundaryBypass": false,
     "recurringDefectClusterOverlap": false,
-    "triggeredProfiles": [
-      {
-        "profileId": "stale-writes",
-        "material": false,
+    "triggeredProfiles": {
+      "stale-writes": {
         "evidence": [
           "The change updates a write path that can receive delayed responses."
         ]
       },
-      {
-        "profileId": "duplicate-identities",
-        "material": false,
+      "duplicate-identities": {
         "evidence": [
           "The changed index derives identity from a user-controlled key."
         ]
       }
-    ],
+    },
     "challenge": {
       "outcome": "NOT_REQUIRED",
       "mode": "current_context",

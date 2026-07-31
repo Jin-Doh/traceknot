@@ -26,10 +26,8 @@
     "materialTrigger": false,
     "syntheticBoundaryBypass": false,
     "recurringDefectClusterOverlap": false,
-    "triggeredProfiles": [
-      {
-        "profileId": "response-ordering",
-        "material": false,
+    "triggeredProfiles": {
+      "response-ordering": {
         "evidence": ["The bounded response-ordering partition was selected for confirmation."],
         "reviewerOutputs": [
           {
@@ -67,7 +65,7 @@
           }
         ]
       }
-    ],
+    },
     "challenge": {
       "outcome": "COMPLETED",
       "mode": "separate_context",

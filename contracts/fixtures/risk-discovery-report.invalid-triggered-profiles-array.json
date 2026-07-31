@@ -1,0 +1,11 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": ["triggerScan", "triggeredProfiles"],
+  "value": [
+    {
+      "evidence": ["Legacy positional profile payload."]
+    }
+  ],
+  "expectedKeyword": "type"
+}

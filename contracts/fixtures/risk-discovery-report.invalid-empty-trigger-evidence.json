@@ -1,7 +1,7 @@
 {
   "base": "risk-discovery-report.valid.json",
   "operation": "replace",
-  "path": ["triggerScan", "triggeredProfiles", 0, "evidence"],
+  "path": ["triggerScan", "triggeredProfiles", "stale-writes", "evidence"],
   "value": [],
   "expectedKeyword": "minItems"
 }
