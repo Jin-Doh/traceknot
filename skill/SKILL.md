@@ -37,7 +37,7 @@ See `references/test-process.md`.
 
 Perform the universal cheap trigger scan in `references/adversarial-risk-discovery.md` before finalizing product-risk classification. Every QA run records the scan, including an initially classified `R0` or `R1` change. A lower initial classification never exempts a material trigger.
 
-Escalate to a bounded adversarial challenge for `R2` or `R3`, a material trigger, unknown scope, synthetic evidence that bypasses the changed contract, or an affected defect cluster. Use only runtime-advertised capabilities. Multi-agent execution is optional; a separate or current-context challenge remains valid when its independence limit is reported.
+Escalate to a bounded adversarial challenge for `R2` or `R3`, a material trigger, unknown scope, synthetic evidence that bypasses the changed contract, or an affected defect cluster. Use only runtime-advertised capabilities and select `single-context`, `omp`, or `codex` execution guidance only from the capability handshake; see `references/adversarial-risk-discovery.md`. Multi-agent execution is optional; a separate or current-context challenge remains valid when its independence limit is reported.
 
 Distinguish coverage gaps, source candidates, confirmed defects, policy questions, non-applicable profiles, capability limits, and duplicate clusters. Promote material source candidates to confirmation obligations rather than calling unexecuted source reasoning a confirmed defect.
 
@@ -140,4 +140,4 @@ The Skill never:
 
 ## Optional system integration
 
-The sibling `../system/core/` validates canonical QA records and resolves deterministic QA verdicts. `../system/extensions/harness-completion-authority/` contains optional lifecycle, quiescence, lease, receipt, and terminal-authority contracts for hosts that explicitly integrate them. Ordinary Skill use does not require or activate that extension.
+The sibling `../system/core/` validates canonical QA records and resolves deterministic QA verdicts. `../system/extensions/harness-completion-authority/` contains optional lifecycle, quiescence, lease, receipt, and terminal-authority contracts for hosts that explicitly integrate them. Ordinary Skill use does not require or activate that extension. Existing deterministic v1 callers can technically omit discovery because the v1 contracts do not enforce it; such runs are outside portable Skill compliance and must disclose the omission rather than claim discovery completed. This does not change `verification-plan/v1`, `qa-verdict/v1`, or deterministic core semantics.

@@ -52,6 +52,34 @@ A trigger-free `R0` or `R1` change may stop after recording the scan. Lowering t
 
 Use a separate verification context when the runtime exposes one and the risk justifies it. Multi-agent execution is optional. The single-context fallback repeats the challenge from change facts and test basis without treating the implementer's conclusion as evidence.
 
+## Execution profiles
+
+The portable workflow is identical in every runtime. Select an execution profile only from the runtime capability handshake. `host=omp`, `host=codex`, a model name, or a lifecycle event alone selects no profile or capability. A runtime may use the `single-context` profile even when it advertises a host label. These profiles are bounded execution guidance, not a new obligation or a fixed reviewer-count protocol.
+
+### Single-context profile
+
+Use this profile when no independent context or producer is advertised, when artifact persistence is unavailable, or when the host chooses not to fan out. Perform the cheap scan and one bounded challenge in the current context, selecting only triggered profiles and stopping under the universal stop rules. Keep change facts, source reasoning, observed evidence, and inference distinct. Record `challenge_mode: current_context` and the independence limit.
+
+A single-context challenge does not satisfy an obligation requiring `independent-producer`; the implementer's conclusion is not independent evidence. Report the missing capability as `CAPABILITY_LIMITED` and leave the affected mandatory obligation `BLOCKED`, or satisfy it with another advertised evidence mechanism. A single-context run may still discover candidates and promote confirmation obligations.
+
+### OMP profile
+
+Use this profile only when OMP's capability handshake advertises the needed isolated read-only reviewer, snapshot binding, artifact persistence, and structured-output capabilities. Perform one triage pass in the current context first. Then, only for triggered material partitions, use at most three scoped read-only reviewers as bounded guidance. Give each reviewer one explicit slice; no reviewer may spawn another reviewer. This cap is OMP profile guidance, not a portable reviewer-count requirement, and no reviewer fan-out is required for a trigger-free `R0` or `R1` change.
+
+Require strict structured output from each reviewer (canonical JSON or the host's equivalent record, never free-form completion prose). At minimum, bind the target snapshot, triggered profile, partition, taxonomy, exact source anchors, failure mechanism, existing coverage checked, confirmation probe, uncertainty, and artifact references. Preserve every complete reviewer output, including a negative or no-finding output, as an artifact; do not reduce it to a completion status or discard it after summarization. If the handshake does not provide the required isolation, snapshot or artifact binding, or structured output, use the single-context profile or report `CAPABILITY_LIMITED`.
+
+OMP agent or job completion, timeout, cancellation, retry, and other lifecycle events are observations about execution only. They are never evidence of coverage, independence, or a finding. A timed-out or partial reviewer produces no evidence; report the missing output and apply the stop and residual-risk rules.
+
+### Codex profile
+
+Use this profile only when the capability handshake advertises independently bounded contexts or slices and the snapshot and artifact bindings needed by the challenge. When those capabilities are available, the host may use independent bounded slices, each limited to one triggered profile or partition, an immutable target snapshot, and the exact structured-output contract. Do not fan out merely because Codex can create another turn or context.
+
+Apply full-history and context-ownership cautions. A new turn, thread, model session, or worktree that receives the implementer's full history, shares mutable context or a worktree, or has the same producer is not automatically independent. Avoid passing the full implementation history when independence is required; if it is passed or ownership is unclear, downgrade the independence claim and report the limitation. Model identity, model version, and model name never establish producer independence.
+
+Preserve each bounded-slice artifact and bind it to the target snapshot, triggered profile, and obligation. If independently bounded slices are not advertised or cannot be preserved, use the single-context profile and record `challenge_mode: current_context`; do not represent the fallback as independent review. Codex lifecycle and timeout events have the same non-evidence status as in the OMP profile.
+
+Every profile retains the universal scan, escalation criteria, finding taxonomy, source-candidate confirmation obligation, stop rules, trust boundary, and completion-report disclosure. The profile describes how a challenge is run; it does not change what counts as evidence or how a QA verdict is resolved.
+
 ## Finding taxonomy
 
 - `COVERAGE_GAP`: a material partition has no adequate evidence. Missing coverage is not itself a defect.
@@ -84,7 +112,7 @@ The host owns time, model, concurrency, retry, and agent limits. Traceknot must 
 - A confirmed open material defect yields `FAIL`.
 - A material source candidate that still needs confirmation keeps the related mandatory obligation incomplete.
 
-The portable Skill requires this discovery activity and completion-report disclosure. The optional canonical discovery record validates its shape when produced. The current v1 deterministic core does not prove that native callers cannot omit discovery; native enforcement requires a separate runtime integration.
+The portable Skill requires this discovery activity and completion-report disclosure, but the existing deterministic v1 core does not enforce it: native v1 callers can omit the scan or discovery record. Such omission is outside portable Skill compliance and must be disclosed rather than represented as completed discovery. The optional canonical discovery record validates its shape when produced; native enforcement requires a separate runtime integration, and `verification-plan/v1`, `qa-verdict/v1`, and deterministic verdict semantics remain unchanged.
 
 ## Capability and trust boundaries
 
