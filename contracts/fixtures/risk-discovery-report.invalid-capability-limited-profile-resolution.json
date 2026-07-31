@@ -13,5 +13,5 @@
     ]
   },
   "expectedKeyword": "not",
-  "expectedInstancePath": "/triggerScan/triggeredProfiles/stale-writes/resolution"
+  "expectedInstancePath": "/triggerScan/triggeredProfiles/stale-writes"
 }

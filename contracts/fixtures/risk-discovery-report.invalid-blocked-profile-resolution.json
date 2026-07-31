@@ -34,5 +34,5 @@
     }
   ],
   "expectedKeyword": "not",
-  "expectedInstancePath": "/triggerScan/triggeredProfiles/response-ordering/resolution"
+  "expectedInstancePath": "/triggerScan/triggeredProfiles/response-ordering"
 }
