@@ -27,6 +27,9 @@ const validReport = JSON.parse(
 const completedMultiContextReport = JSON.parse(
   readFileSync(join(fixtureRoot, "risk-discovery-report.valid-completed-multi-context.json"), "utf8"),
 ) as unknown;
+const capabilityLimitedReport = JSON.parse(
+  readFileSync(join(fixtureRoot, "risk-discovery-report.valid-capability-limited.json"), "utf8"),
+) as unknown;
 const ajv = new Ajv2020({ strict: true, allErrors: true });
 const validate = ajv.compile(schema);
 
@@ -63,16 +66,6 @@ function applyMutation(value: unknown, mutation: Mutation): unknown {
   return mutated;
 }
 
-function replaceCapabilityName(value: unknown, capabilityName: string): unknown {
-  if (value === "executeBrowser") return capabilityName;
-  if (Array.isArray(value)) return value.map((entry) => replaceCapabilityName(entry, capabilityName));
-  if (typeof value === "object" && value !== null) {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [key, replaceCapabilityName(entry, capabilityName)]),
-    );
-  }
-  return value;
-}
 
 function loadBaseReport(base: string): unknown {
   if (base === "risk-discovery-report.valid.json") return validReport;
@@ -87,6 +80,11 @@ describe("risk discovery report contract", () => {
 
   test("accepts a completed Codex multi-context report", () => {
     expect(validate(completedMultiContextReport)).toBe(true);
+    expect(validate.errors).toBeNull();
+  });
+
+  test("accepts a capability-limited report with an inline limitation", () => {
+    expect(validate(capabilityLimitedReport)).toBe(true);
     expect(validate.errors).toBeNull();
   });
 
@@ -121,6 +119,9 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-separate-context-single-context.json", "single-context separate challenge contradiction"],
     ["risk-discovery-report.invalid-completed-capability-limited.json", "completed capability-limited contradiction"],
     ["risk-discovery-report.invalid-capability-limited-current-context.json", "capability-limited current-context contradiction"],
+    ["risk-discovery-report.invalid-not-required-capability-limited.json", "NOT_REQUIRED capability-limited mode contradiction"],
+    ["risk-discovery-report.invalid-capability-limited-missing-limitation.json", "missing capability-limited limitation"],
+    ["risk-discovery-report.invalid-non-capability-challenge-limitation.json", "limitation on non-capability outcome"],
     ["risk-discovery-report.invalid-duplicate-material-summary.json", "duplicate material summary"],
     ["risk-discovery-report.invalid-material-finding-no-risk-id.json", "material finding without risk ID"],
     ["risk-discovery-report.invalid-nonmaterial-risk-id.json", "nonmaterial finding risk ID"],
@@ -143,6 +144,7 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-codex-completed-self-check.json", "Codex completed self-check producer"],
     ["risk-discovery-report.invalid-single-context-reviewer-independence.json", "single-context non-self-check producer"],
     ["risk-discovery-report.invalid-independent-producer-without-capability.json", "independent producer without capability"],
+    ["risk-discovery-report.invalid-advertised-capability-limited.json", "advertised capability limitation"],
   ] as const;
 
   for (const [fileName, description] of negativeFixtures) {
@@ -178,24 +180,27 @@ describe("risk discovery report contract", () => {
     "isolatedReadOnlyReview",
     "enforcedStructuredOutput",
   ] as const;
-  const capabilityFixture = JSON.parse(
-    readFileSync(join(fixtureRoot, "risk-discovery-report.invalid-advertised-capability-limited.json"), "utf8"),
-  ) as Mutation;
-
   for (const capabilityName of capabilityNames) {
-    test(`rejects capability-limited finding when ${capabilityName} is advertised`, () => {
-      const operations = (capabilityFixture.operations ?? []).map((operation, index) =>
-        index === 0
-          ? {
-              ...operation,
-              path: ["runtime", "capabilities", capabilityName],
-              value: true,
-            }
-          : { ...operation, value: replaceCapabilityName(operation.value, capabilityName) },
-      );
-      const mutated = applyMutation(validReport, { ...capabilityFixture, operations });
+    test(`rejects an inline limitation when ${capabilityName} is advertised`, () => {
+      const operations: MutationOperation[] = capabilityNames.map((name) => ({
+        operation: "replace",
+        path: ["runtime", "capabilities", name],
+        value: true,
+      }));
+      operations.push({
+        operation: "replace",
+        path: ["triggerScan", "challenge", "limitation", "details", "capability"],
+        value: capabilityName,
+      });
+      const mutated = applyMutation(capabilityLimitedReport, {
+        base: "risk-discovery-report.valid-capability-limited.json",
+        operation: operations[0],
+        expectedKeyword: "not",
+        operations,
+      });
       expect(validate(mutated)).toBe(false);
-      expect(validate.errors?.some((error) => error.keyword === capabilityFixture.expectedKeyword)).toBe(true);
+      expect(validate.errors?.some((error) => error.keyword === "not")).toBe(true);
     });
   }
+
 });

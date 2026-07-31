@@ -1,0 +1,18 @@
+{
+  "base": "risk-discovery-report.valid-capability-limited.json",
+  "operation": "replace",
+  "path": ["triggerScan", "challenge", "outcome"],
+  "value": "NOT_REQUIRED",
+  "operations": [
+    {
+      "operation": "replace",
+      "path": ["triggerScan", "challenge", "outcome"],
+      "value": "NOT_REQUIRED"
+    },
+    {
+      "operation": "remove",
+      "path": ["triggerScan", "challenge", "limitation"]
+    }
+  ],
+  "expectedKeyword": "const"
+}
