@@ -1910,7 +1910,11 @@
             }
           },
           "then": {
-            "required": ["approval"]
+            "type": "object",
+            "required": ["approval"],
+            "properties": {
+              "approval": { "$ref": "#/$defs/approval" }
+            }
           }
         },
         {
@@ -1922,7 +1926,11 @@
           },
           "then": {
             "not": {
-              "required": ["approval"]
+              "type": "object",
+              "required": ["approval"],
+              "properties": {
+                "approval": { "$ref": "#/$defs/approval" }
+              }
             }
           }
         }
