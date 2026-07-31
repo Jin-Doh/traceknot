@@ -1,0 +1,188 @@
+{
+  "schemaVersion": "risk-discovery-report/v1",
+  "requestId": "req-completed-accepted-risk-001",
+  "snapshotId": "snap-20260731T030405Z",
+  "runtime": {
+    "host": "codex",
+    "mode": "multi-context",
+    "discoveryProfile": "codex",
+    "capabilities": {
+      "executeCommands": true,
+      "executeBrowser": false,
+      "captureArtifacts": true,
+      "bindSnapshot": true,
+      "provideIndependentEvidence": true,
+      "persistEvidence": true,
+      "approveExceptions": false,
+      "isolatedReadOnlyReview": false,
+      "enforcedStructuredOutput": true
+    },
+    "limitations": []
+  },
+  "triggerScan": {
+    "performed": true,
+    "initialRiskLevel": "R2",
+    "scopeUnknown": false,
+    "materialTrigger": false,
+    "syntheticBoundaryBypass": false,
+    "recurringDefectClusterOverlap": false,
+    "triggeredProfiles": {
+      "identity-duplicate": {
+        "evidence": ["The bounded identity-duplicate partition was selected for confirmation."],
+        "reviewerOutputs": [
+          {
+            "partition": "identity duplicate",
+            "obligation": {
+              "id": "obligation-identity-duplicate-001",
+              "description": "Confirm the bounded identity-duplicate partition remains understood and accepted."
+            },
+            "producer": {
+              "id": "codex-reviewer-accepted-risk-1",
+              "independence": "separate-verification-context"
+            },
+            "artifact": {
+              "artifactId": "codex-reviewer-accepted-risk-output-001",
+              "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "analysis": {
+              "taxonomy": ["CONFIRMED_DEFECT"],
+              "anchors": [
+                {
+                  "path": "src/identity-map.ts",
+                  "startLine": 12,
+                  "lineCount": 4,
+                  "excerpt": "identityMap.set(externalKey, record)"
+                }
+              ],
+              "failureMechanism": "Duplicate external keys replace one another in the identity map.",
+              "coverageChecked": true,
+              "confirmationProbe": "Create records A and B with the same external key, then query both identities.",
+              "uncertainty": "The accepted-risk mitigation remains bounded to this release snapshot."
+            },
+            "result": {
+              "kind": "FINDINGS",
+              "findings": {
+                "finding-accepted-material-001": {
+                  "riskId": "risk-accepted-material",
+                  "kind": "CONFIRMED_DEFECT",
+                  "materiality": "material",
+                  "disposition": {
+                    "status": "ACCEPTED_RISK",
+                    "approval": {
+                      "approvedBy": "release-approval@example.test",
+                      "accountableOwner": "release-owner@example.test",
+                      "reason": "Accepted for the bounded release while the follow-up patch is scheduled.",
+                      "scope": "Duplicate identity handling in the bounded release.",
+                      "mitigation": "Schedule the duplicate-key follow-up patch before the approval expires.",
+                      "expiresAtUnixSeconds": 1786752000,
+                      "evidence": {
+                        "id": "approval-accepted-material-001",
+                        "source": "release approval",
+                        "detail": "The approval artifact records the accepted-risk decision for the bounded release.",
+                        "artifact": {
+                          "id": "approval-artifact-accepted-material-001",
+                          "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                        }
+                      },
+                      "independence": "external-approval"
+                    }
+                  },
+                  "evidence": [
+                    {
+                      "source": "artifacts/accepted-material-reproduction.txt",
+                      "detail": "Two records with the same external key leave one entry in the identity map."
+                    }
+                  ],
+                  "details": {
+                    "summary": "Duplicate external keys replace one another in the identity map.",
+                    "expected": "Both records remain addressable by their distinct source identities.",
+                    "actual": "The second record replaces the first record.",
+                    "reproduction": "Create records A and B with the same external key, then query both identities."
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "resolution": {
+          "status": "ACCEPTED_RISK",
+          "detail": "The identity-duplicate partition found a material defect accepted for the bounded release.",
+          "evidence": [
+            {
+              "source": "codex reviewer artifact",
+              "detail": "The preserved reviewer output records finding-accepted-material-001 with an external accepted-risk approval."
+            }
+          ],
+          "approval": {
+            "approvedBy": "release-approval@example.test",
+            "accountableOwner": "release-owner@example.test",
+            "reason": "Accepted for the bounded release while the follow-up patch is scheduled.",
+            "scope": "Duplicate identity handling in the bounded release.",
+            "mitigation": "Schedule the duplicate-key follow-up patch before the approval expires.",
+            "expiresAtUnixSeconds": 1786752000,
+            "evidence": {
+              "id": "approval-accepted-material-001",
+              "source": "release approval",
+              "detail": "The approval artifact records the accepted-risk decision for the bounded release.",
+              "artifact": {
+                "id": "approval-artifact-accepted-material-001",
+                "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+              }
+            },
+            "independence": "external-approval"
+          }
+        }
+      }
+    },
+    "challenge": {
+      "outcome": "COMPLETED",
+      "mode": "separate_context",
+      "evidence": [
+        {
+          "source": "codex reviewer artifact",
+          "detail": "The bounded multi-context review completed with preserved structured output and accepted-risk evidence."
+        }
+      ]
+    }
+  },
+  "findings": {
+    "finding-accepted-material-001": {
+      "riskId": "risk-accepted-material",
+      "kind": "CONFIRMED_DEFECT",
+      "materiality": "material",
+      "disposition": {
+        "status": "ACCEPTED_RISK",
+        "approval": {
+          "approvedBy": "release-approval@example.test",
+          "accountableOwner": "release-owner@example.test",
+          "reason": "Accepted for the bounded release while the follow-up patch is scheduled.",
+          "scope": "Duplicate identity handling in the bounded release.",
+          "mitigation": "Schedule the duplicate-key follow-up patch before the approval expires.",
+          "expiresAtUnixSeconds": 1786752000,
+          "evidence": {
+            "id": "approval-accepted-material-001",
+            "source": "release approval",
+            "detail": "The approval artifact records the accepted-risk decision for the bounded release.",
+            "artifact": {
+              "id": "approval-artifact-accepted-material-001",
+              "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            }
+          },
+          "independence": "external-approval"
+        }
+      },
+      "evidence": [
+        {
+          "source": "artifacts/accepted-material-reproduction.txt",
+          "detail": "Two records with the same external key leave one entry in the identity map."
+        }
+      ],
+      "details": {
+        "summary": "Duplicate external keys replace one another in the identity map.",
+        "expected": "Both records remain addressable by their distinct source identities.",
+        "actual": "The second record replaces the first record.",
+        "reproduction": "Create records A and B with the same external key, then query both identities."
+      }
+    }
+  }
+}

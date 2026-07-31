@@ -1898,8 +1898,35 @@
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/evidence" }
+        },
+        "approval": { "$ref": "#/$defs/approval" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "status": { "const": "ACCEPTED_RISK" }
+            }
+          },
+          "then": {
+            "required": ["approval"]
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "status": { "enum": ["NO_FINDINGS", "PROMOTED"] }
+            }
+          },
+          "then": {
+            "not": {
+              "required": ["approval"]
+            }
+          }
         }
-      }
+      ]
     },
     "evidence": {
       "type": "object",

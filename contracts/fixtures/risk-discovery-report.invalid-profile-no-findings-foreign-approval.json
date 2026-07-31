@@ -1,0 +1,24 @@
+{
+  "base": "risk-discovery-report.valid-completed-multi-context.json",
+  "operation": "add",
+  "path": ["triggerScan", "triggeredProfiles", "response-ordering", "resolution", "approval"],
+  "value": {
+    "approvedBy": "foreign-approval@example.test",
+    "accountableOwner": "foreign-owner@example.test",
+    "reason": "A profile without an accepted risk must not carry approval.",
+    "scope": "Foreign profile resolution approval.",
+    "mitigation": "None.",
+    "expiresAtUnixSeconds": 1786752000,
+    "evidence": {
+      "id": "approval-foreign-profile-no-findings-001",
+      "source": "foreign approval",
+      "detail": "This approval is invalid on a NO_FINDINGS profile resolution.",
+      "artifact": {
+        "id": "approval-artifact-foreign-profile-no-findings-001",
+        "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    },
+    "independence": "external-approval"
+  },
+  "expectedKeyword": "not"
+}

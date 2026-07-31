@@ -36,6 +36,9 @@ const nonmaterialNotRequiredReport = JSON.parse(
 const singleContextCompletedReport = JSON.parse(
   readFileSync(join(fixtureRoot, "risk-discovery-report.valid-single-context-completed.json"), "utf8"),
 ) as unknown;
+const completedAcceptedRiskReport = JSON.parse(
+  readFileSync(join(fixtureRoot, "risk-discovery-report.valid-completed-accepted-risk.json"), "utf8"),
+) as unknown;
 const ajv = new Ajv2020({ strict: true, allErrors: true });
 const validate = ajv.compile(schema);
 
@@ -104,6 +107,11 @@ describe("risk discovery report contract", () => {
     expect(validate.errors).toBeNull();
   });
 
+  test("accepts a completed profile with an accepted-risk resolution", () => {
+    expect(validate(completedAcceptedRiskReport)).toBe(true);
+    expect(validate.errors).toBeNull();
+  });
+
   const negativeFixtures = [
     ["risk-discovery-report.invalid-scan-bypass.json", "scan bypass"],
     ["risk-discovery-report.invalid-synthetic-boundary-no-challenge.json", "synthetic boundary challenge bypass"],
@@ -149,6 +157,9 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-completed-resolution-empty-evidence.json", "empty completed profile resolution evidence"],
     ["risk-discovery-report.invalid-completed-resolution-blocked-status.json", "blocked completed profile resolution"],
     ["risk-discovery-report.invalid-completed-resolution-capability-status.json", "capability-limited completed profile resolution"],
+    ["risk-discovery-report.invalid-profile-accepted-risk-missing-approval.json", "accepted-risk profile resolution without approval"],
+    ["risk-discovery-report.invalid-profile-no-findings-foreign-approval.json", "NO_FINDINGS profile resolution with foreign approval"],
+    ["risk-discovery-report.invalid-profile-promoted-foreign-approval.json", "PROMOTED profile resolution with foreign approval"],
     ["risk-discovery-report.invalid-duplicate-material-summary.json", "duplicate material summary"],
     ["risk-discovery-report.invalid-material-finding-no-risk-id.json", "material finding without risk ID"],
     ["risk-discovery-report.invalid-nonmaterial-risk-id.json", "nonmaterial finding risk ID"],

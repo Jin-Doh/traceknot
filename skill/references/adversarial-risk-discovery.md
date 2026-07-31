@@ -78,7 +78,7 @@ Require strict structured output from each reviewer (`enforcedStructuredOutput`,
 
 `triggeredProfiles` is a closed object keyed by nonempty profile ID; each value carries evidence and optional reviewer outputs, and the key is the profile identity. The root `materialTrigger` flag is the sole material-trigger authority; profile values do not carry a duplicate `material` field.
 
-When `challenge.outcome: COMPLETED`, every keyed `triggeredProfile` carries a closed `resolution` with nonempty `detail` and canonical evidence. Its status is `NO_FINDINGS`, `PROMOTED`, or `ACCEPTED_RISK`; it is a profile-level summary and must not duplicate findings. Agreement between a profile resolution, reviewer outputs, and aggregate findings remains a semantic boundary.
+When `challenge.outcome: COMPLETED`, every keyed `triggeredProfile` carries a closed `resolution` with nonempty `detail` and canonical evidence. Its status is `NO_FINDINGS`, `PROMOTED`, or `ACCEPTED_RISK`; it is a profile-level summary and must not duplicate findings. An `ACCEPTED_RISK` resolution additionally requires the same closed external `approval` contract as a material disposition, while `NO_FINDINGS` and `PROMOTED` resolutions forbid approval. Approval authority, scope, expiry, artifact integrity, and agreement between the profile resolution, reviewer outputs, and aggregate findings remain semantic boundaries.
 
 The closed common `analysis` object on every reviewer output contains a nonempty unique `taxonomy` drawn from the seven finding kinds, nonempty `anchors` using the canonical `anchor` shape, a nonempty `failureMechanism`, `coverageChecked: true`, a nonempty `confirmationProbe`, and a nonempty `uncertainty`.
 
