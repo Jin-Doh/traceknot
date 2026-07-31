@@ -5,6 +5,7 @@
   "runtime": {
     "host": "codex",
     "mode": "single-context",
+    "discoveryProfile": "single-context",
     "capabilities": {
       "executeCommands": true,
       "executeBrowser": false,
@@ -12,7 +13,9 @@
       "bindSnapshot": true,
       "provideIndependentEvidence": false,
       "persistEvidence": true,
-      "approveExceptions": false
+      "approveExceptions": false,
+      "isolatedReadOnlyReview": false,
+      "enforcedStructuredOutput": false
     },
     "limitations": [
       "No browser session is available in this runtime.",
@@ -24,6 +27,8 @@
     "initialRiskLevel": "R1",
     "scopeUnknown": false,
     "materialTrigger": false,
+    "syntheticBoundaryBypass": false,
+    "recurringDefectClusterOverlap": false,
     "triggeredProfiles": [
       {
         "profileId": "stale-writes",
@@ -68,6 +73,7 @@
     },
     {
       "id": "finding-source-001",
+      "riskId": "risk-stale-write",
       "kind": "SOURCE_CANDIDATE",
       "summary": "A stale response can overwrite a newer value.",
       "materiality": "material",
@@ -96,6 +102,7 @@
     },
     {
       "id": "finding-defect-001",
+      "riskId": "risk-duplicate-identity",
       "kind": "CONFIRMED_DEFECT",
       "summary": "Duplicate keys replace one another in the identity map.",
       "materiality": "material",
@@ -117,6 +124,7 @@
     },
     {
       "id": "finding-policy-001",
+      "riskId": "risk-stream-policy",
       "kind": "POLICY_QUESTION",
       "summary": "The product policy for partial stream loss is unspecified.",
       "materiality": "material",
@@ -171,28 +179,6 @@
         }
       ],
       "clusterMemberIds": ["finding-source-001", "finding-coverage-001"]
-    }
-  ],
-  "unresolvedMaterialRisks": [
-    {
-      "riskId": "risk-stale-write",
-      "findingId": "finding-source-001",
-      "disposition": "PROMOTED_TO_OBLIGATION",
-      "obligationId": "obligation-stale-write-probe"
-    },
-    {
-      "riskId": "risk-duplicate-identity",
-      "findingId": "finding-defect-001",
-      "disposition": "ACCEPTED_RISK",
-      "owner": "release-owner@example.test",
-      "expiry": "2026-08-15T00:00:00Z",
-      "acceptance": "Accepted for the bounded release while the follow-up patch is scheduled."
-    },
-    {
-      "riskId": "risk-stream-policy",
-      "findingId": "finding-policy-001",
-      "disposition": "BLOCKED",
-      "blocker": "Product owner decision is required before a completion condition can be written."
     }
   ],
   "deferredNonmaterialRisks": [

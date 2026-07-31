@@ -20,7 +20,9 @@
         "bindSnapshot": { "type": "boolean" },
         "provideIndependentEvidence": { "type": "boolean" },
         "persistEvidence": { "type": "boolean" },
-        "approveExceptions": { "type": "boolean" }
+        "approveExceptions": { "type": "boolean" },
+        "isolatedReadOnlyReview": { "type": "boolean" },
+        "enforcedStructuredOutput": { "type": "boolean" }
       }
     },
     "limitations": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }

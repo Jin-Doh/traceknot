@@ -59,6 +59,8 @@ describe("risk discovery report contract", () => {
 
   const negativeFixtures = [
     ["risk-discovery-report.invalid-scan-bypass.json", "scan bypass"],
+    ["risk-discovery-report.invalid-synthetic-boundary-no-challenge.json", "synthetic boundary challenge bypass"],
+    ["risk-discovery-report.invalid-recurring-cluster-no-challenge.json", "recurring defect cluster challenge bypass"],
     ["risk-discovery-report.invalid-source-candidate.json", "incomplete source candidate"],
     ["risk-discovery-report.invalid-unaccepted-material-risk.json", "unaccepted material risk"],
     ["risk-discovery-report.invalid-deleted-material-disposition.json", "deleted material finding disposition"],
@@ -69,6 +71,12 @@ describe("risk discovery report contract", () => {
     ["risk-discovery-report.invalid-unknown-scope-no-challenge.json", "unknown scope challenge bypass"],
     ["risk-discovery-report.invalid-material-trigger-no-challenge.json", "material trigger challenge bypass"],
     ["risk-discovery-report.invalid-material-profile-no-challenge.json", "material profile challenge bypass"],
+    ["risk-discovery-report.invalid-omp-profile-missing-capability.json", "OMP profile capability bypass"],
+    ["risk-discovery-report.invalid-separate-context-single-context.json", "single-context separate challenge contradiction"],
+    ["risk-discovery-report.invalid-completed-capability-limited.json", "completed capability-limited contradiction"],
+    ["risk-discovery-report.invalid-capability-limited-current-context.json", "capability-limited current-context contradiction"],
+    ["risk-discovery-report.invalid-duplicate-material-summary.json", "duplicate material summary"],
+    ["risk-discovery-report.invalid-material-finding-no-risk-id.json", "material finding without risk ID"],
   ] as const;
 
   for (const [fileName, description] of negativeFixtures) {

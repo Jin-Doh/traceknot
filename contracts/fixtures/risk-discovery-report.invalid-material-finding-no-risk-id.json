@@ -1,6 +1,6 @@
 {
   "base": "risk-discovery-report.valid.json",
   "operation": "remove",
-  "path": ["findings", 2, "disposition", "acceptance"],
+  "path": ["findings", 1, "riskId"],
   "expectedKeyword": "required"
 }

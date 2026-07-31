@@ -1,0 +1,16 @@
+{
+  "base": "risk-discovery-report.valid.json",
+  "operation": "replace",
+  "path": ["triggerScan", "challenge"],
+  "value": {
+    "outcome": "CAPABILITY_LIMITED",
+    "mode": "current_context",
+    "evidence": [
+      {
+        "source": "runtime handshake",
+        "detail": "The required challenge capability is unavailable."
+      }
+    ]
+  },
+  "expectedKeyword": "const"
+}

@@ -11,7 +11,6 @@
     "runtime",
     "triggerScan",
     "findings",
-    "unresolvedMaterialRisks",
     "deferredNonmaterialRisks"
   ],
   "properties": {
@@ -24,15 +23,139 @@
       "type": "array",
       "items": { "$ref": "#/$defs/finding" }
     },
-    "unresolvedMaterialRisks": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/unresolvedMaterialRisk" }
-    },
     "deferredNonmaterialRisks": {
       "type": "array",
       "items": { "$ref": "#/$defs/deferredNonmaterialRisk" }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "runtime": {
+            "type": "object",
+            "properties": {
+              "mode": { "const": "single-context" }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "mode": { "not": { "const": "separate_context" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "mode": { "const": "separate_context" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "runtime": {
+            "type": "object",
+            "properties": {
+              "mode": { "const": "multi-context" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "outcome": { "const": "COMPLETED" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "mode": { "not": { "const": "capability_limited" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "outcome": { "const": "CAPABILITY_LIMITED" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "mode": { "const": "capability_limited" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "capabilityName": {
       "enum": [
@@ -42,16 +165,19 @@
         "bindSnapshot",
         "provideIndependentEvidence",
         "persistEvidence",
-        "approveExceptions"
+        "approveExceptions",
+        "isolatedReadOnlyReview",
+        "enforcedStructuredOutput"
       ]
     },
     "runtime": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["host", "mode", "capabilities", "limitations"],
+      "required": ["host", "mode", "discoveryProfile", "capabilities", "limitations"],
       "properties": {
         "host": { "type": "string", "minLength": 1 },
         "mode": { "enum": ["single-context", "multi-context"] },
+        "discoveryProfile": { "enum": ["single-context", "omp", "codex"] },
         "capabilities": {
           "type": "object",
           "additionalProperties": false,
@@ -62,7 +188,9 @@
             "bindSnapshot",
             "provideIndependentEvidence",
             "persistEvidence",
-            "approveExceptions"
+            "approveExceptions",
+            "isolatedReadOnlyReview",
+            "enforcedStructuredOutput"
           ],
           "properties": {
             "executeCommands": { "type": "boolean" },
@@ -71,7 +199,9 @@
             "bindSnapshot": { "type": "boolean" },
             "provideIndependentEvidence": { "type": "boolean" },
             "persistEvidence": { "type": "boolean" },
-            "approveExceptions": { "type": "boolean" }
+            "approveExceptions": { "type": "boolean" },
+            "isolatedReadOnlyReview": { "type": "boolean" },
+            "enforcedStructuredOutput": { "type": "boolean" }
           }
         },
         "limitations": {
@@ -79,17 +209,44 @@
           "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "discoveryProfile": { "const": "omp" }
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "mode": { "const": "multi-context" },
+              "capabilities": {
+                "type": "object",
+                "properties": {
+                  "bindSnapshot": { "const": true },
+                  "persistEvidence": { "const": true },
+                  "isolatedReadOnlyReview": { "const": true },
+                  "enforcedStructuredOutput": { "const": true }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "triggerScan": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["performed", "initialRiskLevel", "scopeUnknown", "materialTrigger", "triggeredProfiles", "challenge"],
+      "required": ["performed", "initialRiskLevel", "scopeUnknown", "materialTrigger", "syntheticBoundaryBypass", "recurringDefectClusterOverlap", "triggeredProfiles", "challenge"],
       "properties": {
         "performed": { "const": true },
         "initialRiskLevel": { "enum": ["R0", "R1", "R2", "R3"] },
         "scopeUnknown": { "type": "boolean" },
         "materialTrigger": { "type": "boolean" },
+        "syntheticBoundaryBypass": { "type": "boolean" },
+        "recurringDefectClusterOverlap": { "type": "boolean" },
         "triggeredProfiles": {
           "type": "array",
           "items": { "$ref": "#/$defs/triggeredProfile" }
@@ -103,6 +260,8 @@
               { "type": "object", "properties": { "initialRiskLevel": { "enum": ["R2", "R3"] } } },
               { "type": "object", "properties": { "scopeUnknown": { "const": true } } },
               { "type": "object", "properties": { "materialTrigger": { "const": true } } },
+              { "type": "object", "properties": { "syntheticBoundaryBypass": { "const": true } } },
+              { "type": "object", "properties": { "recurringDefectClusterOverlap": { "const": true } } },
               {
                 "type": "object",
                 "properties": {
@@ -187,6 +346,7 @@
       "required": ["id", "kind", "summary", "materiality", "evidence"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
+        "riskId": { "type": "string", "minLength": 1 },
         "kind": {
           "enum": [
             "COVERAGE_GAP",
@@ -235,7 +395,7 @@
           "if": { "type": "object", "properties": { "materiality": { "const": "material" } } },
           "then": {
             "type": "object",
-            "required": ["disposition"],
+            "required": ["riskId", "disposition"],
             "properties": {
               "disposition": { "$ref": "#/$defs/materialDisposition" }
             }
@@ -369,59 +529,6 @@
         },
         {
           "if": { "type": "object", "properties": { "status": { "const": "BLOCKED" } } },
-          "then": {
-            "type": "object",
-            "required": ["blocker"],
-            "properties": { "blocker": { "type": "string", "minLength": 1 } }
-          }
-        }
-      ]
-    },
-    "unresolvedMaterialRisk": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["riskId", "findingId", "disposition"],
-      "properties": {
-        "riskId": { "type": "string", "minLength": 1 },
-        "findingId": { "type": "string", "minLength": 1 },
-        "disposition": {
-          "enum": ["PROMOTED_TO_OBLIGATION", "ACCEPTED_RISK", "BLOCKED"]
-        },
-        "obligationId": { "type": "string", "minLength": 1 },
-        "owner": { "type": "string", "minLength": 1 },
-        "expiry": {
-          "type": "string",
-          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
-        },
-        "acceptance": { "type": "string", "minLength": 1 },
-        "blocker": { "type": "string", "minLength": 1 }
-      },
-      "allOf": [
-        {
-          "if": { "type": "object", "properties": { "disposition": { "const": "PROMOTED_TO_OBLIGATION" } } },
-          "then": {
-            "type": "object",
-            "required": ["obligationId"],
-            "properties": { "obligationId": { "type": "string", "minLength": 1 } }
-          }
-        },
-        {
-          "if": { "type": "object", "properties": { "disposition": { "const": "ACCEPTED_RISK" } } },
-          "then": {
-            "type": "object",
-            "required": ["owner", "expiry", "acceptance"],
-            "properties": {
-              "owner": { "type": "string", "minLength": 1 },
-              "expiry": {
-                "type": "string",
-                "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
-              },
-              "acceptance": { "type": "string", "minLength": 1 }
-            }
-          }
-        },
-        {
-          "if": { "type": "object", "properties": { "disposition": { "const": "BLOCKED" } } },
           "then": {
             "type": "object",
             "required": ["blocker"],

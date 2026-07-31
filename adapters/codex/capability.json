@@ -9,7 +9,9 @@
     "bindSnapshot": false,
     "provideIndependentEvidence": false,
     "persistEvidence": false,
-    "approveExceptions": false
+    "approveExceptions": false,
+    "isolatedReadOnlyReview": false,
+    "enforcedStructuredOutput": false
   },
   "limitations": [
     "Capabilities must be supplied by a runtime handshake; the host name grants none.",
