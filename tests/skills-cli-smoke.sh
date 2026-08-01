@@ -15,16 +15,17 @@ trap 'rm -rf "$TMP_DIR"' EXIT HUP INT TERM
 
 HOME=$TMP_DIR/home
 PROJECT=$TMP_DIR/project
-# Keep the test snapshot-local while exercising the documented GitHub shorthand,
-# source metadata, and update path instead of the CLI's untracked local-source path.
+# Exercise the GitHub shorthand, source metadata, and update path against an
+# immutable public release. Git rewrites keep the initial clone deterministic.
+UPDATE_FIXTURE_REF=v0.2.0
 GIT_CONFIG_COUNT=1
 GIT_CONFIG_KEY_0="url.file://$ROOT/.insteadOf"
 GIT_CONFIG_VALUE_0=https://github.com/Jin-Doh/traceknot.git
-export HOME GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+export HOME UPDATE_FIXTURE_REF GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
 mkdir -p "$HOME" "$PROJECT"
 
 # The public recommendation installs one self-contained global Skill for Codex.
-"$SKILLS_CLI" add Jin-Doh/traceknot \
+"$SKILLS_CLI" add "Jin-Doh/traceknot#$UPDATE_FIXTURE_REF" \
     --skill traceknot \
     --agent codex \
     --global \
@@ -59,6 +60,7 @@ bun -e '
   const skill = lock.skills?.traceknot;
   if (skill?.source !== "Jin-Doh/traceknot" ||
       skill?.sourceType !== "github" ||
+      skill?.ref !== process.env.UPDATE_FIXTURE_REF ||
       skill?.skillPath !== "skill/SKILL.md" ||
       typeof skill?.skillFolderHash !== "string" ||
       skill.skillFolderHash.length === 0) {
