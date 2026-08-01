@@ -67,7 +67,7 @@ bun run prose-quality
 
 ### Skill 설치 — 권장
 
-Node.js 18 이상이 설치된 환경에서 Skills CLI로 Traceknot을 전역 설치합니다.
+Node.js 22.20 이상이 설치된 환경에서 Skills CLI로 Traceknot을 전역 설치합니다.
 
 ```sh
 npx skills add Jin-Doh/traceknot --skill traceknot --global

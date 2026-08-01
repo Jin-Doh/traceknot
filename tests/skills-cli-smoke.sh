@@ -15,11 +15,16 @@ trap 'rm -rf "$TMP_DIR"' EXIT HUP INT TERM
 
 HOME=$TMP_DIR/home
 PROJECT=$TMP_DIR/project
-export HOME
+# Keep the test snapshot-local while exercising the documented GitHub shorthand,
+# source metadata, and update path instead of the CLI's untracked local-source path.
+GIT_CONFIG_COUNT=1
+GIT_CONFIG_KEY_0="url.file://$ROOT/.insteadOf"
+GIT_CONFIG_VALUE_0=https://github.com/Jin-Doh/traceknot.git
+export HOME GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
 mkdir -p "$HOME" "$PROJECT"
 
 # The public recommendation installs one self-contained global Skill for Codex.
-"$SKILLS_CLI" add "$ROOT" \
+"$SKILLS_CLI" add Jin-Doh/traceknot \
     --skill traceknot \
     --agent codex \
     --global \
@@ -46,6 +51,20 @@ test ! -e "$GLOBAL_SKILL/contracts"
 test ! -e "$GLOBAL_SKILL/adapters"
 test ! -e "$GLOBAL_SKILL/system"
 test ! -e "$GLOBAL_SKILL/bin"
+
+LOCK_FILE=$HOME/.agents/.skill-lock.json
+export LOCK_FILE
+bun -e '
+  const lock = JSON.parse(await Bun.file(process.env.LOCK_FILE).text());
+  const skill = lock.skills?.traceknot;
+  if (skill?.source !== "Jin-Doh/traceknot" ||
+      skill?.sourceType !== "github" ||
+      skill?.skillPath !== "skill/SKILL.md" ||
+      typeof skill?.skillFolderHash !== "string" ||
+      skill.skillFolderHash.length === 0) {
+    process.exit(1);
+  }
+'
 
 GLOBAL_LIST=$("$SKILLS_CLI" list --global)
 printf '%s\n' "$GLOBAL_LIST" | grep -F traceknot >/dev/null

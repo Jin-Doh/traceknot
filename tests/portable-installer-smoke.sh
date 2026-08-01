@@ -42,7 +42,7 @@ if sh "$ROOT/install.sh" --prefix "$CONFLICT_PREFIX" >/dev/null 2>&1; then
 fi
 test "$(cat "$CONFLICT_PREFIX/skill/SKILL.md")" = do-not-overwrite
 
-# A Skills CLI registration must be preserved with actionable migration guidance.
+# An unowned registration must be preserved with non-destructive guidance.
 REGISTRATION_PATH=$TRACEKNOT_SKILLS_ROOT/traceknot
 mkdir -p "$REGISTRATION_PATH"
 printf '%s\n' do-not-overwrite > "$REGISTRATION_PATH/SKILL.md"
@@ -52,7 +52,7 @@ if registration_output=$(sh "$ROOT/install.sh" \
     exit 1
 fi
 printf '%s\n' "$registration_output" |
-    grep -F 'npx skills remove traceknot --global --yes' >/dev/null
+    grep -F 'remove it only if intended, or choose another TRACEKNOT_SKILLS_ROOT' >/dev/null
 test "$(cat "$REGISTRATION_PATH/SKILL.md")" = do-not-overwrite
 rm -rf "$REGISTRATION_PATH"
 

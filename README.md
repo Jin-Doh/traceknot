@@ -67,7 +67,7 @@ The Korean rule categories and preservation model were informed by [epoko77-ai/i
 
 ### Install the Skill — recommended
 
-Use the Skills CLI with Node.js 18 or later to install Traceknot globally:
+Use the Skills CLI with Node.js 22.20 or later to install Traceknot globally:
 
 ```sh
 npx skills add Jin-Doh/traceknot --skill traceknot --global
