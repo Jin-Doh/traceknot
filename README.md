@@ -65,13 +65,48 @@ The Korean rule categories and preservation model were informed by [epoko77-ai/i
 
 ## Install
 
-Install the current `main` revision without cloning the repository:
+### Install the Skill — recommended
+
+Use the Skills CLI with Node.js 18 or later to install Traceknot globally:
+
+```sh
+npx skills add Jin-Doh/traceknot --skill traceknot --global
+```
+
+The CLI detects supported coding agents and installs the self-contained portable Skill from `skill/`. To install only for Codex, select the agent explicitly:
+
+```sh
+npx skills add Jin-Doh/traceknot \
+  --skill traceknot \
+  --agent codex \
+  --global
+```
+
+Omit `--global` to keep Traceknot inside the current project:
+
+```sh
+npx skills add Jin-Doh/traceknot --skill traceknot
+```
+
+Inspect, update, or remove the global installation through the same CLI:
+
+```sh
+npx skills list --global
+npx skills update traceknot --global --yes
+npx skills remove traceknot --global --yes
+```
+
+This path installs `SKILL.md` and its references. The Skill runs the complete evidence-only workflow without the optional deterministic core.
+
+### Install the full toolkit — advanced
+
+Use the repository installer when you also need the record schemas, capability manifests, host-neutral core, release updater, and MIT license:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh
 ```
 
-The script downloads the matching source archive over HTTPS, then installs without `sudo`. The default destination is `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`; the portable Skill is registered at `$HOME/.agents/skills/traceknot`, where OMP and Codex discover it.
+The installer downloads the matching `main` source archive over HTTPS and installs without `sudo`. The default destination is `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`; it registers the Skill at `$HOME/.agents/skills/traceknot`. It does not install the optional completion-authority extension.
 
 To install a fixed tag or commit, use the same revision in the script URL and `TRACEKNOT_REF`:
 
@@ -81,18 +116,7 @@ curl -fsSL "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/i
   | TRACEKNOT_REF="$TRACEKNOT_REF" sh
 ```
 
-The installer copies the portable Skill, record schemas, capability manifests, host-neutral core, and MIT license. It registers the Skill for OMP and Codex through the shared Agent Skills directory. It does not install the optional completion-authority extension.
-
-Use an absolute prefix to change the destination:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh \
-  | sh -s -- --prefix "$HOME/tools/traceknot"
-```
-
-Pass `--dry-run` the same way to preview writes. Re-running the installer updates files owned by Traceknot and leaves unrelated files untouched. Set `TRACEKNOT_SKILLS_ROOT` to an absolute directory only when the shared Agent Skills location must be overridden.
-
-If you prefer to inspect the script before running it, download it first or install from a clone:
+Use `--prefix`, `--dry-run`, or `TRACEKNOT_SKILLS_ROOT` for advanced destination control. To inspect the script first, download it or install from a clone:
 
 ```sh
 git clone https://github.com/Jin-Doh/traceknot.git
@@ -100,26 +124,29 @@ cd traceknot
 ./install.sh
 ```
 
-## Uninstall
+### Switch installation methods
 
-For the default destination:
+The Skills CLI and the full-toolkit installer both manage `$HOME/.agents/skills/traceknot`; do not use them together. Remove the current installation before switching.
+
+From the Skills CLI to the full toolkit:
+
+```sh
+npx skills remove traceknot --global --yes
+curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh
+```
+
+From the full toolkit to the Skills CLI:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh | sh
+npx skills add Jin-Doh/traceknot --skill traceknot --global
 ```
 
-For a custom prefix:
+The full-toolkit uninstaller removes only manifest-owned files and removes the shared Skill registration only when it still points to that installation. Pass `--dry-run` to preview removals. Use the same custom prefix or `TRACEKNOT_SKILLS_ROOT` supplied during installation.
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh \
-  | sh -s -- --prefix "$HOME/tools/traceknot"
-```
+## Full-toolkit automatic updates
 
-The uninstaller reads the installation manifest, removes only files installed by Traceknot, and removes the shared Skill registration only when it still points to that installation. Pass `--dry-run` to preview removals; running uninstall again is harmless. Use the same `TRACEKNOT_SKILLS_ROOT` override used during installation. A cloned repository can use `./uninstall.sh` instead.
-
-## Automatic updates
-
-Automatic update checks are enabled by default. The updater considers only immutable GitHub releases whose signed provenance and SHA-256 digest verify, and delays eligibility until the exact artifact has been observed for more than seven complete days.
+These controls apply only to the full-toolkit installation. Automatic update checks are enabled by default. The updater considers only immutable GitHub releases whose signed provenance and SHA-256 digest verify, and delays eligibility until the exact artifact has been observed for more than seven complete days.
 
 ```sh
 TRACEKNOT_PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/traceknot"
@@ -330,7 +357,7 @@ This extension is optional and disabled by policy. Lifecycle events such as task
 
 ## Using the portable Skill
 
-Use `install.sh`, then point the harness's Skill loader at the installed `skill/` directory. The Skill itself has no runtime dependency on `system/`.
+Install with the Skills CLI, which registers the self-contained `skill/` directory with the selected harness. Use `install.sh` only when the optional schemas, adapters, core, and updater are also required. The Skill itself has no runtime dependency on `system/`.
 
 The expected workflow is:
 

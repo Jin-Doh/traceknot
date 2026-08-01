@@ -378,7 +378,7 @@ if [ -L "$REGISTRATION_PATH" ]; then
         *) fail "refusing unrelated Skill registration: $REGISTRATION_PATH" ;;
     esac
 elif [ -e "$REGISTRATION_PATH" ]; then
-    fail "refusing to overwrite unowned Skill registration: $REGISTRATION_PATH"
+    fail "Skill registration is managed by another installer: $REGISTRATION_PATH; remove it before full-toolkit installation (Skills CLI: npx skills remove traceknot --global --yes)"
 fi
 
 manifest_owns() {
