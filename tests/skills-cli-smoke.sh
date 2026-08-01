@@ -15,14 +15,22 @@ trap 'rm -rf "$TMP_DIR"' EXIT HUP INT TERM
 
 HOME=$TMP_DIR/home
 PROJECT=$TMP_DIR/project
-# Exercise the GitHub shorthand, source metadata, and update path against an
-# immutable public release. Git rewrites keep the initial clone deterministic.
+FIXTURE_REPO=$TMP_DIR/source
 UPDATE_FIXTURE_REF=v0.2.0
+mkdir -p "$HOME" "$PROJECT" "$FIXTURE_REPO"
+cp -R "$ROOT/skill" "$FIXTURE_REPO/skill"
+git -C "$FIXTURE_REPO" init -q
+git -C "$FIXTURE_REPO" add skill
+git -C "$FIXTURE_REPO" -c user.name=Traceknot -c user.email=ci@traceknot.invalid \
+    commit -qm 'Skills CLI fixture'
+git -C "$FIXTURE_REPO" tag "$UPDATE_FIXTURE_REF"
+
+# Exercise the GitHub shorthand, source metadata, and update path against an
+# immutable public ref. Git rewrites bind the initial clone to this test snapshot.
 GIT_CONFIG_COUNT=1
-GIT_CONFIG_KEY_0="url.file://$ROOT/.insteadOf"
+GIT_CONFIG_KEY_0="url.file://$FIXTURE_REPO/.insteadOf"
 GIT_CONFIG_VALUE_0=https://github.com/Jin-Doh/traceknot.git
 export HOME UPDATE_FIXTURE_REF GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
-mkdir -p "$HOME" "$PROJECT"
 
 # The public recommendation installs one self-contained global Skill for Codex.
 "$SKILLS_CLI" add "Jin-Doh/traceknot#$UPDATE_FIXTURE_REF" \
