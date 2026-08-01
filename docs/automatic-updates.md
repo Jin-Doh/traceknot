@@ -6,6 +6,8 @@ Traceknot enables delayed automatic update checks by default, with an explicit i
 
 The seven-day delay is a safety buffer, not a trust mechanism. Release immutability, artifact provenance, digest verification, atomic activation, and rollback remain mandatory.
 
+This policy applies only to the full-toolkit installation created by `install.sh`. A Skill installed with `npx skills add Jin-Doh/traceknot` is managed by the Skills CLI and uses `npx skills update` instead. Both methods own `$HOME/.agents/skills/traceknot`; users must remove the current installation before switching methods.
+
 ## Current-state review
 
 The installer and updater now:
@@ -121,6 +123,7 @@ Invalid transitions fail closed. Cancellation before activation removes staging.
 6. A version is never downgraded automatically. Reinstalling the same digest is a no-op; the same version with a different digest is a security failure.
 7. Update state and activation targets must be regular owned paths beneath the canonical prefix, with the installer's existing symlink checks retained.
 8. Logs must not contain tokens. GitHub authentication, if supported later, is read from the environment and never persisted.
+9. Skills CLI and full-toolkit registrations are mutually exclusive; the installer preserves an existing unowned Skill directory and reports the removal command instead of overwriting it.
 
 ## Release promotion and operations
 

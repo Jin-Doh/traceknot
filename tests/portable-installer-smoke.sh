@@ -42,16 +42,19 @@ if sh "$ROOT/install.sh" --prefix "$CONFLICT_PREFIX" >/dev/null 2>&1; then
 fi
 test "$(cat "$CONFLICT_PREFIX/skill/SKILL.md")" = do-not-overwrite
 
-# An unrelated harness registration must never be overwritten.
+# An unowned registration must be preserved with non-destructive guidance.
 REGISTRATION_PATH=$TRACEKNOT_SKILLS_ROOT/traceknot
-mkdir -p "$TRACEKNOT_SKILLS_ROOT"
-printf '%s\n' do-not-overwrite > "$REGISTRATION_PATH"
-if sh "$ROOT/install.sh" --prefix "$TMP_DIR/registration-conflict" >/dev/null 2>&1; then
+mkdir -p "$REGISTRATION_PATH"
+printf '%s\n' do-not-overwrite > "$REGISTRATION_PATH/SKILL.md"
+if registration_output=$(sh "$ROOT/install.sh" \
+    --prefix "$TMP_DIR/registration-conflict" 2>&1); then
     printf '%s\n' 'unowned Skill registration unexpectedly overwritten' >&2
     exit 1
 fi
-test "$(cat "$REGISTRATION_PATH")" = do-not-overwrite
-rm -f "$REGISTRATION_PATH"
+printf '%s\n' "$registration_output" |
+    grep -F 'remove it only if intended, or choose another TRACEKNOT_SKILLS_ROOT' >/dev/null
+test "$(cat "$REGISTRATION_PATH/SKILL.md")" = do-not-overwrite
+rm -rf "$REGISTRATION_PATH"
 
 # A fresh prefix honors the updater lock before writing any payload.
 FRESH_LOCKED_PREFIX=$TMP_DIR/fresh-locked

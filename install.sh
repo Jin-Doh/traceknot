@@ -378,7 +378,7 @@ if [ -L "$REGISTRATION_PATH" ]; then
         *) fail "refusing unrelated Skill registration: $REGISTRATION_PATH" ;;
     esac
 elif [ -e "$REGISTRATION_PATH" ]; then
-    fail "refusing to overwrite unowned Skill registration: $REGISTRATION_PATH"
+    fail "refusing unowned Skill registration: $REGISTRATION_PATH; inspect it and remove it only if intended, or choose another TRACEKNOT_SKILLS_ROOT"
 fi
 
 manifest_owns() {

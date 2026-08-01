@@ -65,13 +65,48 @@ bun run prose-quality
 
 ## 설치
 
-저장소를 복제하지 않고 현재 `main` revision을 설치할 수 있습니다.
+### Skill 설치 — 권장
+
+Node.js 22.20 이상이 설치된 환경에서 Skills CLI로 Traceknot을 전역 설치합니다.
+
+```sh
+npx skills add Jin-Doh/traceknot --skill traceknot --global
+```
+
+CLI가 지원하는 코딩 에이전트를 감지하고 `skill/`의 독립 실행 가능한 portable Skill을 설치합니다. Codex에만 설치하려면 대상을 직접 지정합니다.
+
+```sh
+npx skills add Jin-Doh/traceknot \
+  --skill traceknot \
+  --agent codex \
+  --global
+```
+
+현재 프로젝트에만 설치하려면 `--global`을 생략합니다.
+
+```sh
+npx skills add Jin-Doh/traceknot --skill traceknot
+```
+
+전역 설치 상태 확인, 업데이트, 제거도 같은 CLI로 처리합니다.
+
+```sh
+npx skills list --global
+npx skills update traceknot --global --yes
+npx skills remove traceknot --global --yes
+```
+
+이 방식은 `SKILL.md`와 참조 문서만 설치합니다. 선택 사항인 deterministic core가 없어도 Skill의 evidence-only workflow는 모두 사용할 수 있습니다.
+
+### 전체 Toolkit 설치 — 고급
+
+Record schema, capability manifest, host-neutral core, release updater와 MIT 라이선스도 필요하다면 저장소 installer를 사용합니다.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh
 ```
 
-Script는 HTTPS로 같은 revision의 source archive를 내려받고 `sudo` 없이 설치합니다. 기본 설치 경로는 `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`이며, portable Skill은 OMP와 Codex가 검색하는 `$HOME/.agents/skills/traceknot`에 등록됩니다.
+Installer는 HTTPS로 같은 `main` source archive를 내려받고 `sudo` 없이 설치합니다. 기본 경로는 `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`이며, Skill은 `$HOME/.agents/skills/traceknot`에 등록됩니다. 선택 사항인 completion-authority extension은 설치하지 않습니다.
 
 특정 tag나 commit을 고정하려면 script URL과 `TRACEKNOT_REF`에 같은 revision을 사용합니다.
 
@@ -81,18 +116,7 @@ curl -fsSL "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/i
   | TRACEKNOT_REF="$TRACEKNOT_REF" sh
 ```
 
-Installer는 portable Skill, record schema, capability manifest, host-neutral core, MIT 라이선스를 복사하고 공용 Agent Skills 디렉터리를 통해 OMP와 Codex에 Skill을 등록합니다. 선택 사항인 completion-authority extension은 설치하지 않습니다.
-
-설치 경로를 바꾸려면 절대 경로를 지정합니다.
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh \
-  | sh -s -- --prefix "$HOME/tools/traceknot"
-```
-
-같은 방식으로 `--dry-run`을 전달하면 복사 대상을 미리 확인할 수 있습니다. Installer를 다시 실행하면 Traceknot이 소유한 파일만 갱신하고 다른 파일은 건드리지 않습니다. 공용 Agent Skills 경로를 변경해야 할 때만 `TRACEKNOT_SKILLS_ROOT`에 절대 경로를 지정합니다.
-
-실행 전에 script를 검토하려면 먼저 파일로 내려받거나 저장소를 복제해서 실행합니다.
+고급 경로 설정에는 `--prefix`, `--dry-run`, `TRACEKNOT_SKILLS_ROOT`를 사용합니다. 실행 전에 script를 검토하려면 파일로 내려받거나 저장소를 복제합니다.
 
 ```sh
 git clone https://github.com/Jin-Doh/traceknot.git
@@ -100,26 +124,29 @@ cd traceknot
 ./install.sh
 ```
 
-## 제거
+### 설치 방식 전환
 
-기본 설치 경로에서 제거합니다.
+Skills CLI와 전체 Toolkit installer는 모두 `$HOME/.agents/skills/traceknot`을 관리하므로 함께 사용하면 안 됩니다. 다른 방식으로 전환하기 전에 현재 설치를 먼저 제거합니다.
+
+Skills CLI에서 전체 Toolkit으로 전환:
+
+```sh
+npx skills remove traceknot --global --yes
+curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh
+```
+
+전체 Toolkit에서 Skills CLI로 전환:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh | sh
+npx skills add Jin-Doh/traceknot --skill traceknot --global
 ```
 
-사용자 지정 경로에서 제거합니다.
+전체 Toolkit uninstaller는 manifest에 기록된 파일만 지우고, 공용 Skill 등록이 해당 설치를 가리킬 때만 등록을 제거합니다. `--dry-run`으로 삭제 대상을 미리 확인할 수 있습니다. 설치 때 사용자 지정 prefix나 `TRACEKNOT_SKILLS_ROOT`를 사용했다면 제거할 때도 같은 값을 지정합니다.
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh \
-  | sh -s -- --prefix "$HOME/tools/traceknot"
-```
+## 전체 Toolkit 자동 업데이트
 
-Uninstaller는 설치 manifest를 읽어 Traceknot이 설치한 파일만 삭제하며, 공용 Skill 등록이 해당 설치를 계속 가리킬 때만 그 등록을 제거합니다. `--dry-run`으로 삭제 대상을 미리 확인할 수 있으며, 이미 제거된 상태에서 다시 실행해도 오류가 발생하지 않습니다. 설치 시 `TRACEKNOT_SKILLS_ROOT`를 지정했다면 제거 시에도 같은 값을 사용합니다. 저장소를 복제한 경우에는 `./uninstall.sh`를 사용할 수 있습니다.
-
-## 자동 업데이트
-
-자동 업데이트 확인은 기본적으로 활성화됩니다. Updater는 서명된 provenance와 SHA-256 digest 검증을 통과한 immutable GitHub Release만 대상으로 하며, 동일 artifact를 처음 관찰한 뒤 7일이 완전히 지난 경우에만 설치 대상으로 판단합니다.
+이 기능은 전체 Toolkit 설치에만 적용됩니다. 자동 업데이트 확인은 기본적으로 활성화됩니다. Updater는 서명된 provenance와 SHA-256 digest 검증을 통과한 immutable GitHub Release만 대상으로 하며, 동일 artifact를 처음 관찰한 뒤 7일이 완전히 지난 경우에만 설치 대상으로 판단합니다.
 
 ```sh
 TRACEKNOT_PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/traceknot"
@@ -338,7 +365,7 @@ Host-neutral TypeScript verdict resolver입니다. 다음을 거부하거나 비
 
 ## Portable Skill 사용
 
-`install.sh`를 실행한 뒤 설치된 `skill/` 디렉터리를 하네스의 Skill loader에 연결합니다. Skill 자체는 `system/`에 runtime dependency가 없습니다.
+Skills CLI로 설치하면 독립 실행 가능한 `skill/` 디렉터리가 선택한 하네스에 등록됩니다. 선택 사항인 schema, adapter, core와 updater도 필요할 때만 `install.sh`를 사용합니다. Skill 자체는 `system/`에 runtime dependency가 없습니다.
 
 예상 workflow:
 
