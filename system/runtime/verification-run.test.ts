@@ -61,15 +61,15 @@ function makeDependencies(options: FakeOptions = {}): FakePorts & { dependencies
   const executor = {
     executeObligation: async () => {
       executorCalls++;
-      if (options.missingExecutorOutput || options.missingBrowserOutput) return undefined;
-      return { status: "PASS", requestId: REQUEST_ID, snapshotId: options.mismatchedProvenance ? "wrong-snapshot" : SNAPSHOT_ID, producer: { kind: "deterministic-verifier", identity: "fixture-executor", independence: options.producerIndependence ?? "separate-verification-context" }, artifacts: [{ type: "verification-result", digest: options.invalidArtifact ? "not-a-digest" : "a".repeat(64) }] };
+      if (options.missingExecutorOutput) return undefined;
+      return { status: "PASS", requestId: REQUEST_ID, snapshotId: options.mismatchedProvenance ? "wrong-snapshot" : SNAPSHOT_ID, producer: { kind: "deterministic-verifier", identity: "fixture-executor", independence: options.producerIndependence ?? "independent-producer" }, artifacts: [{ type: "verification-result", digest: options.invalidArtifact ? "not-a-digest" : "a".repeat(64) }] };
     },
   } as unknown as VerificationExecutor;
   const browser = {
     executeBrowser: async () => {
       browserCalls++;
       if (options.missingBrowserOutput) return undefined;
-      return { status: "PASS", requestId: REQUEST_ID, snapshotId: SNAPSHOT_ID, producer: { kind: "deterministic-verifier", identity: "fixture-browser", independence: options.producerIndependence ?? "separate-verification-context" }, artifacts: [{ type: "verification-result", digest: "b".repeat(64) }] };
+      return { status: "PASS", requestId: REQUEST_ID, snapshotId: SNAPSHOT_ID, producer: { kind: "deterministic-verifier", identity: "fixture-browser", independence: options.producerIndependence ?? "independent-producer" }, artifacts: [{ type: "verification-result", digest: "b".repeat(64) }] };
     },
   } as unknown as BrowserExecutor;
   const capabilityProvider = { has: () => !options.missingCapability } as unknown as CapabilityProvider;
@@ -113,7 +113,7 @@ describe("verification run orchestration", () => {
     expect(result.verdict.qaVerdict).toBe("PASS");
     expect(result.documents.evidence?.evaluations.every(item => item.checks.artifactRequirementsSatisfied)).toBe(true);
     expect(fakes.executorCalls).toBeGreaterThan(0);
-    expect(fakes.repository.stageWrites).toEqual(["request", "basis", "discovery", "plan", "execution", "evidence", "residual-risk", "verdict"]);
+    expect(fakes.repository.stageWrites).toEqual(["request", "basis", "discovery", "plan", "execution", "execution", "evidence", "residual-risk", "verdict"]);
   });
 
   test("resumes from a persisted intermediate state without repeating completed stages", async () => {
@@ -148,7 +148,6 @@ describe("verification run orchestration", () => {
   test.each([
     ["missing capability", { missingCapability: true }],
     ["missing executor output", { missingExecutorOutput: true }],
-    ["missing browser output", { missingBrowserOutput: true }],
   ])("does not resolve %s as PASS", async (_name, options) => {
     const fakes = makeDependencies(options);
     const result = await runOnce(fakes.dependencies);
@@ -168,7 +167,7 @@ describe("verification run orchestration", () => {
 
   test("classifies material risks, derives independent obligations, and preserves browser technique", async () => {
     const request = { ...makeRequest(), testBasis: [
-      { id: "z-browser", kind: "acceptance-criterion" as const, origin: "explicit" as const, text: "The browser flow renders the deployment UI." },
+      { id: "z-browser", kind: "acceptance-criterion" as const, origin: "explicit" as const, text: "The browser flow renders the UI." },
       { id: "a-security", kind: "requirement" as const, origin: "explicit" as const, text: "Security migration must be reviewed." },
       { id: "m-contract", kind: "contract" as const, origin: "derived" as const, text: "The public contract remains stable." },
       { id: "r-basic", kind: "requirement" as const, origin: "explicit" as const, text: "A basic check runs." },
@@ -181,6 +180,11 @@ describe("verification run orchestration", () => {
     expect(discovery.risks.find(item => item.id === "risk:a-security")?.level).toBe("R3");
     expect(discovery.risks.find(item => item.id === "risk:m-contract")?.level).toBe("R2");
     expect(plan.obligations.find(item => item.id === "obligation:condition:a-security")?.independence).toBe("independent-producer");
+    expect(discovery.risks.find(item => item.id === "risk:r-basic")?.level).toBe("R2");
+    expect(discovery.risks.find(item => item.id === "risk:z-browser")?.level).toBe("R2");
+    expect(plan.obligations.find(item => item.id === "obligation:condition:m-contract")?.independence).toBe("independent-producer");
+    expect(plan.obligations.find(item => item.id === "obligation:condition:r-basic")?.independence).toBe("independent-producer");
+    expect(plan.obligations.find(item => item.id === "obligation:condition:z-browser")?.independence).toBe("independent-producer");
     expect(plan.obligations.find(item => item.id === "obligation:condition:z-browser")?.evidenceType).toBe("browser-result");
     const execution = await executeObligations({ runId: RUN_ID, request, plan, dependencies: deps });
     expect(execution.observations.find(item => item.observationId === "observation:obligation:condition:z-browser")?.execution.kind).toBe("browser");
@@ -239,5 +243,82 @@ describe("verification run orchestration", () => {
     const resumed = await runOnce(fakes.dependencies);
     expect(resumed.run.state).toBe("TERMINAL");
     expect(fakes.executorCalls).toBe(calls);
+  });
+  test("rejects a persisted plan with a truncated risk universe before execution", async () => {
+    const fakes = makeDependencies();
+    await runOnce(fakes.dependencies);
+    const run = fakes.repository.runs.get(RUN_ID);
+    const plan = fakes.repository.stageDocuments.get(`${RUN_ID}:plan`) as Record<string, unknown>;
+    if (!run || !plan) throw new Error("missing persisted plan");
+    fakes.repository.stageDocuments.set(`${RUN_ID}:plan`, { ...plan, risks: (plan.risks as unknown[]).slice(1) });
+    fakes.repository.runs.set(RUN_ID, { ...run, state: "PLANNED", updatedAt: FIXED_NOW });
+    const executorCalls = fakes.executorCalls;
+    await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted plan universe");
+    expect(fakes.executorCalls).toBe(executorCalls);
+  });
+
+  test("validates nested verdict identity on terminal and verdict-resolved resume", async () => {
+    const fakes = makeDependencies();
+    const first = await runOnce(fakes.dependencies);
+    const saved = fakes.repository.stageDocuments.get(`${RUN_ID}:verdict`) as Record<string, unknown>;
+    const nested = saved.verdict as Record<string, unknown>;
+    const rerun = await runVerification({ runId: RUN_ID, request: makeRequest(), dependencies: fakes.dependencies });
+    expect(rerun.verdict).toEqual(first.verdict);
+    fakes.repository.stageDocuments.set(`${RUN_ID}:verdict`, { ...saved, verdict: { ...nested, requestId: "wrong-request" } });
+    await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted verdict stage");
+    fakes.repository.stageDocuments.set(`${RUN_ID}:verdict`, { ...saved, requestId: "wrong-request", verdict: nested });
+    await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted verdict envelope");
+    fakes.repository.stageDocuments.set(`${RUN_ID}:verdict`, saved);
+    const run = fakes.repository.runs.get(RUN_ID);
+    if (!run) throw new Error("missing run");
+    fakes.repository.runs.set(RUN_ID, { ...run, state: "VERDICT_RESOLVED", updatedAt: FIXED_NOW });
+    fakes.repository.stageDocuments.set(`${RUN_ID}:verdict`, { ...saved, verdict: { ...nested, snapshotId: "wrong-snapshot" } });
+    await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted verdict stage");
+  });
+
+  test("persists one checkpoint per obligation and resumes only the unfinished obligation", async () => {
+    const fakes = makeDependencies();
+    const seen: string[] = [];
+    const original = fakes.dependencies.executor.executeObligation;
+    let throwOnSecond = true;
+    const flakyExecutor: VerificationExecutor = {
+      executeObligation: async request => {
+        seen.push(request.obligation.id);
+        if (throwOnSecond && seen.length === 2) { throwOnSecond = false; throw new Error("second obligation failed"); }
+        return original ? original(request) : undefined;
+      },
+    };
+    const dependencies = { ...fakes.dependencies, executor: flakyExecutor };
+    await expect(runOnce(dependencies)).rejects.toThrow("second obligation failed");
+    const checkpoint = fakes.repository.stageDocuments.get(`${RUN_ID}:execution`) as { claims: readonly { obligationId: string }[] };
+    expect(checkpoint.claims).toHaveLength(1);
+    expect(seen).toHaveLength(2);
+    const resumed = await runOnce(dependencies);
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(seen).toHaveLength(3);
+    expect(seen[2]).toBe(seen[1]);
+    expect(seen[2]).not.toBe(seen[0]);
+  });
+
+  test("uses canonical unavailable provenance while preserving rejected evidence checks", async () => {
+    const fakes = makeDependencies({ missingExecutorOutput: true });
+    const result = await runOnce(fakes.dependencies);
+    for (const observation of result.documents.execution?.observations ?? []) {
+      expect(observation.requestId).toBe(REQUEST_ID);
+      expect(observation.snapshotId).toBe(SNAPSHOT_ID);
+      expect(observation.producer.identity).toBe("self/runtime-unavailable");
+      expect(observation.producer.independence).toBe("self-check");
+    }
+    expect(result.documents.evidence?.evaluations.every(item => !item.checks.expectedResultDemonstrated && !item.checks.artifactRequirementsSatisfied)).toBe(true);
+    expect(result.verdict.qaVerdict).not.toBe("PASS");
+  });
+
+  test("routes browser-only missing output to browser executor without invoking generic executor", async () => {
+    const request = { ...makeRequest(), testBasis: [{ id: "browser-only", kind: "acceptance-criterion" as const, origin: "explicit" as const, text: "The browser flow renders." }] } satisfies VerificationRequest;
+    const fakes = makeDependencies({ missingBrowserOutput: true });
+    const result = await runVerification({ runId: "browser-missing-output", request, dependencies: fakes.dependencies });
+    expect(fakes.browserCalls).toBe(1);
+    expect(fakes.executorCalls).toBe(0);
+    expect(result.verdict.qaVerdict).not.toBe("PASS");
   });
 });
