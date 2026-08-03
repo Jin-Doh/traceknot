@@ -54,6 +54,7 @@ class FakeRepository {
 }
 
 type FakePorts = { repository: FakeRepository; executorCalls: number; browserCalls: number; authorityCalls: number };
+type FakeDependencies = FakePorts & { dependencies: VerificationRunDependencies };
 
 function makeRequest(requestId = REQUEST_ID): VerificationRequest {
   return {
@@ -68,7 +69,7 @@ function makeRequest(requestId = REQUEST_ID): VerificationRequest {
   };
 }
 
-function makeDependencies(options: FakeOptions = {}): FakePorts & { dependencies: VerificationRunDependencies } {
+function makeDependencies(options: FakeOptions = {}): FakeDependencies {
   const repository = new FakeRepository();
   let executorCalls = 0;
   let browserCalls = 0;
@@ -141,6 +142,68 @@ function reorderObjectKeysDeep<T>(value: T): T {
   }
   return value;
 }
+function makeReplayAuthority(
+  fakes: FakeDependencies,
+  mutate: (binding: ExecutionAuthority["binding"]) => ExecutionAuthority["binding"],
+): { dependencies: VerificationRunDependencies; issued: ExecutionAuthority[]; signed: ExecutionAuthority[] } {
+  const authorities = new Map<string, ExecutionAuthority>();
+  const issued: ExecutionAuthority[] = [];
+  const signed: ExecutionAuthority[] = [];
+  const executionAuthority = {
+    issueExecutionAuthority: async (binding: ExecutionAuthority["binding"]): Promise<ExecutionAuthority> => {
+      const existing = authorities.get(binding.idempotencyKey);
+      if (existing) return existing;
+      const authority: ExecutionAuthority = {
+        schemaVersion: "verification-execution-authority/v1",
+        authorityId: `authority:${binding.obligationId}`,
+        issuer: "replay-fixture",
+        binding: mutate(structuredClone(binding)),
+      };
+      authorities.set(binding.idempotencyKey, authority);
+      issued.push(authority);
+      signed.push(structuredClone(authority));
+      return authority;
+    },
+    verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]): Promise<boolean> => {
+      const stored = authorities.get(binding.idempotencyKey);
+      return Boolean(stored && JSON.stringify(stored) === JSON.stringify(authority) && JSON.stringify(stored.binding) === JSON.stringify(binding));
+    },
+  };
+  return { dependencies: { ...fakes.dependencies, executionAuthority }, issued, signed };
+}
+test.each(["uppercase", "reordered"] as const)("rejects a %s noncanonical authority replay before persistence without mutating the signed binding", async mode => {
+  const fakes = makeDependencies();
+  const request = { ...makeRequest(`authority-noncanonical-${mode}`), testBasis: [makeRequest().testBasis[0]!] };
+  const runId = `authority-noncanonical-${mode}`;
+  const mutate: (binding: ExecutionAuthority["binding"]) => ExecutionAuthority["binding"] = binding => {
+    const execution = { ...binding.execution, startedAt: "2026-08-03T00:00:10.000Z", finishedAt: "2026-08-03T00:00:11.000Z" };
+    const resultArtifacts = [...(binding.result.artifacts ?? [])];
+    const artifactDigests = mode === "uppercase" ? resultArtifacts.map(digest => digest.toUpperCase()) : resultArtifacts.reverse();
+    const result = { ...binding.result, artifacts: mode === "uppercase" ? resultArtifacts.map(digest => digest.toUpperCase()) : [...resultArtifacts] };
+    return { ...binding, execution, observedAt: execution.finishedAt, result, artifactDigests };
+  };
+  const replay = makeReplayAuthority(fakes, mutate);
+  const executor: VerificationExecutor = {
+    executeObligation: async executionRequest => ({
+      status: "PASS",
+      runId: executionRequest.runId,
+      requestId: executionRequest.requestId,
+      snapshotId: executionRequest.snapshotId,
+      idempotencyKey: executionRequest.idempotencyKey,
+      producer: { kind: "deterministic-verifier", identity: "replay-executor", independence: "independent-producer" },
+      artifacts: mode === "reordered"
+        ? [{ type: "verification-result", digest: "a".repeat(64) }, { type: "verification-result", digest: "b".repeat(64) }]
+        : [{ type: "verification-result", digest: "a".repeat(64) }],
+    }),
+  };
+  const dependencies = { ...replay.dependencies, executor };
+  await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("execution authority replay binding is not canonical");
+  expect(replay.issued).toHaveLength(1);
+  expect(replay.issued[0]).toEqual(replay.signed[0]);
+  expect(replay.issued[0]?.binding.artifactDigests).toEqual(mode === "uppercase" ? ["A".repeat(64)] : ["b".repeat(64), "a".repeat(64)]);
+  expect(fakes.repository.stageWrites).not.toContain("execution");
+  expect(fakes.repository.runs.get(runId)?.state).toBe("PLANNED");
+});
 test("canonical request digest is key-order stable and value/array-order sensitive", () => {
   const request = makeRequest();
   const reordered = reorderObjectKeysDeep(request);
@@ -655,6 +718,20 @@ describe("verification run orchestration", () => {
     fakes.repository.runs.set(RUN_ID, { ...run, state: "PLANNED", updatedAt: FIXED_NOW });
     fakes.repository.stageDocuments.set(`${RUN_ID}:basis`, { schemaVersion: "wrong", requestId: REQUEST_ID, snapshotId: SNAPSHOT_ID });
     await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted basis");
+  });
+  test.each(["PLANNED", "TERMINAL"] as const)("rejects an extra persisted run key on %s resume before transition, dispatch, or write", async state => {
+    const fakes = makeDependencies();
+    await runOnce(fakes.dependencies);
+    const run = fakes.repository.runs.get(RUN_ID);
+    if (!run) throw new Error("missing run");
+    fakes.repository.runs.set(RUN_ID, { ...run, state, unexpected: true } as unknown as CanonicalRunState);
+    const runWrites = fakes.repository.runWrites.length;
+    const stageWrites = fakes.repository.stageWrites.length;
+    const executorCalls = fakes.executorCalls;
+    await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted run");
+    expect(fakes.repository.runWrites.length).toBe(runWrites);
+    expect(fakes.repository.stageWrites.length).toBe(stageWrites);
+    expect(fakes.executorCalls).toBe(executorCalls);
   });
   test("rejects a persisted basis risk downgrade with unchanged IDs before execution", async () => {
     const request = { ...makeRequest(), testBasis: [{ id: "migration-001", kind: "requirement" as const, origin: "explicit" as const, text: "The production migration is reviewed.", source: "request" }] } satisfies VerificationRequest;

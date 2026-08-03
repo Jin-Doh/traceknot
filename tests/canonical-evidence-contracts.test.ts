@@ -81,7 +81,7 @@ const contractCases: readonly ContractCase[] = [
     name: "VerificationRun",
     schema: "verification-run.schema.json",
     positive: "canonical-verification-run.valid.json",
-    negatives: ["canonical-verification-run.invalid-state.json", "canonical-verification-run.invalid-missing-root-identity.json"],
+    negatives: ["canonical-verification-run.invalid-state.json", "canonical-verification-run.invalid-missing-root-identity.json", "canonical-verification-run.invalid-additional-property.json"],
   },
 ];
 
