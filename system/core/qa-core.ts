@@ -273,8 +273,9 @@ function lookupAssertionValue(observation: Observation, field: string): { suppor
       ? { supported: false }
       : { supported: true, value: observation.execution.exitCode };
   }
-  const actualValue = observation.actualValues?.[field];
-  return actualValue === undefined ? { supported: false } : { supported: true, value: actualValue };
+  const actualValues = observation.actualValues;
+  if (!actualValues || !Object.prototype.hasOwnProperty.call(actualValues, field)) return { supported: false };
+  return { supported: true, value: actualValues[field] };
 }
 
 function assertionApplicable(

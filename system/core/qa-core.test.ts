@@ -281,6 +281,29 @@ describe("evaluateEvidence", () => {
 
     expect(evaluate(entry)).toEqual({ accepted: true, rejectionReasons: [] });
   });
+  test.each([
+    { field: "toString", unrelatedValue: "nonempty-to-string" },
+    { field: "constructor", unrelatedValue: "nonempty-constructor" },
+  ] as const)("rejects inherited structured actual value for $field", ({ field, unrelatedValue }) => {
+    const entry = makeEntry({ actualValues: { unrelated: unrelatedValue } });
+    entry.criterion = {
+      ...entry.criterion,
+      expected: { assertions: [{ field, operator: "not-equals", value: "expected-value" }] },
+    };
+
+    expect(evaluate(entry)).toEqual({ accepted: false, rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"] });
+    expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "INCOMPLETE" });
+    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("INCOMPLETE");
+  });
+  test("supports an explicit own null actual value", () => {
+    const entry = makeEntry({ actualValues: { result: null } });
+    entry.criterion = {
+      ...entry.criterion,
+      expected: { assertions: [{ field: "result", operator: "equals", value: null }] },
+    };
+
+    expect(evaluate(entry)).toEqual({ accepted: true, rejectionReasons: [] });
+  });
   test("fails closed when rejection reasons do not match failed checks", () => {
     const entry = makeEntry({
       evaluation: "rejected",
