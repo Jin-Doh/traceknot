@@ -12,9 +12,9 @@
     "producerAllowed": true,
     "independenceSatisfied": true,
     "expectedResultDemonstrated": true,
-    "expectedResultViolated": false,
+    "expectedResultViolated": true,
     "integrityVerified": true
   },
-  "rejectionReasons": ["STALE_EVIDENCE"],
+  "rejectionReasons": [],
   "evaluatedAt": "2026-08-03T00:00:02.000Z"
 }

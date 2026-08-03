@@ -47,4 +47,31 @@
       }
     }
   }
+  },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "producer": {
+            "type": "object",
+            "properties": {
+              "kind": { "const": "self" }
+            },
+            "required": ["kind"]
+          }
+        },
+        "required": ["producer"]
+      },
+      "then": {
+        "properties": {
+          "producer": {
+            "properties": {
+              "independence": { "const": "self-check" }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

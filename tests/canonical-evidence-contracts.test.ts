@@ -18,6 +18,7 @@ const contractCases: readonly ContractCase[] = [
     negatives: [
       "canonical-observation.invalid-verdict.json",
       "canonical-observation.invalid-digest.json",
+      "canonical-observation.invalid-self-external-approval.json",
     ],
   },
   {
@@ -39,6 +40,7 @@ const contractCases: readonly ContractCase[] = [
     negatives: [
       "canonical-evidence-evaluation.invalid-accepted-failed-check.json",
       "canonical-evidence-evaluation.invalid-accepted-reason.json",
+      "canonical-evidence-evaluation.invalid-accepted-violated-check.json",
       "canonical-evidence-evaluation.invalid-rejected-no-reason.json",
     ],
   },

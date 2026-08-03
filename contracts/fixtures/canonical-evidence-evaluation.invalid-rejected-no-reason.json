@@ -12,6 +12,7 @@
     "producerAllowed": true,
     "independenceSatisfied": true,
     "expectedResultDemonstrated": true,
+    "expectedResultViolated": false,
     "integrityVerified": true
   },
   "rejectionReasons": [],

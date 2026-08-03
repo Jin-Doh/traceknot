@@ -15,7 +15,7 @@
     "checks": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["snapshotBound", "fresh", "scopeComplete", "producerAllowed", "independenceSatisfied", "expectedResultDemonstrated", "integrityVerified"],
+      "required": ["snapshotBound", "fresh", "scopeComplete", "producerAllowed", "independenceSatisfied", "expectedResultDemonstrated", "expectedResultViolated", "integrityVerified"],
       "properties": {
         "snapshotBound": { "type": "boolean" },
         "fresh": { "type": "boolean" },
@@ -23,6 +23,7 @@
         "producerAllowed": { "type": "boolean" },
         "independenceSatisfied": { "type": "boolean" },
         "expectedResultDemonstrated": { "type": "boolean" },
+        "expectedResultViolated": { "type": "boolean" },
         "integrityVerified": { "type": "boolean" }
       }
     },
@@ -59,6 +60,7 @@
               "producerAllowed": { "const": true },
               "independenceSatisfied": { "const": true },
               "expectedResultDemonstrated": { "const": true },
+              "expectedResultViolated": { "const": false },
               "integrityVerified": { "const": true }
             }
           },
