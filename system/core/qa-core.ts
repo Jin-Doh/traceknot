@@ -565,7 +565,7 @@ function resolveObligationOutcomeIndexed(
       if (independenceRank[observation.producer.independence] < requiredIndependence) independenceUnmet = true;
       if (assertionContradicts(criterion, observation)) claimContradicts = true;
     }
-    if (claimInScope && hasTargetObservation && allTargetObservations && claimContradicts) observedFailure = true;
+    if (claimInScope && hasTargetObservation && claimContradicts) observedFailure = true;
     const evaluations = indexes.evaluationsByClaim.get(claim.claimId) ?? [];
     for (const evaluation of evaluations) {
       hasEvaluation = true;
@@ -665,7 +665,6 @@ export function resolveProofCarryingQaVerdict(input: ProofCarryingVerdictInput):
     defectIds.add(defect.id);
     if (!defect.material) continue;
     if (defect.disposition === "OPEN") openMaterial.push(defect.id);
-    else if (defect.disposition === "ACCEPTED_RISK" && validAcceptance(defect, input.evaluatedAt)) accepted.push(defect.id);
     else if (defect.disposition === "ACCEPTED_RISK") invalidAcceptance.push(defect.id);
   }
   openMaterial.sort();
@@ -690,7 +689,7 @@ export function resolveProofCarryingQaVerdict(input: ProofCarryingVerdictInput):
     rationale = "A mandatory obligation failed or an unaccepted material defect remains.";
   } else if (blocked > 0 || invalidAcceptance.length > 0) {
     qaVerdict = "BLOCKED";
-    rationale = "A mandatory obligation is blocked or a material risk acceptance is missing or expired.";
+    rationale = "A mandatory obligation is blocked or material accepted risk lacks a canonical external approval record in the proof-carrying core.";
   } else if (incomplete > 0 || coverageIncomplete) {
     qaVerdict = "INCOMPLETE";
     rationale = "Mandatory evidence or required basis, risk, or condition coverage is incomplete.";
