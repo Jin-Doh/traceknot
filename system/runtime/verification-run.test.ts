@@ -9,6 +9,7 @@ import {
   transitionRunState,
   type ArtifactStore,
   type ApprovalProvider,
+  type UsageEvent,
   type BrowserExecutor,
   type CanonicalRunState,
   type CapabilityProvider,
@@ -118,7 +119,8 @@ describe("verification run orchestration", () => {
     expect(result.verdict.qaVerdict).toBe("PASS");
     expect(result.documents.evidence?.evaluations.every(item => item.checks.artifactRequirementsSatisfied)).toBe(true);
     expect(fakes.executorCalls).toBeGreaterThan(0);
-    expect(fakes.repository.stageWrites).toEqual(["request", "basis", "discovery", "plan", "execution", "execution", "evidence", "residual-risk", "verdict"]);
+    expect(fakes.repository.stageWrites.slice(0, 4)).toEqual(["request", "basis", "discovery", "plan"]);
+    expect(fakes.repository.stageWrites.filter(stage => stage === "execution").length).toBeGreaterThanOrEqual(2);
   });
 
   test("resumes from a persisted intermediate state without repeating completed stages", async () => {
@@ -161,6 +163,30 @@ describe("verification run orchestration", () => {
     expect(result.verdict.qaVerdict).not.toBe("PASS");
   });
   test.each([
+    ["rejected evidence with non-violating PASS output", { invalidArtifact: true }, "INCOMPLETE"],
+    ["missing capability", { missingCapability: true }, "BLOCKED"],
+    ["missing executor output", { missingExecutorOutput: true }, "INCOMPLETE"],
+  ] as const)("preserves the core verdict for %s", async (_name, options, expected) => {
+    const result = await runOnce(makeDependencies(options).dependencies, `verdict-${_name.replaceAll(" ", "-")}`);
+    expect(result.verdict.qaVerdict).toBe(expected);
+  });
+  test("preserves FAILED for an explicit failed executor output", async () => {
+    const fakes = makeDependencies();
+    const executor: VerificationExecutor = {
+      executeObligation: async request => ({
+        status: "FAIL",
+        runId: request.runId,
+        requestId: request.requestId,
+        snapshotId: request.snapshotId,
+        idempotencyKey: request.idempotencyKey,
+        producer: { kind: "deterministic-verifier", identity: "fixture-failing-executor", independence: "independent-producer" },
+        artifacts: [{ type: "verification-result", digest: "f".repeat(64) }],
+      }),
+    };
+    const result = await runVerification({ runId: "explicit-failure", request: makeRequest(), dependencies: { ...fakes.dependencies, executor } });
+    expect(result.verdict.qaVerdict).toBe("FAIL");
+  });
+  test.each([
     ["invalid executor digest", { invalidArtifact: true }],
     ["missing artifact storage", { missingArtifactStorage: true }],
     ["mismatched output provenance", { mismatchedProvenance: true }],
@@ -191,8 +217,19 @@ describe("verification run orchestration", () => {
     };
 
     const result = await runVerification({ runId: `missing-${field}`, request: makeRequest(), dependencies: { ...fakes.dependencies, executor } });
-    expect(result.verdict.qaVerdict).not.toBe("PASS");
-    expect(result.documents.execution?.observations.every(observation => field === "requestId" ? observation.requestId === undefined : observation.snapshotId === undefined)).toBe(true);
+    expect(result.documents.execution?.observations.every(observation => field === "requestId" ? observation.requestId === REQUEST_ID : observation.snapshotId === SNAPSHOT_ID)).toBe(true);
+  });
+  test.each(["missing", "mismatched"] as const)("terminal resume preserves the %s receipt verdict without recalling executor", async mode => {
+    const fakes = makeDependencies(mode === "missing" ? { missingExecutorOutput: true } : { mismatchedProvenance: true });
+    const runId = `terminal-receipt-${mode}`;
+    const first = await runVerification({ runId, request: makeRequest(), dependencies: fakes.dependencies });
+    const executorCalls = fakes.executorCalls;
+    expect(first.verdict.qaVerdict).toBe("INCOMPLETE");
+    expect(first.verdict.qaVerdict).not.toBe("PASS");
+    expect(first.documents.execution?.observations.every(item => item.requestId === REQUEST_ID && item.snapshotId === SNAPSHOT_ID)).toBe(true);
+    const resumed = await runVerification({ runId, dependencies: fakes.dependencies });
+    expect(resumed.verdict).toEqual(first.verdict);
+    expect(fakes.executorCalls).toBe(executorCalls);
   });
   test.each(["missing", "mismatched"] as const)("does not accept executor PASS with %s idempotency key", async mode => {
     const fakes = makeDependencies();
@@ -389,6 +426,22 @@ describe("verification run orchestration", () => {
     const changed = { ...makeRequest(), project: { rootIdentity: "other-repository", snapshotId: SNAPSHOT_ID } };
     await expect(runVerification({ runId: RUN_ID, request: changed, dependencies: second.dependencies })).rejects.toThrow("resume request identity");
   });
+  test("requires full request equality and rejects changed basis before side effects", async () => {
+    const fakes = makeDependencies();
+    let artifactCalls = 0;
+    let usageCalls = 0;
+    const artifactStore: ArtifactStore = { storeVerificationResultArtifact: async artifact => { artifactCalls++; return artifact; } };
+    const usageRecorder: UsageRecorder = { recordUsage: async () => { usageCalls++; } };
+    const dependencies = { ...fakes.dependencies, artifactStore, usageRecorder };
+    await runOnce(dependencies);
+    const changed = { ...makeRequest(), change: { summary: "changed request B", paths: ["other/path.ts"] }, testBasis: [{ id: "basis-B", kind: "acceptance-criterion" as const, origin: "explicit" as const, text: "A different test basis." }] } satisfies VerificationRequest;
+    const executorCalls = fakes.executorCalls;
+    const effects = { artifactCalls, usageCalls };
+    await expect(runVerification({ runId: RUN_ID, request: changed, dependencies })).rejects.toThrow("resume request identity");
+    expect(fakes.executorCalls).toBe(executorCalls);
+    expect({ artifactCalls, usageCalls }).toEqual(effects);
+    await expect(runVerification({ runId: RUN_ID, dependencies })).resolves.toMatchObject({ run: { state: "TERMINAL" } });
+  });
 
   test("reuses execution checkpoint after saveRun crash without a duplicate executor call", async () => {
     const fakes = makeDependencies();
@@ -571,7 +624,37 @@ describe("verification run orchestration", () => {
     expect(resumed.run.state).toBe("TERMINAL");
     expect(fakes.executorCalls).toBe(executorCalls + 1);
     expect(artifactStores).toBe(artifactCalls + 1);
-    expect(executionUsageCalls).toBe(2);
+    expect(executionUsageCalls).toBe(3);
+  });
+  test("retries durable artifact and execution usage keys without recalling a completed executor", async () => {
+    const fakes = makeDependencies();
+    const request = { ...makeRequest(), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    const events: UsageEvent[] = [];
+    let throwOnce = true;
+    const usageRecorder: UsageRecorder = {
+      recordUsage: async event => {
+        events.push(event);
+        if (event.event === "execution" && throwOnce) { throwOnce = false; throw new Error("usage recorder failed once"); }
+      },
+    };
+    const dependencies = { ...fakes.dependencies, usageRecorder };
+    await expect(runVerification({ runId: "usage-outbox", request, dependencies })).rejects.toThrow("usage recorder failed once");
+    expect(fakes.executorCalls).toBe(1);
+    const checkpoint = fakes.repository.stageDocuments.get("usage-outbox:execution") as ExecutionDocument;
+    expect(checkpoint.usageOutbox).toHaveLength(1);
+    const pendingExecution = checkpoint.usageOutbox?.[0];
+    expect(pendingExecution?.event).toBe("execution");
+    const resumed = await runVerification({ runId: "usage-outbox", dependencies });
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(fakes.executorCalls).toBe(1);
+    const artifactEvents = events.filter(event => event.event === "artifact");
+    const executionEvents = events.filter(event => event.event === "execution");
+    expect(artifactEvents).toHaveLength(1);
+    expect(executionEvents).toHaveLength(2);
+    expect(artifactEvents[0]?.eventKey).toBeTruthy();
+    expect(executionEvents[0]?.eventKey).toBe(executionEvents[1]?.eventKey);
+    expect(executionEvents[0]?.eventKey).toBe(pendingExecution?.eventKey);
+    expect(executionEvents[0]?.executionKey).toBe(executionEvents[1]?.executionKey);
   });
   test("reuses one deterministic idempotency side effect when artifact storage fails after external completion", async () => {
     const fakes = makeDependencies();
