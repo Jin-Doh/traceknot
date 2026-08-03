@@ -57,6 +57,9 @@ printf '%s\n' '==> canonical schemas and capability records'
 # The schema glob compiles both the preserved v1 and adapter v2 capability contracts.
 bun x --no-install ajv compile --spec=draft2020 -s 'contracts/*.schema.json'
 bun x --no-install ajv validate --spec=draft2020 \
+    -s contracts/codeql-policy.schema.json \
+    -d codeql-policy.json
+bun x --no-install ajv validate --spec=draft2020 \
     -s contracts/capability-v2.schema.json \
     -d 'adapters/*/capability.json'
 
