@@ -47,23 +47,16 @@
       }
     },
     "actualValues": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["field", "value"],
-        "properties": {
-          "field": { "type": "string", "minLength": 1 },
-          "value": {
-            "anyOf": [
-              { "type": "string" },
-              { "type": "number" },
-              { "type": "boolean" },
-              { "type": "null" }
-            ]
-          }
-        }
+      "type": "object",
+      "propertyNames": { "type": "string", "minLength": 1 },
+      "minProperties": 1,
+      "additionalProperties": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "boolean" },
+          { "type": "null" }
+        ]
       }
     }
   },

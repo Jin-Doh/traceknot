@@ -23,10 +23,10 @@
       "path": "artifacts/canonical-observation.log"
     }
   ],
-  "actualValues": [
-    { "field": "exitCode", "value": 0 },
-    { "field": "passed", "value": true },
-    { "field": "summary", "value": "canonical contracts passed" },
-    { "field": "failure", "value": null }
-  ]
+  "actualValues": {
+    "exitCode": 0,
+    "passed": true,
+    "summary": "canonical contracts passed",
+    "failure": null
+  }
 }

@@ -23,8 +23,7 @@
       "path": "artifacts/canonical-observation.log"
     }
   ],
-  "actualValues": [
-    { "field": "passed", "value": true },
-    { "field": "passed", "value": true }
-  ]
+  "actualValues": {
+    "passed": { "value": true }
+  }
 }

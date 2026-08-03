@@ -23,8 +23,8 @@
       "path": "artifacts/canonical-observation.log"
     }
   ],
-  "actualValues": [
-    { "field": "exitCode", "value": { "nested": true } },
-    { "value": true }
-  ]
+  "actualValues": {
+    "": true,
+    "nested": { "value": 1 }
+  }
 }
