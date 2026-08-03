@@ -33,6 +33,7 @@ type EntryOptions = {
   exitStatus?: Observation["execution"]["exitStatus"];
   producerKind?: Observation["producer"]["kind"];
   independence?: IndependenceLevel;
+  mandatory?: boolean;
   artifacts?: Observation["artifacts"];
   evaluation?: "accepted" | "rejected" | "none";
   checks?: Partial<EvidenceEvaluation["checks"]>;
@@ -82,7 +83,7 @@ const makeEntry = (options: EntryOptions = {}): Entry => {
   };
   const obligation: ProofCarryingObligation = {
     id: obligationId,
-    mandatory: true,
+    mandatory: options.mandatory ?? true,
     criterionIds: [criterionId],
     requiredIndependence: "independent-producer",
   };
@@ -275,6 +276,18 @@ describe("evaluateEvidence", () => {
     expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("INCOMPLETE");
   });
 
+  test("does not turn an explicit violation into FAIL when evidence is stale", () => {
+    const entry = makeEntry({
+      observationSnapshotId: "snapshot-2",
+      evaluation: "rejected",
+      checks: { expectedResultDemonstrated: false, expectedResultViolated: true },
+      rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"],
+    });
+
+    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("INCOMPLETE");
+    expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "INCOMPLETE" });
+  });
+
   test("retains a failed execution as FAIL when the expected result is rejected", () => {
     const entry = makeEntry({
       exitStatus: "failed",
@@ -344,6 +357,23 @@ describe("evaluateEvidence", () => {
     expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "FAILED" });
     expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("FAIL");
   });
+  test("fails on a contradictory supported assertion even without explicit violation", () => {
+    const entry = makeEntry({
+      evaluation: "rejected",
+      checks: { expectedResultDemonstrated: false, expectedResultViolated: false },
+      rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"],
+    });
+    entry.criterion = {
+      ...entry.criterion,
+      expected: {
+        assertions: [{ field: "execution.exitCode", operator: "equals", value: 1 }],
+      },
+    };
+
+    expect(evaluate(entry)).toEqual({ accepted: false, rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"] });
+    expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "FAILED" });
+    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("FAIL");
+  });
 
   test("keeps aggregate FAIL when an explicit failure is mixed with a blocked claim", () => {
     const failed = makeEntry({
@@ -389,6 +419,41 @@ describe("resolveProofCarryingQaVerdict", () => {
     expect(result.authoritative).toBe(false);
     expect(result.qaVerdict).toBe("PASS");
     expect(result.obligationSummary).toMatchObject({ mandatory: 1, passed: 1, failed: 0, blocked: 0, incomplete: 0 });
+  });
+  test("keeps PASS when extra claims are blocked or weakly independent", () => {
+    const accepted = makeEntry();
+    const blocked = makeEntry({
+      obligationId: "obligation-extra-blocked",
+      criterionId: "criterion-extra-blocked",
+      observationId: "observation-extra-blocked",
+      claimId: "claim-extra-blocked",
+      mandatory: false,
+      exitStatus: "blocked",
+      evaluation: "rejected",
+      checks: { expectedResultDemonstrated: false },
+      rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"],
+    });
+    const weak = makeEntry({
+      obligationId: "obligation-extra-weak",
+      criterionId: "criterion-extra-weak",
+      observationId: "observation-extra-weak",
+      claimId: "claim-extra-weak",
+      mandatory: false,
+      independence: "self-check",
+      evaluation: "rejected",
+      checks: { independenceSatisfied: false },
+      rejectionReasons: ["INDEPENDENCE_NOT_MET"],
+    });
+    const input = graph(accepted);
+    input.observations = [accepted.observation, blocked.observation, weak.observation];
+    input.claims = [
+      accepted.claim,
+      { ...blocked.claim, obligationId: accepted.obligation.id, criterionId: accepted.criterion.criterionId },
+      { ...weak.claim, obligationId: accepted.obligation.id, criterionId: accepted.criterion.criterionId },
+    ];
+    input.evaluations = [accepted.evaluation!, blocked.evaluation!, weak.evaluation!];
+
+    expect(resolveProofCarryingQaVerdict(input).qaVerdict).toBe("PASS");
   });
 
   test("applies FAIL, BLOCKED, INCOMPLETE, accepted-risk, then PASS precedence", () => {
@@ -455,6 +520,25 @@ describe("resolveProofCarryingQaVerdict", () => {
     ];
 
     expect(resolveProofCarryingQaVerdict(input).qaVerdict).toBe("INCOMPLETE");
+  });
+  test("requires nonempty proof coverage while legacy coverage stays permissive", () => {
+    const emptyBasis = graph(makeEntry());
+    emptyBasis.coverage = { ...emptyBasis.coverage, basisIds: [], coveredBasisIds: [] };
+    expect(resolveProofCarryingQaVerdict(emptyBasis).qaVerdict).toBe("INCOMPLETE");
+
+    const emptyConditions = graph(makeEntry());
+    emptyConditions.coverage = { ...emptyConditions.coverage, conditionIds: [], coveredConditionIds: [] };
+    expect(resolveProofCarryingQaVerdict(emptyConditions).qaVerdict).toBe("INCOMPLETE");
+
+    const legacy = legacyBase();
+    legacy.coverage = {
+      ...legacy.coverage,
+      basisIds: [],
+      coveredBasisIds: [],
+      conditionIds: [],
+      coveredConditionIds: [],
+    };
+    expect(resolveQaVerdict(legacy).qaVerdict).toBe("PASS");
   });
 
   test("rejects duplicate IDs and unknown graph references as invalid input", () => {
