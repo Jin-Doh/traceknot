@@ -59,7 +59,7 @@ function loadJson(path: string): unknown {
 
 function loadValidator(schemaFile: string) {
   const ajv = new Ajv2020({ allErrors: true, strict: true });
-  return ajv.compile(loadJson(join(contractRoot, schemaFile)));
+  return ajv.compile(loadJson(join(contractRoot, schemaFile)) as object);
 }
 
 describe("canonical evidence contracts", () => {
