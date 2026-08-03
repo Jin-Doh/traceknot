@@ -226,6 +226,35 @@ describe("verification run orchestration", () => {
     fakes.repository.stageDocuments.set(`${RUN_ID}:basis`, { schemaVersion: "wrong", requestId: REQUEST_ID, snapshotId: SNAPSHOT_ID });
     await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted basis");
   });
+  test("rejects a persisted basis risk downgrade with unchanged IDs before execution", async () => {
+    const request = { ...makeRequest(), testBasis: [{ id: "migration-001", kind: "requirement" as const, origin: "explicit" as const, text: "The production migration is reviewed.", source: "request" }] } satisfies VerificationRequest;
+    const fakes = makeDependencies();
+    await runVerification({ runId: RUN_ID, request, dependencies: fakes.dependencies });
+    const run = fakes.repository.runs.get(RUN_ID);
+    const persisted = fakes.repository.stageDocuments.get(`${RUN_ID}:basis`) as { basis: Array<{ id: string; text: string }>; };
+    if (!run || !persisted) throw new Error("missing persisted basis");
+    const tampered = { ...persisted, basis: persisted.basis.map(item => ({ ...item, text: "A basic check is performed." })) };
+    expect(tampered.basis.map(item => item.id)).toEqual(persisted.basis.map(item => item.id));
+    fakes.repository.stageDocuments.set(`${RUN_ID}:basis`, tampered);
+    fakes.repository.runs.set(RUN_ID, { ...run, state: "PLANNED", updatedAt: FIXED_NOW });
+    const executorCalls = fakes.executorCalls;
+    await expect(runVerification({ runId: RUN_ID, request, dependencies: fakes.dependencies })).rejects.toThrow("invalid persisted basis");
+    expect(fakes.executorCalls).toBe(executorCalls);
+  });
+
+  test("rejects a tampered basis on terminal resume before verdict", async () => {
+    const fakes = makeDependencies();
+    const first = await runOnce(fakes.dependencies);
+    const run = fakes.repository.runs.get(RUN_ID);
+    const persisted = fakes.repository.stageDocuments.get(`${RUN_ID}:basis`) as { basis: Array<Record<string, unknown>> };
+    if (!run || !persisted) throw new Error("missing persisted basis");
+    const tampered = { ...persisted, basis: persisted.basis.map(item => ({ ...item, source: "tampered-source" })) };
+    fakes.repository.stageDocuments.set(`${RUN_ID}:basis`, tampered);
+    const executorCalls = fakes.executorCalls;
+    await expect(runVerification({ runId: RUN_ID, request: makeRequest(), dependencies: fakes.dependencies })).rejects.toThrow("invalid persisted basis");
+    expect(fakes.executorCalls).toBe(executorCalls);
+    expect(first.verdict.qaVerdict).toBe("PASS");
+  });
 
   test("rejects cross-stage plan references before execution", async () => {
     const fakes = makeDependencies();
@@ -293,6 +322,37 @@ describe("verification run orchestration", () => {
     const executorCalls = fakes.executorCalls;
     await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted plan canonicalization");
     expect(fakes.executorCalls).toBe(executorCalls);
+  });
+
+  test("rejects PASS-A/FAIL-B swapped claim observations before resumed evaluation", async () => {
+    const fakes = makeDependencies();
+    let executorCalls = 0;
+    const executor: VerificationExecutor = {
+      executeObligation: async request => {
+        executorCalls++;
+        const pass = request.obligation.id === "obligation:condition:basis-001";
+        return {
+          status: pass ? "PASS" : "FAIL",
+          requestId: REQUEST_ID,
+          snapshotId: SNAPSHOT_ID,
+          producer: { kind: "deterministic-verifier", identity: "fixture-executor", independence: "independent-producer" },
+          artifacts: [{ type: "verification-result", digest: `${pass ? "a" : "b"}`.repeat(64) }],
+          summary: pass ? "PASS A" : "FAIL B",
+        };
+      },
+    };
+    const dependencies = { ...fakes.dependencies, executor };
+    const first = await runOnce(dependencies);
+    expect(first.verdict.qaVerdict).toBe("FAIL");
+    expect(executorCalls).toBe(2);
+    const run = fakes.repository.runs.get(RUN_ID);
+    const saved = fakes.repository.stageDocuments.get(`${RUN_ID}:execution`) as { claims: Array<{ obligationId: string; observationIds: readonly string[] }>; [key: string]: unknown };
+    if (!run || !saved || saved.claims.length !== 2) throw new Error("missing complete execution");
+    const swappedClaims = saved.claims.map((claim, index) => ({ ...claim, observationIds: [saved.claims[(index + 1) % saved.claims.length]!.observationIds[0]!] }));
+    fakes.repository.stageDocuments.set(`${RUN_ID}:execution`, { ...saved, claims: swappedClaims });
+    fakes.repository.runs.set(RUN_ID, { ...run, state: "EXECUTING", updatedAt: FIXED_NOW });
+    await expect(runVerification({ runId: RUN_ID, request: makeRequest(), dependencies })).rejects.toThrow("invalid persisted claim reference");
+    expect(executorCalls).toBe(2);
   });
 
   test("validates nested verdict identity on terminal and verdict-resolved resume", async () => {
