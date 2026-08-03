@@ -46,7 +46,6 @@
         }
       }
     }
-  }
   },
   "allOf": [
     {
@@ -64,8 +63,10 @@
         "required": ["producer"]
       },
       "then": {
+        "type": "object",
         "properties": {
           "producer": {
+            "type": "object",
             "properties": {
               "independence": { "const": "self-check" }
             }
