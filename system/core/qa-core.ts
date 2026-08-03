@@ -12,6 +12,7 @@ export type VerificationObligation = {
 
 export type ObligationResult = {
   obligationId: string;
+  snapshotId: string;
   status: ObligationStatus;
   producerIndependence: IndependenceLevel;
   evidenceId?: string;
