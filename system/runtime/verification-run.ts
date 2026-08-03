@@ -98,8 +98,8 @@ export async function establishTestBasis(input: EstablishTestBasisInput): Promis
 function material(item: VerificationBasisItem): string { return `${item.id} ${item.kind} ${item.text} ${item.source ?? ""}`.toLowerCase(); }
 function riskLevel(item: VerificationBasisItem): RiskLevel {
   const text = material(item);
-  if (/\b(release|migration|migrat\w*|persistence|persist\w*|destructive|delete\w*|drop|truncate|destroy\w*|irreversible|production|prod(?:uction)?|infrastructure|infra|deployment|deploy\w*|rollout|security)\b/.test(text) ||
-      /\bunknown\s+(?:material\s+)?scope\b|\bmaterial(?:ly)?\s+unknown\s+scope\b|\bscope\s+(?:unknown|uncertain|undetermined|unbounded)\b/.test(text)) return "R3";
+  if (/\b(release|migration|migrat\w*|persistence|persist\w*|destructive|delet\w*|drop|truncate|destroy\w*|irreversible|production|prod(?:uction)?|infrastructure|infra|deployment|deploy\w*|rollout|security)\b/.test(text) ||
+      /\bunknown\s+(?:material\s+)?scope\b|\bmaterial(?:ly)?\s+unknown\s+scope\b|\bmaterial\s+scope\s+(?:is\s+)?(?:unknown|uncertain|undetermined|unbounded)\b|\bscope\s+(?:is\s+)?(?:materially\s+)?(?:unknown|uncertain|undetermined|unbounded)\b/.test(text)) return "R3";
   if (["contract", "invariant", "defect", "policy", "acceptance-criterion", "requirement"].includes(item.kind) ||
       /\b(runtime|concurr\w*|parallel\w*|race|retry|retries|recover\w*|browser|web|ui|visual|flow|orchestrat\w*|resume|checkpoint|snapshot|executor|capability|crash|timeout|cancel|idempot\w*)\b/.test(text)) return "R2";
   return "R1";
