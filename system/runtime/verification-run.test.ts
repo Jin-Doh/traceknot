@@ -17,6 +17,7 @@ import {
   type UsageRecorder,
   type VerificationRequest,
   type VerificationExecutor,
+  type VerificationExecutionOutput,
   type VerificationRunDependencies,
 } from "./verification-run";
 
@@ -164,6 +165,28 @@ describe("verification run orchestration", () => {
   ])("fails closed for %s", async (_name, options) => {
     const result = await runOnce(makeDependencies(options).dependencies);
     expect(result.verdict.qaVerdict).not.toBe("PASS");
+  });
+  test.each(["requestId", "snapshotId"] as const)("fails closed when executor omits output %s provenance", async field => {
+    const fakes = makeDependencies();
+    const executor: VerificationExecutor = {
+      executeObligation: async () => {
+        const output: VerificationExecutionOutput = {
+          status: "PASS",
+          requestId: REQUEST_ID,
+          snapshotId: SNAPSHOT_ID,
+          producer: { kind: "deterministic-verifier", identity: "fixture-executor", independence: "independent-producer" },
+          artifacts: [{ type: "verification-result", digest: "a".repeat(64) }],
+        };
+        const malformed = { ...output };
+        const mutable = malformed as { requestId?: string; snapshotId?: string };
+        if (field === "requestId") delete mutable.requestId;
+        else delete mutable.snapshotId;
+        return malformed;
+      },
+    };
+    const result = await runVerification({ runId: `missing-${field}`, request: makeRequest(), dependencies: { ...fakes.dependencies, executor } });
+    expect(result.verdict.qaVerdict).not.toBe("PASS");
+    expect(result.documents.execution?.observations.every(observation => field === "requestId" ? observation.requestId === undefined : observation.snapshotId === undefined)).toBe(true);
   });
 
   test("classifies material risks, derives independent obligations, and preserves browser technique", async () => {

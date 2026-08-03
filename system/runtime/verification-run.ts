@@ -208,8 +208,8 @@ export async function executeObligations(input: ExecuteObligationsInput): Promis
     }
     const execution = executionFor(obligation, verdict, observedAt, output, producer);
     const observationId = `observation:${obligation.id}`;
-    const observationRequestId = typeof output?.requestId === "string" && output.requestId ? output.requestId : input.request.requestId;
-    const observationSnapshotId = typeof output?.snapshotId === "string" && output.snapshotId ? output.snapshotId : input.request.project.snapshotId;
+    const observationRequestId = output ? output.requestId : input.request.requestId;
+    const observationSnapshotId = output ? output.snapshotId : input.request.project.snapshotId;
     observations.push({ schemaVersion: "observation/v1", observationId, requestId: observationRequestId, snapshotId: observationSnapshotId, producer, execution, artifacts });
     evidence.push({ schemaVersion: "verification-evidence/v1", evidenceId: `evidence:${obligation.id}`, requestId: observationRequestId, snapshotId: observationSnapshotId, obligationId: obligation.id, producer, execution, result: { verdict, summary, ...(verdict === "PASS" ? { passed: 1 } : verdict === "FAIL" ? { failed: 1 } : {}), artifacts: artifacts.map(item => item.digest) }, observedAt });
     claims.push({ schemaVersion: "evidence-claim/v1", claimId: `claim:${obligation.id}`, requestId: input.request.requestId, snapshotId: input.request.project.snapshotId, obligationId: obligation.id, criterionId: `criterion:${obligation.id}`, observationIds: [observationId], claim: summary });
