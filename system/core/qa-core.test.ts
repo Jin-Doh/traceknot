@@ -467,6 +467,47 @@ describe("evaluateEvidence", () => {
     expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "NONE", outcome: "FAILED" });
     expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("FAIL");
   });
+  test("fails mixed target contradiction despite stale evidence and another accepting claim", () => {
+    const failing = makeEntry({
+      observationId: "observation-target-contradiction",
+      claimId: "claim-target-contradiction",
+      evaluation: "rejected",
+      checks: { expectedResultDemonstrated: false, expectedResultViolated: false },
+      rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"],
+    });
+    failing.criterion = {
+      ...failing.criterion,
+      expected: {
+        assertions: [{ field: "execution.exitCode", operator: "equals", value: 1 }],
+      },
+    };
+    const stale = makeEntry({
+      observationId: "observation-mixed-stale",
+      claimId: "claim-mixed-stale",
+      observationSnapshotId: "snapshot-2",
+      evaluation: "none",
+    });
+    const accepting = makeEntry({
+      observationId: "observation-accepting",
+      claimId: "claim-accepting",
+    });
+    const input = graph(failing);
+    input.observations = [failing.observation, stale.observation, accepting.observation];
+    input.claims = [
+      {
+        ...failing.claim,
+        observationIds: [failing.observation.observationId, stale.observation.observationId],
+      },
+      {
+        ...accepting.claim,
+        obligationId: failing.obligation.id,
+        criterionId: failing.criterion.criterionId,
+      },
+    ];
+    input.evaluations = [failing.evaluation!, accepting.evaluation!];
+
+    expect(resolveProofCarryingQaVerdict(input).qaVerdict).toBe("FAIL");
+  });
 
   test("keeps aggregate FAIL when an explicit failure is mixed with a blocked claim", () => {
     const failed = makeEntry({
@@ -595,7 +636,7 @@ describe("resolveProofCarryingQaVerdict", () => {
     };
     const passing = graph(makeEntry());
     passing.defects = [acceptedRisk];
-    expect(resolveProofCarryingQaVerdict(passing).qaVerdict).toBe("PASS_WITH_ACCEPTED_RISK");
+    expect(resolveProofCarryingQaVerdict(passing).qaVerdict).toBe("BLOCKED");
 
     passing.defects = [];
     expect(resolveProofCarryingQaVerdict(passing).qaVerdict).toBe("PASS");
@@ -703,5 +744,18 @@ describe("resolveQaVerdict legacy compatibility", () => {
         results: [{ ...result, snapshotId: "snapshot-2" }],
       }),
     ).toThrow("snapshot mismatch");
+  });
+  test("retains legacy PASS_WITH_ACCEPTED_RISK compatibility", () => {
+    const input = legacyBase();
+    input.defects = [
+      {
+        id: "defect-legacy-accepted-risk",
+        material: true,
+        disposition: "ACCEPTED_RISK",
+        acceptanceExpiresAt: "2026-08-01T00:00:00.000Z",
+      },
+    ];
+
+    expect(resolveQaVerdict(input).qaVerdict).toBe("PASS_WITH_ACCEPTED_RISK");
   });
 });
