@@ -603,6 +603,26 @@ describe("verification run orchestration", () => {
     await expect(runOnce(dependencies, runId)).rejects.toThrow("invalid execution authority binding");
     expect(fakes.executorCalls).toBe(executorCalls);
   });
+  test("rejects persisted evidence observedAt mutation against fixed authority before evaluation", async () => {
+    const fakes = makeDependencies();
+    const runId = "authority-observed-at-tamper";
+    const first = await runOnce(fakes.dependencies, runId);
+    expect(first.verdict.qaVerdict).toBe("PASS");
+    const run = fakes.repository.runs.get(runId);
+    const saved = fakes.repository.stageDocuments.get(`${runId}:execution`) as ExecutionDocument;
+    if (!run || !saved) throw new Error("missing persisted execution");
+    const target = saved.evidence[0];
+    if (!target) throw new Error("missing persisted evidence");
+    const evidence = saved.evidence.map(item => item.evidenceId === target.evidenceId ? { ...item, observedAt: "2026-08-03T00:01:00.000Z" } : item);
+    fakes.repository.stageDocuments.set(`${runId}:execution`, { ...saved, evidence });
+    fakes.repository.runs.set(runId, { ...run, state: "EXECUTING", updatedAt: FIXED_NOW });
+    const executorCalls = fakes.executorCalls;
+    const writesBeforeResume = fakes.repository.stageWrites.length;
+    await expect(runOnce(fakes.dependencies, runId)).rejects.toThrow("invalid execution authority binding");
+    expect(fakes.executorCalls).toBe(executorCalls);
+    expect(fakes.repository.stageWrites.slice(writesBeforeResume)).not.toContain("evidence");
+    expect(fakes.repository.stageWrites.slice(writesBeforeResume)).not.toContain("verdict");
+  });
   test.each([
     ["missing", { missingAuthority: true }],
     ["mismatched", { mismatchedAuthority: true }],
@@ -864,24 +884,60 @@ describe("verification run orchestration", () => {
     expect([...sideEffects.values()].every(count => count === 1)).toBe(true);
   });
 
-  test("reuses one deterministic idempotency side effect when checkpoint save fails after external completion", async () => {
+  test.each(["PASS", "FAIL"] as const)("reuses the authenticated authority binding after checkpoint save failure with an advancing clock for %s", async status => {
     const fakes = makeDependencies();
     fakes.repository.failNextStage = "execution";
+    const request = { ...makeRequest(`authority-replay-${status}`), testBasis: [makeRequest().testBasis[0]!] };
+    const runId = `authority-replay-${status}`;
+    let now = FIXED_NOW;
+    let executorCalls = 0;
     const requests: string[] = [];
     const sideEffects = new Map<string, number>();
     const executor: VerificationExecutor = {
-      executeObligation: async request => {
-        requests.push(request.idempotencyKey);
-        if (!sideEffects.has(request.idempotencyKey)) sideEffects.set(request.idempotencyKey, 1);
-        return { status: "PASS", runId: request.runId, requestId: request.requestId, snapshotId: request.snapshotId, idempotencyKey: request.idempotencyKey, producer: { kind: "deterministic-verifier", identity: "deduplicating-executor", independence: "independent-producer" }, artifacts: [{ type: "verification-result", digest: "e".repeat(64) }] };
+      executeObligation: async executionRequest => {
+        executorCalls++;
+        requests.push(executionRequest.idempotencyKey);
+        if (!sideEffects.has(executionRequest.idempotencyKey)) sideEffects.set(executionRequest.idempotencyKey, 1);
+        return { status, runId: executionRequest.runId, requestId: executionRequest.requestId, snapshotId: executionRequest.snapshotId, idempotencyKey: executionRequest.idempotencyKey, producer: { kind: "deterministic-verifier", identity: "deduplicating-executor", independence: "independent-producer" }, artifacts: [{ type: "verification-result", digest: "e".repeat(64) }] };
       },
     };
-    const dependencies = { ...fakes.dependencies, executor };
-    await expect(runOnce(dependencies)).rejects.toThrow("simulated saveStage crash");
-    await expect(runOnce(dependencies)).resolves.toMatchObject({ run: { state: "TERMINAL" } });
+    const authorities = new Map<string, ExecutionAuthority>();
+    const issuedBindings: ExecutionAuthority["binding"][] = [];
+    const executionAuthority = {
+      issueExecutionAuthority: async (binding: ExecutionAuthority["binding"]): Promise<ExecutionAuthority> => {
+        issuedBindings.push(structuredClone(binding));
+        const existing = authorities.get(binding.idempotencyKey);
+        if (existing) return existing;
+        const authority: ExecutionAuthority = { schemaVersion: "verification-execution-authority/v1", authorityId: `authority:${binding.obligationId}`, issuer: "deduplicating-authority", binding: structuredClone(binding) };
+        authorities.set(binding.idempotencyKey, authority);
+        return authority;
+      },
+      verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]): Promise<boolean> => {
+        const stored = authorities.get(binding.idempotencyKey);
+        return Boolean(stored && JSON.stringify(stored) === JSON.stringify(authority) && JSON.stringify(stored.binding) === JSON.stringify(binding));
+      },
+    };
+    const dependencies = { ...fakes.dependencies, executor, executionAuthority, now: () => now };
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("simulated saveStage crash");
+    const original = issuedBindings[0];
+    if (!original) throw new Error("missing original authority binding");
+    now = "2026-08-03T00:00:10.000Z";
+    const resumed = await runVerification({ runId, dependencies });
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(resumed.verdict.qaVerdict).toBe(status);
+    expect(executorCalls).toBe(2);
+    expect(requests).toHaveLength(2);
     expect(requests[0]).toBe(requests[1]);
-    expect(new Set(requests).size).toBe(2);
-    expect([...sideEffects.values()].every(count => count === 1)).toBe(true);
+    expect([...sideEffects.values()]).toEqual([1]);
+    const persisted = resumed.documents.execution;
+    const authority = persisted?.authorities?.[0];
+    const observation = persisted?.observations[0];
+    const evidence = persisted?.evidence[0];
+    expect(authority?.binding.execution.startedAt).toBe(original.execution.startedAt);
+    expect(authority?.binding.execution.finishedAt).toBe(original.execution.finishedAt);
+    expect(authority?.binding.observedAt).toBe(original.observedAt);
+    expect(observation?.execution).toEqual(original.execution);
+    expect(evidence?.observedAt).toBe(original.observedAt);
   });
 
 
