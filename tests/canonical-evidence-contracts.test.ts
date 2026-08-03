@@ -3,6 +3,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+import { canonicalRequestDigest, type VerificationRequest } from "../system/runtime/verification-run";
 type ContractCase = {
   name: string;
   schema: string;
@@ -248,5 +249,22 @@ describe("canonical evidence contracts", () => {
 
     expect(validate(fixture)).toBe(false);
     expect(validate.errors?.length).toBeGreaterThan(0);
+  });
+  test("keeps verification request paths non-empty in AJV and runtime", () => {
+    const validate = loadValidator("verification-request.schema.json");
+    const request: VerificationRequest = {
+      schemaVersion: "verification-request/v1",
+      requestId: "request-contract",
+      project: { rootIdentity: "repository", snapshotId: "snapshot-contract" },
+      change: { summary: "validate published request contract", paths: ["system/runtime/verification-run.ts"] },
+      testBasis: [{ id: "basis-contract", kind: "contract", origin: "explicit", text: "The request schema matches runtime validation." }],
+    };
+    const invalid = { ...request, change: { ...request.change, paths: [] } };
+
+    expect(validate(request), validate.errors ? JSON.stringify(validate.errors) : undefined).toBe(true);
+    expect(() => canonicalRequestDigest(request)).not.toThrow();
+    expect(validate(invalid)).toBe(false);
+    expect(validate.errors?.length).toBeGreaterThan(0);
+    expect(() => canonicalRequestDigest(invalid)).toThrow("invalid verification request");
   });
 });

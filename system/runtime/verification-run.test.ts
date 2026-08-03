@@ -298,6 +298,37 @@ test("fails closed when a valid artifact is accompanied by a malformed artifact"
   expect(result.verdict.qaVerdict).not.toBe("PASS");
   expect(stores).toBe(0);
 });
+test.each([
+  ["malformed response", null],
+  ["wrong response type", { type: "unexpected-artifact", digest: "b".repeat(64) }],
+  ["empty response path", { type: "verification-result", digest: "b".repeat(64), path: "" }],
+  ["mismatched response digest", { type: "verification-result", digest: "c".repeat(64) }],
+] as const)("fails closed when a valid artifact is accompanied by an artifact-store %s", async (_name, malformedResponse) => {
+  const fakes = makeDependencies();
+  const validDigest = "a".repeat(64);
+  const executor: VerificationExecutor = {
+    executeObligation: async request => ({
+      status: "PASS",
+      runId: request.runId,
+      requestId: request.requestId,
+      snapshotId: request.snapshotId,
+      idempotencyKey: request.idempotencyKey,
+      producer: { kind: "deterministic-verifier", identity: "mixed-store-executor", independence: "independent-producer" },
+      artifacts: [
+        { type: "verification-result", digest: validDigest },
+        { type: "verification-result", digest: "b".repeat(64) },
+      ],
+    }),
+  };
+  const artifactStore: ArtifactStore = {
+    storeVerificationResultArtifact: async artifact => artifact.digest === validDigest ? artifact : malformedResponse as unknown as Artifact,
+  };
+  const result = await runOnce({ ...fakes.dependencies, executor, artifactStore }, `mixed-store-${_name.replaceAll(" ", "-")}`);
+  const execution = result.documents.execution;
+  expect(result.verdict.qaVerdict).toBe("INCOMPLETE");
+  expect(execution?.evidence.every(item => item.result.verdict !== "PASS")).toBe(true);
+  expect(execution?.authorities.some(authority => authority.binding.result.verdict === "PASS")).toBe(false);
+});
 
 
 describe("verification run orchestration", () => {

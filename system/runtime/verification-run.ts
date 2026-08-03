@@ -434,18 +434,26 @@ export async function executeObligations(input: ExecuteObligationsInput): Promis
     let producer = outputProducer ?? UNAVAILABLE_PRODUCER;
     let summary = !available ? `Capability ${capabilityFor(obligation)} is unavailable.` : !output ? "No executor output was returned." : !receiptValid ? "Executor output did not echo the canonical idempotency receipt (provenance or idempotency mismatch)." : output.summary ?? `Obligation ${obligation.id} completed.`;
     let artifacts: CanonicalVerificationResultArtifact[] = [];
-    if (verdict === "PASS" || verdict === "FAIL") {
-      const supplied = Array.isArray(output?.artifacts) ? output.artifacts : [];
-      if (supplied.some(item => !canonicalArtifact(item))) {
+    const suppliedArtifacts = output?.artifacts;
+    const malformedExecutorArtifact = suppliedArtifacts !== undefined && (!Array.isArray(suppliedArtifacts) || suppliedArtifacts.some(item => !canonicalArtifact(item)));
+    if (malformedExecutorArtifact) {
+      hostGenerated = true;
+      verdict = "INCOMPLETE";
+      summary = "Executor output contained a malformed artifact.";
+    } else if (verdict === "PASS" || verdict === "FAIL") {
+      const supplied = Array.isArray(suppliedArtifacts) ? suppliedArtifacts : [];
+      let malformedStoredArtifact = false;
+      for (const artifact of dedupeArtifacts(supplied)) {
+        const stored = await storeArtifact(input.dependencies.artifactStore, artifact, request);
+        if (stored) artifacts.push(stored);
+        else malformedStoredArtifact = true;
+      }
+      artifacts = dedupeArtifacts(artifacts);
+      if (malformedStoredArtifact) {
         hostGenerated = true;
         verdict = "INCOMPLETE";
-        summary = "Executor output contained a malformed artifact.";
-      } else {
-        for (const artifact of dedupeArtifacts(supplied)) {
-          const stored = await storeArtifact(input.dependencies.artifactStore, artifact, request);
-          if (stored) artifacts.push(stored);
-        }
-        artifacts = dedupeArtifacts(artifacts);
+        summary = "Artifact store returned a malformed or mismatched artifact.";
+        artifacts = [];
       }
     }
     if (verdict === "PASS" || verdict === "FAIL") {
