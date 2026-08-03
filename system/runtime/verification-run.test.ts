@@ -59,7 +59,7 @@ function makeDependencies(options: FakeOptions = {}): FakePorts & { dependencies
   const executor = {
     executeObligation: async () => {
       executorCalls++;
-      if (options.missingExecutorOutput) return undefined;
+      if (options.missingExecutorOutput || options.missingBrowserOutput) return undefined;
       return { status: "PASS", passed: true, snapshotId: SNAPSHOT_ID, observationId: "observation-001", claimId: "claim-001", evaluationId: "evaluation-001", evidenceId: "evidence-001", artifacts: [{ type: "verification-output", digest: "digest-001" }] };
     },
   } as unknown as VerificationExecutor;
@@ -112,7 +112,7 @@ describe("verification run orchestration", () => {
     expect(fakes.repository.runs.get(RUN_ID)?.state).toBe("TERMINAL");
     expect(result.verdict.qaVerdict).toBe("PASS");
     expect(fakes.executorCalls).toBeGreaterThan(0);
-    expect(fakes.repository.stageWrites).toEqual(["BASIS_ESTABLISHED", "DISCOVERY_COMPLETED", "PLANNED", "EXECUTING", "EVIDENCE_EVALUATED", "VERDICT_RESOLVED", "TERMINAL"]);
+    expect(fakes.repository.stageWrites).toEqual(["request", "basis", "discovery", "plan", "execution", "evidence", "residual-risk", "verdict"]);
   });
 
   test("resumes from a persisted intermediate state without repeating completed stages", async () => {

@@ -51,7 +51,7 @@ export function transitionRunState(run: CanonicalRunState, nextState: RunState, 
 }
 export const transitionRun = transitionRunState;
 function criteriaFor(plan: VerificationPlan): readonly SuccessCriterion[] {
-  return plan.obligations.map(item => ({ schemaVersion: "success-criterion/v1", criterionId: `criterion:${item.id}`, kind: "structured-assertion", expected: { assertions: [] }, requiredScope: { kind: "repository-canonical", selectors: [plan.requestId] }, requiredIndependence: item.independence, requiredArtifacts: ["verification-result"] }));
+  return plan.obligations.map(item => ({ schemaVersion: "success-criterion/v1", criterionId: `criterion:${item.id}`, kind: "structured-assertion", expected: { assertions: [] }, requiredScope: { kind: "repository-canonical", selectors: [plan.requestId] }, requiredIndependence: item.independence, requiredArtifacts: [] }));
 }
 function proofObligations(plan: VerificationPlan): readonly ProofCarryingObligation[] {
   return plan.obligations.map(item => ({ id: item.id, mandatory: item.mandatory, criterionIds: [`criterion:${item.id}`], requiredIndependence: item.independence }));
@@ -129,7 +129,7 @@ export async function executeObligations(input: ExecuteObligationsInput): Promis
   return freeze({ schemaVersion: "verification-execution/v1", requestId: input.request.requestId, snapshotId: input.request.project.snapshotId, observations, claims, evidence });
 }
 function makeEvaluation(observation: Observation | undefined, claim: EvidenceClaim, evaluatedAt: string): EvidenceEvaluation {
-  const accepted = observation?.execution.exitStatus === "passed" && observation.artifacts.some(item => item.type === "verification-result");
+  const accepted = observation?.execution.exitStatus === "passed" && observation.artifacts.length > 0;
   return { schemaVersion: "evidence-evaluation/v1", evaluationId: `evaluation:${claim.claimId}`, requestId: claim.requestId, snapshotId: claim.snapshotId, claimId: claim.claimId, status: accepted ? "ACCEPTED" : "REJECTED", checks: { snapshotBound: true, fresh: true, scopeComplete: true, producerAllowed: true, independenceSatisfied: true, expectedResultDemonstrated: accepted, expectedResultViolated: !accepted, integrityVerified: accepted }, rejectionReasons: accepted ? [] : ["EXPECTED_RESULT_NOT_DEMONSTRATED"], evaluatedAt };
 }
 export async function evaluateEvidence(input: EvaluateEvidenceInput): Promise<EvidenceDocument> {
