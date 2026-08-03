@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/traceability-link.v1.json",
+  "title": "Canonical proof traceability link",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "criterionId", "conditionIds", "basisIds", "riskIds"],
+  "properties": {
+    "schemaVersion": { "const": "traceability-link/v1" },
+    "criterionId": { "type": "string", "minLength": 1 },
+    "conditionIds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "basisIds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "riskIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

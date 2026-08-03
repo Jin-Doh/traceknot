@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "observation/v1",
+  "observationId": "observation-1",
+  "requestId": "request-1",
+  "snapshotId": "snapshot-1",
+  "producer": {
+    "kind": "ci",
+    "identity": "traceknot-ci",
+    "independence": "independent-producer"
+  },
+  "execution": {
+    "kind": "command",
+    "identity": "bun test canonical evidence contracts",
+    "startedAt": "2026-08-03T00:00:00.000Z",
+    "finishedAt": "2026-08-03T00:00:01.000Z",
+    "exitStatus": "passed",
+    "exitCode": 0
+  },
+  "artifacts": [
+    {
+      "type": "log",
+      "digest": "not-a-sha256-digest",
+      "path": "artifacts/canonical-observation.log"
+    }
+  ]
+}

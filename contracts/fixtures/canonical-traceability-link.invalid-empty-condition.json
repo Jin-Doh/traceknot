@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "traceability-link/v1",
+  "criterionId": "criterion-1",
+  "conditionIds": [],
+  "basisIds": ["basis-1"],
+  "riskIds": []
+}

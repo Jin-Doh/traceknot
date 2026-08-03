@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "evidence-evaluation/v1",
+  "evaluationId": "evaluation-1",
+  "requestId": "request-1",
+  "snapshotId": "snapshot-1",
+  "claimId": "claim-1",
+  "status": "ACCEPTED",
+  "checks": {
+    "snapshotBound": true,
+    "fresh": true,
+    "scopeComplete": true,
+    "producerAllowed": true,
+    "independenceSatisfied": true,
+    "expectedResultDemonstrated": true,
+    "expectedResultViolated": false,
+    "integrityVerified": true
+  },
+  "rejectionReasons": ["STALE_EVIDENCE"],
+  "evaluatedAt": "2026-08-03T00:00:02.000Z"
+}

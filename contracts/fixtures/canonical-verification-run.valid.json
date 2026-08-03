@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "verification-run/v1",
+  "runId": "run-1",
+  "requestId": "request-1",
+  "snapshotId": "snapshot-1",
+  "state": "TERMINAL",
+  "observationIds": ["observation-1"],
+  "claimIds": ["claim-1"],
+  "evaluationIds": ["evaluation-1"],
+  "createdAt": "2026-08-03T00:00:00.000Z",
+  "updatedAt": "2026-08-03T00:00:02.000Z"
+}
