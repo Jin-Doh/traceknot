@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "traceknot-ci",
+      "dependencies": {
+        "brace-expansion": "^1.1.18",
+      },
       "devDependencies": {
         "@babel/parser": "8.0.4",
         "@types/bun": "1.3.14",
