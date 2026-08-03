@@ -15,7 +15,7 @@
     "checks": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["snapshotBound", "fresh", "scopeComplete", "producerAllowed", "independenceSatisfied", "expectedResultDemonstrated", "expectedResultViolated", "integrityVerified"],
+      "required": ["snapshotBound", "fresh", "scopeComplete", "producerAllowed", "independenceSatisfied", "expectedResultDemonstrated", "expectedResultViolated", "integrityVerified", "artifactRequirementsSatisfied"],
       "properties": {
         "snapshotBound": { "type": "boolean" },
         "fresh": { "type": "boolean" },
@@ -24,7 +24,8 @@
         "independenceSatisfied": { "type": "boolean" },
         "expectedResultDemonstrated": { "type": "boolean" },
         "expectedResultViolated": { "type": "boolean" },
-        "integrityVerified": { "type": "boolean" }
+        "integrityVerified": { "type": "boolean" },
+        "artifactRequirementsSatisfied": { "type": "boolean" }
       }
     },
     "rejectionReasons": {
@@ -47,7 +48,11 @@
   },
   "allOf": [
     {
-      "if": { "type": "object", "properties": { "status": { "const": "ACCEPTED" } } },
+      "if": {
+        "type": "object",
+        "required": ["status"],
+        "properties": { "status": { "const": "ACCEPTED" } }
+      },
       "then": {
         "type": "object",
         "properties": {
@@ -61,7 +66,8 @@
               "independenceSatisfied": { "const": true },
               "expectedResultDemonstrated": { "const": true },
               "expectedResultViolated": { "const": false },
-              "integrityVerified": { "const": true }
+              "integrityVerified": { "const": true },
+              "artifactRequirementsSatisfied": { "const": true }
             }
           },
           "rejectionReasons": { "type": "array", "maxItems": 0 }
@@ -69,12 +75,225 @@
       }
     },
     {
-      "if": { "type": "object", "properties": { "status": { "const": "REJECTED" } } },
+      "if": {
+        "type": "object",
+        "required": ["status"],
+        "properties": { "status": { "const": "REJECTED" } }
+      },
       "then": {
         "type": "object",
         "properties": {
-          "rejectionReasons": { "type": "array", "minItems": 1 }
+          "rejectionReasons": { "type": "array", "minItems": 1 },
+          "checks": {
+            "type": "object",
+            "anyOf": [
+              { "type": "object", "properties": { "snapshotBound": { "const": false } } },
+              { "type": "object", "properties": { "fresh": { "const": false } } },
+              { "type": "object", "properties": { "scopeComplete": { "const": false } } },
+              { "type": "object", "properties": { "producerAllowed": { "const": false } } },
+              { "type": "object", "properties": { "independenceSatisfied": { "const": false } } },
+              { "type": "object", "properties": { "expectedResultDemonstrated": { "const": false } } },
+              { "type": "object", "properties": { "expectedResultViolated": { "const": true } } },
+              { "type": "object", "properties": { "integrityVerified": { "const": false } } },
+              { "type": "object", "properties": { "artifactRequirementsSatisfied": { "const": false } } }
+            ]
+          }
         }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["rejectionReasons"],
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "SNAPSHOT_MISMATCH" } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "checks": { "type": "object", "properties": { "snapshotBound": { "const": false } } } }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["checks"],
+        "properties": { "checks": { "type": "object", "required": ["snapshotBound"], "properties": { "snapshotBound": { "const": false } } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "SNAPSHOT_MISMATCH" } } }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["rejectionReasons"],
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "STALE_EVIDENCE" } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "checks": { "type": "object", "properties": { "fresh": { "const": false } } } }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["checks"],
+        "properties": { "checks": { "type": "object", "required": ["fresh"], "properties": { "fresh": { "const": false } } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "STALE_EVIDENCE" } } }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["rejectionReasons"],
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "MISSING_ARTIFACT" } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "checks": { "type": "object", "properties": { "artifactRequirementsSatisfied": { "const": false } } } }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["checks"],
+        "properties": { "checks": { "type": "object", "required": ["artifactRequirementsSatisfied"], "properties": { "artifactRequirementsSatisfied": { "const": false } } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "MISSING_ARTIFACT" } } }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["rejectionReasons"],
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "INSUFFICIENT_SCOPE" } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "checks": { "type": "object", "properties": { "scopeComplete": { "const": false } } } }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["checks"],
+        "properties": { "checks": { "type": "object", "required": ["scopeComplete"], "properties": { "scopeComplete": { "const": false } } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "INSUFFICIENT_SCOPE" } } }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["rejectionReasons"],
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "UNTRUSTED_PRODUCER" } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "checks": { "type": "object", "properties": { "producerAllowed": { "const": false } } } }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["checks"],
+        "properties": { "checks": { "type": "object", "required": ["producerAllowed"], "properties": { "producerAllowed": { "const": false } } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "UNTRUSTED_PRODUCER" } } }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["rejectionReasons"],
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "INDEPENDENCE_NOT_MET" } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "checks": { "type": "object", "properties": { "independenceSatisfied": { "const": false } } } }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["checks"],
+        "properties": { "checks": { "type": "object", "required": ["independenceSatisfied"], "properties": { "independenceSatisfied": { "const": false } } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "INDEPENDENCE_NOT_MET" } } }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["rejectionReasons"],
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "EXPECTED_RESULT_NOT_DEMONSTRATED" } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "checks": {
+            "type": "object",
+            "anyOf": [
+              { "type": "object", "properties": { "expectedResultDemonstrated": { "const": false } } },
+              { "type": "object", "properties": { "expectedResultViolated": { "const": true } } }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["checks"],
+        "properties": { "checks": { "type": "object", "required": ["expectedResultDemonstrated"], "properties": { "expectedResultDemonstrated": { "const": false } } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "EXPECTED_RESULT_NOT_DEMONSTRATED" } } }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["checks"],
+        "properties": { "checks": { "type": "object", "required": ["expectedResultViolated"], "properties": { "expectedResultViolated": { "const": true } } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "EXPECTED_RESULT_NOT_DEMONSTRATED" } } }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["rejectionReasons"],
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "INTEGRITY_FAILURE" } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "checks": { "type": "object", "properties": { "integrityVerified": { "const": false } } } }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["checks"],
+        "properties": { "checks": { "type": "object", "required": ["integrityVerified"], "properties": { "integrityVerified": { "const": false } } } }
+      },
+      "then": {
+        "type": "object",
+        "properties": { "rejectionReasons": { "type": "array", "contains": { "const": "INTEGRITY_FAILURE" } } }
       }
     }
   ]

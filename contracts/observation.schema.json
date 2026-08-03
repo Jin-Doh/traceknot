@@ -45,6 +45,19 @@
           "path": { "type": "string", "minLength": 1 }
         }
       }
+    },
+    "actualValues": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "value"],
+        "properties": {
+          "field": { "type": "string", "minLength": 1 },
+          "value": { "type": ["string", "number", "boolean", "null"] }
+        }
+      }
     }
   },
   "allOf": [

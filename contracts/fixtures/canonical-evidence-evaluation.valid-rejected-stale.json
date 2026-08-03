@@ -1,21 +1,21 @@
 {
   "schemaVersion": "evidence-evaluation/v1",
-  "evaluationId": "evaluation-1",
+  "evaluationId": "evaluation-stale-1",
   "requestId": "request-1",
   "snapshotId": "snapshot-1",
   "claimId": "claim-1",
-  "status": "ACCEPTED",
+  "status": "REJECTED",
   "checks": {
     "snapshotBound": true,
-    "fresh": true,
+    "fresh": false,
     "scopeComplete": true,
     "producerAllowed": true,
     "independenceSatisfied": true,
     "expectedResultDemonstrated": true,
-    "expectedResultViolated": true,
+    "expectedResultViolated": false,
     "integrityVerified": true,
     "artifactRequirementsSatisfied": true
   },
-  "rejectionReasons": [],
+  "rejectionReasons": ["STALE_EVIDENCE"],
   "evaluatedAt": "2026-08-03T00:00:02.000Z"
 }
