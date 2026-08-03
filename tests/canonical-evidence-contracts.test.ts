@@ -19,7 +19,15 @@ const contractCases: readonly ContractCase[] = [
       "canonical-observation.invalid-verdict.json",
       "canonical-observation.invalid-digest.json",
       "canonical-observation.invalid-self-external-approval.json",
+      "canonical-observation.invalid-actual-values.json",
+      "canonical-observation.invalid-duplicate-actual-values.json",
     ],
+  },
+  {
+    name: "Structured observation",
+    schema: "observation.schema.json",
+    positive: "canonical-observation.valid-structured.json",
+    negatives: [],
   },
   {
     name: "SuccessCriterion",
@@ -54,6 +62,12 @@ const contractCases: readonly ContractCase[] = [
     ],
   },
   {
+    name: "Rejected EvidenceEvaluation",
+    schema: "evidence-evaluation.schema.json",
+    positive: "canonical-evidence-evaluation.valid-rejected-stale.json",
+    negatives: [],
+  },
+  {
     name: "VerificationRun",
     schema: "verification-run.schema.json",
     positive: "canonical-verification-run.valid.json",
@@ -71,6 +85,124 @@ function loadJson(path: string): unknown {
 function loadValidator(schemaFile: string) {
   const ajv = new Ajv2020({ allErrors: true, strict: true });
   return ajv.compile(loadJson(join(contractRoot, schemaFile)) as object);
+}
+
+type EvaluationCheckName =
+  | "snapshotBound"
+  | "fresh"
+  | "scopeComplete"
+  | "producerAllowed"
+  | "independenceSatisfied"
+  | "expectedResultDemonstrated"
+  | "expectedResultViolated"
+  | "integrityVerified"
+  | "artifactRequirementsSatisfied";
+
+type ReasonCheckCase = {
+  name: string;
+  checks: Partial<Record<EvaluationCheckName, boolean>>;
+  rejectionReasons: readonly string[];
+  valid: boolean;
+};
+
+const reasonCheckCases: readonly ReasonCheckCase[] = [
+  {
+    name: "SNAPSHOT_MISMATCH with snapshotBound false",
+    checks: { snapshotBound: false },
+    rejectionReasons: ["SNAPSHOT_MISMATCH"],
+    valid: true,
+  },
+  {
+    name: "STALE_EVIDENCE with fresh false",
+    checks: { fresh: false },
+    rejectionReasons: ["STALE_EVIDENCE"],
+    valid: true,
+  },
+  {
+    name: "MISSING_ARTIFACT with artifact requirements unsatisfied",
+    checks: { artifactRequirementsSatisfied: false },
+    rejectionReasons: ["MISSING_ARTIFACT"],
+    valid: true,
+  },
+  {
+    name: "INSUFFICIENT_SCOPE with scope incomplete",
+    checks: { scopeComplete: false },
+    rejectionReasons: ["INSUFFICIENT_SCOPE"],
+    valid: true,
+  },
+  {
+    name: "UNTRUSTED_PRODUCER with producer disallowed",
+    checks: { producerAllowed: false },
+    rejectionReasons: ["UNTRUSTED_PRODUCER"],
+    valid: true,
+  },
+  {
+    name: "INDEPENDENCE_NOT_MET with independence unsatisfied",
+    checks: { independenceSatisfied: false },
+    rejectionReasons: ["INDEPENDENCE_NOT_MET"],
+    valid: true,
+  },
+  {
+    name: "EXPECTED_RESULT_NOT_DEMONSTRATED with demonstration false",
+    checks: { expectedResultDemonstrated: false },
+    rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"],
+    valid: true,
+  },
+  {
+    name: "EXPECTED_RESULT_NOT_DEMONSTRATED with violation true",
+    checks: { expectedResultViolated: true },
+    rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"],
+    valid: true,
+  },
+  {
+    name: "INTEGRITY_FAILURE with integrity unverified",
+    checks: { integrityVerified: false },
+    rejectionReasons: ["INTEGRITY_FAILURE"],
+    valid: true,
+  },
+  {
+    name: "all checks true with stale reason",
+    checks: {},
+    rejectionReasons: ["STALE_EVIDENCE"],
+    valid: false,
+  },
+  {
+    name: "fresh false with missing stale reason",
+    checks: { fresh: false },
+    rejectionReasons: [],
+    valid: false,
+  },
+  {
+    name: "snapshot failure with extraneous stale reason",
+    checks: { snapshotBound: false },
+    rejectionReasons: ["STALE_EVIDENCE"],
+    valid: false,
+  },
+  {
+    name: "expected violation with missing expected-result reason",
+    checks: { expectedResultViolated: true },
+    rejectionReasons: [],
+    valid: false,
+  },
+  {
+    name: "artifact failure with missing artifact reason",
+    checks: { artifactRequirementsSatisfied: false },
+    rejectionReasons: [],
+    valid: false,
+  },
+];
+
+function makeEvaluationFixture(reasonCheckCase: ReasonCheckCase): Record<string, unknown> {
+  const base = loadJson(join(fixtureRoot, "canonical-evidence-evaluation.valid.json")) as Record<string, unknown>;
+  return {
+    ...base,
+    status: "REJECTED",
+    checks: {
+      ...(base.checks as Record<string, boolean>),
+      ...reasonCheckCase.checks,
+    },
+    rejectionReasons: reasonCheckCase.rejectionReasons,
+  };
 }
 
 describe("canonical evidence contracts", () => {
@@ -92,4 +224,20 @@ describe("canonical evidence contracts", () => {
       });
     }
   }
+  for (const reasonCheckCase of reasonCheckCases) {
+    test(`${reasonCheckCase.valid ? "accepts" : "rejects"} ${reasonCheckCase.name}`, () => {
+      const validate = loadValidator("evidence-evaluation.schema.json");
+      const fixture = makeEvaluationFixture(reasonCheckCase);
+
+      expect(validate(fixture), validate.errors ? JSON.stringify(validate.errors) : undefined).toBe(reasonCheckCase.valid);
+    });
+  }
+  test("rejects legacy array-shaped actualValues", () => {
+    const validate = loadValidator("observation.schema.json");
+    const fixture = loadJson(join(fixtureRoot, "canonical-observation.valid-structured.json")) as Record<string, unknown>;
+    fixture.actualValues = [{ field: "passed", value: true }];
+
+    expect(validate(fixture)).toBe(false);
+    expect(validate.errors?.length).toBeGreaterThan(0);
+  });
 });

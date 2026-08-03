@@ -86,6 +86,12 @@ test -x "$PREFIX/bin/traceknot-update"
 test -f "$PREFIX/.traceknot-install-manifest"
 test -L "$REGISTRATION_PATH"
 test "$(readlink "$REGISTRATION_PATH")" = "$PREFIX_CANON/skill"
+test -f "$PREFIX/skill/references/proof-carrying-success.md"
+grep -F '[Proof-carrying success](references/proof-carrying-success.md)' \
+    "$PREFIX/skill/SKILL.md" >/dev/null
+test -f "$REGISTRATION_PATH/references/proof-carrying-success.md"
+grep -F '[Proof-carrying success](references/proof-carrying-success.md)' \
+    "$REGISTRATION_PATH/SKILL.md" >/dev/null
 test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 1
 grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null
 test "$(cat "$PREFIX/unrelated-sentinel.txt")" = keep-me

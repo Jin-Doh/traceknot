@@ -13,7 +13,8 @@
     "independenceSatisfied": true,
     "expectedResultDemonstrated": true,
     "expectedResultViolated": false,
-    "integrityVerified": true
+    "integrityVerified": true,
+    "artifactRequirementsSatisfied": true
   },
   "rejectionReasons": ["STALE_EVIDENCE"],
   "evaluatedAt": "2026-08-03T00:00:02.000Z"

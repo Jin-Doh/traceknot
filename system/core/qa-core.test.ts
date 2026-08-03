@@ -36,6 +36,7 @@ type EntryOptions = {
   independence?: IndependenceLevel;
   mandatory?: boolean;
   artifacts?: Observation["artifacts"];
+  actualValues?: Observation["actualValues"];
   evaluation?: "accepted" | "rejected" | "none";
   checks?: Partial<EvidenceEvaluation["checks"]>;
   rejectionReasons?: EvidenceRejectionReason[];
@@ -55,6 +56,7 @@ const allChecks = (overrides: Partial<EvidenceEvaluation["checks"]> = {}): Evide
   scopeComplete: true,
   producerAllowed: true,
   independenceSatisfied: true,
+  artifactRequirementsSatisfied: true,
   expectedResultDemonstrated: true,
   expectedResultViolated: false,
   integrityVerified: true,
@@ -107,6 +109,7 @@ const makeEntry = (options: EntryOptions = {}): Entry => {
       exitCode: options.exitStatus === "failed" ? 1 : 0,
     },
     artifacts: options.artifacts ?? [{ type: "log", digest: LOG_DIGEST, path: "artifacts/qa-core.log" }],
+    actualValues: options.actualValues,
   };
   const claim: EvidenceClaim = {
     schemaVersion: "evidence-claim/v1",
@@ -226,12 +229,82 @@ describe("evaluateEvidence", () => {
     expect(evaluate(entry)).toEqual({ accepted: true, rejectionReasons: [] });
     expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "ACCEPTED", outcome: "PASSED" });
   });
-  test("does not accept a failed observation even when evaluation says ACCEPTED", () => {
+  test("does not accept a failed observation without eligible negative evidence", () => {
     const entry = makeEntry({ exitStatus: "failed" });
 
     expect(evaluate(entry)).toEqual({ accepted: false, rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"] });
-    expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "FAILED" });
-    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("FAIL");
+    expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "INCOMPLETE" });
+    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("INCOMPLETE");
+  });
+  test("accepts a matching structured actual value", () => {
+    const entry = makeEntry({ actualValues: { testsPassed: 42 } });
+    entry.criterion = {
+      ...entry.criterion,
+      expected: { assertions: [{ field: "testsPassed", operator: "equals", value: 42 }] },
+    };
+
+    expect(evaluate(entry)).toEqual({ accepted: true, rejectionReasons: [] });
+  });
+  test("rejects a missing structured actual value", () => {
+    const entry = makeEntry();
+    entry.criterion = {
+      ...entry.criterion,
+      expected: { assertions: [{ field: "testsPassed", operator: "equals", value: 42 }] },
+    };
+
+    expect(evaluate(entry)).toEqual({ accepted: false, rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"] });
+  });
+  test("rejects an unsupported structured actual value", () => {
+    const entry = makeEntry({ actualValues: { otherField: 42 } });
+    entry.criterion = {
+      ...entry.criterion,
+      expected: { assertions: [{ field: "testsPassed", operator: "equals", value: 42 }] },
+    };
+
+    expect(evaluate(entry)).toEqual({ accepted: false, rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"] });
+  });
+  test("rejects a mismatched structured actual value", () => {
+    const entry = makeEntry({ actualValues: { testsPassed: 41 } });
+    entry.criterion = {
+      ...entry.criterion,
+      expected: { assertions: [{ field: "testsPassed", operator: "equals", value: 42 }] },
+    };
+
+    expect(evaluate(entry)).toEqual({ accepted: false, rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"] });
+  });
+  test("looks up structured actual values by object field", () => {
+    const entry = makeEntry({ actualValues: { testsPassed: 42 } });
+    entry.criterion = {
+      ...entry.criterion,
+      expected: { assertions: [{ field: "testsPassed", operator: "equals", value: 42 }] },
+    };
+
+    expect(evaluate(entry)).toEqual({ accepted: true, rejectionReasons: [] });
+  });
+  test("fails closed when rejection reasons do not match failed checks", () => {
+    const entry = makeEntry({
+      evaluation: "rejected",
+      checks: { scopeComplete: false },
+      rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"],
+    });
+
+    expect(evaluate(entry)).toEqual({
+      accepted: false,
+      rejectionReasons: ["INSUFFICIENT_SCOPE", "INTEGRITY_FAILURE"],
+    });
+  });
+  test("keeps missing-artifact checks and reasons consistent", () => {
+    const entry = makeEntry({
+      artifacts: [],
+      evaluation: "rejected",
+      checks: { artifactRequirementsSatisfied: false, expectedResultDemonstrated: false },
+      rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED", "MISSING_ARTIFACT"],
+    });
+
+    expect(evaluate(entry)).toEqual({
+      accepted: false,
+      rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED", "MISSING_ARTIFACT"],
+    });
   });
   test("rejects an ACCEPTED evaluation for a different claim", () => {
     const entry = makeEntry();
@@ -455,7 +528,7 @@ describe("evaluateEvidence", () => {
     expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "FAILED" });
     expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("FAIL");
   });
-  test("fails on a supported contradiction even without an evaluation", () => {
+  test("keeps a supported contradiction incomplete without an evaluation", () => {
     const entry = makeEntry({ evaluation: "none" });
     entry.criterion = {
       ...entry.criterion,
@@ -464,10 +537,10 @@ describe("evaluateEvidence", () => {
       },
     };
 
-    expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "NONE", outcome: "FAILED" });
-    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("FAIL");
+    expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "NONE", outcome: "INCOMPLETE" });
+    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("INCOMPLETE");
   });
-  test("fails mixed target contradiction despite stale evidence and another accepting claim", () => {
+  test("keeps stale target contradiction incomplete despite another accepting claim", () => {
     const failing = makeEntry({
       observationId: "observation-target-contradiction",
       claimId: "claim-target-contradiction",
@@ -510,7 +583,7 @@ describe("evaluateEvidence", () => {
     ];
     input.evaluations = [failing.evaluation!, accepting.evaluation!];
 
-    expect(resolveProofCarryingQaVerdict(input).qaVerdict).toBe("FAIL");
+    expect(resolveProofCarryingQaVerdict(input).qaVerdict).toBe("PASS");
   });
 
   test("keeps aggregate FAIL when an explicit failure is mixed with a blocked claim", () => {

@@ -163,7 +163,7 @@ The evaluator MUST reject reuse across incompatible snapshots or conditions. If 
 
 Freshness is a semantic boundary before it is a clock boundary. `observedAt` records when an observation was made; it does not by itself establish that the target remains unchanged or that a cache entry is acceptable. Where time-based validity is used, the evaluator MUST use the declared trusted time and expiry policy, and MUST fail closed for malformed, expired, or ambiguous validity. Accepted-risk expiry is independent of evidence freshness and MUST remain visible in the aggregate verdict.
 
-Cross-run or cross-request reuse MAY exist only under an explicit identity and invalidation policy that preserves these boundaries. A legacy v1 record without the portable snapshot, evidence, or discovery semantics needed to establish them MUST be disclosed as legacy behavior rather than silently treated as current proof.
+Cross-run reuse MAY occur only within the same request, target `snapshotId`, condition, obligation, and applicable test-basis identity boundary. Cross-request reuse MUST NOT occur until a versioned rebinding contract explicitly defines and validates the identity mapping and invalidation policy. A legacy v1 record without the portable snapshot, evidence, or discovery semantics needed to establish them MUST be disclosed as legacy behavior rather than silently treated as current proof.
 
 ## v1 compatibility
 

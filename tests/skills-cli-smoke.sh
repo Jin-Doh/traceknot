@@ -47,6 +47,7 @@ for reference in \
     defect-lifecycle.md \
     istqb-principles.md \
     prose-quality.md \
+    proof-carrying-success.md \
     risk-classification.md \
     test-process.md \
     test-techniques.md \
@@ -54,6 +55,9 @@ for reference in \
 do
     test -f "$GLOBAL_SKILL/references/$reference"
 done
+grep -F '[Proof-carrying success](references/proof-carrying-success.md)' \
+    "$GLOBAL_SKILL/SKILL.md" >/dev/null
+test -f "$GLOBAL_SKILL/references/proof-carrying-success.md"
 
 # Skills CLI installation is intentionally Skill-only, not the full toolkit.
 test ! -e "$GLOBAL_SKILL/contracts"
@@ -90,6 +94,9 @@ test ! -e "$GLOBAL_SKILL"
         --agent codex \
         --yes >/dev/null
     test -f "$PROJECT/.agents/skills/traceknot/SKILL.md"
+    grep -F '[Proof-carrying success](references/proof-carrying-success.md)' \
+        "$PROJECT/.agents/skills/traceknot/SKILL.md" >/dev/null
+    test -f "$PROJECT/.agents/skills/traceknot/references/proof-carrying-success.md"
     "$SKILLS_CLI" remove traceknot --yes >/dev/null
 )
 test ! -e "$PROJECT/.agents/skills/traceknot"
