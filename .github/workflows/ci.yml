@@ -43,7 +43,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Scan for secrets
-        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v2.3.9
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
@@ -62,8 +62,8 @@ jobs:
           set -euo pipefail
           curl --fail --silent --show-error --location \
             --output "$RUNNER_TEMP/zizmor.tar.gz" \
-            https://github.com/zizmorcore/zizmor/releases/download/v1.28.0/zizmor-x86_64-unknown-linux-gnu.tar.gz
-          echo "e87b67160194884e375a46a12c57ccc904f762b53845f254fab7f17d98809c09  $RUNNER_TEMP/zizmor.tar.gz" \
+            https://github.com/zizmorcore/zizmor/releases/download/v1.29.0/zizmor-x86_64-unknown-linux-gnu.tar.gz
+          echo "dd96df044a6e8538d5f423790f453bdd03d49e5b2bcc38214acc41a2f1297839  $RUNNER_TEMP/zizmor.tar.gz" \
             | sha256sum --check
           tar --extract --gzip --file "$RUNNER_TEMP/zizmor.tar.gz" --directory "$RUNNER_TEMP"
       - name: Audit GitHub Actions

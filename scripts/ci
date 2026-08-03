@@ -16,6 +16,9 @@ fi
 printf '%s\n' '==> locked dependencies'
 bun install --frozen-lockfile --ignore-scripts
 
+printf '%s\n' '==> dependency audit'
+bun audit
+
 printf '%s\n' '==> shell syntax and installer lifecycle'
 sh -n install.sh uninstall.sh bin/traceknot-update scripts/package-release.sh \
     scripts/verify-published-release.sh tests/portable-installer-smoke.sh \
