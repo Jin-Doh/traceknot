@@ -310,6 +310,7 @@ function evaluateEvidenceIndexed(input: EvidenceEvaluationContext): EvidenceAcce
   if (
     claim.obligationId !== obligation.id ||
     claim.criterionId !== criterion.criterionId ||
+    evaluation.claimId !== claim.claimId ||
     !obligation.criterionIds.includes(criterion.criterionId)
   ) reasons.add("INSUFFICIENT_SCOPE");
 
