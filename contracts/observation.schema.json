@@ -55,7 +55,14 @@
         "required": ["field", "value"],
         "properties": {
           "field": { "type": "string", "minLength": 1 },
-          "value": { "type": ["string", "number", "boolean", "null"] }
+          "value": {
+            "anyOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" },
+              { "type": "null" }
+            ]
+          }
         }
       }
     }
