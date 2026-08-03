@@ -295,7 +295,7 @@ describe("evaluateEvidence", () => {
     });
 
     expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("INCOMPLETE");
-    expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "INCOMPLETE" });
+    expect(outcome(entry)).toEqual({ execution: "PENDING", evidence: "REJECTED", outcome: "INCOMPLETE" });
   });
   test("does not consume a violated evaluation when one linked observation is stale", () => {
     const target = makeEntry({
@@ -328,7 +328,7 @@ describe("evaluateEvidence", () => {
       evaluations: input.evaluations,
       observations: input.observations,
     });
-    expect(state.execution).toBe("COMPLETED");
+    expect(state.execution).toBe("PENDING");
     expect(state.outcome).toBe("INCOMPLETE");
     expect(resolveProofCarryingQaVerdict(input).qaVerdict).toBe("INCOMPLETE");
   });
@@ -365,8 +365,8 @@ describe("evaluateEvidence", () => {
       observations: input.observations,
     });
     expect(state.execution).toBe("COMPLETED");
-    expect(state.outcome).toBe("INCOMPLETE");
-    expect(resolveProofCarryingQaVerdict(input).qaVerdict).toBe("INCOMPLETE");
+    expect(state.outcome).toBe("PASSED");
+    expect(resolveProofCarryingQaVerdict(input).qaVerdict).toBe("PASS");
   });
 
   test("retains a failed execution as FAIL when the expected result is rejected", () => {
