@@ -8,6 +8,11 @@ description: Apply Traceknot's ISTQB-aligned, evidence-bound QA process to repos
 **Evidence-bound QA for coding agents.**
 
 Run a host-neutral QA process. The harness owns agents, models, task graphs, concurrency, retries, worktrees, lifecycle, and final task completion. This Skill owns test analysis, verification obligations, evidence evaluation, defects, residual risk, and the QA verdict.
+Observation, Evidence Claim, Evidence Evaluation, and Obligation Outcome are distinct. An Observation records what was observed; an Evidence Claim states how an observation or artifact may support an obligation; an Evidence Evaluation determines whether that claim is accepted for the obligation; and an Obligation Outcome records the obligation's result. These concepts MUST NOT be conflated.
+
+Only evidence accepted by Evidence Evaluation for the applicable obligation may satisfy a mandatory criterion. An unaccepted, missing, or merely asserted claim MUST NOT establish PASS.
+
+Gate mapping is separate from the QA verdict. A gate's accept or reject decision MUST NOT substitute for evidence evaluation or alter verdict precedence.
 
 `QA PASS` means the declared test basis and mandatory obligations passed. It never means every harness task, agent, job, or delivery has completed.
 
@@ -102,6 +107,7 @@ Before execution confirm the target snapshot, environment, dependencies, test da
 Start with the direct changed path, then broaden to package or repository gates when shared contracts, public APIs, persistence, concurrency, security, build, or release behavior changed.
 
 Record command or scenario identity, target snapshot, timestamps, exit status, structured counts, relevant output, artifacts, producer kind, and linked obligation ID. A timeout, cancellation, unavailable dependency, missing output, or unfinished mandatory obligation is not a pass.
+Lifecycle events and agent completion claims MAY trigger observation or further verification, but they are never evidence by themselves.
 
 ### 8. Record and manage defects
 
@@ -140,4 +146,4 @@ The Skill never:
 
 ## Optional system integration
 
-The sibling `../system/core/` validates canonical QA records and resolves deterministic QA verdicts. `../system/extensions/harness-completion-authority/` contains optional lifecycle, quiescence, lease, receipt, and terminal-authority contracts for hosts that explicitly integrate them. Ordinary Skill use does not require or activate that extension. Existing deterministic v1 callers can technically omit discovery because the v1 contracts do not enforce it; such runs are outside portable Skill compliance and must disclose the omission rather than claim discovery completed. This does not change `verification-plan/v1`, `qa-verdict/v1`, or deterministic core semantics.
+The sibling `../system/core/` validates canonical QA records and resolves deterministic QA verdicts. `../system/extensions/harness-completion-authority/` contains optional lifecycle, quiescence, lease, receipt, and terminal-authority contracts for hosts that explicitly integrate them. Ordinary Skill use does not require or activate that extension. Technical compatibility with legacy `verification-plan/v1` and `qa-verdict/v1` callers does not imply portable Skill compliance; existing deterministic v1 callers can technically omit discovery because the v1 contracts do not enforce it, and such runs are outside portable Skill compliance and must disclose the omission rather than claim discovery completed. This does not change `verification-plan/v1`, `qa-verdict/v1`, or deterministic core semantics.
