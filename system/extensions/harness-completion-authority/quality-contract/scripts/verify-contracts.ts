@@ -3,7 +3,7 @@ import { proveConstructorRoundTrips } from "./run-phase-b-verification";
 
 import { createHash, createHmac } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, statSync, mkdtempSync, cpSync, rmSync } from "node:fs";
+import { closeSync, cpSync, existsSync, fstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 
@@ -1425,7 +1425,12 @@ function checkCallsiteManifest(): void {
     const relativePath = String(source.path);
     if (relativePath.startsWith("/") || relativePath.includes("..")) throw new Error(`invalid manifest source path ${relativePath}`);
     const file = join(repoRoot, relativePath);
-    if (!existsSync(file) || !statSync(file).isFile() || source.sha256 !== sha256(readFileSync(file))) throw new Error(`source hash mismatch: ${relativePath}`);
+    const descriptor = openSync(file, "r");
+    try {
+      if (!fstatSync(descriptor).isFile() || source.sha256 !== sha256(readFileSync(descriptor))) throw new Error(`source hash mismatch: ${relativePath}`);
+    } finally {
+      closeSync(descriptor);
+    }
   }
   const callsites = Array.isArray(manifest.callsites) ? manifest.callsites as AnyObject[] : [];
   for (const callsite of callsites) {

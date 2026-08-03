@@ -153,6 +153,11 @@
       "sha256": "db9a11f5f51a581785d81eca685918ddc6a918907693b3d7e13d9ce34c62d5d0"
     },
     {
+      "path": "quality-contract/phase-a-to-phase-b-handoff.md",
+      "bytes": 15470,
+      "sha256": "363bf90bfbb168af25b8c4eee3eab35731eb2a95a4cd88e6074cae6ee12bd8ff"
+    },
+    {
       "path": "quality-contract/schemas/evidence-and-receipt.schema.json",
       "bytes": 22313,
       "sha256": "bf4dd0218e50e1efa8061a5a8c617224c4c1312b4c3e842faed9bbb6a8850743"
@@ -219,8 +224,8 @@
     },
     {
       "path": "quality-contract/scripts/verify-contracts.ts",
-      "bytes": 146097,
-      "sha256": "d8179d990d52d1b716e6df1ddc9113ff1ca3b2215d17fef1747315a2081b3480"
+      "bytes": 146218,
+      "sha256": "614f065ec0d8041810e9c1ed539b2a9169a3b2bfe7c1f76cbf78223db4b10b52"
     },
     {
       "path": "quality-contract/scripts/verify-models.ts",
