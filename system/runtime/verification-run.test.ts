@@ -11,6 +11,7 @@ import {
   type RepositoryPort,
   type UsageRecorder,
   type VerificationExecutor,
+  type VerificationRequest,
   type VerificationRunDependencies,
 } from "./verification-run";
 
@@ -39,7 +40,7 @@ class FakeRepository {
 
 type FakePorts = { repository: FakeRepository; executorCalls: number; browserCalls: number };
 
-function makeRequest(requestId = REQUEST_ID) {
+function makeRequest(requestId = REQUEST_ID): VerificationRequest {
   return {
     schemaVersion: "verification-request/v1",
     requestId,
