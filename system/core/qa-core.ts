@@ -1,8 +1,23 @@
 export type RiskLevel = "R0" | "R1" | "R2" | "R3";
 export type IndependenceLevel = "self-check" | "separate-verification-context" | "independent-producer" | "external-approval";
 export type QaVerdict = "PASS" | "PASS_WITH_ACCEPTED_RISK" | "FAIL" | "BLOCKED" | "INCOMPLETE";
+export type ObligationStatus = "PASS" | "FAIL" | "BLOCKED" | "INCOMPLETE";
 
 export type VerificationObligation = {
+  id: string;
+  mandatory: boolean;
+  conditionIds: readonly string[];
+  requiredIndependence: IndependenceLevel;
+};
+
+export type ObligationResult = {
+  obligationId: string;
+  status: ObligationStatus;
+  producerIndependence: IndependenceLevel;
+  evidenceId?: string;
+};
+
+export type ProofCarryingObligation = {
   id: string;
   mandatory: boolean;
   criterionIds: readonly string[];
@@ -96,6 +111,7 @@ export type EvidenceEvaluation = {
     producerAllowed: boolean;
     independenceSatisfied: boolean;
     expectedResultDemonstrated: boolean;
+    expectedResultViolated: boolean;
     integrityVerified: boolean;
   };
   rejectionReasons: readonly EvidenceRejectionReason[];
@@ -139,6 +155,16 @@ export type VerdictInput = {
   requestId: string;
   snapshotId: string;
   obligations: readonly VerificationObligation[];
+  results: readonly ObligationResult[];
+  defects: readonly DefectSummary[];
+  coverage: CoverageInput;
+  evaluatedAt: string;
+};
+
+export type ProofCarryingVerdictInput = {
+  requestId: string;
+  snapshotId: string;
+  obligations: readonly ProofCarryingObligation[];
   criteria: readonly SuccessCriterion[];
   observations: readonly Observation[];
   claims: readonly EvidenceClaim[];
@@ -202,7 +228,7 @@ function reasonsFromChecks(checks: EvidenceEvaluation["checks"], target: Set<Evi
   if (!checks.scopeComplete) target.add("INSUFFICIENT_SCOPE");
   if (!checks.producerAllowed) target.add("UNTRUSTED_PRODUCER");
   if (!checks.independenceSatisfied) target.add("INDEPENDENCE_NOT_MET");
-  if (!checks.expectedResultDemonstrated) target.add("EXPECTED_RESULT_NOT_DEMONSTRATED");
+  if (!checks.expectedResultDemonstrated || checks.expectedResultViolated) target.add("EXPECTED_RESULT_NOT_DEMONSTRATED");
   if (!checks.integrityVerified) target.add("INTEGRITY_FAILURE");
 }
 
@@ -219,6 +245,36 @@ function assertUniqueIds<T>(records: readonly T[], idOf: (record: T) => string, 
   }
   return byId;
 }
+function assertionContradicts(criterion: SuccessCriterion, observation: Observation): boolean {
+  for (const assertion of criterion.expected.assertions) {
+    let actual: string | number | undefined;
+    if (assertion.field === "execution.exitStatus") actual = observation.execution.exitStatus;
+    else if (assertion.field === "execution.exitCode") actual = observation.execution.exitCode;
+    else continue;
+    if (actual === undefined) continue;
+    if (assertion.operator === "equals" && actual !== assertion.value) return true;
+    if (assertion.operator === "not-equals" && actual === assertion.value) return true;
+    if (
+      assertion.operator === "less-than-or-equal" &&
+      typeof actual === "number" &&
+      typeof assertion.value === "number" &&
+      actual > assertion.value
+    ) return true;
+    if (
+      assertion.operator === "greater-than-or-equal" &&
+      typeof actual === "number" &&
+      typeof assertion.value === "number" &&
+      actual < assertion.value
+    ) return true;
+    if (
+      assertion.operator === "contains" &&
+      typeof actual === "string" &&
+      typeof assertion.value === "string" &&
+      !actual.includes(assertion.value)
+    ) return true;
+  }
+  return false;
+}
 
 function assertUniqueStrings(values: readonly string[], label: string): void {
   const seen = new Set<string>();
@@ -229,7 +285,7 @@ function assertUniqueStrings(values: readonly string[], label: string): void {
 }
 
 type GraphIndexes = {
-  obligationsById: Map<string, VerificationObligation>;
+  obligationsById: Map<string, ProofCarryingObligation>;
   criteriaById: Map<string, SuccessCriterion>;
   observationsById: Map<string, Observation>;
   claimsById: Map<string, EvidenceClaim>;
@@ -239,7 +295,7 @@ type GraphIndexes = {
 };
 
 function buildGraphIndexes(
-  obligations: readonly VerificationObligation[],
+  obligations: readonly ProofCarryingObligation[],
   criteria: readonly SuccessCriterion[],
   observations: readonly Observation[],
   claims: readonly EvidenceClaim[],
@@ -289,7 +345,7 @@ function buildGraphIndexes(
 type EvidenceEvaluationContext = {
   requestId: string;
   snapshotId: string;
-  obligation: VerificationObligation;
+  obligation: ProofCarryingObligation;
   criterion: SuccessCriterion;
   claim: EvidenceClaim;
   evaluation: EvidenceEvaluation;
@@ -329,16 +385,19 @@ function evaluateEvidenceIndexed(input: EvidenceEvaluationContext): EvidenceAcce
     observationCount++;
     if (observation.requestId !== requestId || observation.snapshotId !== snapshotId) reasons.add("SNAPSHOT_MISMATCH");
     if (independenceRank[observation.producer.independence] < requiredIndependence) reasons.add("INDEPENDENCE_NOT_MET");
-    for (const artifact of observation.artifacts) artifactTypes.add(artifact.type);
-    if (observation.execution.exitStatus === "cancelled" || observation.execution.exitStatus === "timed-out") {
+    if (observation.producer.kind === "self" && observation.producer.independence !== "self-check") {
+      reasons.add("UNTRUSTED_PRODUCER");
+      reasons.add("INDEPENDENCE_NOT_MET");
+    }
+    if (observation.execution.exitStatus !== "passed" || assertionContradicts(criterion, observation)) {
       reasons.add("EXPECTED_RESULT_NOT_DEMONSTRATED");
     }
+    for (const artifact of observation.artifacts) artifactTypes.add(artifact.type);
   }
   if (observationCount === 0) reasons.add("MISSING_ARTIFACT");
   for (const artifactType of criterion.requiredArtifacts) {
     if (!artifactTypes.has(artifactType)) reasons.add("MISSING_ARTIFACT");
   }
-
   reasonsFromChecks(evaluation.checks, reasons);
   addReasons(reasons, evaluation.rejectionReasons);
   const checksPass =
@@ -348,6 +407,7 @@ function evaluateEvidenceIndexed(input: EvidenceEvaluationContext): EvidenceAcce
     evaluation.checks.producerAllowed &&
     evaluation.checks.independenceSatisfied &&
     evaluation.checks.expectedResultDemonstrated &&
+    !evaluation.checks.expectedResultViolated &&
     evaluation.checks.integrityVerified;
   const accepted = evaluation.status === "ACCEPTED" && checksPass && evaluation.rejectionReasons.length === 0 && reasons.size === 0;
   return { accepted, rejectionReasons: reasonArray(reasons) };
@@ -356,7 +416,7 @@ function evaluateEvidenceIndexed(input: EvidenceEvaluationContext): EvidenceAcce
 export type EvaluateEvidenceInput = {
   requestId: string;
   snapshotId: string;
-  obligation: VerificationObligation;
+  obligation: ProofCarryingObligation;
   criterion: SuccessCriterion;
   claim: EvidenceClaim;
   evaluation: EvidenceEvaluation;
@@ -406,14 +466,14 @@ function linkedExecution(
 }
 
 function resolveObligationOutcomeIndexed(
-  input: { requestId: string; snapshotId: string; obligation: VerificationObligation },
+  input: { requestId: string; snapshotId: string; obligation: ProofCarryingObligation },
   indexes: GraphIndexes,
 ): ObligationState {
   const claims = indexes.claimsByObligation.get(input.obligation.id) ?? [];
   const execution = linkedExecution(claims, indexes.observationsById);
   const acceptedCriteria = new Set<string>();
   let hasEvaluation = false;
-  let hasRejectedExpectedResult = false;
+  let observedFailure = false;
   let independenceUnmet = false;
 
   for (const claim of claims) {
@@ -425,7 +485,9 @@ function resolveObligationOutcomeIndexed(
     );
     for (const observationId of claim.observationIds) {
       const observation = indexes.observationsById.get(observationId);
-      if (observation && independenceRank[observation.producer.independence] < requiredIndependence) independenceUnmet = true;
+      if (!observation) continue;
+      if (independenceRank[observation.producer.independence] < requiredIndependence) independenceUnmet = true;
+      if (observation.execution.exitStatus === "failed" && assertionContradicts(criterion, observation)) observedFailure = true;
     }
     const evaluations = indexes.evaluationsByClaim.get(claim.claimId) ?? [];
     for (const evaluation of evaluations) {
@@ -440,7 +502,7 @@ function resolveObligationOutcomeIndexed(
         observationsById: indexes.observationsById,
       });
       if (acceptance.accepted) acceptedCriteria.add(criterion.criterionId);
-      if (acceptance.rejectionReasons.includes("EXPECTED_RESULT_NOT_DEMONSTRATED")) hasRejectedExpectedResult = true;
+      if (evaluation.checks.expectedResultViolated) observedFailure = true;
       if (acceptance.rejectionReasons.includes("INDEPENDENCE_NOT_MET")) independenceUnmet = true;
     }
   }
@@ -459,7 +521,7 @@ function resolveObligationOutcomeIndexed(
   else evidence = "REJECTED";
 
   let outcome: ObligationOutcome;
-  if (execution.state === "COMPLETED" && hasRejectedExpectedResult) outcome = "FAILED";
+  if (observedFailure) outcome = "FAILED";
   else if (execution.state === "NOT_EXECUTABLE") {
     let blocked = false;
     for (const observationId of execution.observationIds) {
@@ -478,7 +540,7 @@ function resolveObligationOutcomeIndexed(
 export type ResolveObligationOutcomeInput = {
   requestId: string;
   snapshotId: string;
-  obligation: VerificationObligation;
+  obligation: ProofCarryingObligation;
   criteria: readonly SuccessCriterion[];
   claims: readonly EvidenceClaim[];
   evaluations: readonly EvidenceEvaluation[];
@@ -490,7 +552,7 @@ export function resolveObligationOutcome(input: ResolveObligationOutcomeInput): 
   return resolveObligationOutcomeIndexed(input, indexes);
 }
 
-export function resolveQaVerdict(input: VerdictInput): VerdictResult {
+export function resolveProofCarryingQaVerdict(input: ProofCarryingVerdictInput): VerdictResult {
   if (!input.requestId || !input.snapshotId) throw new Error("requestId and snapshotId are required");
   if (Number.isNaN(Date.parse(input.evaluatedAt))) throw new Error("evaluatedAt must be an ISO date-time");
   const indexes = buildGraphIndexes(input.obligations, input.criteria, input.observations, input.claims, input.evaluations);
@@ -565,6 +627,89 @@ export function resolveQaVerdict(input: VerdictInput): VerdictResult {
     openDefectIds,
     acceptedRiskIds: accepted,
     residualRisks,
+    rationale,
+  };
+}
+export function resolveQaVerdict(input: VerdictInput): VerdictResult {
+  if (!input.requestId || !input.snapshotId) throw new Error("requestId and snapshotId are required");
+  if (Number.isNaN(Date.parse(input.evaluatedAt))) throw new Error("evaluatedAt must be an ISO date-time");
+
+  const mandatory = input.obligations.filter(item => item.mandatory);
+  const resultById = new Map<string, ObligationResult>();
+  for (const result of input.results) {
+    if (resultById.has(result.obligationId)) throw new Error(`duplicate result for ${result.obligationId}`);
+    if (result.snapshotId !== input.snapshotId) throw new Error(`snapshot mismatch for ${result.obligationId}`);
+    resultById.set(result.obligationId, result);
+  }
+
+  let passed = 0;
+  let failed = 0;
+  let blocked = 0;
+  let incomplete = 0;
+  const satisfiedIds: string[] = [];
+
+  for (const obligation of mandatory) {
+    const result = resultById.get(obligation.id);
+    if (!result) {
+      incomplete++;
+      continue;
+    }
+    if (result.status === "PASS" && independenceRank[result.producerIndependence] < independenceRank[obligation.requiredIndependence]) {
+      blocked++;
+      continue;
+    }
+    if (result.status === "PASS" && !result.evidenceId) {
+      incomplete++;
+      continue;
+    }
+    if (result.status === "PASS") {
+      passed++;
+      satisfiedIds.push(obligation.id);
+    } else if (result.status === "FAIL") failed++;
+    else if (result.status === "BLOCKED") blocked++;
+    else incomplete++;
+  }
+
+  const openMaterial = input.defects.filter(defect => defect.material && defect.disposition === "OPEN");
+  const invalidAcceptance = input.defects.filter(defect => defect.material && defect.disposition === "ACCEPTED_RISK" && !validAcceptance(defect, input.evaluatedAt));
+  const accepted = input.defects.filter(defect => defect.material && validAcceptance(defect, input.evaluatedAt));
+
+  const basisCoverage = coverage(input.coverage.basisIds, input.coverage.coveredBasisIds);
+  const riskCoverage = coverage(input.coverage.riskIds, input.coverage.coveredRiskIds);
+  const conditionCoverage = coverage(input.coverage.conditionIds, input.coverage.coveredConditionIds);
+  const obligationCoverage = coverage(mandatory.map(item => item.id), satisfiedIds);
+  const coverageIncomplete = [basisCoverage, riskCoverage, conditionCoverage].some(item => item.uncoveredIds.length > 0);
+
+  let qaVerdict: QaVerdict;
+  let rationale: string;
+  if (failed > 0 || openMaterial.length > 0) {
+    qaVerdict = "FAIL";
+    rationale = "A mandatory obligation failed or an unaccepted material defect remains.";
+  } else if (blocked > 0 || invalidAcceptance.length > 0) {
+    qaVerdict = "BLOCKED";
+    rationale = "A mandatory obligation is blocked or a material risk acceptance is missing or expired.";
+  } else if (incomplete > 0 || coverageIncomplete) {
+    qaVerdict = "INCOMPLETE";
+    rationale = "Mandatory evidence or required basis, risk, or condition coverage is incomplete.";
+  } else if (accepted.length > 0) {
+    qaVerdict = "PASS_WITH_ACCEPTED_RISK";
+    rationale = "All mandatory obligations passed and remaining material risks have valid acceptance.";
+  } else {
+    qaVerdict = "PASS";
+    rationale = "All mandatory obligations and required coverage passed with no unaccepted material risk.";
+  }
+
+  return {
+    schemaVersion: "qa-verdict/v1",
+    requestId: input.requestId,
+    snapshotId: input.snapshotId,
+    qaVerdict,
+    authoritative: false,
+    obligationSummary: { mandatory: mandatory.length, passed, failed, blocked, incomplete },
+    coverage: { basis: basisCoverage, risks: riskCoverage, conditions: conditionCoverage, mandatoryObligations: obligationCoverage },
+    openDefectIds: unique([...openMaterial, ...invalidAcceptance].map(item => item.id)),
+    acceptedRiskIds: unique(accepted.map(item => item.id)),
+    residualRisks: unique([...openMaterial, ...invalidAcceptance, ...accepted].map(item => item.id)),
     rationale,
   };
 }
