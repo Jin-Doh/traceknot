@@ -232,4 +232,12 @@ describe("canonical evidence contracts", () => {
       expect(validate(fixture), validate.errors ? JSON.stringify(validate.errors) : undefined).toBe(reasonCheckCase.valid);
     });
   }
+  test("rejects legacy array-shaped actualValues", () => {
+    const validate = loadValidator("observation.schema.json");
+    const fixture = loadJson(join(fixtureRoot, "canonical-observation.valid-structured.json")) as Record<string, unknown>;
+    fixture.actualValues = [{ field: "passed", value: true }];
+
+    expect(validate(fixture)).toBe(false);
+    expect(validate.errors?.length).toBeGreaterThan(0);
+  });
 });
