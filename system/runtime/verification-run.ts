@@ -109,7 +109,7 @@ function clockNow(clock: Clock): string {
   return result;
 }
 function validRequest(request: unknown): void {
-  if (!isRecord(request) || !exactOwnKeys(request, ["schemaVersion", "requestId", "project", "change", "testBasis"]) || request.schemaVersion !== "verification-request/v1" || typeof request.requestId !== "string" || !request.requestId || !isRecord(request.project) || !exactOwnKeys(request.project, ["rootIdentity", "snapshotId"]) || typeof request.project.rootIdentity !== "string" || !request.project.rootIdentity || typeof request.project.snapshotId !== "string" || !request.project.snapshotId || !isRecord(request.change) || !exactOwnKeys(request.change, ["summary", "paths"]) || typeof request.change.summary !== "string" || !request.change.summary || !Array.isArray(request.change.paths) || request.change.paths.some(path => typeof path !== "string" || !path) || new Set(request.change.paths as string[]).size !== request.change.paths.length || !Array.isArray(request.testBasis) || request.testBasis.length < 1 || request.testBasis.some(item => !validBasisItem(item))) throw new Error("invalid verification request");
+  if (!isRecord(request) || !exactOwnKeys(request, ["schemaVersion", "requestId", "project", "change", "testBasis"]) || request.schemaVersion !== "verification-request/v1" || typeof request.requestId !== "string" || !request.requestId || !isRecord(request.project) || !exactOwnKeys(request.project, ["rootIdentity", "snapshotId"]) || typeof request.project.rootIdentity !== "string" || !request.project.rootIdentity || typeof request.project.snapshotId !== "string" || !request.project.snapshotId || !isRecord(request.change) || !exactOwnKeys(request.change, ["summary", "paths"]) || typeof request.change.summary !== "string" || !request.change.summary || !Array.isArray(request.change.paths) || request.change.paths.length < 1 || request.change.paths.some(path => typeof path !== "string" || !path) || new Set(request.change.paths as string[]).size !== request.change.paths.length || !Array.isArray(request.testBasis) || request.testBasis.length < 1 || request.testBasis.some(item => !validBasisItem(item))) throw new Error("invalid verification request");
 }
 export function canonicalRequestDigest(request: VerificationRequest): string {
   validRequest(request);
@@ -435,12 +435,18 @@ export async function executeObligations(input: ExecuteObligationsInput): Promis
     let summary = !available ? `Capability ${capabilityFor(obligation)} is unavailable.` : !output ? "No executor output was returned." : !receiptValid ? "Executor output did not echo the canonical idempotency receipt (provenance or idempotency mismatch)." : output.summary ?? `Obligation ${obligation.id} completed.`;
     let artifacts: CanonicalVerificationResultArtifact[] = [];
     if (verdict === "PASS" || verdict === "FAIL") {
-      const supplied = output?.artifacts;
-      for (const artifact of Array.isArray(supplied) ? dedupeArtifacts(supplied) : []) {
-        const stored = await storeArtifact(input.dependencies.artifactStore, artifact, request);
-        if (stored) artifacts.push(stored);
+      const supplied = Array.isArray(output?.artifacts) ? output.artifacts : [];
+      if (supplied.some(item => !canonicalArtifact(item))) {
+        hostGenerated = true;
+        verdict = "INCOMPLETE";
+        summary = "Executor output contained a malformed artifact.";
+      } else {
+        for (const artifact of dedupeArtifacts(supplied)) {
+          const stored = await storeArtifact(input.dependencies.artifactStore, artifact, request);
+          if (stored) artifacts.push(stored);
+        }
+        artifacts = dedupeArtifacts(artifacts);
       }
-      artifacts = dedupeArtifacts(artifacts);
     }
     if (verdict === "PASS" || verdict === "FAIL") {
       if (!output || !outputProducer) {

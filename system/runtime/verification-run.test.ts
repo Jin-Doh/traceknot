@@ -225,6 +225,7 @@ test.each([
   ["empty basis text", (request: VerificationRequest) => ({ ...request, testBasis: [{ ...request.testBasis[0]!, text: "" }, ...request.testBasis.slice(1)] })],
   ["empty optional source", (request: VerificationRequest) => ({ ...request, testBasis: [{ ...request.testBasis[0]!, source: "" }, ...request.testBasis.slice(1)] })],
   ["empty basis", (request: VerificationRequest) => ({ ...request, testBasis: [] })],
+  ["empty paths", (request: VerificationRequest) => ({ ...request, change: { ...request.change, paths: [] } })],
   ["duplicate paths", (request: VerificationRequest) => ({ ...request, change: { ...request.change, paths: ["same.ts", "same.ts"] } })],
 ] as const)("rejects malformed requests before digest, writes, or dispatch: %s", async (_name, mutate) => {
   const invalid = mutate(makeRequest()) as VerificationRequest;
@@ -281,6 +282,21 @@ test("rejects empty and non-string artifact digests or paths without storing the
     expect(result.verdict.qaVerdict).not.toBe("PASS");
     expect(stores).toBe(0);
   }
+});
+test("fails closed when a valid artifact is accompanied by a malformed artifact", async () => {
+  const fakes = makeDependencies();
+  let stores = 0;
+  const executor: VerificationExecutor = {
+    executeObligation: async request => ({
+      status: "PASS", runId: request.runId, requestId: request.requestId, snapshotId: request.snapshotId, idempotencyKey: request.idempotencyKey,
+      producer: { kind: "deterministic-verifier", identity: "mixed-artifact-executor", independence: "independent-producer" },
+      artifacts: [{ type: "verification-result", digest: "a".repeat(64) }, { type: "verification-result", digest: "", path: "" }] as unknown as Artifact[],
+    }),
+  };
+  const artifactStore: ArtifactStore = { storeVerificationResultArtifact: async artifact => { stores++; return artifact; } };
+  const result = await runOnce({ ...fakes.dependencies, executor, artifactStore }, "mixed-malformed-artifact");
+  expect(result.verdict.qaVerdict).not.toBe("PASS");
+  expect(stores).toBe(0);
 });
 
 
