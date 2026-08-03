@@ -28,6 +28,15 @@ const contractCases: readonly ContractCase[] = [
     negatives: [],
   },
   {
+    name: "TraceabilityLink",
+    schema: "traceability-link.schema.json",
+    positive: "canonical-traceability-link.valid.json",
+    negatives: [
+      "canonical-traceability-link.invalid-empty-basis.json",
+      "canonical-traceability-link.invalid-empty-condition.json",
+    ],
+  },
+  {
     name: "EvidenceClaim",
     schema: "evidence-claim.schema.json",
     positive: "canonical-evidence-claim.valid.json",
