@@ -177,6 +177,22 @@ describe("evaluateEvidence", () => {
     expect(evaluate(entry)).toEqual({ accepted: true, rejectionReasons: [] });
     expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "ACCEPTED", outcome: "PASSED" });
   });
+  test("rejects an ACCEPTED evaluation for a different claim", () => {
+    const entry = makeEntry();
+    const mismatchedEvaluation: EvidenceEvaluation = { ...entry.evaluation!, claimId: "claim-2" };
+
+    expect(
+      evaluateEvidence({
+        requestId: REQUEST_ID,
+        snapshotId: SNAPSHOT_ID,
+        obligation: entry.obligation,
+        criterion: entry.criterion,
+        claim: entry.claim,
+        evaluation: mismatchedEvaluation,
+        observations: [entry.observation],
+      }),
+    ).toEqual({ accepted: false, rejectionReasons: ["INSUFFICIENT_SCOPE"] });
+  });
 
   test("rejects a natural-language claim without an accepted evaluation", () => {
     const entry = makeEntry({ evaluation: "none" });
