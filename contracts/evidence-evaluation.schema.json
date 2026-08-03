@@ -46,10 +46,12 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "status": { "const": "ACCEPTED" } } },
+      "if": { "type": "object", "properties": { "status": { "const": "ACCEPTED" } } },
       "then": {
+        "type": "object",
         "properties": {
           "checks": {
+            "type": "object",
             "properties": {
               "snapshotBound": { "const": true },
               "fresh": { "const": true },
@@ -60,15 +62,16 @@
               "integrityVerified": { "const": true }
             }
           },
-          "rejectionReasons": { "maxItems": 0 }
+          "rejectionReasons": { "type": "array", "maxItems": 0 }
         }
       }
     },
     {
-      "if": { "properties": { "status": { "const": "REJECTED" } } },
+      "if": { "type": "object", "properties": { "status": { "const": "REJECTED" } } },
       "then": {
+        "type": "object",
         "properties": {
-          "rejectionReasons": { "minItems": 1 }
+          "rejectionReasons": { "type": "array", "minItems": 1 }
         }
       }
     }
