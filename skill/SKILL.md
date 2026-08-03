@@ -11,6 +11,7 @@ Run a host-neutral QA process. The harness owns agents, models, task graphs, con
 Observation, Evidence Claim, Evidence Evaluation, and Obligation Outcome are distinct. An Observation records what was observed; an Evidence Claim states how an observation or artifact may support an obligation; an Evidence Evaluation determines whether that claim is accepted for the obligation; and an Obligation Outcome records the obligation's result. These concepts MUST NOT be conflated.
 
 Only evidence accepted by Evidence Evaluation for the applicable obligation may satisfy a mandatory criterion. An unaccepted, missing, or merely asserted claim MUST NOT establish PASS.
+The normative proof-carrying contract is [Proof-carrying success](references/proof-carrying-success.md).
 
 Gate mapping is separate from the QA verdict. A gate's accept or reject decision MUST NOT substitute for evidence evaluation or alter verdict precedence.
 
