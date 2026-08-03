@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "evidence-claim/v1",
+  "claimId": "claim-1",
+  "requestId": "request-1",
+  "snapshotId": "snapshot-1",
+  "obligationId": "obligation-1",
+  "criterionId": "criterion-1",
+  "observationIds": [],
+  "claim": "The observation demonstrates the expected result."
+}

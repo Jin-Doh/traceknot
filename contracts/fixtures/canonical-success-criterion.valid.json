@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "success-criterion/v1",
+  "criterionId": "criterion-1",
+  "kind": "structured-assertion",
+  "expected": {
+    "assertions": [
+      {
+        "field": "execution.exitStatus",
+        "operator": "equals",
+        "value": "passed"
+      }
+    ]
+  },
+  "requiredScope": {
+    "kind": "repository-canonical",
+    "selectors": ["contracts/canonical-evidence"]
+  },
+  "requiredIndependence": "independent-producer",
+  "requiredArtifacts": ["log"]
+}
