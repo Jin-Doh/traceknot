@@ -480,19 +480,35 @@ function resolveObligationOutcomeIndexed(
   for (const claim of claims) {
     const criterion = indexes.criteriaById.get(claim.criterionId);
     if (!criterion) continue;
+    const claimInScope =
+      claim.requestId === input.requestId &&
+      claim.snapshotId === input.snapshotId &&
+      claim.obligationId === input.obligation.id &&
+      input.obligation.criterionIds.includes(claim.criterionId);
     const requiredIndependence = Math.max(
       independenceRank[input.obligation.requiredIndependence],
       independenceRank[criterion.requiredIndependence],
     );
+    let claimContradicts = false;
+    let hasTargetObservation = false;
     for (const observationId of claim.observationIds) {
       const observation = indexes.observationsById.get(observationId);
       if (!observation) continue;
-      if (independenceRank[observation.producer.independence] < requiredIndependence) independenceUnmet = true;
-      if (observation.execution.exitStatus === "failed" && assertionContradicts(criterion, observation)) observedFailure = true;
+      const observationInScope = observation.requestId === input.requestId && observation.snapshotId === input.snapshotId;
+      if (claimInScope && observationInScope) {
+        hasTargetObservation = true;
+        if (independenceRank[observation.producer.independence] < requiredIndependence) independenceUnmet = true;
+        if (assertionContradicts(criterion, observation)) claimContradicts = true;
+      }
     }
     const evaluations = indexes.evaluationsByClaim.get(claim.claimId) ?? [];
     for (const evaluation of evaluations) {
       hasEvaluation = true;
+      const evaluationInScope =
+        claimInScope &&
+        evaluation.requestId === input.requestId &&
+        evaluation.snapshotId === input.snapshotId &&
+        evaluation.claimId === claim.claimId;
       const acceptance = evaluateEvidenceIndexed({
         requestId: input.requestId,
         snapshotId: input.snapshotId,
@@ -503,8 +519,8 @@ function resolveObligationOutcomeIndexed(
         observationsById: indexes.observationsById,
       });
       if (acceptance.accepted) acceptedCriteria.add(criterion.criterionId);
-      if (evaluation.checks.expectedResultViolated) observedFailure = true;
-      if (acceptance.rejectionReasons.includes("INDEPENDENCE_NOT_MET")) independenceUnmet = true;
+      if (evaluationInScope && hasTargetObservation && (evaluation.checks.expectedResultViolated || claimContradicts)) observedFailure = true;
+      if (evaluationInScope && acceptance.rejectionReasons.includes("INDEPENDENCE_NOT_MET")) independenceUnmet = true;
     }
   }
 
@@ -523,6 +539,7 @@ function resolveObligationOutcomeIndexed(
 
   let outcome: ObligationOutcome;
   if (observedFailure) outcome = "FAILED";
+  else if (allAccepted && claims.length > 0) outcome = "PASSED";
   else if (execution.state === "NOT_EXECUTABLE") {
     let blocked = false;
     for (const observationId of execution.observationIds) {
@@ -533,7 +550,6 @@ function resolveObligationOutcomeIndexed(
     }
     outcome = blocked || independenceUnmet ? "BLOCKED" : "INCOMPLETE";
   } else if (independenceUnmet) outcome = "BLOCKED";
-  else if (allAccepted && claims.length > 0) outcome = "PASSED";
   else outcome = "INCOMPLETE";
   return { execution: execution.state, evidence, outcome };
 }
@@ -594,7 +610,12 @@ export function resolveProofCarryingQaVerdict(input: ProofCarryingVerdictInput):
   const riskCoverage = coverage(input.coverage.riskIds, input.coverage.coveredRiskIds);
   const conditionCoverage = coverage(input.coverage.conditionIds, input.coverage.coveredConditionIds);
   const obligationCoverage = coverage(mandatory.map(item => item.id), satisfiedIds);
-  const coverageIncomplete = basisCoverage.uncoveredIds.length > 0 || riskCoverage.uncoveredIds.length > 0 || conditionCoverage.uncoveredIds.length > 0;
+  const coverageIncomplete =
+    input.coverage.basisIds.length === 0 ||
+    input.coverage.conditionIds.length === 0 ||
+    basisCoverage.uncoveredIds.length > 0 ||
+    riskCoverage.uncoveredIds.length > 0 ||
+    conditionCoverage.uncoveredIds.length > 0;
 
   let qaVerdict: QaVerdict;
   let rationale: string;
