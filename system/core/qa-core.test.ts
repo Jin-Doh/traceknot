@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   evaluateEvidence,
   resolveObligationOutcome,
+  resolveProofCarryingQaVerdict,
   resolveQaVerdict,
   type DefectSummary,
   type EvidenceClaim,
@@ -9,9 +10,12 @@ import {
   type EvidenceRejectionReason,
   type IndependenceLevel,
   type Observation,
+  type ProofCarryingObligation,
+  type ProofCarryingVerdictInput,
   type SuccessCriterion,
   type VerdictInput,
   type VerificationObligation,
+  type ObligationResult,
 } from "./qa-core";
 
 const REQUEST_ID = "request-1";
@@ -27,6 +31,7 @@ type EntryOptions = {
   snapshotId?: string;
   observationSnapshotId?: string;
   exitStatus?: Observation["execution"]["exitStatus"];
+  producerKind?: Observation["producer"]["kind"];
   independence?: IndependenceLevel;
   artifacts?: Observation["artifacts"];
   evaluation?: "accepted" | "rejected" | "none";
@@ -35,7 +40,7 @@ type EntryOptions = {
 };
 
 type Entry = {
-  obligation: VerificationObligation;
+  obligation: ProofCarryingObligation;
   criterion: SuccessCriterion;
   observation: Observation;
   claim: EvidenceClaim;
@@ -49,6 +54,7 @@ const allChecks = (overrides: Partial<EvidenceEvaluation["checks"]> = {}): Evide
   producerAllowed: true,
   independenceSatisfied: true,
   expectedResultDemonstrated: true,
+  expectedResultViolated: false,
   integrityVerified: true,
   ...overrides,
 });
@@ -74,7 +80,7 @@ const makeEntry = (options: EntryOptions = {}): Entry => {
     requiredIndependence: "independent-producer",
     requiredArtifacts: ["log"],
   };
-  const obligation: VerificationObligation = {
+  const obligation: ProofCarryingObligation = {
     id: obligationId,
     mandatory: true,
     criterionIds: [criterionId],
@@ -86,7 +92,7 @@ const makeEntry = (options: EntryOptions = {}): Entry => {
     requestId: REQUEST_ID,
     snapshotId: observationSnapshotId,
     producer: {
-      kind: "ci",
+      kind: options.producerKind ?? "ci",
       identity: "traceknot-ci",
       independence: options.independence ?? "independent-producer",
     },
@@ -128,7 +134,7 @@ const makeEntry = (options: EntryOptions = {}): Entry => {
   return { obligation, criterion, observation, claim, evaluation };
 };
 
-const graph = (...entries: Entry[]): VerdictInput => ({
+const graph = (...entries: Entry[]): ProofCarryingVerdictInput => ({
   requestId: REQUEST_ID,
   snapshotId: SNAPSHOT_ID,
   evaluatedAt: EVALUATED_AT,
@@ -147,6 +153,38 @@ const graph = (...entries: Entry[]): VerdictInput => ({
     coveredConditionIds: ["condition-1"],
   },
 });
+
+const legacyBase = (): VerdictInput => {
+  const obligation: VerificationObligation = {
+    id: "obligation-1",
+    mandatory: true,
+    conditionIds: ["condition-1"],
+    requiredIndependence: "independent-producer",
+  };
+  const result: ObligationResult = {
+    obligationId: obligation.id,
+    snapshotId: SNAPSHOT_ID,
+    status: "PASS",
+    producerIndependence: "independent-producer",
+    evidenceId: "evidence-1",
+  };
+  return {
+    requestId: REQUEST_ID,
+    snapshotId: SNAPSHOT_ID,
+    evaluatedAt: EVALUATED_AT,
+    obligations: [obligation],
+    results: [result],
+    defects: [],
+    coverage: {
+      basisIds: ["basis-1"],
+      coveredBasisIds: ["basis-1"],
+      riskIds: ["risk-1"],
+      coveredRiskIds: ["risk-1"],
+      conditionIds: ["condition-1"],
+      coveredConditionIds: ["condition-1"],
+    },
+  };
+};
 
 const evaluate = (entry: Entry) =>
   evaluateEvidence({
@@ -177,6 +215,13 @@ describe("evaluateEvidence", () => {
     expect(evaluate(entry)).toEqual({ accepted: true, rejectionReasons: [] });
     expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "ACCEPTED", outcome: "PASSED" });
   });
+  test("does not accept a failed observation even when evaluation says ACCEPTED", () => {
+    const entry = makeEntry({ exitStatus: "failed" });
+
+    expect(evaluate(entry)).toEqual({ accepted: false, rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"] });
+    expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "FAILED" });
+    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("FAIL");
+  });
   test("rejects an ACCEPTED evaluation for a different claim", () => {
     const entry = makeEntry();
     const mismatchedEvaluation: EvidenceEvaluation = { ...entry.evaluation!, claimId: "claim-2" };
@@ -196,7 +241,7 @@ describe("evaluateEvidence", () => {
 
   test("rejects a natural-language claim without an accepted evaluation", () => {
     const entry = makeEntry({ evaluation: "none" });
-    const result = resolveQaVerdict(graph(entry));
+    const result = resolveProofCarryingQaVerdict(graph(entry));
 
     expect(result.qaVerdict).toBe("INCOMPLETE");
     expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "NONE", outcome: "INCOMPLETE" });
@@ -208,7 +253,7 @@ describe("evaluateEvidence", () => {
 
     expect(result).toEqual({ accepted: false, rejectionReasons: ["MISSING_ARTIFACT"] });
     expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "INCOMPLETE" });
-    expect(resolveQaVerdict(graph(entry)).qaVerdict).toBe("INCOMPLETE");
+    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("INCOMPLETE");
   });
 
   test("rejects an evaluation with incomplete scope", () => {
@@ -227,7 +272,7 @@ describe("evaluateEvidence", () => {
 
     expect(evaluate(entry)).toEqual({ accepted: false, rejectionReasons: ["SNAPSHOT_MISMATCH"] });
     expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "INCOMPLETE" });
-    expect(resolveQaVerdict(graph(entry)).qaVerdict).toBe("INCOMPLETE");
+    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("INCOMPLETE");
   });
 
   test("retains a failed execution as FAIL when the expected result is rejected", () => {
@@ -240,7 +285,7 @@ describe("evaluateEvidence", () => {
 
     expect(evaluate(entry)).toEqual({ accepted: false, rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"] });
     expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "FAILED" });
-    expect(resolveQaVerdict(graph(entry)).qaVerdict).toBe("FAIL");
+    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("FAIL");
   });
 
   test("blocks an execution that could not run", () => {
@@ -252,7 +297,7 @@ describe("evaluateEvidence", () => {
     });
 
     expect(outcome(entry)).toEqual({ execution: "NOT_EXECUTABLE", evidence: "REJECTED", outcome: "BLOCKED" });
-    expect(resolveQaVerdict(graph(entry)).qaVerdict).toBe("BLOCKED");
+    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("BLOCKED");
   });
 
   test("blocks evidence below the obligation independence requirement", () => {
@@ -265,9 +310,64 @@ describe("evaluateEvidence", () => {
 
     expect(evaluate(entry)).toEqual({ accepted: false, rejectionReasons: ["INDEPENDENCE_NOT_MET"] });
     expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "BLOCKED" });
-    expect(resolveQaVerdict(graph(entry)).qaVerdict).toBe("BLOCKED");
+    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("BLOCKED");
+  });
+  test("rejects a self producer claiming external approval", () => {
+    const entry = makeEntry({ producerKind: "self", independence: "external-approval" });
+
+    expect(evaluate(entry)).toEqual({
+      accepted: false,
+      rejectionReasons: ["INDEPENDENCE_NOT_MET", "UNTRUSTED_PRODUCER"],
+    });
+    expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "BLOCKED" });
+    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("BLOCKED");
   });
 
+  test("keeps a passed execution incomplete when expected result is unproven", () => {
+    const entry = makeEntry({
+      evaluation: "rejected",
+      checks: { expectedResultDemonstrated: false, expectedResultViolated: false },
+      rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"],
+    });
+
+    expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "INCOMPLETE" });
+    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("INCOMPLETE");
+  });
+
+  test("fails a passed execution when the expected result is explicitly violated", () => {
+    const entry = makeEntry({
+      evaluation: "rejected",
+      checks: { expectedResultDemonstrated: false, expectedResultViolated: true },
+      rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"],
+    });
+
+    expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "FAILED" });
+    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("FAIL");
+  });
+
+  test("keeps aggregate FAIL when an explicit failure is mixed with a blocked claim", () => {
+    const failed = makeEntry({
+      obligationId: "obligation-explicit-fail",
+      criterionId: "criterion-explicit-fail",
+      observationId: "observation-explicit-fail",
+      claimId: "claim-explicit-fail",
+      evaluation: "rejected",
+      checks: { expectedResultDemonstrated: false, expectedResultViolated: true },
+      rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"],
+    });
+    const blocked = makeEntry({
+      obligationId: "obligation-mixed-blocked",
+      criterionId: "criterion-mixed-blocked",
+      observationId: "observation-mixed-blocked",
+      claimId: "claim-mixed-blocked",
+      exitStatus: "blocked",
+      evaluation: "rejected",
+      checks: { expectedResultDemonstrated: false },
+      rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"],
+    });
+
+    expect(resolveProofCarryingQaVerdict(graph(failed, blocked)).qaVerdict).toBe("FAIL");
+  });
   test.each(["cancelled", "timed-out"] as const)("marks %s observations incomplete", exitStatus => {
     const entry = makeEntry({
       exitStatus,
@@ -277,13 +377,13 @@ describe("evaluateEvidence", () => {
     });
 
     expect(outcome(entry)).toEqual({ execution: "NOT_EXECUTABLE", evidence: "REJECTED", outcome: "INCOMPLETE" });
-    expect(resolveQaVerdict(graph(entry)).qaVerdict).toBe("INCOMPLETE");
+    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("INCOMPLETE");
   });
 });
 
-describe("resolveQaVerdict", () => {
+describe("resolveProofCarryingQaVerdict", () => {
   test("returns qa-verdict/v1 with authoritative false for a complete accepted graph", () => {
-    const result = resolveQaVerdict(graph(makeEntry()));
+    const result = resolveProofCarryingQaVerdict(graph(makeEntry()));
 
     expect(result.schemaVersion).toBe("qa-verdict/v1");
     expect(result.authoritative).toBe(false);
@@ -320,13 +420,13 @@ describe("resolveQaVerdict", () => {
       evaluation: "none",
     });
 
-    const all = resolveQaVerdict(graph(failed, blocked, incomplete));
+    const all = resolveProofCarryingQaVerdict(graph(failed, blocked, incomplete));
     expect(all.qaVerdict).toBe("FAIL");
 
-    const withoutFail = resolveQaVerdict(graph(blocked, incomplete));
+    const withoutFail = resolveProofCarryingQaVerdict(graph(blocked, incomplete));
     expect(withoutFail.qaVerdict).toBe("BLOCKED");
 
-    const withoutBlock = resolveQaVerdict(graph(incomplete));
+    const withoutBlock = resolveProofCarryingQaVerdict(graph(incomplete));
     expect(withoutBlock.qaVerdict).toBe("INCOMPLETE");
 
     const acceptedRisk: DefectSummary = {
@@ -337,10 +437,10 @@ describe("resolveQaVerdict", () => {
     };
     const passing = graph(makeEntry());
     passing.defects = [acceptedRisk];
-    expect(resolveQaVerdict(passing).qaVerdict).toBe("PASS_WITH_ACCEPTED_RISK");
+    expect(resolveProofCarryingQaVerdict(passing).qaVerdict).toBe("PASS_WITH_ACCEPTED_RISK");
 
     passing.defects = [];
-    expect(resolveQaVerdict(passing).qaVerdict).toBe("PASS");
+    expect(resolveProofCarryingQaVerdict(passing).qaVerdict).toBe("PASS");
   });
 
   test("allows accepted material risk only after every mandatory criterion passes", () => {
@@ -354,19 +454,37 @@ describe("resolveQaVerdict", () => {
       },
     ];
 
-    expect(resolveQaVerdict(input).qaVerdict).toBe("INCOMPLETE");
+    expect(resolveProofCarryingQaVerdict(input).qaVerdict).toBe("INCOMPLETE");
   });
 
   test("rejects duplicate IDs and unknown graph references as invalid input", () => {
     const entry = makeEntry();
     const duplicateClaim = { ...entry.claim, claimId: entry.claim.claimId };
-    expect(() => resolveQaVerdict({ ...graph(entry), claims: [entry.claim, duplicateClaim] })).toThrow(/duplicate/i);
+    expect(() => resolveProofCarryingQaVerdict({ ...graph(entry), claims: [entry.claim, duplicateClaim] })).toThrow(/duplicate/i);
 
     const unknownCriterion = {
       ...entry.claim,
       claimId: "claim-unknown-criterion",
       criterionId: "criterion-unknown",
     };
-    expect(() => resolveQaVerdict({ ...graph(entry), claims: [unknownCriterion] })).toThrow(/unknown.*criterion|criterion.*unknown/i);
+    expect(() => resolveProofCarryingQaVerdict({ ...graph(entry), claims: [unknownCriterion] })).toThrow(/unknown.*criterion|criterion.*unknown/i);
+  });
+});
+
+describe("resolveQaVerdict legacy compatibility", () => {
+  test("still passes a legacy VerdictInput with results", () => {
+    expect(resolveQaVerdict(legacyBase()).qaVerdict).toBe("PASS");
+  });
+
+  test("retains legacy snapshot mismatch rejection", () => {
+    const input = legacyBase();
+    const result = input.results[0]!;
+
+    expect(() =>
+      resolveQaVerdict({
+        ...input,
+        results: [{ ...result, snapshotId: "snapshot-2" }],
+      }),
+    ).toThrow("snapshot mismatch");
   });
 });
