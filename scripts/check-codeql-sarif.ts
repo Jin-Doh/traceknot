@@ -37,7 +37,10 @@ interface SarifResult {
 
 export interface SarifLog {
   runs?: Array<{
-    tool?: { driver?: { rules?: SarifRule[] } };
+    tool?: {
+      driver?: { rules?: SarifRule[] };
+      extensions?: Array<{ rules?: SarifRule[] }>;
+    };
     results?: SarifResult[];
   }>;
 }
@@ -161,10 +164,18 @@ export function evaluateSarif(logs: SarifLog[], policy: CodeqlPolicy, now = new 
   const violations: CodeqlViolation[] = [];
   for (const log of logs) {
     for (const run of log.runs ?? []) {
-      const rules = new Map((run.tool?.driver?.rules ?? []).map((rule) => [rule.id, rule]));
+      const rules = new Map<string, SarifRule>();
+      for (const rule of run.tool?.driver?.rules ?? []) {
+        if (rule.id) rules.set(rule.id, rule);
+      }
+      for (const extension of run.tool?.extensions ?? []) {
+        for (const rule of extension.rules ?? []) {
+          if (rule.id) rules.set(rule.id, rule);
+        }
+      }
       for (const result of run.results ?? []) {
         scannedResults += 1;
-        const severity = securitySeverity(result, rules.get(result.ruleId));
+        const severity = securitySeverity(result, result.ruleId ? rules.get(result.ruleId) : undefined);
         if (severity === null) continue;
         securityAlerts += 1;
         if (severity < policy.failAtOrAbove) continue;

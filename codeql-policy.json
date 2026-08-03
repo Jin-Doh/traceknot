@@ -2,5 +2,14 @@
   "schemaVersion": "traceknot-codeql-policy/v1",
   "failAtOrAbove": 7,
   "maxUnexceptedAlerts": 0,
-  "exceptions": []
+  "exceptions": [
+    {
+      "ruleId": "js/file-system-race",
+      "fingerprint": "933468429e09cdd3:1",
+      "owner": "Jin-Doh",
+      "reason": "Portable verifier snapshot cannot be regenerated without the canonical GajaeCode packages/*/src source corpus",
+      "mitigation": "The verifier is non-runtime code used only in an isolated trusted checkout, and manifest paths reject absolute and parent traversal",
+      "expiresOn": "2026-09-30"
+    }
+  ]
 }
