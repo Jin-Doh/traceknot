@@ -131,8 +131,35 @@ export async function executeObligations(input: ExecuteObligationsInput): Promis
   return freeze({ schemaVersion: "verification-execution/v1", requestId: input.request.requestId, snapshotId: input.request.project.snapshotId, observations, claims, evidence });
 }
 function makeEvaluation(observation: Observation | undefined, claim: EvidenceClaim, evaluatedAt: string): EvidenceEvaluation {
-  const accepted = observation?.execution.exitStatus === "passed" && observation.artifacts.some(item => item.type === "verification-result");
-  return { schemaVersion: "evidence-evaluation/v1", evaluationId: `evaluation:${claim.claimId}`, requestId: claim.requestId, snapshotId: claim.snapshotId, claimId: claim.claimId, status: accepted ? "ACCEPTED" : "REJECTED", checks: { snapshotBound: true, fresh: true, scopeComplete: true, producerAllowed: true, independenceSatisfied: true, expectedResultDemonstrated: accepted, expectedResultViolated: !accepted, integrityVerified: accepted }, rejectionReasons: accepted ? [] : ["EXPECTED_RESULT_NOT_DEMONSTRATED"], evaluatedAt };
+  const expectedResultDemonstrated = observation?.execution.exitStatus === "passed";
+  const artifactRequirementsSatisfied = observation?.artifacts.some(item => item.type === "verification-result") ?? false;
+  const integrityVerified = observation !== undefined;
+  const accepted = expectedResultDemonstrated && artifactRequirementsSatisfied && integrityVerified;
+  const rejectionReasons: EvidenceEvaluation["rejectionReasons"][number][] = [];
+  if (!expectedResultDemonstrated) rejectionReasons.push("EXPECTED_RESULT_NOT_DEMONSTRATED");
+  if (!artifactRequirementsSatisfied) rejectionReasons.push("MISSING_ARTIFACT");
+  if (!integrityVerified) rejectionReasons.push("INTEGRITY_FAILURE");
+  return {
+    schemaVersion: "evidence-evaluation/v1",
+    evaluationId: `evaluation:${claim.claimId}`,
+    requestId: claim.requestId,
+    snapshotId: claim.snapshotId,
+    claimId: claim.claimId,
+    status: accepted ? "ACCEPTED" : "REJECTED",
+    checks: {
+      snapshotBound: true,
+      fresh: true,
+      scopeComplete: true,
+      producerAllowed: true,
+      independenceSatisfied: true,
+      artifactRequirementsSatisfied,
+      expectedResultDemonstrated,
+      expectedResultViolated: !expectedResultDemonstrated,
+      integrityVerified,
+    },
+    rejectionReasons,
+    evaluatedAt,
+  };
 }
 export async function evaluateEvidence(input: EvaluateEvidenceInput): Promise<EvidenceDocument> {
   validRequest(input.request); const evaluatedAt = clockNow(input.dependencies.now); const observations = new Map(input.execution.observations.map(item => [item.observationId, item])); const evaluations = input.execution.claims.map(claim => makeEvaluation(observations.get(claim.observationIds[0]), claim, evaluatedAt));

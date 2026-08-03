@@ -112,6 +112,7 @@ describe("verification run orchestration", () => {
     expect(result.run.updatedAt).toBe(FIXED_NOW);
     expect(fakes.repository.runs.get(RUN_ID)?.state).toBe("TERMINAL");
     expect(result.verdict.qaVerdict).toBe("PASS");
+    expect(result.documents.evidence?.evaluations.every(item => item.checks.artifactRequirementsSatisfied)).toBe(true);
     expect(fakes.executorCalls).toBeGreaterThan(0);
     expect(fakes.repository.stageWrites).toEqual(["request", "basis", "discovery", "plan", "execution", "evidence", "residual-risk", "verdict"]);
   });
