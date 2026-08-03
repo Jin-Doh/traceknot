@@ -24,6 +24,15 @@ const contractCases: readonly ContractCase[] = [
     ],
   },
   {
+    name: "Verification evidence",
+    schema: "evidence.schema.json",
+    positive: "canonical-evidence.valid-runtime.json",
+    negatives: [
+      "canonical-evidence.invalid-legacy-host.json",
+      "canonical-evidence.invalid-missing-timestamp.json",
+    ],
+  },
+  {
     name: "Structured observation",
     schema: "observation.schema.json",
     positive: "canonical-observation.valid-structured.json",

@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import Ajv2020 from "ajv/dist/2020.js";
 import type { Artifact } from "../core/qa-core";
 import {
   buildVerificationPlan,
   createInitialRun,
   establishTestBasis,
+  canonicalRequestDigest,
   performRiskDiscovery,
   runVerification,
   transitionRunState,
@@ -138,6 +140,17 @@ function reorderObjectKeysDeep<T>(value: T): T {
   }
   return value;
 }
+test("canonical request digest is key-order stable and value/array-order sensitive", () => {
+  const request = makeRequest();
+  const reordered = reorderObjectKeysDeep(request);
+  expect(canonicalRequestDigest(request)).toMatch(/^[0-9a-f]{64}$/);
+  expect(canonicalRequestDigest(reordered)).toBe(canonicalRequestDigest(request));
+  const changedValue = { ...request, change: { ...request.change, summary: "verify a different change" } };
+  expect(canonicalRequestDigest(changedValue)).not.toBe(canonicalRequestDigest(request));
+  const changedArrayOrder = { ...request, testBasis: [...request.testBasis].reverse() };
+  expect(canonicalRequestDigest(changedArrayOrder)).not.toBe(canonicalRequestDigest(request));
+});
+
 
 describe("verification run orchestration", () => {
   test("executes every stage and persists a terminal canonical run", async () => {
@@ -403,6 +416,40 @@ describe("verification run orchestration", () => {
     expect(browserFakes.browserCalls).toBe(1);
     expect(browserFakes.executorCalls).toBe(0);
   });
+  test("derives R3 independent-producer obligations from migration change material with neutral basis", async () => {
+    const request = { ...makeRequest(), change: { summary: "Apply the database migration safely.", paths: ["src/neutral-check.ts"] }, testBasis: [{ id: "neutral", kind: "request" as const, origin: "explicit" as const, text: "The requested check is recorded." }] } satisfies VerificationRequest;
+    const dependencies = makeDependencies().dependencies;
+    const basis = await establishTestBasis({ request, dependencies });
+    const discovery = await performRiskDiscovery({ request, basis, dependencies });
+    const plan = await buildVerificationPlan({ request, basis, discovery, dependencies });
+    expect(discovery.risks[0]?.level).toBe("R3");
+    expect(discovery.conditions[0]?.techniques).toContain("independent-producer");
+    expect(plan.obligations[0]?.independence).toBe("independent-producer");
+  });
+
+  test("derives browser result and executor from UI/frontend change material with neutral basis", async () => {
+    const request = { ...makeRequest(), change: { summary: "Refresh the frontend UI browser flow.", paths: ["frontend/components/"] }, testBasis: [{ id: "neutral", kind: "request" as const, origin: "explicit" as const, text: "The requested check is recorded." }] } satisfies VerificationRequest;
+    const fakes = makeDependencies();
+    const basis = await establishTestBasis({ request, dependencies: fakes.dependencies });
+    const discovery = await performRiskDiscovery({ request, basis, dependencies: fakes.dependencies });
+    const plan = await buildVerificationPlan({ request, basis, discovery, dependencies: fakes.dependencies });
+    expect(discovery.risks[0]?.level).toBe("R2");
+    expect(discovery.conditions[0]?.techniques).toContain("browser-verification");
+    expect(plan.obligations[0]?.evidenceType).toBe("browser-result");
+    const execution = await executeObligations({ runId: "neutral-browser", request, plan, dependencies: fakes.dependencies });
+    expect(execution.observations[0]?.execution.kind).toBe("browser");
+    expect(fakes.browserCalls).toBe(1);
+    expect(fakes.executorCalls).toBe(0);
+  });
+  test("validates runtime-emitted evidence with the canonical AJV schema", async () => {
+    const fakes = makeDependencies();
+    const result = await runOnce(fakes.dependencies, "runtime-ajv");
+    const schema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/evidence.schema.json`).text()) as object;
+    const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
+    for (const evidence of result.documents.execution?.evidence ?? []) {
+      expect(validate(evidence), validate.errors ? JSON.stringify(validate.errors) : undefined).toBe(true);
+    }
+  });
 
   test.each([
     "release",
@@ -516,6 +563,32 @@ describe("verification run orchestration", () => {
     expect(fakes.executorCalls).toBe(executorCalls);
     expect({ artifactCalls, usageCalls }).toEqual(effects);
     await expect(runVerification({ runId: RUN_ID, dependencies })).resolves.toMatchObject({ run: { state: "TERMINAL" } });
+  });
+  test("rejects a coordinated request-less persisted rewrite before executor or repository writes", async () => {
+    const fakes = makeDependencies();
+    const original = await runOnce(fakes.dependencies);
+    const originalExecution = fakes.repository.stageDocuments.get(`${RUN_ID}:execution`) as ExecutionDocument;
+    if (!originalExecution) throw new Error("missing original execution");
+    const rewrittenRequest = { ...makeRequest(), change: { summary: "Apply the database migration release.", paths: ["db/migrations/"] } } satisfies VerificationRequest;
+    const rewrittenFakes = makeDependencies();
+    const rewritten = await runVerification({ runId: RUN_ID, request: rewrittenRequest, dependencies: rewrittenFakes.dependencies });
+    for (const stage of ["request", "basis", "discovery", "plan", "evidence", "residual-risk", "verdict"] as const) {
+      const document = rewrittenFakes.repository.stageDocuments.get(`${RUN_ID}:${stage}`);
+      if (document === undefined) throw new Error(`missing rewritten ${stage}`);
+      fakes.repository.stageDocuments.set(`${RUN_ID}:${stage}`, structuredClone(document));
+    }
+    const rewrittenExecution = rewrittenFakes.repository.stageDocuments.get(`${RUN_ID}:execution`) as ExecutionDocument;
+    if (!rewrittenExecution) throw new Error("missing rewritten execution");
+    fakes.repository.stageDocuments.set(`${RUN_ID}:execution`, { ...structuredClone(rewrittenExecution), authorities: structuredClone(originalExecution.authorities) });
+    const executorCalls = fakes.executorCalls;
+    const stageWrites = fakes.repository.stageWrites.length;
+    const runWrites = fakes.repository.runWrites.length;
+    await expect(runVerification({ runId: RUN_ID, dependencies: fakes.dependencies })).rejects.toThrow("invalid execution authority binding");
+    expect(fakes.executorCalls).toBe(executorCalls);
+    expect(fakes.repository.stageWrites.length).toBe(stageWrites);
+    expect(fakes.repository.runWrites.length).toBe(runWrites);
+    expect(original.verdict.qaVerdict).toBe("PASS");
+    expect(rewritten.verdict.qaVerdict).toBe("PASS");
   });
 
   test("reuses execution checkpoint after saveRun crash without a duplicate executor call", async () => {
@@ -666,6 +739,22 @@ describe("verification run orchestration", () => {
     expect(fakes.executorCalls).toBe(executorCalls);
     expect(fakes.repository.stageWrites.slice(writesBeforeResume)).not.toContain("evidence");
     expect(fakes.repository.stageWrites.slice(writesBeforeResume)).not.toContain("verdict");
+  });
+  test("rejects a persisted authority requestDigest mutation before executor recall", async () => {
+    const fakes = makeDependencies();
+    const runId = "authority-request-digest-tamper";
+    await runOnce(fakes.dependencies, runId);
+    const run = fakes.repository.runs.get(runId);
+    const saved = fakes.repository.stageDocuments.get(`${runId}:execution`) as ExecutionDocument;
+    if (!run || !saved || !saved.authorities?.[0]) throw new Error("missing persisted authority");
+    const authorities = saved.authorities.map((authority, index) => index === 0 ? { ...authority, binding: { ...authority.binding, requestDigest: "0".repeat(64) } } : authority);
+    fakes.repository.stageDocuments.set(`${runId}:execution`, { ...saved, authorities });
+    fakes.repository.runs.set(runId, { ...run, state: "EXECUTING", updatedAt: FIXED_NOW });
+    const executorCalls = fakes.executorCalls;
+    const stageWrites = fakes.repository.stageWrites.length;
+    await expect(runVerification({ runId, request: makeRequest(), dependencies: fakes.dependencies })).rejects.toThrow("invalid execution authority binding");
+    expect(fakes.executorCalls).toBe(executorCalls);
+    expect(fakes.repository.stageWrites.length).toBe(stageWrites);
   });
   test.each([
     ["missing", { missingAuthority: true }],

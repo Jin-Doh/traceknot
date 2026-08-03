@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "verification-evidence/v1",
+  "evidenceId": "evidence:obligation:runtime",
+  "requestId": "request-runtime",
+  "snapshotId": "snapshot-runtime",
+  "obligationId": "obligation:runtime",
+  "producer": {
+    "kind": "deterministic-verifier",
+    "identity": "fixture-runtime-executor",
+    "independence": "independent-producer"
+  },
+  "execution": {
+    "kind": "command",
+    "identity": "fixture-runtime-executor",
+    "startedAt": "2026-08-03T00:00:00.000Z",
+    "finishedAt": "2026-08-03T00:00:01.000Z",
+    "exitStatus": "passed",
+    "exitCode": 0
+  },
+  "result": {
+    "verdict": "PASS",
+    "summary": "Runtime evidence passed.",
+    "passed": 1,
+    "artifacts": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+  },
+  "observedAt": "2026-08-03T00:00:01.000Z"
+}
