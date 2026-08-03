@@ -158,7 +158,7 @@ async function executeExecutor(port: VerificationExecutor, input: VerificationEx
 async function executeBrowser(port: BrowserExecutor, input: BrowserExecutionRequest): Promise<BrowserExecutionOutput | undefined> { if (port.executeBrowser) return port.executeBrowser(input); return port.execute ? port.execute(input) : undefined; }
 function normalizeStatus(value: VerificationExecutionOutput["status"]): VerificationEvidence["result"]["verdict"] { const status = String(value).toLowerCase(); return status === "passed" || status === "pass" ? "PASS" : status === "failed" || status === "fail" ? "FAIL" : status === "blocked" || status === "block" ? "BLOCKED" : "INCOMPLETE"; }
 function idempotencyKeyFor(runId: string, requestId: string, snapshotId: string, obligationId: string): string {
-  return `verification:${runId}:${requestId}:${snapshotId}:${obligationId}`;
+  return `verification:${JSON.stringify([runId, requestId, snapshotId, obligationId])}`;
 }
 function outputReceiptMatches(output: VerificationExecutionOutput | undefined, request: VerificationExecutionRequest): boolean {
   return Boolean(output && output.runId === request.runId && output.requestId === request.requestId && output.snapshotId === request.snapshotId && output.idempotencyKey === request.idempotencyKey);

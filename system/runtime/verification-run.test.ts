@@ -212,6 +212,52 @@ describe("verification run orchestration", () => {
     expect(result.documents.execution?.evidence.every(item => item.result.verdict !== "PASS" || item.result.passed !== 1)).toBe(true);
   });
 
+  test("encodes idempotency components without collisions", async () => {
+    const fakes = makeDependencies();
+    const seen: VerificationExecutionRequest[] = [];
+    const original = fakes.dependencies.executor.executeObligation;
+    const executor: VerificationExecutor = {
+      executeObligation: async request => {
+        seen.push(request);
+        return original ? original(request) : undefined;
+      },
+    };
+    const dependencies = { ...fakes.dependencies, executor };
+    await runOnce(dependencies, "tenant:a", "req");
+    await runOnce(dependencies, "tenant", "a:req");
+    const first = seen.find(request => request.runId === "tenant:a");
+    const second = seen.find(request => request.runId === "tenant" && request.requestId === "a:req");
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    expect(first?.obligation.id).toBe(second?.obligation.id);
+    expect(first?.snapshotId).toBe(second?.snapshotId);
+    expect(first?.idempotencyKey).not.toBe(second?.idempotencyKey);
+  });
+
+  test("replays identical idempotency components to the same key", async () => {
+    const capture = async (): Promise<VerificationExecutionRequest> => {
+      const fakes = makeDependencies();
+      let captured: VerificationExecutionRequest | undefined;
+      const original = fakes.dependencies.executor.executeObligation;
+      const executor: VerificationExecutor = {
+        executeObligation: async request => {
+          captured ??= request;
+          return original ? original(request) : undefined;
+        },
+      };
+      await runOnce({ ...fakes.dependencies, executor }, "stable-run", "stable-request");
+      if (!captured) throw new Error("expected executor request");
+      return captured;
+    };
+    const first = await capture();
+    const second = await capture();
+    expect(second.runId).toBe(first.runId);
+    expect(second.requestId).toBe(first.requestId);
+    expect(second.snapshotId).toBe(first.snapshotId);
+    expect(second.obligation.id).toBe(first.obligation.id);
+    expect(second.idempotencyKey).toBe(first.idempotencyKey);
+  });
+
   test("classifies material risks, derives independent obligations, and preserves browser technique", async () => {
     const request = { ...makeRequest(), testBasis: [
       { id: "z-browser", kind: "acceptance-criterion" as const, origin: "explicit" as const, text: "The browser flow renders the UI." },
