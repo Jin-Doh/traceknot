@@ -122,10 +122,12 @@ jobs:
           bun-version: 1.3.14
           no-cache: true
       - name: Enforce CodeQL security floor
+        env:
+          CODEQL_SARIF_OUTPUT: ${{ steps.analyze.outputs.sarif-output }}
         run: >-
           bun scripts/check-codeql-sarif.ts
           --policy codeql-policy.json
-          '${{ steps.analyze.outputs.sarif-output }}'
+          "$CODEQL_SARIF_OUTPUT"
 
   required:
     name: required
