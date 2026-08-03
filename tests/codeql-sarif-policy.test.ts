@@ -14,10 +14,11 @@ const policy: CodeqlPolicy = {
   exceptions: [],
 };
 
-function sarif(severity: number, fingerprint: string, ruleId = "js/test-rule"): SarifLog {
+function sarif(severity: number, fingerprint: string, ruleId = "js/test-rule", component: "driver" | "extension" = "driver"): SarifLog {
+  const rule = { id: ruleId, properties: { "security-severity": String(severity) } };
   return {
     runs: [{
-      tool: { driver: { rules: [{ id: ruleId, properties: { "security-severity": String(severity) } }] } },
+      tool: component === "driver" ? { driver: { rules: [rule] } } : { driver: {}, extensions: [{ rules: [rule] }] },
       results: [{
         ruleId,
         partialFingerprints: { primaryLocationLineHash: fingerprint },
@@ -44,6 +45,17 @@ describe("CodeQL SARIF security floor", () => {
       securitySeverity: 7,
       fingerprint: "high-fingerprint",
       location: "scripts/example.ts:12",
+    })]);
+  });
+
+  test("fails on high-severity metadata stored in a CodeQL tool extension", () => {
+    const report = evaluateSarif([sarif(7.7, "extension-fingerprint", "js/file-system-race", "extension")], policy);
+    expect(report.status).toBe("FAIL");
+    expect(report.securityAlerts).toBe(1);
+    expect(report.violations).toEqual([expect.objectContaining({
+      ruleId: "js/file-system-race",
+      securitySeverity: 7.7,
+      fingerprint: "extension-fingerprint",
     })]);
   });
 
