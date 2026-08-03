@@ -1,0 +1,9 @@
+name: Traceknot security analysis
+
+queries:
+  - uses: security-extended
+
+paths-ignore:
+  - node_modules
+  - dist
+  - .sisyphus
