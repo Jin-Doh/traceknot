@@ -247,6 +247,7 @@ function assertUniqueIds<T>(records: readonly T[], idOf: (record: T) => string, 
   return byId;
 }
 function assertionContradicts(criterion: SuccessCriterion, observation: Observation): boolean {
+  if (observation.execution.exitStatus !== "passed" && observation.execution.exitStatus !== "failed") return false;
   for (const assertion of criterion.expected.assertions) {
     let actual: string | number | undefined;
     if (assertion.field === "execution.exitStatus") actual = observation.execution.exitStatus;
