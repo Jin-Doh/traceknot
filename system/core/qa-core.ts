@@ -65,11 +65,6 @@ export type Artifact = {
   path?: string;
 };
 
-export type ActualValue = {
-  field: string;
-  value: string | number | boolean | null;
-};
-
 export type Observation = {
   schemaVersion: "observation/v1";
   observationId: string;
@@ -78,7 +73,7 @@ export type Observation = {
   producer: Producer;
   execution: Execution;
   artifacts: readonly Artifact[];
-  actualValues?: readonly ActualValue[];
+  actualValues?: Readonly<Record<string, string | number | boolean | null>>;
 };
 
 export type VerificationObservation = Observation;
@@ -278,8 +273,8 @@ function lookupAssertionValue(observation: Observation, field: string): { suppor
       ? { supported: false }
       : { supported: true, value: observation.execution.exitCode };
   }
-  const actualValue = observation.actualValues?.find(item => item.field === field);
-  return actualValue ? { supported: true, value: actualValue.value } : { supported: false };
+  const actualValue = observation.actualValues?.[field];
+  return actualValue === undefined ? { supported: false } : { supported: true, value: actualValue };
 }
 
 function assertionApplicable(
@@ -360,12 +355,6 @@ function buildGraphIndexes(
   const obligationsById = assertUniqueIds(obligations, item => item.id, "obligation");
   const criteriaById = assertUniqueIds(criteria, item => item.criterionId, "criterion");
   const observationsById = assertUniqueIds(observations, item => item.observationId, "observation");
-  for (const observation of observations) {
-    assertUniqueStrings(
-      (observation.actualValues ?? []).map(actualValue => actualValue.field),
-      `actual value field in ${observation.observationId}`,
-    );
-  }
   const claimsById = assertUniqueIds(claims, item => item.claimId, "claim");
   const evaluationsById = assertUniqueIds(evaluations, item => item.evaluationId, "evaluation");
   const claimsByObligation = new Map<string, EvidenceClaim[]>();
@@ -545,12 +534,6 @@ export function evaluateEvidence(input: EvaluateEvidenceInput): EvidenceAcceptan
   assertUniqueStrings(input.claim.observationIds, `observation reference in ${input.claim.claimId}`);
   assertValidCriterion(input.criterion);
   const observationsById = assertUniqueIds(input.observations, item => item.observationId, "observation");
-  for (const observation of input.observations) {
-    assertUniqueStrings(
-      (observation.actualValues ?? []).map(actualValue => actualValue.field),
-      `actual value field in ${observation.observationId}`,
-    );
-  }
   return evaluateEvidenceIndexed({
     requestId: input.requestId,
     snapshotId: input.snapshotId,

@@ -237,7 +237,7 @@ describe("evaluateEvidence", () => {
     expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("INCOMPLETE");
   });
   test("accepts a matching structured actual value", () => {
-    const entry = makeEntry({ actualValues: [{ field: "testsPassed", value: 42 }] });
+    const entry = makeEntry({ actualValues: { testsPassed: 42 } });
     entry.criterion = {
       ...entry.criterion,
       expected: { assertions: [{ field: "testsPassed", operator: "equals", value: 42 }] },
@@ -255,7 +255,7 @@ describe("evaluateEvidence", () => {
     expect(evaluate(entry)).toEqual({ accepted: false, rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"] });
   });
   test("rejects an unsupported structured actual value", () => {
-    const entry = makeEntry({ actualValues: [{ field: "otherField", value: 42 }] });
+    const entry = makeEntry({ actualValues: { otherField: 42 } });
     entry.criterion = {
       ...entry.criterion,
       expected: { assertions: [{ field: "testsPassed", operator: "equals", value: 42 }] },
@@ -264,7 +264,7 @@ describe("evaluateEvidence", () => {
     expect(evaluate(entry)).toEqual({ accepted: false, rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"] });
   });
   test("rejects a mismatched structured actual value", () => {
-    const entry = makeEntry({ actualValues: [{ field: "testsPassed", value: 41 }] });
+    const entry = makeEntry({ actualValues: { testsPassed: 41 } });
     entry.criterion = {
       ...entry.criterion,
       expected: { assertions: [{ field: "testsPassed", operator: "equals", value: 42 }] },
@@ -272,15 +272,14 @@ describe("evaluateEvidence", () => {
 
     expect(evaluate(entry)).toEqual({ accepted: false, rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"] });
   });
-  test("rejects duplicate structured actual-value fields", () => {
-    const entry = makeEntry({
-      actualValues: [
-        { field: "testsPassed", value: 41 },
-        { field: "testsPassed", value: 42 },
-      ],
-    });
+  test("looks up structured actual values by object field", () => {
+    const entry = makeEntry({ actualValues: { testsPassed: 42 } });
+    entry.criterion = {
+      ...entry.criterion,
+      expected: { assertions: [{ field: "testsPassed", operator: "equals", value: 42 }] },
+    };
 
-    expect(() => evaluate(entry)).toThrow(/duplicate actual value field/i);
+    expect(evaluate(entry)).toEqual({ accepted: true, rejectionReasons: [] });
   });
   test("fails closed when rejection reasons do not match failed checks", () => {
     const entry = makeEntry({
