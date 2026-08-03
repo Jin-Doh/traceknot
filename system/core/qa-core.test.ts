@@ -13,6 +13,7 @@ import {
   type ProofCarryingObligation,
   type ProofCarryingVerdictInput,
   type SuccessCriterion,
+  type TraceabilityLink,
   type VerdictInput,
   type VerificationObligation,
   type ObligationResult,
@@ -153,6 +154,15 @@ const graph = (...entries: Entry[]): ProofCarryingVerdictInput => ({
     conditionIds: ["condition-1"],
     coveredConditionIds: ["condition-1"],
   },
+  traceability: entries.map(
+    (entry): TraceabilityLink => ({
+      schemaVersion: "traceability-link/v1",
+      criterionId: entry.criterion.criterionId,
+      conditionIds: ["condition-1"],
+      basisIds: ["basis-1"],
+      riskIds: ["risk-1"],
+    }),
+  ),
 });
 
 const legacyBase = (): VerdictInput => {
@@ -287,6 +297,77 @@ describe("evaluateEvidence", () => {
     expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("INCOMPLETE");
     expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "INCOMPLETE" });
   });
+  test("does not consume a violated evaluation when one linked observation is stale", () => {
+    const target = makeEntry({
+      evaluation: "rejected",
+      checks: { expectedResultDemonstrated: false, expectedResultViolated: true },
+      rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"],
+    });
+    const stale = makeEntry({
+      observationId: "observation-stale-mixed",
+      claimId: "claim-stale-mixed",
+      observationSnapshotId: "snapshot-2",
+      evaluation: "none",
+    });
+    const input = graph(target);
+    input.observations = [target.observation, stale.observation];
+    input.claims = [
+      {
+        ...target.claim,
+        observationIds: [target.observation.observationId, stale.observation.observationId],
+      },
+    ];
+    input.evaluations = [target.evaluation!];
+
+    const state = resolveObligationOutcome({
+      requestId: REQUEST_ID,
+      snapshotId: SNAPSHOT_ID,
+      obligation: target.obligation,
+      criteria: [target.criterion],
+      claims: input.claims,
+      evaluations: input.evaluations,
+      observations: input.observations,
+    });
+    expect(state.execution).toBe("COMPLETED");
+    expect(state.outcome).toBe("INCOMPLETE");
+    expect(resolveProofCarryingQaVerdict(input).qaVerdict).toBe("INCOMPLETE");
+  });
+  test("does not let a stale blocked claim block the target execution", () => {
+    const target = makeEntry();
+    const stale = makeEntry({
+      observationId: "observation-stale-blocked",
+      claimId: "claim-stale-blocked",
+      observationSnapshotId: "snapshot-2",
+      exitStatus: "blocked",
+      evaluation: "rejected",
+      checks: { snapshotBound: false, expectedResultDemonstrated: false },
+      rejectionReasons: ["SNAPSHOT_MISMATCH", "EXPECTED_RESULT_NOT_DEMONSTRATED"],
+    });
+    const input = graph(target);
+    input.observations = [target.observation, stale.observation];
+    input.claims = [
+      target.claim,
+      {
+        ...stale.claim,
+        obligationId: target.obligation.id,
+        criterionId: target.criterion.criterionId,
+      },
+    ];
+    input.evaluations = [target.evaluation!, stale.evaluation!];
+
+    const state = resolveObligationOutcome({
+      requestId: REQUEST_ID,
+      snapshotId: SNAPSHOT_ID,
+      obligation: target.obligation,
+      criteria: [target.criterion],
+      claims: input.claims,
+      evaluations: input.evaluations,
+      observations: input.observations,
+    });
+    expect(state.execution).toBe("COMPLETED");
+    expect(state.outcome).toBe("INCOMPLETE");
+    expect(resolveProofCarryingQaVerdict(input).qaVerdict).toBe("INCOMPLETE");
+  });
 
   test("retains a failed execution as FAIL when the expected result is rejected", () => {
     const entry = makeEntry({
@@ -372,6 +453,18 @@ describe("evaluateEvidence", () => {
 
     expect(evaluate(entry)).toEqual({ accepted: false, rejectionReasons: ["EXPECTED_RESULT_NOT_DEMONSTRATED"] });
     expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "FAILED" });
+    expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("FAIL");
+  });
+  test("fails on a supported contradiction even without an evaluation", () => {
+    const entry = makeEntry({ evaluation: "none" });
+    entry.criterion = {
+      ...entry.criterion,
+      expected: {
+        assertions: [{ field: "execution.exitCode", operator: "equals", value: 1 }],
+      },
+    };
+
+    expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "NONE", outcome: "FAILED" });
     expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("FAIL");
   });
 
@@ -539,6 +632,46 @@ describe("resolveProofCarryingQaVerdict", () => {
       coveredConditionIds: [],
     };
     expect(resolveQaVerdict(legacy).qaVerdict).toBe("PASS");
+  });
+  test("rejects empty criterion assertions, selectors, and required artifacts", () => {
+    const noAssertions = graph(makeEntry());
+    noAssertions.criteria = [
+      {
+        ...noAssertions.criteria[0]!,
+        expected: { assertions: [] },
+      },
+    ];
+    expect(() => resolveProofCarryingQaVerdict(noAssertions)).toThrow(/assertion/i);
+
+    const noSelectors = graph(makeEntry());
+    noSelectors.criteria = [
+      {
+        ...noSelectors.criteria[0]!,
+        requiredScope: { ...noSelectors.criteria[0]!.requiredScope, selectors: [] },
+      },
+    ];
+    expect(() => resolveProofCarryingQaVerdict(noSelectors)).toThrow(/selector/i);
+
+    const noArtifacts = graph(makeEntry());
+    noArtifacts.criteria = [{ ...noArtifacts.criteria[0]!, requiredArtifacts: [] }];
+    expect(() => resolveProofCarryingQaVerdict(noArtifacts)).toThrow(/artifact/i);
+  });
+  test("requires a real traceability link for every mandatory criterion", () => {
+    const fabricated = graph(makeEntry());
+    fabricated.traceability = [
+      {
+        schemaVersion: "traceability-link/v1",
+        criterionId: "criterion-1",
+        conditionIds: ["condition-1"],
+        basisIds: ["basis-fabricated"],
+        riskIds: ["risk-1"],
+      },
+    ];
+    expect(resolveProofCarryingQaVerdict(fabricated).qaVerdict).toBe("INCOMPLETE");
+
+    const missing = graph(makeEntry());
+    missing.traceability = [];
+    expect(resolveProofCarryingQaVerdict(missing).qaVerdict).toBe("INCOMPLETE");
   });
 
   test("rejects duplicate IDs and unknown graph references as invalid input", () => {
