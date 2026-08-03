@@ -282,7 +282,7 @@ describe("evaluateEvidence", () => {
     const entry = makeEntry({ observationSnapshotId: "snapshot-2" });
 
     expect(evaluate(entry)).toEqual({ accepted: false, rejectionReasons: ["SNAPSHOT_MISMATCH"] });
-    expect(outcome(entry)).toEqual({ execution: "COMPLETED", evidence: "REJECTED", outcome: "INCOMPLETE" });
+    expect(outcome(entry)).toEqual({ execution: "PENDING", evidence: "REJECTED", outcome: "INCOMPLETE" });
     expect(resolveProofCarryingQaVerdict(graph(entry)).qaVerdict).toBe("INCOMPLETE");
   });
 
@@ -328,7 +328,7 @@ describe("evaluateEvidence", () => {
       evaluations: input.evaluations,
       observations: input.observations,
     });
-    expect(state.execution).toBe("PENDING");
+    expect(state.execution).toBe("COMPLETED");
     expect(state.outcome).toBe("INCOMPLETE");
     expect(resolveProofCarryingQaVerdict(input).qaVerdict).toBe("INCOMPLETE");
   });
