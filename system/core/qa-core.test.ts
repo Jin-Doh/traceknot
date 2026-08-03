@@ -653,7 +653,7 @@ describe("resolveProofCarryingQaVerdict", () => {
       },
     ];
 
-    expect(resolveProofCarryingQaVerdict(input).qaVerdict).toBe("INCOMPLETE");
+    expect(resolveProofCarryingQaVerdict(input).qaVerdict).toBe("BLOCKED");
   });
   test("requires nonempty proof coverage while legacy coverage stays permissive", () => {
     const emptyBasis = graph(makeEntry());
