@@ -203,7 +203,7 @@ function authorityBindingMatchesRequest(runId: string, request: VerificationExec
   return binding.runId === runId && binding.requestId === request.requestId && binding.snapshotId === request.snapshotId && binding.obligationId === request.obligation.id && binding.idempotencyKey === request.idempotencyKey;
 }
 function canonicalEvidenceFromAuthority(binding: VerificationExecutionAuthorityBinding, artifacts: readonly CanonicalVerificationResultArtifact[]): { producer: Producer; execution: Execution; result: VerificationEvidence["result"]; observedAt: string; artifacts: CanonicalVerificationResultArtifact[] } | undefined {
-  if ((binding.result.verdict !== "PASS" && binding.result.verdict !== "FAIL") || !validDate(binding.observedAt) || !resultMatchesExecution(binding.result, binding.execution)) return undefined;
+  if (!validDate(binding.observedAt) || !resultMatchesExecution(binding.result, binding.execution)) return undefined;
   const artifactDigests = [...binding.artifactDigests].sort();
   const resultDigests = [...(binding.result.artifacts ?? [])].sort();
   if (JSON.stringify(artifactDigests) !== JSON.stringify(resultDigests)) return undefined;
@@ -257,13 +257,9 @@ function assertExecutionEvidenceBindings(execution: ExecutionDocument, request?:
     const observationDigests = observation.artifacts.map(artifact => artifact.digest).sort();
     const evidenceDigests = [...(item.result.artifacts ?? [])].sort();
     if (JSON.stringify(observationDigests) !== JSON.stringify(evidenceDigests) || !resultMatchesExecution(item.result, observation.execution)) throw Error("invalid execution evidence binding");
-    if (item.result.verdict === "PASS" || item.result.verdict === "FAIL") {
-      const authority = authorityByObligation.get(obligationId);
-      const expected = authorityBindingFor(runId ?? (authority?.binding.runId ?? ""), observation, item);
-      if (!authority || !structurallyEqual(authority.binding, expected)) throw Error("invalid execution authority binding");
-    } else if (authorityByObligation.has(obligationId)) {
-      throw Error("invalid execution authority binding");
-    }
+    const authority = authorityByObligation.get(obligationId);
+    const expected = authorityBindingFor(runId ?? (authority?.binding.runId ?? ""), observation, item);
+    if (!authority || !structurallyEqual(authority.binding, expected)) throw Error("invalid execution authority binding");
   }
   if (authorities.some(authority => !evidence.has(authority.binding.obligationId))) throw Error("invalid execution authority binding");
 }
@@ -281,7 +277,6 @@ async function verifyExecutionAuthority(port: ExecutionAuthorityPort | undefined
 async function verifyPersistedExecutionAuthorities(execution: ExecutionDocument, request: VerificationRequest, plan: VerificationPlan | undefined, runId: string, port: ExecutionAuthorityPort | undefined): Promise<void> {
   assertExecutionEvidenceBindings(execution, request, plan, runId);
   for (const item of execution.evidence) {
-    if (item.result.verdict !== "PASS" && item.result.verdict !== "FAIL") continue;
     const authority = (execution.authorities ?? []).find(candidate => candidate.binding.obligationId === item.obligationId);
     if (!authority) throw Error("missing persisted execution authority");
     const observation = execution.observations.find(candidate => candidate.observationId === `observation:${item.obligationId}`);
@@ -291,7 +286,6 @@ async function verifyPersistedExecutionAuthorities(execution: ExecutionDocument,
   }
 }
 const UNAVAILABLE_PRODUCER: Producer = { kind: "self", identity: "self/runtime-unavailable", independence: "self-check" };
-function producerFor(output: VerificationExecutionOutput | undefined): Producer { return output && validProducer(output.producer) ? output.producer : UNAVAILABLE_PRODUCER; }
 function executionFor(obligation: VerificationObligationPlan, verdict: VerificationEvidence["result"]["verdict"], now: string, output: VerificationExecutionOutput | undefined, producer: Producer): Execution {
   const exitStatus: Execution["exitStatus"] = verdict === "PASS" ? "passed" : verdict === "FAIL" ? "failed" : verdict === "BLOCKED" ? "blocked" : "cancelled";
   const fallbackKind: Execution["kind"] = obligation.evidenceType === "browser-result" ? "browser" : "command";
@@ -356,8 +350,10 @@ export async function executeObligations(input: ExecuteObligationsInput): Promis
     const output = available ? obligation.evidenceType === "browser-result" ? input.dependencies.browserExecutor ? await executeBrowser(input.dependencies.browserExecutor, request) : undefined : await executeExecutor(input.dependencies.executor, request) : undefined;
     const receiptValid = outputReceiptMatches(output, request);
     let verdict: VerificationEvidence["result"]["verdict"] = !available ? "BLOCKED" : !output ? "INCOMPLETE" : !receiptValid ? "INCOMPLETE" : normalizeStatus(output.status);
+    let hostGenerated = !available || !output || !receiptValid;
+    if (output && receiptValid && verdict === "INCOMPLETE" && !["incomplete", "blocked"].includes(String(output.status).toLowerCase())) hostGenerated = true;
+    let producer = output && validProducer(output.producer) ? output.producer : UNAVAILABLE_PRODUCER;
     let summary = !available ? `Capability ${capabilityFor(obligation)} is unavailable.` : !output ? "No executor output was returned." : !receiptValid ? "Executor output did not echo the canonical idempotency receipt (provenance or idempotency mismatch)." : output.summary ?? `Obligation ${obligation.id} completed.`;
-    let producer = producerFor(output);
     let artifacts: CanonicalVerificationResultArtifact[] = [];
     if (verdict === "PASS" || verdict === "FAIL") {
       const supplied = output?.artifacts;
@@ -370,13 +366,16 @@ export async function executeObligations(input: ExecuteObligationsInput): Promis
     }
     if (verdict === "PASS" || verdict === "FAIL") {
       if (!output || !validProducer(output.producer)) {
+        hostGenerated = true;
         verdict = "INCOMPLETE";
         summary = "Executor output did not provide a valid producer.";
       } else if (artifacts.length === 0) {
+        hostGenerated = true;
         verdict = "INCOMPLETE";
         summary = "Executor output did not provide a canonical stored artifact.";
       }
     }
+    if (hostGenerated) producer = UNAVAILABLE_PRODUCER;
     let execution = executionFor(obligation, verdict, observedAt, output, producer);
     const observationId = `observation:${obligation.id}`;
     const observationRequestId = input.request.requestId;
@@ -385,48 +384,28 @@ export async function executeObligations(input: ExecuteObligationsInput): Promis
     let result: VerificationEvidence["result"] = { verdict, summary, ...(verdict === "PASS" ? { passed: 1 } : verdict === "FAIL" ? { failed: 1 } : {}), artifacts: artifacts.map(item => item.digest).sort() };
     let item: VerificationEvidence = { schemaVersion: "verification-evidence/v1", evidenceId: `evidence:${obligation.id}`, requestId: observationRequestId, snapshotId: observationSnapshotId, obligationId: obligation.id, producer, execution, result, observedAt };
     let authority: ExecutionAuthority | undefined;
-    if (verdict === "PASS" || verdict === "FAIL") {
-      const binding = authorityBindingFor(input.runId, observation, item);
-      let authorityValid = false;
-      let candidate: ExecutionAuthority | undefined;
-      let verifiedBinding: VerificationExecutionAuthorityBinding | undefined;
-      try {
-        candidate = await issueExecutionAuthority(input.dependencies.executionAuthority, binding);
-        if (candidate && validAuthority(candidate)) {
-          if (structurallyEqual(candidate.binding, binding) && await verifyExecutionAuthority(input.dependencies.executionAuthority, candidate, binding)) {
-            verifiedBinding = candidate.binding;
-          } else if (authorityBindingReplayMatches(input.runId, request, binding, candidate.binding) && await verifyExecutionAuthority(input.dependencies.executionAuthority, candidate, candidate.binding)) {
-            verifiedBinding = candidate.binding;
-          }
-          authorityValid = Boolean(verifiedBinding);
-        }
-      } catch {
-        authorityValid = false;
-      }
-      if (authorityValid && candidate && verifiedBinding) {
-        const canonical = canonicalEvidenceFromAuthority(verifiedBinding, artifacts);
-        if (canonical) {
-          authority = candidate;
-          producer = canonical.producer;
-          execution = canonical.execution;
-          artifacts = canonical.artifacts;
-          verdict = canonical.result.verdict;
-          summary = canonical.result.summary;
-          result = canonical.result;
-          observation = { ...observation, producer, execution, artifacts };
-          item = { ...item, producer, execution, result, observedAt: canonical.observedAt };
-        } else {
-          authorityValid = false;
-        }
-      }
-      if (!authorityValid) {
-        verdict = "INCOMPLETE";
-        execution = executionFor(obligation, verdict, observedAt, output, producer);
-        observation = { ...observation, execution };
-        result = { verdict, summary: "Execution authority was missing or invalid.", artifacts: artifacts.map(item => item.digest).sort() };
-        item = { ...item, execution, result };
-      }
+    const binding = authorityBindingFor(input.runId, observation, item);
+    const candidate = await issueExecutionAuthority(input.dependencies.executionAuthority, binding);
+    if (!candidate || !validAuthority(candidate)) throw Error("execution authority issue failed");
+    let verifiedBinding: VerificationExecutionAuthorityBinding;
+    if (structurallyEqual(candidate.binding, binding)) {
+      if (!await verifyExecutionAuthority(input.dependencies.executionAuthority, candidate, binding)) throw Error("execution authority verification failed");
+      verifiedBinding = candidate.binding;
+    } else {
+      if (!authorityBindingReplayMatches(input.runId, request, binding, candidate.binding) || !await verifyExecutionAuthority(input.dependencies.executionAuthority, candidate, candidate.binding)) throw Error("execution authority replay verification failed");
+      verifiedBinding = candidate.binding;
     }
+    const canonical = canonicalEvidenceFromAuthority(verifiedBinding, artifacts);
+    if (!canonical) throw Error("execution authority binding is not canonical");
+    authority = candidate;
+    producer = canonical.producer;
+    execution = canonical.execution;
+    artifacts = canonical.artifacts;
+    verdict = canonical.result.verdict;
+    summary = canonical.result.summary;
+    result = canonical.result;
+    observation = { ...observation, producer, execution, artifacts };
+    item = { ...item, producer, execution, result, observedAt: canonical.observedAt };
     observations.push(observation);
     evidence.push(item);
     if (authority) authorities.push(authority);
@@ -590,6 +569,12 @@ async function loadCheckedStage<T>(repository: RepositoryPort, runId: string, st
   }
   return value;
 }
+function assertCanonicalRunIndexes(run: CanonicalRunState, execution: ExecutionDocument, evidence: EvidenceDocument): void {
+  const observationIds = execution.observations.map(item => item.observationId).sort((a, b) => a.localeCompare(b));
+  const claimIds = execution.claims.map(item => item.claimId).sort((a, b) => a.localeCompare(b));
+  const evaluationIds = evidence.evaluations.map(item => item.evaluationId).sort((a, b) => a.localeCompare(b));
+  if (!structurallyEqual(run.observationIds, observationIds) || !structurallyEqual(run.claimIds, claimIds) || !structurallyEqual(run.evaluationIds, evaluationIds)) throw Error("invalid persisted run indexes");
+}
 export async function runVerification(input: RunVerificationInput): Promise<RunVerificationResult> {
   const { dependencies } = input;
   const repository = dependencies.repository;
@@ -720,5 +705,6 @@ export async function runVerification(input: RunVerificationInput): Promise<RunV
   if (!finalVerdict) throw Error("terminal run has no verdict document");
   await assertCanonicalVerdict({ runId: input.runId, request: req, basis: finalBasis, discovery: finalDiscovery, plan: finalPlan, execution: finalExecution, evidence: finalEvidence, residualRisk: finalResidual, dependencies }, finalVerdict);
   documents.verdict = finalVerdict;
+  assertCanonicalRunIndexes(run, finalExecution, finalEvidence);
   return freeze({ run, verdict: finalVerdict.verdict, documents });
 }

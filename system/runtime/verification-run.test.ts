@@ -665,11 +665,106 @@ describe("verification run orchestration", () => {
   test.each([
     ["missing", { missingAuthority: true }],
     ["mismatched", { mismatchedAuthority: true }],
-  ] as const)("fails closed when execution authority is %s", async (_name, options) => {
-    const result = await runOnce(makeDependencies(options).dependencies, `authority-${_name}`);
-    expect(result.verdict.qaVerdict).toBe("INCOMPLETE");
-    expect(result.verdict.qaVerdict).not.toBe("PASS");
+  ] as const)("rejects before saving when execution authority is %s", async (_name, options) => {
+    const fakes = makeDependencies(options);
+    const runId = `authority-${_name}`;
+    await expect(runOnce(fakes.dependencies, runId)).rejects.toThrow(/execution authority/);
+    expect(fakes.repository.stageDocuments.has(`${runId}:execution`)).toBe(false);
   });
+  test.each([
+    ["missing capability", { missingCapability: true }, "BLOCKED"],
+    ["missing executor output", { missingExecutorOutput: true }, "INCOMPLETE"],
+  ] as const)("authenticates and resumes host-generated %s outcomes", async (_name, options, expected) => {
+    const fakes = makeDependencies(options);
+    const runId = `host-authority-${expected.toLowerCase()}`;
+    const first = await runOnce(fakes.dependencies, runId);
+    const execution = first.documents.execution;
+    if (!execution) throw new Error("missing persisted execution");
+    expect(execution.authorities).toHaveLength(execution.evidence.length);
+    expect(execution.authorities.every(authority => authority.binding.result.verdict === expected && authority.binding.producer.identity === "self/runtime-unavailable")).toBe(true);
+    const executorCalls = fakes.executorCalls;
+    const resumed = await runOnce(fakes.dependencies, runId);
+    expect(resumed.verdict).toEqual(first.verdict);
+    expect(fakes.executorCalls).toBe(executorCalls);
+  });
+
+  test.each(["BLOCKED", "INCOMPLETE"] as const)("rejects authenticated FAIL tandem mutation to %s after authority removal", async status => {
+    const fakes = makeDependencies();
+    const executor: VerificationExecutor = {
+      executeObligation: async request => ({
+        status: "FAIL",
+        runId: request.runId,
+        requestId: request.requestId,
+        snapshotId: request.snapshotId,
+        idempotencyKey: request.idempotencyKey,
+        producer: { kind: "deterministic-verifier", identity: "fixture-failing-executor", independence: "independent-producer" },
+        artifacts: [{ type: "verification-result", digest: "f".repeat(64) }],
+      }),
+    };
+    const dependencies = { ...fakes.dependencies, executor };
+    const runId = `authority-tandem-${status.toLowerCase()}`;
+    await expect(runVerification({ runId, request: makeRequest(), dependencies })).resolves.toMatchObject({ verdict: { qaVerdict: "FAIL" } });
+    const run = fakes.repository.runs.get(runId);
+    const saved = fakes.repository.stageDocuments.get(`${runId}:execution`) as ExecutionDocument;
+    if (!run || !saved) throw new Error("missing persisted execution");
+    const target = saved.evidence[0];
+    if (!target) throw new Error("missing persisted evidence");
+    const targetObservationId = `observation:${target.obligationId}`;
+    const targetExecution = { ...target.execution, exitStatus: status === "BLOCKED" ? "blocked" as const : "cancelled" as const };
+    const { passed: _passed, failed: _failed, ...resultWithoutCounts } = target.result;
+    const result = { ...resultWithoutCounts, verdict: status };
+    const execution: ExecutionDocument = {
+      ...saved,
+      observations: saved.observations.map(observation => observation.observationId === targetObservationId ? { ...observation, execution: targetExecution } : observation),
+      evidence: saved.evidence.map(item => item.evidenceId === target.evidenceId ? { ...item, execution: targetExecution, result } : item),
+      authorities: saved.authorities.filter(authority => authority.binding.obligationId !== target.obligationId),
+    };
+    fakes.repository.stageDocuments.set(`${runId}:execution`, execution);
+    fakes.repository.runs.set(runId, { ...run, state: "PLANNED", updatedAt: FIXED_NOW });
+    const executorCalls = fakes.executorCalls;
+    await expect(runOnce(fakes.dependencies, runId)).rejects.toThrow("invalid execution authority binding");
+    expect(fakes.executorCalls).toBe(executorCalls);
+  });
+
+  test("resumes exact canonical terminal indexes without executor recall", async () => {
+    const fakes = makeDependencies();
+    const runId = "canonical-terminal-indexes";
+    const first = await runOnce(fakes.dependencies, runId);
+    const executorCalls = fakes.executorCalls;
+    const execution = first.documents.execution;
+    const evidence = first.documents.evidence;
+    if (!execution || !evidence) throw new Error("missing canonical documents");
+    const resumed = await runOnce(fakes.dependencies, runId);
+    expect(resumed.run.observationIds).toEqual(execution.observations.map(item => item.observationId));
+    expect(resumed.run.claimIds).toEqual(execution.claims.map(item => item.claimId));
+    expect(resumed.run.evaluationIds).toEqual(evidence.evaluations.map(item => item.evaluationId));
+    expect(fakes.executorCalls).toBe(executorCalls);
+  });
+
+  test.each([
+    ["observationIds", "foreign"], ["observationIds", "missing"], ["observationIds", "extra"], ["observationIds", "reordered"],
+    ["claimIds", "foreign"], ["claimIds", "missing"], ["claimIds", "extra"], ["claimIds", "reordered"],
+    ["evaluationIds", "foreign"], ["evaluationIds", "missing"], ["evaluationIds", "extra"], ["evaluationIds", "reordered"],
+  ] as const)("rejects %s %s mutation before executor recall", async (field, mutation) => {
+    const fakes = makeDependencies();
+    const runId = `run-index-${field}-${mutation}`;
+    await runOnce(fakes.dependencies, runId);
+    const run = fakes.repository.runs.get(runId);
+    if (!run) throw new Error("missing run");
+    const ids = field === "observationIds" ? [...run.observationIds] : field === "claimIds" ? [...run.claimIds] : [...run.evaluationIds];
+    const mutated = mutation === "foreign"
+      ? ids.map((id, index) => index === 0 ? `${id}:foreign` : id)
+      : mutation === "missing"
+        ? ids.slice(1)
+        : mutation === "extra"
+          ? [...ids, `${field}:extra`]
+          : [...ids].reverse();
+    fakes.repository.runs.set(runId, { ...run, [field]: mutated });
+    const executorCalls = fakes.executorCalls;
+    await expect(runOnce(fakes.dependencies, runId)).rejects.toThrow("invalid persisted run indexes");
+    expect(fakes.executorCalls).toBe(executorCalls);
+  });
+
   test("verifies persisted authority on terminal resume without executor recall", async () => {
     const fakes = makeDependencies();
     const first = await runOnce(fakes.dependencies, "authority-terminal");
