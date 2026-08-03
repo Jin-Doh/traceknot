@@ -65,6 +65,11 @@ export type Artifact = {
   path?: string;
 };
 
+export type ActualValue = {
+  field: string;
+  value: string | number | boolean | null;
+};
+
 export type Observation = {
   schemaVersion: "observation/v1";
   observationId: string;
@@ -73,6 +78,7 @@ export type Observation = {
   producer: Producer;
   execution: Execution;
   artifacts: readonly Artifact[];
+  actualValues?: readonly ActualValue[];
 };
 
 export type VerificationObservation = Observation;
@@ -118,6 +124,7 @@ export type EvidenceEvaluation = {
     scopeComplete: boolean;
     producerAllowed: boolean;
     independenceSatisfied: boolean;
+    artifactRequirementsSatisfied: boolean;
     expectedResultDemonstrated: boolean;
     expectedResultViolated: boolean;
     integrityVerified: boolean;
@@ -234,6 +241,7 @@ function addReasons(target: Set<EvidenceRejectionReason>, reasons: readonly Evid
 function reasonsFromChecks(checks: EvidenceEvaluation["checks"], target: Set<EvidenceRejectionReason>): void {
   if (!checks.snapshotBound) target.add("SNAPSHOT_MISMATCH");
   if (!checks.fresh) target.add("STALE_EVIDENCE");
+  if (!checks.artifactRequirementsSatisfied) target.add("MISSING_ARTIFACT");
   if (!checks.scopeComplete) target.add("INSUFFICIENT_SCOPE");
   if (!checks.producerAllowed) target.add("UNTRUSTED_PRODUCER");
   if (!checks.independenceSatisfied) target.add("INDEPENDENCE_NOT_MET");
@@ -245,6 +253,13 @@ function reasonArray(reasons: Set<EvidenceRejectionReason>): EvidenceRejectionRe
   return [...reasons].sort();
 }
 
+function reasonsMatch(actual: readonly EvidenceRejectionReason[], expected: Set<EvidenceRejectionReason>): boolean {
+  const actualSorted = [...actual].sort();
+  const expectedSorted = reasonArray(expected);
+  return actualSorted.length === expectedSorted.length && actualSorted.every((reason, index) => reason === expectedSorted[index]);
+}
+
+
 function assertUniqueIds<T>(records: readonly T[], idOf: (record: T) => string, label: string): Map<string, T> {
   const byId = new Map<string, T>();
   for (const record of records) {
@@ -254,38 +269,63 @@ function assertUniqueIds<T>(records: readonly T[], idOf: (record: T) => string, 
   }
   return byId;
 }
-function assertionContradicts(criterion: SuccessCriterion, observation: Observation): boolean {
-  if (observation.execution.exitStatus !== "passed" && observation.execution.exitStatus !== "failed") return false;
-  for (const assertion of criterion.expected.assertions) {
-    let actual: string | number | undefined;
-    if (assertion.field === "execution.exitStatus") actual = observation.execution.exitStatus;
-    else if (assertion.field === "execution.exitCode") actual = observation.execution.exitCode;
-    else continue;
-    if (actual === undefined) continue;
-    if (assertion.operator === "equals" && actual !== assertion.value) return true;
-    if (assertion.operator === "not-equals" && actual === assertion.value) return true;
-    if (
-      assertion.operator === "less-than-or-equal" &&
-      typeof actual === "number" &&
-      typeof assertion.value === "number" &&
-      actual > assertion.value
-    ) return true;
-    if (
-      assertion.operator === "greater-than-or-equal" &&
-      typeof actual === "number" &&
-      typeof assertion.value === "number" &&
-      actual < assertion.value
-    ) return true;
-    if (
-      assertion.operator === "contains" &&
-      typeof actual === "string" &&
-      typeof assertion.value === "string" &&
-      !actual.includes(assertion.value)
-    ) return true;
+type AssertionValue = string | number | boolean | null;
+
+function lookupAssertionValue(observation: Observation, field: string): { supported: boolean; value?: AssertionValue } {
+  if (field === "execution.exitStatus") return { supported: true, value: observation.execution.exitStatus };
+  if (field === "execution.exitCode") {
+    return observation.execution.exitCode === undefined
+      ? { supported: false }
+      : { supported: true, value: observation.execution.exitCode };
   }
-  return false;
+  const actualValue = observation.actualValues?.find(item => item.field === field);
+  return actualValue ? { supported: true, value: actualValue.value } : { supported: false };
 }
 
+function assertionApplicable(
+  assertion: SuccessCriterion["expected"]["assertions"][number],
+  observed: { supported: boolean; value?: AssertionValue },
+): boolean {
+  if (!observed.supported) return false;
+  if (assertion.operator === "less-than-or-equal" || assertion.operator === "greater-than-or-equal") {
+    return typeof observed.value === "number" && typeof assertion.value === "number";
+  }
+  if (assertion.operator === "contains") {
+    return typeof observed.value === "string" && typeof assertion.value === "string";
+  }
+  return true;
+}
+
+function assertionMatches(
+  assertion: SuccessCriterion["expected"]["assertions"][number],
+  observed: { supported: boolean; value?: AssertionValue },
+): boolean {
+  if (!assertionApplicable(assertion, observed)) return false;
+  const actual = observed.value;
+  if (assertion.operator === "equals") return actual === assertion.value;
+  if (assertion.operator === "not-equals") return actual !== assertion.value;
+  if (assertion.operator === "less-than-or-equal") {
+    return typeof actual === "number" && typeof assertion.value === "number" && actual <= assertion.value;
+  }
+  if (assertion.operator === "greater-than-or-equal") {
+    return typeof actual === "number" && typeof assertion.value === "number" && actual >= assertion.value;
+  }
+  return typeof actual === "string" && typeof assertion.value === "string" && actual.includes(assertion.value);
+}
+
+function assertionContradicts(criterion: SuccessCriterion, observation: Observation): boolean {
+  if (observation.execution.exitStatus !== "passed" && observation.execution.exitStatus !== "failed") return false;
+  return criterion.expected.assertions.some(assertion => {
+    const observed = lookupAssertionValue(observation, assertion.field);
+    return assertionApplicable(assertion, observed) && !assertionMatches(assertion, observed);
+  });
+}
+
+function assertionsDemonstrated(criterion: SuccessCriterion, observations: readonly Observation[]): boolean {
+  return criterion.expected.assertions.every(assertion =>
+    observations.some(observation => assertionMatches(assertion, lookupAssertionValue(observation, assertion.field))),
+  );
+}
 function assertUniqueStrings(values: readonly string[], label: string): void {
   const seen = new Set<string>();
   for (const value of values) {
@@ -320,6 +360,12 @@ function buildGraphIndexes(
   const obligationsById = assertUniqueIds(obligations, item => item.id, "obligation");
   const criteriaById = assertUniqueIds(criteria, item => item.criterionId, "criterion");
   const observationsById = assertUniqueIds(observations, item => item.observationId, "observation");
+  for (const observation of observations) {
+    assertUniqueStrings(
+      (observation.actualValues ?? []).map(actualValue => actualValue.field),
+      `actual value field in ${observation.observationId}`,
+    );
+  }
   const claimsById = assertUniqueIds(claims, item => item.claimId, "claim");
   const evaluationsById = assertUniqueIds(evaluations, item => item.evaluationId, "evaluation");
   const claimsByObligation = new Map<string, EvidenceClaim[]>();
@@ -425,6 +471,7 @@ function evaluateEvidenceIndexed(input: EvidenceEvaluationContext): EvidenceAcce
     independenceRank[criterion.requiredIndependence],
   );
   const artifactTypes = new Set<string>();
+  const targetObservations: Observation[] = [];
   let observationCount = 0;
   for (const observationId of claim.observationIds) {
     const observation = input.observationsById.get(observationId);
@@ -433,7 +480,10 @@ function evaluateEvidenceIndexed(input: EvidenceEvaluationContext): EvidenceAcce
       continue;
     }
     observationCount++;
-    if (observation.requestId !== requestId || observation.snapshotId !== snapshotId) reasons.add("SNAPSHOT_MISMATCH");
+    const target =
+      observation.requestId === requestId && observation.snapshotId === snapshotId;
+    if (!target) reasons.add("SNAPSHOT_MISMATCH");
+    else targetObservations.push(observation);
     if (independenceRank[observation.producer.independence] < requiredIndependence) reasons.add("INDEPENDENCE_NOT_MET");
     if (observation.producer.kind === "self" && observation.producer.independence !== "self-check") {
       reasons.add("UNTRUSTED_PRODUCER");
@@ -445,21 +495,39 @@ function evaluateEvidenceIndexed(input: EvidenceEvaluationContext): EvidenceAcce
     for (const artifact of observation.artifacts) artifactTypes.add(artifact.type);
   }
   if (observationCount === 0) reasons.add("MISSING_ARTIFACT");
+  if (targetObservations.length > 0 && !assertionsDemonstrated(criterion, targetObservations)) {
+    reasons.add("EXPECTED_RESULT_NOT_DEMONSTRATED");
+  }
   for (const artifactType of criterion.requiredArtifacts) {
     if (!artifactTypes.has(artifactType)) reasons.add("MISSING_ARTIFACT");
   }
-  reasonsFromChecks(evaluation.checks, reasons);
-  addReasons(reasons, evaluation.rejectionReasons);
+  const checkReasons = new Set<EvidenceRejectionReason>();
+  reasonsFromChecks(evaluation.checks, checkReasons);
+  addReasons(reasons, checkReasons);
+
+  if (evaluation.status === "REJECTED") {
+    if (checkReasons.size === 0 || !reasonsMatch(evaluation.rejectionReasons, reasons)) {
+      reasons.add("INTEGRITY_FAILURE");
+    }
+  } else if (evaluation.rejectionReasons.length > 0 && !reasonsMatch(evaluation.rejectionReasons, reasons)) {
+    reasons.add("INTEGRITY_FAILURE");
+  }
+
   const checksPass =
     evaluation.checks.snapshotBound &&
     evaluation.checks.fresh &&
     evaluation.checks.scopeComplete &&
     evaluation.checks.producerAllowed &&
     evaluation.checks.independenceSatisfied &&
+    evaluation.checks.artifactRequirementsSatisfied &&
     evaluation.checks.expectedResultDemonstrated &&
     !evaluation.checks.expectedResultViolated &&
     evaluation.checks.integrityVerified;
-  const accepted = evaluation.status === "ACCEPTED" && checksPass && evaluation.rejectionReasons.length === 0 && reasons.size === 0;
+  const accepted =
+    evaluation.status === "ACCEPTED" &&
+    checksPass &&
+    evaluation.rejectionReasons.length === 0 &&
+    reasons.size === 0;
   return { accepted, rejectionReasons: reasonArray(reasons) };
 }
 
@@ -477,6 +545,12 @@ export function evaluateEvidence(input: EvaluateEvidenceInput): EvidenceAcceptan
   assertUniqueStrings(input.claim.observationIds, `observation reference in ${input.claim.claimId}`);
   assertValidCriterion(input.criterion);
   const observationsById = assertUniqueIds(input.observations, item => item.observationId, "observation");
+  for (const observation of input.observations) {
+    assertUniqueStrings(
+      (observation.actualValues ?? []).map(actualValue => actualValue.field),
+      `actual value field in ${observation.observationId}`,
+    );
+  }
   return evaluateEvidenceIndexed({
     requestId: input.requestId,
     snapshotId: input.snapshotId,
@@ -565,7 +639,6 @@ function resolveObligationOutcomeIndexed(
       if (independenceRank[observation.producer.independence] < requiredIndependence) independenceUnmet = true;
       if (assertionContradicts(criterion, observation)) claimContradicts = true;
     }
-    if (claimInScope && hasTargetObservation && claimContradicts) observedFailure = true;
     const evaluations = indexes.evaluationsByClaim.get(claim.claimId) ?? [];
     for (const evaluation of evaluations) {
       hasEvaluation = true;
@@ -584,8 +657,23 @@ function resolveObligationOutcomeIndexed(
         observationsById: indexes.observationsById,
       });
       if (acceptance.accepted) acceptedCriteria.add(criterion.criterionId);
-      if (evaluationInScope && hasTargetObservation && allTargetObservations && evaluation.checks.expectedResultViolated) observedFailure = true;
       if (evaluationInScope && acceptance.rejectionReasons.includes("INDEPENDENCE_NOT_MET")) independenceUnmet = true;
+      const negativeEvidenceEligible =
+        evaluation.status === "REJECTED" &&
+        evaluationInScope &&
+        hasTargetObservation &&
+        allTargetObservations &&
+        evaluation.checks.snapshotBound &&
+        evaluation.checks.fresh &&
+        evaluation.checks.scopeComplete &&
+        evaluation.checks.producerAllowed &&
+        evaluation.checks.independenceSatisfied &&
+        evaluation.checks.artifactRequirementsSatisfied &&
+        evaluation.checks.integrityVerified &&
+        acceptance.rejectionReasons.every(reason => reason === "EXPECTED_RESULT_NOT_DEMONSTRATED");
+      if (negativeEvidenceEligible && (evaluation.checks.expectedResultViolated || claimContradicts)) {
+        observedFailure = true;
+      }
     }
   }
 
