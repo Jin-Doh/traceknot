@@ -32,7 +32,7 @@ const SNAPSHOT_ID = "snapshot-001";
 
 type RunInput = Parameters<typeof runVerification>[0];
 type RunStateValue = CanonicalRunState["state"];
-type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean };
+type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean; invalidProducer?: boolean };
 
 class FakeRepository {
   readonly runs = new Map<string, CanonicalRunState>();
@@ -69,7 +69,7 @@ function makeDependencies(options: FakeOptions = {}): FakePorts & { dependencies
     executeObligation: async (request: VerificationExecutionRequest) => {
       executorCalls++;
       if (options.missingExecutorOutput) return undefined;
-      return { status: "PASS" as const, runId: request.runId, requestId: request.requestId, snapshotId: options.mismatchedProvenance ? "wrong-snapshot" : request.snapshotId, idempotencyKey: request.idempotencyKey, producer: { kind: "deterministic-verifier" as const, identity: "fixture-executor", independence: options.producerIndependence ?? "independent-producer" }, artifacts: [{ type: "verification-result", digest: options.invalidArtifact ? "not-a-digest" : "a".repeat(64) }] };
+      return { status: "PASS" as const, runId: request.runId, requestId: request.requestId, snapshotId: options.mismatchedProvenance ? "wrong-snapshot" : request.snapshotId, idempotencyKey: request.idempotencyKey, producer: options.invalidProducer ? undefined : { kind: "deterministic-verifier" as const, identity: "fixture-executor", independence: options.producerIndependence ?? "independent-producer" }, artifacts: [{ type: "verification-result", digest: options.invalidArtifact ? "not-a-digest" : "a".repeat(64) }] };
     },
   } as unknown as VerificationExecutor;
   const browser = {
@@ -217,6 +217,14 @@ describe("verification run orchestration", () => {
   ])("fails closed for %s", async (_name, options) => {
     const result = await runOnce(makeDependencies(options).dependencies);
     expect(result.verdict.qaVerdict).not.toBe("PASS");
+  });
+  test.each([
+    ["invalid artifact", { invalidArtifact: true }],
+    ["missing artifact storage", { missingArtifactStorage: true }],
+    ["invalid producer", { invalidProducer: true }],
+  ] as const)("does not persist PASS execution evidence for %s", async (_name, options) => {
+    const result = await runOnce(makeDependencies(options).dependencies, `evidence-${_name.replaceAll(" ", "-")}`);
+    expect(result.documents.execution?.evidence.every(item => item.result.verdict !== "PASS")).toBe(true);
   });
   test.each(["requestId", "snapshotId"] as const)("fails closed when executor omits output %s provenance", async field => {
     const fakes = makeDependencies();

@@ -330,7 +330,7 @@ export async function executeObligations(input: ExecuteObligationsInput): Promis
     const output = available ? obligation.evidenceType === "browser-result" ? input.dependencies.browserExecutor ? await executeBrowser(input.dependencies.browserExecutor, request) : undefined : await executeExecutor(input.dependencies.executor, request) : undefined;
     const receiptValid = outputReceiptMatches(output, request);
     let verdict: VerificationEvidence["result"]["verdict"] = !available ? "BLOCKED" : !output ? "INCOMPLETE" : !receiptValid ? "INCOMPLETE" : normalizeStatus(output.status);
-    const summary = !available ? `Capability ${capabilityFor(obligation)} is unavailable.` : !output ? "No executor output was returned." : !receiptValid ? "Executor output did not echo the canonical idempotency receipt (provenance or idempotency mismatch)." : output.summary ?? `Obligation ${obligation.id} completed.`;
+    let summary = !available ? `Capability ${capabilityFor(obligation)} is unavailable.` : !output ? "No executor output was returned." : !receiptValid ? "Executor output did not echo the canonical idempotency receipt (provenance or idempotency mismatch)." : output.summary ?? `Obligation ${obligation.id} completed.`;
     const producer = producerFor(output);
     const artifacts: CanonicalVerificationResultArtifact[] = [];
     if (verdict === "PASS" || verdict === "FAIL") {
@@ -340,6 +340,15 @@ export async function executeObligations(input: ExecuteObligationsInput): Promis
         if (!validArtifact(artifact)) continue;
         const stored = await storeArtifact(input.dependencies.artifactStore, artifact, request);
         if (stored) artifacts.push(stored);
+      }
+    }
+    if (verdict === "PASS" || verdict === "FAIL") {
+      if (!output || !validProducer(output.producer)) {
+        verdict = "INCOMPLETE";
+        summary = "Executor output did not provide a valid producer.";
+      } else if (artifacts.length === 0) {
+        verdict = "INCOMPLETE";
+        summary = "Executor output did not provide a canonical stored artifact.";
       }
     }
     let execution = executionFor(obligation, verdict, observedAt, output, producer);
