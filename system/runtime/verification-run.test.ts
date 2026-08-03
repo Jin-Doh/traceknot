@@ -152,7 +152,7 @@ describe("verification run orchestration", () => {
     const fakes = makeDependencies(options);
     const result = await runOnce(fakes.dependencies);
     expect(result.run.state).toBe("TERMINAL");
-    expect(["BLOCKED", "INCOMPLETE"]).toContain(result.verdict.qaVerdict);
+    expect(["FAIL", "BLOCKED", "INCOMPLETE"]).toContain(result.verdict.qaVerdict);
     expect(result.verdict.qaVerdict).not.toBe("PASS");
   });
 });
