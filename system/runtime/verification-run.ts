@@ -12,8 +12,8 @@ export type VerificationObligationPlan=Readonly<{id:string;conditionIds:readonly
 export type VerificationPlan=Readonly<{schemaVersion:"verification-plan/v1";requestId:string;snapshotId:string;risks:readonly VerificationRisk[];conditions:readonly VerificationCondition[];obligations:readonly VerificationObligationPlan[]}>;
 export type CanonicalVerificationResultArtifact=Readonly<{type:"verification-result";digest:string;path?:string}>;
 export type VerificationEvidence=Readonly<{schemaVersion:"verification-evidence/v1";evidenceId:string;requestId:string;snapshotId:string;obligationId:string;producer:Producer;execution:Execution;result:Readonly<{verdict:"PASS"|"FAIL"|"BLOCKED"|"INCOMPLETE";summary:string;passed?:number;failed?:number;artifacts?:readonly string[]}>;observedAt:string;contentHash?:string}>;
-export type VerificationExecutionRequest=Readonly<{requestId:string;snapshotId:string;obligation:VerificationObligationPlan;conditionIds:readonly string[]}>;
-export type VerificationExecutionOutput=Readonly<{status:"passed"|"failed"|"blocked"|"incomplete"|"PASS"|"FAIL"|"BLOCKED"|"INCOMPLETE";requestId:string;snapshotId:string;producer:Producer;summary?:string;artifacts?:readonly Artifact[];executionKind?:Execution["kind"];identity?:string;exitCode?:number}>;
+export type VerificationExecutionRequest=Readonly<{runId:string;requestId:string;snapshotId:string;obligation:VerificationObligationPlan;conditionIds:readonly string[];idempotencyKey:string}>;
+export type VerificationExecutionOutput=Readonly<{status:"passed"|"failed"|"blocked"|"incomplete"|"PASS"|"FAIL"|"BLOCKED"|"INCOMPLETE";runId:string;requestId:string;snapshotId:string;idempotencyKey:string;producer:Producer;summary?:string;artifacts?:readonly Artifact[];executionKind?:Execution["kind"];identity?:string;exitCode?:number}>;
 export type BrowserExecutionRequest=VerificationExecutionRequest; export type BrowserExecutionOutput=VerificationExecutionOutput; export type StoredArtifact=CanonicalVerificationResultArtifact; export type ApprovalRequest=Readonly<{runId:string;defect:DefectSummary}>; export type ApprovalResult=Readonly<{approved:boolean;acceptanceExpiresAt?:string}>; export type UsageEvent=Readonly<{runId:string;obligationId?:string;event:"execution"|"artifact"|"approval"}>;
 export type StageName="request"|"basis"|"discovery"|"plan"|"execution"|"evidence"|"residual-risk"|"verdict";
 export interface VerificationExecutor {readonly executeObligation?:(i:VerificationExecutionRequest)=>MaybePromise<VerificationExecutionOutput|undefined>;readonly execute?:(i:VerificationExecutionRequest)=>MaybePromise<VerificationExecutionOutput|undefined>};
@@ -123,11 +123,17 @@ function riskLevel(item: VerificationBasisItem): RiskLevel {
   return "R1";
 }
 function browserBasis(item: VerificationBasisItem): boolean { return /\b(browser|web|ui|visual|flow)\b/.test(material(item)); }
+function canonicalDiscovery(request: VerificationRequest, basis: BasisDocument): DiscoveryDocument {
+  validRequest(request);
+  const canonical = canonicalBasis(request);
+  if (!structurallyEqual(basis, canonical)) throw Error("invalid discovery basis canonicalization");
+  const risks = canonical.basis.map(item => { const level = riskLevel(item); const score = level === "R3" ? 3 : level === "R2" ? 2 : 1; return { id: `risk:${item.id}`, level, impact: score, likelihood: score, basisIds: [item.id], rationale: `Verification risk derived from ${level} basis ${item.id}.` }; }).sort((a, b) => a.id.localeCompare(b.id));
+  const conditions = canonical.basis.map(item => { const techniques = browserBasis(item) ? ["browser-verification", "canonical-verification"] : ["canonical-verification"]; if (riskLevel(item) === "R3") techniques.push("independent-producer"); return { id: `condition:${item.id}`, basisIds: [item.id], riskIds: [`risk:${item.id}`], techniques: uniq(techniques), expectedResult: `Evidence demonstrates ${item.id}.` }; }).sort((a, b) => a.id.localeCompare(b.id));
+  return freeze({ schemaVersion: "risk-discovery/v1", requestId: request.requestId, snapshotId: request.project.snapshotId, risks, conditions });
+}
+
 export async function performRiskDiscovery(input: PerformRiskDiscoveryInput): Promise<DiscoveryDocument> {
-  validRequest(input.request);
-  const risks = input.basis.basis.map(item => { const level = riskLevel(item); const score = level === "R3" ? 3 : level === "R2" ? 2 : 1; return { id: `risk:${item.id}`, level, impact: score, likelihood: score, basisIds: [item.id], rationale: `Verification risk derived from ${level} basis ${item.id}.` }; }).sort((a, b) => a.id.localeCompare(b.id));
-  const conditions = input.basis.basis.map(item => { const techniques = browserBasis(item) ? ["browser-verification", "canonical-verification"] : ["canonical-verification"]; if (riskLevel(item) === "R3") techniques.push("independent-producer"); return { id: `condition:${item.id}`, basisIds: [item.id], riskIds: [`risk:${item.id}`], techniques: uniq(techniques), expectedResult: `Evidence demonstrates ${item.id}.` }; }).sort((a, b) => a.id.localeCompare(b.id));
-  return freeze({ schemaVersion: "risk-discovery/v1", requestId: input.request.requestId, snapshotId: input.request.project.snapshotId, risks, conditions });
+  return canonicalDiscovery(input.request, input.basis);
 }
 export async function buildVerificationPlan(input: BuildVerificationPlanInput): Promise<PlanDocument> {
   validRequest(input.request);
@@ -151,6 +157,51 @@ async function record(provider: UsageRecorder | undefined, event: UsageEvent): P
 async function executeExecutor(port: VerificationExecutor, input: VerificationExecutionRequest): Promise<VerificationExecutionOutput | undefined> { if (port.executeObligation) return port.executeObligation(input); return port.execute ? port.execute(input) : undefined; }
 async function executeBrowser(port: BrowserExecutor, input: BrowserExecutionRequest): Promise<BrowserExecutionOutput | undefined> { if (port.executeBrowser) return port.executeBrowser(input); return port.execute ? port.execute(input) : undefined; }
 function normalizeStatus(value: VerificationExecutionOutput["status"]): VerificationEvidence["result"]["verdict"] { const status = String(value).toLowerCase(); return status === "passed" || status === "pass" ? "PASS" : status === "failed" || status === "fail" ? "FAIL" : status === "blocked" || status === "block" ? "BLOCKED" : "INCOMPLETE"; }
+function idempotencyKeyFor(runId: string, requestId: string, snapshotId: string, obligationId: string): string {
+  return `verification:${runId}:${requestId}:${snapshotId}:${obligationId}`;
+}
+function outputReceiptMatches(output: VerificationExecutionOutput | undefined, request: VerificationExecutionRequest): boolean {
+  return Boolean(output && output.runId === request.runId && output.requestId === request.requestId && output.snapshotId === request.snapshotId && output.idempotencyKey === request.idempotencyKey);
+}
+function resultMatchesExecution(result: VerificationEvidence["result"], execution: Execution): boolean {
+  const hasPassed = Object.prototype.hasOwnProperty.call(result, "passed");
+  const hasFailed = Object.prototype.hasOwnProperty.call(result, "failed");
+  if (execution.exitStatus === "passed") return result.verdict === "PASS" && result.passed === 1 && !hasFailed;
+  if (execution.exitStatus === "failed") return result.verdict === "FAIL" && result.failed === 1 && !hasPassed;
+  if (execution.exitStatus === "blocked") return result.verdict === "BLOCKED" && !hasPassed && !hasFailed;
+  return result.verdict === "INCOMPLETE" && !hasPassed && !hasFailed;
+}
+function assertExecutionEvidenceBindings(execution: ExecutionDocument, request?: VerificationRequest, plan?: VerificationPlan): void {
+  const observations = new Map<string, Observation>();
+  const claims = new Map<string, EvidenceClaim>();
+  const evidence = new Map<string, VerificationEvidence>();
+  const expectedObligations = plan ? new Set(plan.obligations.map(item => item.id)) : undefined;
+  for (const observation of execution.observations) {
+    const prefix = "observation:";
+    if (!observation.observationId.startsWith(prefix)) throw Error("invalid execution observation binding");
+    const obligationId = observation.observationId.slice(prefix.length);
+    if (!obligationId || observations.has(obligationId) || (expectedObligations && !expectedObligations.has(obligationId))) throw Error("invalid execution observation binding");
+    observations.set(obligationId, observation);
+  }
+  for (const claim of execution.claims) {
+    if (claim.observationIds.length !== 1 || claim.claimId !== `claim:${claim.obligationId}` || claim.observationIds[0] !== `observation:${claim.obligationId}` || claims.has(claim.obligationId) || (expectedObligations && !expectedObligations.has(claim.obligationId))) throw Error("invalid execution claim binding");
+    claims.set(claim.obligationId, claim);
+  }
+  for (const item of execution.evidence) {
+    if (item.evidenceId !== `evidence:${item.obligationId}` || evidence.has(item.obligationId) || (expectedObligations && !expectedObligations.has(item.obligationId))) throw Error("invalid execution evidence binding");
+    if (item.result.artifacts !== undefined && (!Array.isArray(item.result.artifacts) || item.result.artifacts.some(digest => typeof digest !== "string"))) throw Error("invalid execution evidence binding");
+    evidence.set(item.obligationId, item);
+  }
+  if (observations.size !== claims.size || observations.size !== evidence.size || [...observations.keys()].some(id => !claims.has(id) || !evidence.has(id))) throw Error("invalid execution binding universe");
+  for (const [obligationId, observation] of observations) {
+    const item = evidence.get(obligationId);
+    if (!item || (request && (observation.requestId !== request.requestId || observation.snapshotId !== request.project.snapshotId || item.requestId !== request.requestId || item.snapshotId !== request.project.snapshotId)) || observation.requestId !== item.requestId || observation.snapshotId !== item.snapshotId || !structurallyEqual(observation.producer, item.producer) || !structurallyEqual(observation.execution, item.execution)) throw Error("invalid execution evidence binding");
+    const observationDigests = observation.artifacts.map(artifact => artifact.digest).sort();
+    const evidenceDigests = [...(item.result.artifacts ?? [])].sort();
+    if (JSON.stringify(observationDigests) !== JSON.stringify(evidenceDigests) || !resultMatchesExecution(item.result, observation.execution)) throw Error("invalid execution evidence binding");
+  }
+}
+
 const UNAVAILABLE_PRODUCER: Producer = { kind: "self", identity: "self/runtime-unavailable", independence: "self-check" };
 function producerFor(output: VerificationExecutionOutput | undefined): Producer { return output && validProducer(output.producer) ? output.producer : UNAVAILABLE_PRODUCER; }
 function executionFor(obligation: VerificationObligationPlan, verdict: VerificationEvidence["result"]["verdict"], now: string, output: VerificationExecutionOutput | undefined, producer: Producer): Execution {
@@ -190,11 +241,12 @@ export async function executeObligations(input: ExecuteObligationsInput): Promis
   };
   for (const obligation of [...input.plan.obligations].sort((a, b) => a.id.localeCompare(b.id))) {
     if (completed.has(obligation.id)) continue;
-    const request = { requestId: input.request.requestId, snapshotId: input.request.project.snapshotId, obligation, conditionIds: uniq(obligation.conditionIds) };
+    const request = { runId: input.runId, requestId: input.request.requestId, snapshotId: input.request.project.snapshotId, obligation, conditionIds: uniq(obligation.conditionIds), idempotencyKey: idempotencyKeyFor(input.runId, input.request.requestId, input.request.project.snapshotId, obligation.id) };
     const available = await hasCapability(input.dependencies.capabilityProvider, capabilityFor(obligation));
     const output = available ? obligation.evidenceType === "browser-result" ? input.dependencies.browserExecutor ? await executeBrowser(input.dependencies.browserExecutor, request) : undefined : await executeExecutor(input.dependencies.executor, request) : undefined;
-    const verdict = !available ? "BLOCKED" : !output ? "INCOMPLETE" : normalizeStatus(output.status);
-    const summary = !available ? `Capability ${capabilityFor(obligation)} is unavailable.` : !output ? "No executor output was returned." : output.summary ?? `Obligation ${obligation.id} completed.`;
+    const receiptValid = outputReceiptMatches(output, request);
+    const verdict = !available ? "BLOCKED" : !output ? "INCOMPLETE" : !receiptValid ? "INCOMPLETE" : normalizeStatus(output.status);
+    const summary = !available ? `Capability ${capabilityFor(obligation)} is unavailable.` : !output ? "No executor output was returned." : !receiptValid ? "Executor output did not echo the canonical idempotency receipt." : output.summary ?? `Obligation ${obligation.id} completed.`;
     const producer = producerFor(output);
     const artifacts: CanonicalVerificationResultArtifact[] = [];
     if (verdict === "PASS" || verdict === "FAIL") {
@@ -227,7 +279,7 @@ function makeEvaluation(observation: Observation | undefined, claim: EvidenceCla
   return { schemaVersion:"evidence-evaluation/v1", evaluationId:`evaluation:${claim.claimId}`, requestId:claim.requestId, snapshotId:claim.snapshotId, claimId:claim.claimId, status:reasons.length === 0 ? "ACCEPTED" : "REJECTED", checks, rejectionReasons:reasons, evaluatedAt };
 }
 export async function evaluateEvidence(input: EvaluateEvidenceInput): Promise<EvidenceDocument> {
-  validRequest(input.request); const evaluatedAt = clockNow(input.dependencies.now); const observations = new Map(input.execution.observations.map(item => [item.observationId, item])); const evaluations = [...input.execution.claims].sort((a,b)=>a.claimId.localeCompare(b.claimId)).map(claim => makeEvaluation(observations.get(claim.observationIds[0]), claim, input.plan.obligations.find(item=>item.id===claim.obligationId) ?? input.plan.obligations[0], evaluatedAt, input.request)); const claimsById = new Map(input.execution.claims.map(claim => [claim.claimId, claim])); const accepted = new Set(evaluations.filter(item=>item.status==="ACCEPTED").map(item=>claimsById.get(item.claimId)?.obligationId).filter((id):id is string=>Boolean(id))); const conditionById = new Map(input.plan.conditions.map(item=>[item.id,item])); const coveredConditions = uniq(input.plan.obligations.filter(item=>accepted.has(item.id)).flatMap(item=>item.conditionIds));
+  validRequest(input.request); assertExecutionEvidenceBindings(input.execution, undefined, input.plan); const evaluatedAt = clockNow(input.dependencies.now); const observations = new Map(input.execution.observations.map(item => [item.observationId, item])); const evaluations = [...input.execution.claims].sort((a,b)=>a.claimId.localeCompare(b.claimId)).map(claim => makeEvaluation(observations.get(claim.observationIds[0]), claim, input.plan.obligations.find(item=>item.id===claim.obligationId) ?? input.plan.obligations[0], evaluatedAt, input.request)); const claimsById = new Map(input.execution.claims.map(claim => [claim.claimId, claim])); const accepted = new Set(evaluations.filter(item=>item.status==="ACCEPTED").map(item=>claimsById.get(item.claimId)?.obligationId).filter((id):id is string=>Boolean(id))); const conditionById = new Map(input.plan.conditions.map(item => [item.id, item])); const coveredConditions = [...accepted].flatMap(obligationId => input.plan.obligations.find(item=>item.id===obligationId)?.conditionIds ?? []);
   return freeze({ schemaVersion:"verification-evidence-evaluation/v1", requestId:input.request.requestId, snapshotId:input.request.project.snapshotId, evaluations, acceptedClaimIds:evaluations.filter(item=>item.status==="ACCEPTED").map(item=>item.claimId).sort(), coverage:{basisIds:uniq(input.plan.conditions.flatMap(item=>item.basisIds)),coveredBasisIds:uniq(coveredConditions.flatMap(id=>conditionById.get(id)?.basisIds ?? [])),riskIds:uniq(input.plan.risks.map(item=>item.id)),coveredRiskIds:uniq(coveredConditions.flatMap(id=>conditionById.get(id)?.riskIds ?? [])),conditionIds:uniq(input.plan.conditions.map(item=>item.id)),coveredConditionIds:coveredConditions} });
 }
 export async function evaluateResidualRisk(input: EvaluateResidualRiskInput): Promise<ResidualRiskDocument> {
@@ -261,15 +313,9 @@ function validateStage(stage: StageName, value: unknown, request: VerificationRe
   if (stage === "basis") {
     if (!structurallyEqual(value, canonicalBasis(request))) throw Error("invalid persisted basis canonicalization");
   } else if (stage === "discovery") {
-    if (!Array.isArray(value.risks) || !Array.isArray(value.conditions)) throw Error("invalid persisted discovery stage");
-    const riskIds = value.risks.map(risk=>isRecord(risk) ? risk.id : "");
-    if (riskIds.some(id=>typeof id!=="string" || !id) || new Set(riskIds).size !== riskIds.length) throw Error("invalid persisted discovery stage");
-    const riskSet = new Set(riskIds);
-    const basisSet = prior?.basis ? new Set(prior.basis.basisIds) : undefined;
-    const conditionIds = value.conditions.map(condition=>isRecord(condition) ? condition.id : "");
-    if (conditionIds.some(id=>typeof id!=="string" || !id) || new Set(conditionIds).size !== conditionIds.length) throw Error("invalid persisted discovery stage");
-    for (const risk of value.risks) if (!isRecord(risk) || !Array.isArray(risk.basisIds) || risk.basisIds.some(id=>typeof id!=="string" || (basisSet && !basisSet.has(id)))) throw Error("invalid persisted discovery reference");
-    for (const condition of value.conditions) if (!isRecord(condition) || !Array.isArray(condition.basisIds) || condition.basisIds.some(id=>typeof id!=="string" || (basisSet && !basisSet.has(id))) || !Array.isArray(condition.riskIds) || condition.riskIds.some(id=>!riskSet.has(id as string))) throw Error("invalid persisted discovery reference");
+    if (!prior?.basis) throw Error("invalid persisted discovery stage");
+    const canonical = canonicalDiscovery(request, prior.basis);
+    if (!structurallyEqual(value, canonical)) throw Error("invalid persisted discovery canonicalization");
   } else if (stage === "plan") {
     if (!Array.isArray(value.risks) || !Array.isArray(value.conditions) || !Array.isArray(value.obligations)) throw Error("invalid persisted plan stage");
     const planRiskIds: string[] = value.risks.map(risk=>isRecord(risk) && typeof risk.id === "string" ? risk.id : "");
@@ -312,6 +358,7 @@ function validateStage(stage: StageName, value: unknown, request: VerificationRe
       evidenceObligations.add(item.obligationId);
     }
     if (claimObligations.size !== evidenceObligations.size || [...claimObligations].some(id=>!evidenceObligations.has(id))) throw Error("invalid persisted execution checkpoint");
+    assertExecutionEvidenceBindings(value as unknown as ExecutionDocument, request, prior?.plan);
   } else if (stage === "evidence") {
     if (!Array.isArray(value.evaluations) || !Array.isArray(value.acceptedClaimIds) || !isRecord(value.coverage)) throw Error("invalid persisted evidence stage");
     const coverage = value.coverage as Record<string, unknown>; const evaluationIds = value.evaluations.map(evaluation=>isRecord(evaluation) ? evaluation.evaluationId : ""); if (evaluationIds.some(id=>typeof id!=="string" || !id) || new Set(evaluationIds).size !== evaluationIds.length) throw Error("invalid persisted evidence stage");
