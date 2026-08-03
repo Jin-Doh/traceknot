@@ -491,6 +491,10 @@ describe("evaluateEvidence", () => {
       observationId: "observation-accepting",
       claimId: "claim-accepting",
     });
+    accepting.observation = {
+      ...accepting.observation,
+      execution: { ...accepting.observation.execution, exitCode: 1 },
+    };
     const input = graph(failing);
     input.observations = [failing.observation, stale.observation, accepting.observation];
     input.claims = [
