@@ -16,6 +16,9 @@ fi
 printf '%s\n' '==> locked dependencies'
 bun install --frozen-lockfile --ignore-scripts
 
+printf '%s\n' '==> dependency audit'
+bun audit
+
 printf '%s\n' '==> shell syntax and installer lifecycle'
 sh -n install.sh uninstall.sh bin/traceknot-update scripts/package-release.sh \
     scripts/verify-published-release.sh tests/portable-installer-smoke.sh \
@@ -53,6 +56,9 @@ bun run typecheck
 printf '%s\n' '==> canonical schemas and capability records'
 # The schema glob compiles both the preserved v1 and adapter v2 capability contracts.
 bun x --no-install ajv compile --spec=draft2020 -s 'contracts/*.schema.json'
+bun x --no-install ajv validate --spec=draft2020 \
+    -s contracts/codeql-policy.schema.json \
+    -d codeql-policy.json
 bun x --no-install ajv validate --spec=draft2020 \
     -s contracts/capability-v2.schema.json \
     -d 'adapters/*/capability.json'

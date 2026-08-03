@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "traceknot-codeql-policy/v1",
+  "failAtOrAbove": 7,
+  "maxUnexceptedAlerts": 0,
+  "exceptions": []
+}
