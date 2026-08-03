@@ -656,6 +656,65 @@ describe("verification run orchestration", () => {
     expect(executionEvents[0]?.eventKey).toBe(pendingExecution?.eventKey);
     expect(executionEvents[0]?.executionKey).toBe(executionEvents[1]?.executionKey);
   });
+
+  test("keeps a pending usage outbox non-terminal without a recorder and flushes it after recorder restoration", async () => {
+    const fakes = makeDependencies();
+    const request = { ...makeRequest(), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    const runId = "usage-outbox-recorder-omitted";
+    const initialEvents: UsageEvent[] = [];
+    let failOnce = true;
+    const failingRecorder: UsageRecorder = {
+      recordUsage: async event => {
+        initialEvents.push(event);
+        if (event.event === "execution" && failOnce) { failOnce = false; throw new Error("usage recorder failed before resume"); }
+      },
+    };
+    const initialDependencies = { ...fakes.dependencies, usageRecorder: failingRecorder };
+    await expect(runVerification({ runId, request, dependencies: initialDependencies })).rejects.toThrow("usage recorder failed before resume");
+    const checkpoint = fakes.repository.stageDocuments.get(`${runId}:execution`) as ExecutionDocument;
+    expect(checkpoint.usageOutbox).toHaveLength(1);
+    const executorCalls = fakes.executorCalls;
+
+    const omittedDependencies = { ...initialDependencies, usageRecorder: undefined };
+    await expect(runVerification({ runId, dependencies: omittedDependencies })).rejects.toThrow("usage recorder is required to flush pending usage outbox");
+    expect(fakes.repository.runs.get(runId)?.state).toBe("PLANNED");
+    expect(fakes.executorCalls).toBe(executorCalls);
+
+    const restoredEvents: UsageEvent[] = [];
+    const restoredDependencies = { ...omittedDependencies, usageRecorder: { recordUsage: async (event: UsageEvent) => { restoredEvents.push(event); } } satisfies UsageRecorder };
+    const resumed = await runVerification({ runId, dependencies: restoredDependencies });
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(fakes.executorCalls).toBe(executorCalls);
+    expect(restoredEvents).toHaveLength(1);
+    expect(restoredEvents[0]).toMatchObject({ runId, event: "execution", eventKey: checkpoint.usageOutbox?.[0]?.eventKey });
+    expect((fakes.repository.stageDocuments.get(`${runId}:execution`) as ExecutionDocument).usageOutbox).toHaveLength(0);
+    expect(initialEvents.filter(event => event.event === "artifact")).toHaveLength(1);
+  });
+
+  test("rejects a usage outbox execution key bound to a foreign run before external dispatch", async () => {
+    const fakes = makeDependencies();
+    const request = { ...makeRequest(), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    const runId = "usage-outbox-run-binding";
+    let failOnce = true;
+    const usageRecorder: UsageRecorder = {
+      recordUsage: async event => {
+        if (event.event === "execution" && failOnce) { failOnce = false; throw new Error("usage recorder failed for tamper fixture"); }
+      },
+    };
+    const dependencies = { ...fakes.dependencies, usageRecorder };
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("usage recorder failed for tamper fixture");
+    const checkpoint = fakes.repository.stageDocuments.get(`${runId}:execution`) as ExecutionDocument;
+    const pending = checkpoint.usageOutbox?.[0];
+    if (!pending) throw new Error("expected a pending usage outbox entry");
+    const keyParts = JSON.parse(pending.executionKey.slice("verification:".length)) as string[];
+    keyParts[0] = "foreign-run";
+    const foreignExecutionKey = `verification:${JSON.stringify(keyParts)}`;
+    const foreignEntry = { ...pending, executionKey: foreignExecutionKey, eventKey: `verification-usage:${JSON.stringify([foreignExecutionKey, pending.event])}` };
+    fakes.repository.stageDocuments.set(`${runId}:execution`, { ...checkpoint, usageOutbox: [foreignEntry] });
+    const executorCalls = fakes.executorCalls;
+    await expect(runVerification({ runId, dependencies })).rejects.toThrow("invalid persisted execution usage outbox");
+    expect(fakes.executorCalls).toBe(executorCalls);
+  });
   test("reuses one deterministic idempotency side effect when artifact storage fails after external completion", async () => {
     const fakes = makeDependencies();
     const requests: string[] = [];

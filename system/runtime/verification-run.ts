@@ -165,11 +165,11 @@ function validExecutionKey(executionKey: unknown): executionKey is string {
     return false;
   }
 }
-function validUsageOutboxEntry(value: unknown, request: VerificationRequest): value is UsageOutboxEntry {
+function validUsageOutboxEntry(value: unknown, request: VerificationRequest, runId: string): value is UsageOutboxEntry {
   if (!isRecord(value) || !validExecutionKey(value.executionKey) || typeof value.obligationId !== "string" || !value.obligationId || (value.event !== "execution" && value.event !== "artifact") || typeof value.eventKey !== "string") return false;
   let parts: unknown;
   try { parts = JSON.parse(value.executionKey.slice("verification:".length)); } catch { return false; }
-  return Array.isArray(parts) && parts[1] === request.requestId && parts[2] === request.project.snapshotId && parts[3] === value.obligationId && value.eventKey === usageEventKey(value.executionKey, value.event);
+  return Array.isArray(parts) && parts[0] === runId && parts[1] === request.requestId && parts[2] === request.project.snapshotId && parts[3] === value.obligationId && value.eventKey === usageEventKey(value.executionKey, value.event);
 }
 async function executeExecutor(port: VerificationExecutor, input: VerificationExecutionRequest): Promise<VerificationExecutionOutput | undefined> { if (port.executeObligation) return port.executeObligation(input); return port.execute ? port.execute(input) : undefined; }
 async function executeBrowser(port: BrowserExecutor, input: BrowserExecutionRequest): Promise<BrowserExecutionOutput | undefined> { if (port.executeBrowser) return port.executeBrowser(input); return port.execute ? port.execute(input) : undefined; }
@@ -238,7 +238,7 @@ async function assertCanonicalVerdict(input: ResolveVerdictInput, persisted: Ver
 }
 export async function executeObligations(input: ExecuteObligationsInput): Promise<ExecutionDocument> {
   validRequest(input.request);
-  if (input.checkpoint) validateStage("execution", input.checkpoint, input.request, { plan: input.plan });
+  if (input.checkpoint) validateStage("execution", input.checkpoint, input.request, input.runId, { plan: input.plan });
   const observedAt = clockNow(input.dependencies.now);
   const observations: Observation[] = [...(input.checkpoint?.observations ?? [])];
   const claims: EvidenceClaim[] = [...(input.checkpoint?.claims ?? [])];
@@ -246,6 +246,7 @@ export async function executeObligations(input: ExecuteObligationsInput): Promis
   const usageOutbox: UsageOutboxEntry[] = [...(input.checkpoint?.usageOutbox ?? [])];
   const usageEnabled = usageRecorderConfigured(input.dependencies.usageRecorder);
   const persistUsageOutbox = usageEnabled || usageOutbox.length > 0;
+  if (usageOutbox.length > 0 && !usageEnabled) throw Error("usage recorder is required to flush pending usage outbox");
   const completed = new Set(claims.map(item => item.obligationId));
   const persistCheckpoint = async (): Promise<void> => {
     const checkpoint: ExecutionDocument = {
@@ -331,7 +332,7 @@ async function loadRun(repository: RepositoryPort, runId: string): Promise<Canon
 async function saveRun(repository: RepositoryPort, run: CanonicalRunState): Promise<void> { if (repository.saveRun) return repository.saveRun(run); if (repository.save) return repository.save(run); throw Error("repository does not implement saveRun"); }
 async function loadStage<T>(repository: RepositoryPort, runId: string, stage: StageName): Promise<T | undefined> { if (repository.loadStageDocument) return repository.loadStageDocument(runId, stage) as MaybePromise<T | undefined>; if (repository.loadStage) return repository.loadStage(runId, stage) as MaybePromise<T | undefined>; throw Error("repository does not implement loadStageDocument"); }
 async function saveStage(repository: RepositoryPort, runId: string, stage: StageName, document: StageDocument): Promise<void> { if (repository.saveStageDocument) return repository.saveStageDocument(runId, stage, document); if (repository.saveStage) return repository.saveStage(runId, stage, document); throw Error("repository does not implement saveStageDocument"); }
-function validateStage(stage: StageName, value: unknown, request: VerificationRequest, prior?: VerificationRunDocuments): void {
+function validateStage(stage: StageName, value: unknown, request: VerificationRequest, runId: string, prior?: VerificationRunDocuments): void {
   if (stage === "request") { validRequest(value as VerificationRequest); return; }
   if (stage === "verdict") {
     if (!isRecord(value) || value.schemaVersion !== "qa-verdict/v1" || !isRecord(value.verdict) || value.verdict.schemaVersion !== "qa-verdict/v1" || value.verdict.requestId !== request.requestId || value.verdict.snapshotId !== request.project.snapshotId) throw Error("invalid persisted verdict stage");
@@ -381,7 +382,7 @@ function validateStage(stage: StageName, value: unknown, request: VerificationRe
     if (rawUsageOutbox !== undefined && !Array.isArray(rawUsageOutbox)) throw Error("invalid persisted execution usage outbox");
     const usageOutbox = Array.isArray(rawUsageOutbox) ? rawUsageOutbox : [];
     const usageEventKeys = usageOutbox.map(item => isRecord(item) && typeof item.eventKey === "string" ? item.eventKey : "");
-    if (usageOutbox.some(item => !validUsageOutboxEntry(item, request) || (obligationSet && isRecord(item) && typeof item.obligationId === "string" && !obligationSet.has(item.obligationId))) || usageEventKeys.some(key => !key) || new Set(usageEventKeys).size !== usageEventKeys.length || JSON.stringify(usageEventKeys) !== JSON.stringify([...usageEventKeys].sort())) throw Error("invalid persisted execution usage outbox");
+    if (usageOutbox.some(item => !validUsageOutboxEntry(item, request, runId) || (obligationSet && isRecord(item) && typeof item.obligationId === "string" && !obligationSet.has(item.obligationId))) || usageEventKeys.some(key => !key) || new Set(usageEventKeys).size !== usageEventKeys.length || JSON.stringify(usageEventKeys) !== JSON.stringify([...usageEventKeys].sort())) throw Error("invalid persisted execution usage outbox");
     for (const observation of value.observations) if (!isRecord(observation) || observation.schemaVersion !== "observation/v1" || observation.requestId !== request.requestId || observation.snapshotId !== request.project.snapshotId || !validProducer(observation.producer) || !validExecution(observation.execution) || !Array.isArray(observation.artifacts) || observation.artifacts.some(artifact=>!validArtifact(artifact))) throw Error("invalid persisted execution reference");
     for (const claim of value.claims) {
       if (!isRecord(claim) || claim.schemaVersion !== "evidence-claim/v1" || claim.requestId !== request.requestId || claim.snapshotId !== request.project.snapshotId || typeof claim.claimId !== "string" || claim.claimId !== `claim:${claim.obligationId}` || !Array.isArray(claim.observationIds) || claim.observationIds.length !== 1 || claim.observationIds[0] !== `observation:${claim.obligationId}` || typeof claim.obligationId !== "string" || !claim.obligationId || typeof claim.criterionId !== "string" || claim.criterionId !== `criterion:${claim.obligationId}` || (obligationSet && !obligationSet.has(claim.obligationId))) throw Error("invalid persisted claim reference");
@@ -418,13 +419,13 @@ function validateExecutionCompleteness(execution: ExecutionDocument, plan: Verif
       JSON.stringify(expectedObligationIds) !== JSON.stringify(actualClaimObligationIds) ||
       JSON.stringify(expectedObligationIds) !== JSON.stringify(actualEvidenceObligationIds)) throw Error("execution checkpoint incomplete");
 }
-async function loadCheckedStage<T>(repository: RepositoryPort, runId: string, stage: StageName, request: VerificationRequest, prior?: VerificationRunDocuments): Promise<T | undefined> { const value = await loadStage<T>(repository, runId, stage); if (value !== undefined) validateStage(stage, value, request, prior); return value; }
+async function loadCheckedStage<T>(repository: RepositoryPort, runId: string, stage: StageName, request: VerificationRequest, prior?: VerificationRunDocuments): Promise<T | undefined> { const value = await loadStage<T>(repository, runId, stage); if (value !== undefined) validateStage(stage, value, request, runId, prior); return value; }
 export async function runVerification(input: RunVerificationInput): Promise<RunVerificationResult> {
   const { dependencies } = input;
   const repository = dependencies.repository;
   let run = await loadRun(repository, input.runId);
   const persisted = await loadStage<VerificationRequest>(repository, input.runId, "request");
-  if (persisted) validateStage("request", persisted, input.request ?? persisted);
+  if (persisted) validateStage("request", persisted, input.request ?? persisted, input.runId);
   let request = input.request;
   if (run) {
     if (!persisted) throw Error("resume requires persisted request document");
