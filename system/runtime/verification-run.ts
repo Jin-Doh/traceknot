@@ -31,7 +31,7 @@ export type EstablishTestBasisInput=Readonly<{runId?:string;request:Verification
 const DIGEST = /^[0-9a-fA-F]{64}$/;
 const uniq = (xs: readonly string[]): string[] => [...new Set(xs)].sort();
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
-const validDate = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}(?:T|\s)\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value) && !Number.isNaN(Date.parse(value));
+const validDate = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value) && !Number.isNaN(Date.parse(value));
 function validProducer(value: unknown): value is Producer {
   return isRecord(value) && ["self", "harness-managed", "deterministic-verifier", "ci", "human", "external-system"].includes(value.kind as string) && typeof value.identity === "string" && Boolean(value.identity) && ["self-check", "separate-verification-context", "independent-producer", "external-approval"].includes(value.independence as string);
 }
