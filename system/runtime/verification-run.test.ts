@@ -115,6 +115,7 @@ function makeDependencies(options: FakeOptions = {}): FakePorts & { dependencies
   const usageRecorder = { recordUsage: async () => undefined, record: async () => undefined } as unknown as UsageRecorder;
   const dependencies = {
     executionAuthority,
+    freshnessPolicy: { evaluateFreshness: async () => "fresh" as const },
     repository: repository as unknown as RepositoryPort,
     executor,
     artifactStore,
@@ -149,6 +150,137 @@ test("canonical request digest is key-order stable and value/array-order sensiti
   expect(canonicalRequestDigest(changedValue)).not.toBe(canonicalRequestDigest(request));
   const changedArrayOrder = { ...request, testBasis: [...request.testBasis].reverse() };
   expect(canonicalRequestDigest(changedArrayOrder)).not.toBe(canonicalRequestDigest(request));
+});
+test.each(["fresh", "stale", "unknown"] as const)("requires the freshness policy to authenticate %s evidence", async status => {
+  const fakes = makeDependencies();
+  const freshnessInputs: Array<{ evaluatedAt: string; observedAt: string }> = [];
+  const dependencies = {
+    ...fakes.dependencies,
+    freshnessPolicy: {
+      evaluateFreshness: async (input: { evaluatedAt: string; evidence: { observedAt: string } }) => {
+        freshnessInputs.push({ evaluatedAt: input.evaluatedAt, observedAt: input.evidence.observedAt });
+        return status;
+      },
+    },
+  } as unknown as VerificationRunDependencies;
+  const result = await runOnce(dependencies, `freshness-${status}`);
+  const evaluations = result.documents.evidence?.evaluations ?? [];
+  expect(evaluations).not.toHaveLength(0);
+  expect(evaluations.every(item => item.checks.fresh === (status === "fresh"))).toBe(true);
+  expect(evaluations.filter(item => status !== "fresh").every(item => item.rejectionReasons.includes("STALE_EVIDENCE"))).toBe(true);
+  expect(freshnessInputs.every(item => item.evaluatedAt === FIXED_NOW && item.observedAt === FIXED_NOW)).toBe(true);
+  expect(status === "fresh" ? result.verdict.qaVerdict : result.verdict.qaVerdict).not.toBe(status === "fresh" ? "INCOMPLETE" : "PASS");
+});
+test("rederives persisted evaluations with their authenticated evaluatedAt after wall-clock advancement", async () => {
+  const fakes = makeDependencies();
+  const request = { ...makeRequest(), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+  let now = FIXED_NOW;
+  const evaluatedAtSeen: string[] = [];
+  const dependencies = {
+    ...fakes.dependencies,
+    now: () => now,
+    freshnessPolicy: {
+      evaluateFreshness: async (input: { evaluatedAt: string }) => {
+        evaluatedAtSeen.push(input.evaluatedAt);
+        return input.evaluatedAt === FIXED_NOW ? "fresh" as const : "stale" as const;
+      },
+    },
+  } as unknown as VerificationRunDependencies;
+  const first = await runVerification({ runId: "persisted-evaluated-at", request, dependencies });
+  expect(first.verdict.qaVerdict).toBe("PASS");
+  const persistedEvaluatedAt = first.documents.evidence?.evaluations[0]?.evaluatedAt;
+  if (!persistedEvaluatedAt) throw new Error("missing persisted evaluatedAt");
+  now = "2026-08-03T01:00:00.000Z";
+  const executorCalls = fakes.executorCalls;
+  const resumed = await runVerification({ runId: "persisted-evaluated-at", dependencies });
+  expect(resumed.verdict).toEqual(first.verdict);
+  expect(fakes.executorCalls).toBe(executorCalls);
+  expect(evaluatedAtSeen.slice(-1)[0]).toBe(persistedEvaluatedAt);
+  expect(resumed.documents.evidence?.evaluations.every(item => item.evaluatedAt === persistedEvaluatedAt)).toBe(true);
+});
+
+test("samples execution timestamps around each executor call and observes at finish", async () => {
+  const fakes = makeDependencies();
+  const request = { ...makeRequest(), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+  const basis = await establishTestBasis({ request, dependencies: fakes.dependencies });
+  const discovery = await performRiskDiscovery({ request, basis, dependencies: fakes.dependencies });
+  const plan = await buildVerificationPlan({ request, basis, discovery, dependencies: fakes.dependencies });
+  const times = ["2026-08-03T00:00:01.000Z", "2026-08-03T00:00:02.000Z"];
+  const dependencies = { ...fakes.dependencies, now: () => times.shift() ?? "2026-08-03T00:00:02.000Z" };
+  const execution = await executeObligations({ runId: "timestamp-run", request, plan, dependencies });
+  const observation = execution.observations[0];
+  const evidence = execution.evidence[0];
+  expect(observation?.execution.startedAt).toBe("2026-08-03T00:00:01.000Z");
+  expect(observation?.execution.finishedAt).toBe("2026-08-03T00:00:02.000Z");
+  expect(evidence?.observedAt).toBe(observation?.execution.finishedAt);
+});
+
+test.each([
+  ["extra root key", (request: VerificationRequest) => ({ ...request, extra: true })],
+  ["extra project key", (request: VerificationRequest) => ({ ...request, project: { ...request.project, extra: true } })],
+  ["extra change key", (request: VerificationRequest) => ({ ...request, change: { ...request.change, extra: true } })],
+  ["extra basis key", (request: VerificationRequest) => ({ ...request, testBasis: [{ ...request.testBasis[0]!, extra: true }, ...request.testBasis.slice(1)] })],
+  ["empty request ID", (request: VerificationRequest) => ({ ...request, requestId: "" })],
+  ["empty summary", (request: VerificationRequest) => ({ ...request, change: { ...request.change, summary: "" } })],
+  ["empty basis text", (request: VerificationRequest) => ({ ...request, testBasis: [{ ...request.testBasis[0]!, text: "" }, ...request.testBasis.slice(1)] })],
+  ["empty optional source", (request: VerificationRequest) => ({ ...request, testBasis: [{ ...request.testBasis[0]!, source: "" }, ...request.testBasis.slice(1)] })],
+  ["empty basis", (request: VerificationRequest) => ({ ...request, testBasis: [] })],
+  ["duplicate paths", (request: VerificationRequest) => ({ ...request, change: { ...request.change, paths: ["same.ts", "same.ts"] } })],
+] as const)("rejects malformed requests before digest, writes, or dispatch: %s", async (_name, mutate) => {
+  const invalid = mutate(makeRequest()) as VerificationRequest;
+  expect(() => canonicalRequestDigest(invalid)).toThrow("invalid verification request");
+  const fakes = makeDependencies();
+  await expect(runVerification({ runId: "invalid-request", request: invalid, dependencies: fakes.dependencies })).rejects.toThrow("invalid verification request");
+  expect(fakes.repository.stageWrites).toEqual([]);
+  expect(fakes.repository.runWrites).toEqual([]);
+  expect(fakes.executorCalls).toBe(0);
+});
+
+test("canonicalizes executor and artifact-store artifacts before authority and persistence", async () => {
+  const fakes = makeDependencies();
+  const digest = "A".repeat(64);
+  const executor: VerificationExecutor = {
+    executeObligation: async request => ({
+      status: "PASS",
+      runId: request.runId,
+      requestId: request.requestId,
+      snapshotId: request.snapshotId,
+      idempotencyKey: request.idempotencyKey,
+      producer: { kind: "deterministic-verifier", identity: "uppercase-executor", independence: "independent-producer" },
+      artifacts: [{ type: "verification-result", digest }, { type: "verification-result", digest: digest.toLowerCase(), path: "/tmp/result", extra: true }] as unknown as Artifact[],
+    }),
+  };
+  const artifactStore: ArtifactStore = {
+    storeVerificationResultArtifact: async artifact => ({ ...artifact, digest: artifact.digest.toUpperCase(), extra: "discard" } as unknown as Artifact),
+  };
+  const result = await runOnce({ ...fakes.dependencies, executor, artifactStore }, "artifact-normalization");
+  const execution = result.documents.execution;
+  expect(result.verdict.qaVerdict).toBe("PASS");
+  expect(execution?.observations[0]?.artifacts).toEqual([{ type: "verification-result", digest: digest.toLowerCase() }]);
+  expect(execution?.evidence[0]?.result.artifacts).toEqual([digest.toLowerCase()]);
+  expect(execution?.observations.every(item => item.artifacts.every(artifact => /^[a-f0-9]{64}$/.test(artifact.digest) && Object.keys(artifact).every(key => ["type", "digest", "path"].includes(key))))).toBe(true);
+});
+
+test("rejects empty and non-string artifact digests or paths without storing them", async () => {
+  for (const malformed of [
+    { type: "verification-result", digest: "" },
+    { type: "verification-result", digest: "f".repeat(64), path: "" },
+    { type: "verification-result", digest: "f".repeat(64), path: 42 },
+  ]) {
+    const fakes = makeDependencies();
+    let stores = 0;
+    const executor: VerificationExecutor = {
+      executeObligation: async request => ({
+        status: "PASS", runId: request.runId, requestId: request.requestId, snapshotId: request.snapshotId, idempotencyKey: request.idempotencyKey,
+        producer: { kind: "deterministic-verifier", identity: "malformed-artifact-executor", independence: "independent-producer" },
+        artifacts: [malformed] as unknown as Artifact[],
+      }),
+    };
+    const artifactStore: ArtifactStore = { storeVerificationResultArtifact: async artifact => { stores++; return artifact; } };
+    const result = await runOnce({ ...fakes.dependencies, executor, artifactStore }, `malformed-artifact-${stores}`);
+    expect(result.verdict.qaVerdict).not.toBe("PASS");
+    expect(stores).toBe(0);
+  }
 });
 
 
