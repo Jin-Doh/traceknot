@@ -677,6 +677,7 @@ export async function runVerification(input: RunVerificationInput): Promise<RunV
     const verdict = documents.verdict ?? await loadCheckedStage<VerdictDocument>(repository, input.runId, "verdict", req, dependencies, documents);
     if (!basis || !discovery || !plan || !execution || !evidence || !residual || !verdict) throw Error("proof documents are missing");
     await assertCanonicalVerdict({ runId: input.runId, request: req, basis, discovery, plan, execution, evidence, residualRisk: residual, dependencies }, verdict);
+    assertCanonicalRunIndexes(run, execution, evidence);
     documents.verdict = verdict;
     run = transitionRunState(run, "TERMINAL", clockNow(dependencies.now));
     await saveRun(repository, run);

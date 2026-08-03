@@ -40,8 +40,13 @@ class FakeRepository {
   failNextState?: RunStateValue;
   failNextStage?: string;
   readonly stageWrites: string[] = [];
+  readonly runWrites: CanonicalRunState[] = [];
   async loadRun(runId: string): Promise<CanonicalRunState | undefined> { return this.runs.get(runId); }
-  async saveRun(run: CanonicalRunState): Promise<void> { if (this.failNextState === run.state) { this.failNextState = undefined; throw new Error("simulated saveRun crash"); } this.runs.set(run.runId, structuredClone(run)); }
+  async saveRun(run: CanonicalRunState): Promise<void> {
+    if (this.failNextState === run.state) { this.failNextState = undefined; throw new Error("simulated saveRun crash"); }
+    this.runWrites.push(structuredClone(run));
+    this.runs.set(run.runId, structuredClone(run));
+  }
   async loadStageDocument(runId: string, stage: string): Promise<unknown | undefined> { return this.stageDocuments.get(`${runId}:${stage}`); }
   async saveStageDocument(runId: string, stage: string, document: unknown): Promise<void> { this.stageWrites.push(stage); if (this.failNextStage === stage) { this.failNextStage = undefined; throw new Error("simulated saveStage crash"); } this.stageDocuments.set(`${runId}:${stage}`, structuredClone(document)); }
 }
@@ -726,18 +731,23 @@ describe("verification run orchestration", () => {
     expect(fakes.executorCalls).toBe(executorCalls);
   });
 
-  test("resumes exact canonical terminal indexes without executor recall", async () => {
+  test("resumes VERDICT_RESOLVED with exact canonical indexes and saves TERMINAL without executor recall", async () => {
     const fakes = makeDependencies();
-    const runId = "canonical-terminal-indexes";
+    const runId = "canonical-preterminal-indexes";
     const first = await runOnce(fakes.dependencies, runId);
-    const executorCalls = fakes.executorCalls;
+    const persisted = fakes.repository.runs.get(runId);
     const execution = first.documents.execution;
     const evidence = first.documents.evidence;
-    if (!execution || !evidence) throw new Error("missing canonical documents");
+    if (!persisted || !execution || !evidence) throw new Error("missing canonical documents");
+    const executorCalls = fakes.executorCalls;
+    const runWritesBeforeResume = fakes.repository.runWrites.length;
+    fakes.repository.runs.set(runId, { ...persisted, state: "VERDICT_RESOLVED", updatedAt: FIXED_NOW });
     const resumed = await runOnce(fakes.dependencies, runId);
+    expect(resumed.run.state).toBe("TERMINAL");
     expect(resumed.run.observationIds).toEqual(execution.observations.map(item => item.observationId));
     expect(resumed.run.claimIds).toEqual(execution.claims.map(item => item.claimId));
     expect(resumed.run.evaluationIds).toEqual(evidence.evaluations.map(item => item.evaluationId));
+    expect(fakes.repository.runWrites.slice(runWritesBeforeResume).map(run => run.state)).toEqual(["TERMINAL"]);
     expect(fakes.executorCalls).toBe(executorCalls);
   });
 
@@ -745,7 +755,7 @@ describe("verification run orchestration", () => {
     ["observationIds", "foreign"], ["observationIds", "missing"], ["observationIds", "extra"], ["observationIds", "reordered"],
     ["claimIds", "foreign"], ["claimIds", "missing"], ["claimIds", "extra"], ["claimIds", "reordered"],
     ["evaluationIds", "foreign"], ["evaluationIds", "missing"], ["evaluationIds", "extra"], ["evaluationIds", "reordered"],
-  ] as const)("rejects %s %s mutation before executor recall", async (field, mutation) => {
+  ] as const)("rejects %s %s mutation before terminal transition or executor recall", async (field, mutation) => {
     const fakes = makeDependencies();
     const runId = `run-index-${field}-${mutation}`;
     await runOnce(fakes.dependencies, runId);
@@ -759,11 +769,15 @@ describe("verification run orchestration", () => {
         : mutation === "extra"
           ? [...ids, `${field}:extra`]
           : [...ids].reverse();
-    fakes.repository.runs.set(runId, { ...run, [field]: mutated });
+    fakes.repository.runs.set(runId, { ...run, state: "VERDICT_RESOLVED", [field]: mutated, updatedAt: FIXED_NOW });
     const executorCalls = fakes.executorCalls;
+    const runWritesBeforeResume = fakes.repository.runWrites.length;
     await expect(runOnce(fakes.dependencies, runId)).rejects.toThrow("invalid persisted run indexes");
+    expect(fakes.repository.runs.get(runId)?.state).toBe("VERDICT_RESOLVED");
+    expect(fakes.repository.runWrites.length).toBe(runWritesBeforeResume);
     expect(fakes.executorCalls).toBe(executorCalls);
   });
+
 
   test("verifies persisted authority on terminal resume without executor recall", async () => {
     const fakes = makeDependencies();
