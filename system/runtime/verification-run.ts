@@ -302,11 +302,11 @@ function executionFor(obligation: VerificationObligationPlan, verdict: Verificat
 async function storeArtifact(store: ArtifactStore, artifact: CanonicalVerificationResultArtifact, input: VerificationExecutionRequest): Promise<CanonicalVerificationResultArtifact | undefined> { const saved = store.storeVerificationResultArtifact ? await store.storeVerificationResultArtifact(artifact, input) : store.storeArtifact ? await store.storeArtifact(artifact, input) : store.putArtifact ? await store.putArtifact(artifact, input) : store.store ? await store.store(artifact, input) : undefined; return saved && validArtifact(saved) && saved.digest === artifact.digest ? saved : undefined; }
 async function assertCanonicalPlan(request: VerificationRequest, basis: BasisDocument, discovery: DiscoveryDocument, plan: PlanDocument, dependencies: VerificationRunDependencies): Promise<void> {
   const canonical = await buildVerificationPlan({ request, basis, discovery, dependencies });
-  if (JSON.stringify(canonical) !== JSON.stringify(plan)) throw Error("invalid persisted plan canonicalization");
+  if (!structurallyEqual(canonical, plan)) throw Error("invalid persisted plan canonicalization");
 }
 async function assertCanonicalVerdict(input: ResolveVerdictInput, persisted: VerdictDocument): Promise<void> {
   const canonical = await resolveVerdict(input);
-  if (JSON.stringify(canonical.verdict) !== JSON.stringify(persisted.verdict)) throw Error("invalid persisted verdict canonicalization");
+  if (!structurallyEqual(canonical.verdict, persisted.verdict)) throw Error("invalid persisted verdict canonicalization");
 }
 export async function executeObligations(input: ExecuteObligationsInput): Promise<ExecutionDocument> {
   validRequest(input.request);

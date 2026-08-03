@@ -125,6 +125,14 @@ async function runOnce(dependencies: VerificationRunDependencies, runId = RUN_ID
   const input = { runId, request: makeRequest(requestId), dependencies, now: FIXED_NOW } as unknown as RunInput;
   return runVerification(input);
 }
+function reorderObjectKeysDeep<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(item => reorderObjectKeysDeep(item)) as T;
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(Object.keys(record).sort().reverse().map(key => [key, reorderObjectKeysDeep(record[key])])) as T;
+  }
+  return value;
+}
 
 describe("verification run orchestration", () => {
   test("executes every stage and persists a terminal canonical run", async () => {
@@ -160,6 +168,37 @@ describe("verification run orchestration", () => {
     expect(fakes.repository.stageWrites.slice(writesBeforeResume)).not.toContain("DISCOVERY_COMPLETED");
     expect(fakes.executorCalls).toBe(executorCallsBeforeResume);
     expect(fakes.browserCalls).toBeGreaterThanOrEqual(browserCallsBeforeResume);
+  });
+  test("resumes a persisted plan after recursively reordering object keys", async () => {
+    const fakes = makeDependencies();
+    const first = await runOnce(fakes.dependencies);
+    const run = fakes.repository.runs.get(RUN_ID);
+    const plan = fakes.repository.stageDocuments.get(`${RUN_ID}:plan`) as Record<string, unknown>;
+    if (!run || !plan) throw new Error("missing persisted plan");
+    const reordered = reorderObjectKeysDeep(plan);
+    expect(JSON.stringify(reordered)).not.toBe(JSON.stringify(plan));
+    fakes.repository.stageDocuments.set(`${RUN_ID}:plan`, reordered);
+    fakes.repository.runs.set(RUN_ID, { ...run, state: "PLANNED", updatedAt: FIXED_NOW });
+    const executorCalls = fakes.executorCalls;
+    const resumed = await runOnce(fakes.dependencies);
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(resumed.verdict).toEqual(first.verdict);
+    expect(fakes.executorCalls).toBe(executorCalls);
+  });
+
+  test("resumes a persisted verdict after recursively reordering object keys", async () => {
+    const fakes = makeDependencies();
+    const first = await runOnce(fakes.dependencies);
+    const saved = fakes.repository.stageDocuments.get(`${RUN_ID}:verdict`) as Record<string, unknown>;
+    if (!saved) throw new Error("missing persisted verdict");
+    const reordered = reorderObjectKeysDeep(saved);
+    expect(JSON.stringify(reordered)).not.toBe(JSON.stringify(saved));
+    fakes.repository.stageDocuments.set(`${RUN_ID}:verdict`, reordered);
+    const executorCalls = fakes.executorCalls;
+    const resumed = await runOnce(fakes.dependencies);
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(resumed.verdict).toEqual(first.verdict);
+    expect(fakes.executorCalls).toBe(executorCalls);
   });
 
   test("rejects invalid, skipped, and backward state transitions", () => {

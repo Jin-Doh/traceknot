@@ -2,7 +2,6 @@
   "schemaVersion": "verification-run/v1",
   "runId": "run-1",
   "requestId": "request-1",
-  "rootIdentity": "repository",
   "snapshotId": "snapshot-1",
   "state": "TERMINAL",
   "observationIds": ["observation-1"],
