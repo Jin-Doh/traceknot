@@ -17,7 +17,7 @@ export type VerificationExecutionOutput=Readonly<{status:"passed"|"failed"|"bloc
 export type BrowserExecutionRequest=VerificationExecutionRequest; export type BrowserExecutionOutput=VerificationExecutionOutput; export type StoredArtifact=CanonicalVerificationResultArtifact; export type ApprovalRequest=Readonly<{runId:string;defect:DefectSummary}>; export type ApprovalResult=Readonly<{approved:boolean;acceptanceExpiresAt?:string}>; export type UsageEvent=Readonly<{runId:string;obligationId?:string;event:"execution"|"artifact"|"approval"}>;
 export type StageName="request"|"basis"|"discovery"|"plan"|"execution"|"evidence"|"residual-risk"|"verdict";
 export interface VerificationExecutor {readonly executeObligation?:(i:VerificationExecutionRequest)=>MaybePromise<VerificationExecutionOutput|undefined>;readonly execute?:(i:VerificationExecutionRequest)=>MaybePromise<VerificationExecutionOutput|undefined>};
-export interface ArtifactStore {readonly storeVerificationResultArtifact?:(a:CanonicalVerificationResultArtifact,i:VerificationExecutionRequest)=>MaybePromise<CanonicalVerificationResultArtifact|void>;readonly storeArtifact?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact|void>;readonly putArtifact?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact|void>;readonly store?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact|void>};
+export interface ArtifactStore {readonly storeVerificationResultArtifact?:(a:CanonicalVerificationResultArtifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly storeArtifact?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly putArtifact?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly store?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>};
 export interface CapabilityProvider {readonly hasCapability?:(s:string)=>MaybePromise<boolean>;readonly has?:(s:string)=>MaybePromise<boolean>;readonly getCapabilities?:()=>MaybePromise<readonly string[]>;readonly capabilities?:readonly string[]};
 export interface BrowserExecutor {readonly executeBrowser?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>;readonly execute?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>};
 export interface ApprovalProvider {readonly requestApproval?:(i:ApprovalRequest)=>MaybePromise<ApprovalResult|undefined>;readonly approve?:(i:ApprovalRequest)=>MaybePromise<ApprovalResult|undefined>};
@@ -98,7 +98,8 @@ export async function establishTestBasis(input: EstablishTestBasisInput): Promis
 function material(item: VerificationBasisItem): string { return `${item.id} ${item.kind} ${item.text} ${item.source ?? ""}`.toLowerCase(); }
 function riskLevel(item: VerificationBasisItem): RiskLevel {
   const text = material(item);
-  if (item.origin === "explicit" && /\b(release|security|migration|persistence|persist|deployment|deploy)\b/.test(text)) return "R3";
+  if (/\b(release|migration|migrat\w*|persistence|persist\w*|destructive|delete\w*|drop|truncate|destroy\w*|irreversible|production|prod(?:uction)?|infrastructure|infra|deployment|deploy\w*|rollout|security)\b/.test(text) ||
+      /\bunknown\s+(?:material\s+)?scope\b|\bmaterial(?:ly)?\s+unknown\s+scope\b|\bscope\s+(?:unknown|uncertain|undetermined|unbounded)\b/.test(text)) return "R3";
   if (["contract", "invariant", "defect", "policy", "acceptance-criterion", "requirement"].includes(item.kind) ||
       /\b(runtime|concurr\w*|parallel\w*|race|retry|retries|recover\w*|browser|web|ui|visual|flow|orchestrat\w*|resume|checkpoint|snapshot|executor|capability|crash|timeout|cancel|idempot\w*)\b/.test(text)) return "R2";
   return "R1";
@@ -142,6 +143,14 @@ function executionFor(obligation: VerificationObligationPlan, verdict: Verificat
   return { kind, identity, startedAt: now, finishedAt: now, exitStatus, ...(typeof output?.exitCode === "number" && Number.isInteger(output.exitCode) ? { exitCode: output.exitCode } : {}) };
 }
 async function storeArtifact(store: ArtifactStore, artifact: CanonicalVerificationResultArtifact, input: VerificationExecutionRequest): Promise<CanonicalVerificationResultArtifact | undefined> { const saved = store.storeVerificationResultArtifact ? await store.storeVerificationResultArtifact(artifact, input) : store.storeArtifact ? await store.storeArtifact(artifact, input) : store.putArtifact ? await store.putArtifact(artifact, input) : store.store ? await store.store(artifact, input) : undefined; return saved && validArtifact(saved) && saved.digest === artifact.digest ? saved : undefined; }
+async function assertCanonicalPlan(request: VerificationRequest, basis: BasisDocument, discovery: DiscoveryDocument, plan: PlanDocument, dependencies: VerificationRunDependencies): Promise<void> {
+  const canonical = await buildVerificationPlan({ request, basis, discovery, dependencies });
+  if (JSON.stringify(canonical) !== JSON.stringify(plan)) throw Error("invalid persisted plan canonicalization");
+}
+async function assertCanonicalVerdict(input: ResolveVerdictInput, persisted: VerdictDocument): Promise<void> {
+  const canonical = await resolveVerdict(input);
+  if (JSON.stringify(canonical.verdict) !== JSON.stringify(persisted.verdict)) throw Error("invalid persisted verdict canonicalization");
+}
 export async function executeObligations(input: ExecuteObligationsInput): Promise<ExecutionDocument> {
   validRequest(input.request);
   if (input.checkpoint) validateStage("execution", input.checkpoint, input.request, { plan: input.plan });
@@ -176,7 +185,7 @@ export async function executeObligations(input: ExecuteObligationsInput): Promis
       for (const artifact of canonical) {
         if (!validArtifact(artifact)) continue;
         const stored = await storeArtifact(input.dependencies.artifactStore, artifact, request);
-        if (stored) { artifacts.push(stored); await record(input.dependencies.usageRecorder, { runId: input.runId, obligationId: obligation.id, event: "artifact" }); }
+        if (stored) artifacts.push(stored);
       }
     }
     const execution = executionFor(obligation, verdict, observedAt, output, producer);
@@ -187,8 +196,9 @@ export async function executeObligations(input: ExecuteObligationsInput): Promis
     evidence.push({ schemaVersion: "verification-evidence/v1", evidenceId: `evidence:${obligation.id}`, requestId: observationRequestId, snapshotId: observationSnapshotId, obligationId: obligation.id, producer, execution, result: { verdict, summary, ...(verdict === "PASS" ? { passed: 1 } : verdict === "FAIL" ? { failed: 1 } : {}), artifacts: artifacts.map(item => item.digest) }, observedAt });
     claims.push({ schemaVersion: "evidence-claim/v1", claimId: `claim:${obligation.id}`, requestId: input.request.requestId, snapshotId: input.request.project.snapshotId, obligationId: obligation.id, criterionId: `criterion:${obligation.id}`, observationIds: [observationId], claim: summary });
     completed.add(obligation.id);
-    await record(input.dependencies.usageRecorder, { runId: input.runId, obligationId: obligation.id, event: "execution" });
     await persistCheckpoint();
+    for (const _artifact of artifacts) await record(input.dependencies.usageRecorder, { runId: input.runId, obligationId: obligation.id, event: "artifact" });
+    await record(input.dependencies.usageRecorder, { runId: input.runId, obligationId: obligation.id, event: "execution" });
   }
   return freeze({ schemaVersion: "verification-execution/v1", requestId: input.request.requestId, snapshotId: input.request.project.snapshotId, observations: observations.sort((a, b) => a.observationId.localeCompare(b.observationId)), claims: claims.sort((a, b) => a.claimId.localeCompare(b.claimId)), evidence: evidence.sort((a, b) => a.evidenceId.localeCompare(b.evidenceId)) });
 }
@@ -358,6 +368,7 @@ export async function runVerification(input: RunVerificationInput): Promise<RunV
     }
     const plan = documents.plan ?? await loadCheckedStage<PlanDocument>(repository, input.runId, "plan", req, documents);
     if (plan) documents.plan = plan;
+    if (plan && basis && discovery) await assertCanonicalPlan(req, basis, discovery, plan, dependencies);
     if (run.state === "PLANNED") {
       if (!plan) throw Error("plan document is missing");
       const checkpoint = documents.execution ?? await loadCheckedStage<ExecutionDocument>(repository, input.runId, "execution", req, documents);
@@ -395,14 +406,38 @@ export async function runVerification(input: RunVerificationInput): Promise<RunV
       await saveRun(repository, run);
       continue;
     }
+    const residual = documents["residual-risk"] ?? await loadCheckedStage<ResidualRiskDocument>(repository, input.runId, "residual-risk", req, documents);
+    if (residual) documents["residual-risk"] = residual;
     const verdict = documents.verdict ?? await loadCheckedStage<VerdictDocument>(repository, input.runId, "verdict", req, documents);
-    if (!verdict) throw Error("verdict document is missing");
+    if (!basis || !discovery || !plan || !execution || !evidence || !residual || !verdict) throw Error("proof documents are missing");
+    await assertCanonicalVerdict({ runId: input.runId, request: req, basis, discovery, plan, execution, evidence, residualRisk: residual, dependencies }, verdict);
     documents.verdict = verdict;
     run = transitionRunState(run, "TERMINAL", clockNow(dependencies.now));
     await saveRun(repository, run);
   }
-  const verdict = documents.verdict ?? await loadCheckedStage<VerdictDocument>(repository, input.runId, "verdict", req, documents);
-  if (!verdict) throw Error("terminal run has no verdict document");
-  documents.verdict = verdict;
-  return freeze({ run, verdict: verdict.verdict, documents });
+  const finalBasis = documents.basis ?? await loadCheckedStage<BasisDocument>(repository, input.runId, "basis", req, documents);
+  if (!finalBasis) throw Error("basis document is missing");
+  documents.basis = finalBasis;
+  const finalDiscovery = documents.discovery ?? await loadCheckedStage<DiscoveryDocument>(repository, input.runId, "discovery", req, documents);
+  if (!finalDiscovery) throw Error("discovery document is missing");
+  documents.discovery = finalDiscovery;
+  const finalPlan = documents.plan ?? await loadCheckedStage<PlanDocument>(repository, input.runId, "plan", req, documents);
+  if (!finalPlan) throw Error("plan document is missing");
+  documents.plan = finalPlan;
+  await assertCanonicalPlan(req, finalBasis, finalDiscovery, finalPlan, dependencies);
+  const finalExecution = documents.execution ?? await loadCheckedStage<ExecutionDocument>(repository, input.runId, "execution", req, documents);
+  if (!finalExecution) throw Error("execution document is missing");
+  documents.execution = finalExecution;
+  validateExecutionCompleteness(finalExecution, finalPlan);
+  const finalEvidence = documents.evidence ?? await loadCheckedStage<EvidenceDocument>(repository, input.runId, "evidence", req, documents);
+  if (!finalEvidence) throw Error("evidence document is missing");
+  documents.evidence = finalEvidence;
+  const finalResidual = documents["residual-risk"] ?? await loadCheckedStage<ResidualRiskDocument>(repository, input.runId, "residual-risk", req, documents);
+  if (!finalResidual) throw Error("residual-risk document is missing");
+  documents["residual-risk"] = finalResidual;
+  const finalVerdict = documents.verdict ?? await loadCheckedStage<VerdictDocument>(repository, input.runId, "verdict", req, documents);
+  if (!finalVerdict) throw Error("terminal run has no verdict document");
+  await assertCanonicalVerdict({ runId: input.runId, request: req, basis: finalBasis, discovery: finalDiscovery, plan: finalPlan, execution: finalExecution, evidence: finalEvidence, residualRisk: finalResidual, dependencies }, finalVerdict);
+  documents.verdict = finalVerdict;
+  return freeze({ run, verdict: finalVerdict.verdict, documents });
 }

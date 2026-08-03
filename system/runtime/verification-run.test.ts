@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { Artifact } from "../core/qa-core";
 import {
   buildVerificationPlan,
   createInitialRun,
@@ -73,12 +74,12 @@ function makeDependencies(options: FakeOptions = {}): FakePorts & { dependencies
     },
   } as unknown as BrowserExecutor;
   const capabilityProvider = { has: () => !options.missingCapability } as unknown as CapabilityProvider;
-  const artifactStore = {
-    storeVerificationResultArtifact: async (artifact: unknown) => options.missingArtifactStorage ? undefined : artifact,
-    storeArtifact: async (artifact: unknown) => options.missingArtifactStorage ? undefined : artifact,
-    putArtifact: async (artifact: unknown) => options.missingArtifactStorage ? undefined : artifact,
-    store: async (artifact: unknown) => options.missingArtifactStorage ? undefined : artifact,
-  } as unknown as ArtifactStore;
+  const artifactStore: ArtifactStore = {
+    storeVerificationResultArtifact: async (artifact: Artifact) => options.missingArtifactStorage ? { type: "unexpected-artifact", digest: "c".repeat(64) } : artifact,
+    storeArtifact: async (artifact: Artifact) => options.missingArtifactStorage ? { type: "unexpected-artifact", digest: "c".repeat(64) } : artifact,
+    putArtifact: async (artifact: Artifact) => options.missingArtifactStorage ? { type: "unexpected-artifact", digest: "c".repeat(64) } : artifact,
+    store: async (artifact: Artifact) => options.missingArtifactStorage ? { type: "unexpected-artifact", digest: "c".repeat(64) } : artifact,
+  };
   const approvalProvider = { requestApproval: async () => ({ approved: true, approvalId: "approval-001" }) } as unknown as ApprovalProvider;
   const usageRecorder = { recordUsage: async () => undefined, record: async () => undefined } as unknown as UsageRecorder;
   const dependencies = {
@@ -199,6 +200,23 @@ describe("verification run orchestration", () => {
     expect(browserFakes.executorCalls).toBe(0);
   });
 
+  test.each([
+    "release",
+    "migration",
+    "persistence",
+    "destructive operation",
+    "production infrastructure",
+    "deployment rollout",
+    "security",
+    "unknown material scope",
+  ])("classifies derived %s triggers as R3", async trigger => {
+    const request = { ...makeRequest(), testBasis: [{ id: `derived-${trigger.replaceAll(" ", "-")}`, kind: "request" as const, origin: "derived" as const, text: `The change has ${trigger}.` }] } satisfies VerificationRequest;
+    const fakes = makeDependencies();
+    const basis = await establishTestBasis({ request, dependencies: fakes.dependencies });
+    const discovery = await performRiskDiscovery({ request, basis, dependencies: fakes.dependencies });
+    expect(discovery.risks[0]?.level).toBe("R3");
+  });
+
   test("rejects malformed persisted stages before use", async () => {
     const fakes = makeDependencies();
     await runOnce(fakes.dependencies);
@@ -239,6 +257,7 @@ describe("verification run orchestration", () => {
     const fakes = makeDependencies();
     fakes.repository.failNextState = "EXECUTING";
     await expect(runOnce(fakes.dependencies)).rejects.toThrow("simulated saveRun crash");
+
     const calls = fakes.executorCalls;
     const resumed = await runOnce(fakes.dependencies);
     expect(resumed.run.state).toBe("TERMINAL");
@@ -254,6 +273,25 @@ describe("verification run orchestration", () => {
     fakes.repository.runs.set(RUN_ID, { ...run, state: "PLANNED", updatedAt: FIXED_NOW });
     const executorCalls = fakes.executorCalls;
     await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted plan universe");
+    expect(fakes.executorCalls).toBe(executorCalls);
+  });
+  test.each(["independence", "evidenceType", "completionCriteria"] as const)("rejects a persisted plan with a tampered obligation %s before execution", async field => {
+    const fakes = makeDependencies();
+    await runOnce(fakes.dependencies);
+    const run = fakes.repository.runs.get(RUN_ID);
+    const plan = fakes.repository.stageDocuments.get(`${RUN_ID}:plan`) as Record<string, unknown>;
+    if (!run || !plan) throw new Error("missing persisted plan");
+    const obligations = (plan.obligations as Array<Record<string, unknown>>).map(item => {
+      const obligation = { ...item };
+      if (field === "independence") obligation.independence = "self-check";
+      if (field === "evidenceType") obligation.evidenceType = "review";
+      if (field === "completionCriteria") obligation.completionCriteria = ["tampered completion"];
+      return obligation;
+    });
+    fakes.repository.stageDocuments.set(`${RUN_ID}:plan`, { ...plan, obligations });
+    fakes.repository.runs.set(RUN_ID, { ...run, state: "PLANNED", updatedAt: FIXED_NOW });
+    const executorCalls = fakes.executorCalls;
+    await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted plan canonicalization");
     expect(fakes.executorCalls).toBe(executorCalls);
   });
 
@@ -274,6 +312,20 @@ describe("verification run orchestration", () => {
     fakes.repository.runs.set(RUN_ID, { ...run, state: "VERDICT_RESOLVED", updatedAt: FIXED_NOW });
     fakes.repository.stageDocuments.set(`${RUN_ID}:verdict`, { ...saved, verdict: { ...nested, snapshotId: "wrong-snapshot" } });
     await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted verdict stage");
+  });
+
+  test.each(["TERMINAL", "VERDICT_RESOLVED"] as const)("rejects a tampered nested verdict payload on %s resume", async state => {
+    const fakes = makeDependencies({ missingExecutorOutput: true });
+    await runOnce(fakes.dependencies);
+    const run = fakes.repository.runs.get(RUN_ID);
+    const saved = fakes.repository.stageDocuments.get(`${RUN_ID}:verdict`) as Record<string, unknown>;
+    const nested = saved.verdict as Record<string, unknown>;
+    if (!run) throw new Error("missing run");
+    fakes.repository.runs.set(RUN_ID, { ...run, state, updatedAt: FIXED_NOW });
+    fakes.repository.stageDocuments.set(`${RUN_ID}:verdict`, { ...saved, verdict: { ...nested, qaVerdict: "PASS" } });
+    const executorCalls = fakes.executorCalls;
+    await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted verdict canonicalization");
+    expect(fakes.executorCalls).toBe(executorCalls);
   });
 
   test("persists one checkpoint per obligation and resumes only the unfinished obligation", async () => {
@@ -298,6 +350,35 @@ describe("verification run orchestration", () => {
     expect(seen).toHaveLength(3);
     expect(seen[2]).toBe(seen[1]);
     expect(seen[2]).not.toBe(seen[0]);
+  });
+
+  test("saves the completed checkpoint before fallible usage recording", async () => {
+    const fakes = makeDependencies();
+    let artifactStores = 0;
+    const artifactStore: ArtifactStore = {
+      storeVerificationResultArtifact: async artifact => { artifactStores++; return artifact; },
+    };
+    let executionUsageCalls = 0;
+    let throwOnce = true;
+    const usageRecorder: UsageRecorder = {
+      recordUsage: async event => {
+        if (event.event === "execution") {
+          executionUsageCalls++;
+          if (throwOnce) { throwOnce = false; throw new Error("usage recorder failed"); }
+        }
+      },
+    };
+    const dependencies = { ...fakes.dependencies, artifactStore, usageRecorder };
+    await expect(runOnce(dependencies)).rejects.toThrow("usage recorder failed");
+    const checkpoint = fakes.repository.stageDocuments.get(`${RUN_ID}:execution`) as { claims: readonly { obligationId: string }[] };
+    expect(checkpoint.claims).toHaveLength(1);
+    const executorCalls = fakes.executorCalls;
+    const artifactCalls = artifactStores;
+    const resumed = await runOnce(dependencies);
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(fakes.executorCalls).toBe(executorCalls + 1);
+    expect(artifactStores).toBe(artifactCalls + 1);
+    expect(executionUsageCalls).toBe(2);
   });
 
   test("uses canonical unavailable provenance while preserving rejected evidence checks", async () => {
