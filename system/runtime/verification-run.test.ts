@@ -14,12 +14,13 @@ import {
   type CanonicalRunState,
   type CapabilityProvider,
   executeObligations,
+  type ExecutionAuthority,
   type RepositoryPort,
   type UsageRecorder,
-  type VerificationRequest,
   type VerificationExecutor,
   type VerificationExecutionOutput,
   type VerificationExecutionRequest,
+  type VerificationRequest,
   type VerificationRunDependencies,
   type ExecutionDocument,
 } from "./verification-run";
@@ -31,7 +32,7 @@ const SNAPSHOT_ID = "snapshot-001";
 
 type RunInput = Parameters<typeof runVerification>[0];
 type RunStateValue = CanonicalRunState["state"];
-type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer" };
+type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean };
 
 class FakeRepository {
   readonly runs = new Map<string, CanonicalRunState>();
@@ -45,7 +46,7 @@ class FakeRepository {
   async saveStageDocument(runId: string, stage: string, document: unknown): Promise<void> { this.stageWrites.push(stage); if (this.failNextStage === stage) { this.failNextStage = undefined; throw new Error("simulated saveStage crash"); } this.stageDocuments.set(`${runId}:${stage}`, structuredClone(document)); }
 }
 
-type FakePorts = { repository: FakeRepository; executorCalls: number; browserCalls: number };
+type FakePorts = { repository: FakeRepository; executorCalls: number; browserCalls: number; authorityCalls: number };
 
 function makeRequest(requestId = REQUEST_ID): VerificationRequest {
   return {
@@ -78,6 +79,24 @@ function makeDependencies(options: FakeOptions = {}): FakePorts & { dependencies
       return { status: "PASS" as const, runId: request.runId, requestId: request.requestId, snapshotId: request.snapshotId, idempotencyKey: request.idempotencyKey, producer: { kind: "deterministic-verifier" as const, identity: "fixture-browser", independence: options.producerIndependence ?? "independent-producer" }, artifacts: [{ type: "verification-result", digest: "b".repeat(64) }] };
     },
   } as unknown as BrowserExecutor;
+  let authorityCalls = 0;
+  const authorities = new Map<string, ExecutionAuthority>();
+  const executionAuthority = {
+    issueExecutionAuthority: async (binding: ExecutionAuthority["binding"]): Promise<ExecutionAuthority | undefined> => {
+      if (options.missingAuthority) return undefined;
+      const existing = authorities.get(binding.idempotencyKey);
+      if (existing) return existing;
+      const issuedBinding = options.mismatchedAuthority ? { ...structuredClone(binding), snapshotId: "wrong-snapshot" } : structuredClone(binding);
+      const authority: ExecutionAuthority = { schemaVersion: "verification-execution-authority/v1", authorityId: `authority:${binding.obligationId}`, issuer: "fixture-authority", binding: issuedBinding };
+      authorities.set(binding.idempotencyKey, authority);
+      return authority;
+    },
+    verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]): Promise<boolean> => {
+      authorityCalls++;
+      const stored = authorities.get(binding.idempotencyKey);
+      return Boolean(stored && JSON.stringify(stored) === JSON.stringify(authority) && JSON.stringify(stored.binding) === JSON.stringify(binding));
+    },
+  };
   const capabilityProvider = { has: () => !options.missingCapability } as unknown as CapabilityProvider;
   const artifactStore: ArtifactStore = {
     storeVerificationResultArtifact: async (artifact: Artifact) => options.missingArtifactStorage ? { type: "unexpected-artifact", digest: "c".repeat(64) } : artifact,
@@ -88,6 +107,7 @@ function makeDependencies(options: FakeOptions = {}): FakePorts & { dependencies
   const approvalProvider = { requestApproval: async () => ({ approved: true, approvalId: "approval-001" }) } as unknown as ApprovalProvider;
   const usageRecorder = { recordUsage: async () => undefined, record: async () => undefined } as unknown as UsageRecorder;
   const dependencies = {
+    executionAuthority,
     repository: repository as unknown as RepositoryPort,
     executor,
     artifactStore,
@@ -98,7 +118,7 @@ function makeDependencies(options: FakeOptions = {}): FakePorts & { dependencies
     now: () => FIXED_NOW,
     clock: { now: () => FIXED_NOW },
   } as unknown as VerificationRunDependencies;
-  return { repository, dependencies, get executorCalls() { return executorCalls; }, get browserCalls() { return browserCalls; } };
+  return { repository, dependencies, get executorCalls() { return executorCalls; }, get browserCalls() { return browserCalls; }, get authorityCalls() { return authorityCalls; } };
 }
 
 async function runOnce(dependencies: VerificationRunDependencies, runId = RUN_ID, requestId = REQUEST_ID): Promise<Awaited<ReturnType<typeof runVerification>>> {
@@ -185,6 +205,9 @@ describe("verification run orchestration", () => {
     };
     const result = await runVerification({ runId: "explicit-failure", request: makeRequest(), dependencies: { ...fakes.dependencies, executor } });
     expect(result.verdict.qaVerdict).toBe("FAIL");
+    const failedEvidence = result.documents.execution?.evidence.filter(item => item.result.verdict === "FAIL") ?? [];
+    expect(failedEvidence.length).toBeGreaterThan(0);
+    expect(result.documents.execution?.authorities.every(authority => authority.binding.result.verdict === "FAIL" && authority.binding.artifactDigests.length === 1 && authority.binding.artifactDigests[0] === "f".repeat(64))).toBe(true);
   });
   test.each([
     ["invalid executor digest", { invalidArtifact: true }],
@@ -537,6 +560,98 @@ describe("verification run orchestration", () => {
     fakes.repository.runs.set(RUN_ID, { ...run, state: "EXECUTING", updatedAt: FIXED_NOW });
     const executorCalls = fakes.executorCalls;
     await expect(runOnce(fakes.dependencies)).rejects.toThrow();
+    expect(fakes.executorCalls).toBe(executorCalls);
+  });
+  test("rejects persisted observation and evidence PASS mutation against fixed FAIL authority before executor recall", async () => {
+    const fakes = makeDependencies();
+    const executor: VerificationExecutor = {
+      executeObligation: async request => ({
+        status: "FAIL",
+        runId: request.runId,
+        requestId: request.requestId,
+        snapshotId: request.snapshotId,
+        idempotencyKey: request.idempotencyKey,
+        producer: { kind: "deterministic-verifier", identity: "fixture-failing-executor", independence: "independent-producer" },
+        artifacts: [{ type: "verification-result", digest: "f".repeat(64) }],
+      }),
+    };
+    const dependencies = { ...fakes.dependencies, executor };
+    const runId = "authority-observation-tamper";
+    expect((await runOnce(dependencies, runId)).verdict.qaVerdict).toBe("FAIL");
+    const run = fakes.repository.runs.get(runId);
+    const saved = fakes.repository.stageDocuments.get(`${runId}:execution`) as ExecutionDocument;
+    if (!run || !saved) throw new Error("missing persisted execution");
+    const targetObservation = saved.observations[0]!;
+    const targetEvidence = saved.evidence.find(item => item.obligationId === targetObservation.observationId.slice("observation:".length))!;
+    const observations = saved.observations.map(item => item.observationId === targetObservation.observationId ? { ...item, execution: { ...item.execution, exitStatus: "passed" as const } } : item);
+    const evidence = saved.evidence.map(item => {
+      if (item.evidenceId !== targetEvidence.evidenceId) return item;
+      const { failed: _failed, ...passResult } = item.result;
+      return { ...item, execution: { ...item.execution, exitStatus: "passed" as const }, result: { ...passResult, verdict: "PASS" as const, passed: 1 } };
+    });
+    fakes.repository.stageDocuments.set(`${runId}:execution`, { ...saved, observations, evidence });
+    fakes.repository.runs.set(runId, { ...run, state: "EXECUTING", updatedAt: FIXED_NOW });
+    const executorCalls = fakes.executorCalls;
+    await expect(runOnce(dependencies, runId)).rejects.toThrow("invalid execution authority binding");
+    expect(fakes.executorCalls).toBe(executorCalls);
+  });
+  test.each([
+    ["missing", { missingAuthority: true }],
+    ["mismatched", { mismatchedAuthority: true }],
+  ] as const)("fails closed when execution authority is %s", async (_name, options) => {
+    const result = await runOnce(makeDependencies(options).dependencies, `authority-${_name}`);
+    expect(result.verdict.qaVerdict).toBe("INCOMPLETE");
+    expect(result.verdict.qaVerdict).not.toBe("PASS");
+  });
+  test("verifies persisted authority on terminal resume without executor recall", async () => {
+    const fakes = makeDependencies();
+    const first = await runOnce(fakes.dependencies, "authority-terminal");
+    expect(first.verdict.qaVerdict).toBe("PASS");
+    const executorCalls = fakes.executorCalls;
+    const authorityCalls = fakes.authorityCalls;
+    const resumed = await runOnce(fakes.dependencies, "authority-terminal");
+    expect(resumed.verdict).toEqual(first.verdict);
+    expect(fakes.executorCalls).toBe(executorCalls);
+    expect(fakes.authorityCalls).toBeGreaterThan(authorityCalls);
+  });
+  test("rejects a tampered accepted evaluation before executor dispatch", async () => {
+    const fakes = makeDependencies();
+    const runId = "evidence-evaluation-tamper";
+    await runOnce(fakes.dependencies, runId);
+    const run = fakes.repository.runs.get(runId);
+    const saved = fakes.repository.stageDocuments.get(`${runId}:evidence`) as Record<string, unknown>;
+    if (!run || !saved) throw new Error("missing persisted evidence");
+    const evaluations = (saved.evaluations as Array<Record<string, unknown>>).map((evaluation, index) => index === 0 ? { ...evaluation, status: "REJECTED" } : evaluation);
+    fakes.repository.stageDocuments.set(`${runId}:evidence`, { ...saved, evaluations });
+    fakes.repository.runs.set(runId, { ...run, state: "EVIDENCE_EVALUATED", updatedAt: FIXED_NOW });
+    const executorCalls = fakes.executorCalls;
+    await expect(runOnce(fakes.dependencies, runId)).rejects.toThrow();
+    expect(fakes.executorCalls).toBe(executorCalls);
+  });
+  test("rejects a material residual defect inserted after failed verdict save", async () => {
+    const fakes = makeDependencies();
+    const executor: VerificationExecutor = {
+      executeObligation: async request => ({
+        status: "FAIL",
+        runId: request.runId,
+        requestId: request.requestId,
+        snapshotId: request.snapshotId,
+        idempotencyKey: request.idempotencyKey,
+        producer: { kind: "deterministic-verifier", identity: "fixture-failing-executor", independence: "independent-producer" },
+        artifacts: [{ type: "verification-result", digest: "f".repeat(64) }],
+      }),
+    };
+    const dependencies = { ...fakes.dependencies, executor };
+    const runId = "residual-risk-tamper";
+    const first = await runOnce(dependencies, runId);
+    expect(first.verdict.qaVerdict).toBe("FAIL");
+    const run = fakes.repository.runs.get(runId);
+    const saved = fakes.repository.stageDocuments.get(`${runId}:residual-risk`) as Record<string, unknown>;
+    if (!run || !saved) throw new Error("missing persisted residual risk");
+    fakes.repository.stageDocuments.set(`${runId}:residual-risk`, { ...saved, defects: [{ id: "defect:tampered" }] });
+    fakes.repository.runs.set(runId, { ...run, state: "VERDICT_RESOLVED", updatedAt: FIXED_NOW });
+    const executorCalls = fakes.executorCalls;
+    await expect(runOnce(dependencies, runId)).rejects.toThrow("invalid persisted residual-risk canonicalization");
     expect(fakes.executorCalls).toBe(executorCalls);
   });
 
