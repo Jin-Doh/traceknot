@@ -87,6 +87,13 @@ export type EvidenceClaim = {
   observationIds: readonly string[];
   claim: string;
 };
+export type TraceabilityLink = {
+  schemaVersion: "traceability-link/v1";
+  criterionId: string;
+  conditionIds: readonly string[];
+  basisIds: readonly string[];
+  riskIds: readonly string[];
+};
 
 export type EvidenceRejectionReason =
   | "SNAPSHOT_MISMATCH"
@@ -173,6 +180,7 @@ export type ProofCarryingVerdictInput = {
   defects: readonly DefectSummary[];
   coverage: CoverageInput;
   evaluatedAt: string;
+  traceability: readonly TraceabilityLink[];
 };
 
 export type CoverageResult = { total: number; covered: number; uncoveredIds: string[] };
@@ -285,6 +293,12 @@ function assertUniqueStrings(values: readonly string[], label: string): void {
     seen.add(value);
   }
 }
+function assertValidCriterion(criterion: SuccessCriterion): void {
+  if (criterion.expected.assertions.length === 0) throw new Error(`criterion ${criterion.criterionId} requires assertions`);
+  if (criterion.requiredScope.selectors.length === 0) throw new Error(`criterion ${criterion.criterionId} requires scope selectors`);
+  if (criterion.requiredArtifacts.length === 0) throw new Error(`criterion ${criterion.criterionId} requires artifacts`);
+  assertUniqueStrings(criterion.requiredArtifacts, `required artifact in ${criterion.criterionId}`);
+}
 
 type GraphIndexes = {
   obligationsById: Map<string, ProofCarryingObligation>;
@@ -318,9 +332,7 @@ function buildGraphIndexes(
       if (!criteriaById.has(criterionId)) throw new Error(`unknown criterion ${criterionId}`);
     }
   }
-  for (const criterion of criteria) {
-    assertUniqueStrings(criterion.requiredArtifacts, `required artifact in ${criterion.criterionId}`);
-  }
+  for (const criterion of criteria) assertValidCriterion(criterion);
   for (const claim of claims) {
     assertUniqueStrings(claim.observationIds, `observation reference in ${claim.claimId}`);
     if (!obligationsById.has(claim.obligationId)) throw new Error(`unknown obligation ${claim.obligationId}`);
@@ -342,6 +354,42 @@ function buildGraphIndexes(
     groupedEvaluations.push(evaluation);
   }
   return { obligationsById, criteriaById, observationsById, claimsById, evaluationsById, claimsByObligation, evaluationsByClaim };
+}
+function validTraceability(input: ProofCarryingVerdictInput, indexes: GraphIndexes): boolean {
+  if (!input.traceability) return false;
+  const linksByCriterion = assertUniqueIds(input.traceability, item => item.criterionId, "traceability link");
+  const basisIds = new Set(input.coverage.basisIds);
+  const coveredBasisIds = new Set(input.coverage.coveredBasisIds);
+  const conditionIds = new Set(input.coverage.conditionIds);
+  const coveredConditionIds = new Set(input.coverage.coveredConditionIds);
+  const riskIds = new Set(input.coverage.riskIds);
+  const coveredRiskIds = new Set(input.coverage.coveredRiskIds);
+  const mandatoryCriteria = new Set<string>();
+  for (const obligation of input.obligations) {
+    if (!obligation.mandatory) continue;
+    for (const criterionId of obligation.criterionIds) mandatoryCriteria.add(criterionId);
+  }
+  let valid = true;
+  for (const criterionId of mandatoryCriteria) {
+    if (!linksByCriterion.has(criterionId)) valid = false;
+  }
+  for (const link of input.traceability) {
+    if (!indexes.criteriaById.has(link.criterionId)) valid = false;
+    if (link.conditionIds.length === 0 || link.basisIds.length === 0) valid = false;
+    assertUniqueStrings(link.conditionIds, `condition in traceability ${link.criterionId}`);
+    assertUniqueStrings(link.basisIds, `basis in traceability ${link.criterionId}`);
+    assertUniqueStrings(link.riskIds, `risk in traceability ${link.criterionId}`);
+    for (const conditionId of link.conditionIds) {
+      if (!conditionIds.has(conditionId) || !coveredConditionIds.has(conditionId)) valid = false;
+    }
+    for (const basisId of link.basisIds) {
+      if (!basisIds.has(basisId) || !coveredBasisIds.has(basisId)) valid = false;
+    }
+    for (const riskId of link.riskIds) {
+      if (!riskIds.has(riskId) || !coveredRiskIds.has(riskId)) valid = false;
+    }
+  }
+  return valid;
 }
 
 type EvidenceEvaluationContext = {
@@ -427,7 +475,7 @@ export type EvaluateEvidenceInput = {
 
 export function evaluateEvidence(input: EvaluateEvidenceInput): EvidenceAcceptanceResult {
   assertUniqueStrings(input.claim.observationIds, `observation reference in ${input.claim.claimId}`);
-  assertUniqueStrings(input.criterion.requiredArtifacts, `required artifact in ${input.criterion.criterionId}`);
+  assertValidCriterion(input.criterion);
   const observationsById = assertUniqueIds(input.observations, item => item.observationId, "observation");
   return evaluateEvidenceIndexed({
     requestId: input.requestId,
@@ -441,6 +489,9 @@ export function evaluateEvidence(input: EvaluateEvidenceInput): EvidenceAcceptan
 }
 
 function linkedExecution(
+  requestId: string,
+  snapshotId: string,
+  obligation: ProofCarryingObligation,
   claims: readonly EvidenceClaim[],
   observationsById: Map<string, Observation>,
 ): { state: ExecutionState; observationIds: Set<string> } {
@@ -449,11 +500,17 @@ function linkedExecution(
   let hasCompleted = false;
   let hasNotExecutable = false;
   for (const claim of claims) {
+    if (
+      claim.requestId !== requestId ||
+      claim.snapshotId !== snapshotId ||
+      claim.obligationId !== obligation.id ||
+      !obligation.criterionIds.includes(claim.criterionId)
+    ) continue;
     for (const observationId of claim.observationIds) {
+      const observation = observationsById.get(observationId);
+      if (!observation || observation.requestId !== requestId || observation.snapshotId !== snapshotId) continue;
       if (linkedIds.has(observationId)) continue;
       linkedIds.add(observationId);
-      const observation = observationsById.get(observationId);
-      if (!observation) continue;
       if (observation.execution.exitStatus === "blocked" || observation.execution.exitStatus === "cancelled" || observation.execution.exitStatus === "timed-out") {
         hasNotExecutable = true;
       } else if (observation.execution.exitStatus === "passed" || observation.execution.exitStatus === "failed") {
@@ -472,7 +529,7 @@ function resolveObligationOutcomeIndexed(
   indexes: GraphIndexes,
 ): ObligationState {
   const claims = indexes.claimsByObligation.get(input.obligation.id) ?? [];
-  const execution = linkedExecution(claims, indexes.observationsById);
+  const execution = linkedExecution(input.requestId, input.snapshotId, input.obligation, claims, indexes.observationsById);
   const acceptedCriteria = new Set<string>();
   let hasEvaluation = false;
   let observedFailure = false;
@@ -492,16 +549,23 @@ function resolveObligationOutcomeIndexed(
     );
     let claimContradicts = false;
     let hasTargetObservation = false;
+    let allTargetObservations = true;
     for (const observationId of claim.observationIds) {
       const observation = indexes.observationsById.get(observationId);
-      if (!observation) continue;
-      const observationInScope = observation.requestId === input.requestId && observation.snapshotId === input.snapshotId;
-      if (claimInScope && observationInScope) {
-        hasTargetObservation = true;
-        if (independenceRank[observation.producer.independence] < requiredIndependence) independenceUnmet = true;
-        if (assertionContradicts(criterion, observation)) claimContradicts = true;
+      if (!observation) {
+        allTargetObservations = false;
+        continue;
       }
+      const observationInScope = observation.requestId === input.requestId && observation.snapshotId === input.snapshotId;
+      if (!claimInScope || !observationInScope) {
+        allTargetObservations = false;
+        continue;
+      }
+      hasTargetObservation = true;
+      if (independenceRank[observation.producer.independence] < requiredIndependence) independenceUnmet = true;
+      if (assertionContradicts(criterion, observation)) claimContradicts = true;
     }
+    if (claimInScope && hasTargetObservation && allTargetObservations && claimContradicts) observedFailure = true;
     const evaluations = indexes.evaluationsByClaim.get(claim.claimId) ?? [];
     for (const evaluation of evaluations) {
       hasEvaluation = true;
@@ -520,7 +584,7 @@ function resolveObligationOutcomeIndexed(
         observationsById: indexes.observationsById,
       });
       if (acceptance.accepted) acceptedCriteria.add(criterion.criterionId);
-      if (evaluationInScope && hasTargetObservation && (evaluation.checks.expectedResultViolated || claimContradicts)) observedFailure = true;
+      if (evaluationInScope && hasTargetObservation && allTargetObservations && evaluation.checks.expectedResultViolated) observedFailure = true;
       if (evaluationInScope && acceptance.rejectionReasons.includes("INDEPENDENCE_NOT_MET")) independenceUnmet = true;
     }
   }
@@ -574,6 +638,7 @@ export function resolveProofCarryingQaVerdict(input: ProofCarryingVerdictInput):
   if (!input.requestId || !input.snapshotId) throw new Error("requestId and snapshotId are required");
   if (Number.isNaN(Date.parse(input.evaluatedAt))) throw new Error("evaluatedAt must be an ISO date-time");
   const indexes = buildGraphIndexes(input.obligations, input.criteria, input.observations, input.claims, input.evaluations);
+  const traceabilityComplete = validTraceability(input, indexes);
   const mandatory = input.obligations.filter(item => item.mandatory);
 
   let passed = 0;
@@ -612,12 +677,12 @@ export function resolveProofCarryingQaVerdict(input: ProofCarryingVerdictInput):
   const conditionCoverage = coverage(input.coverage.conditionIds, input.coverage.coveredConditionIds);
   const obligationCoverage = coverage(mandatory.map(item => item.id), satisfiedIds);
   const coverageIncomplete =
+    !traceabilityComplete ||
     input.coverage.basisIds.length === 0 ||
     input.coverage.conditionIds.length === 0 ||
     basisCoverage.uncoveredIds.length > 0 ||
     riskCoverage.uncoveredIds.length > 0 ||
     conditionCoverage.uncoveredIds.length > 0;
-
   let qaVerdict: QaVerdict;
   let rationale: string;
   if (failed > 0 || openMaterial.length > 0) {
