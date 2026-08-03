@@ -107,6 +107,7 @@ const makeEntry = (options: EntryOptions = {}): Entry => {
       finishedAt: "2026-07-22T00:00:01.000Z",
       exitStatus: options.exitStatus ?? "passed",
       exitCode: options.exitStatus === "failed" ? 1 : 0,
+    },
     artifacts: options.artifacts ?? [{ type: "log", digest: LOG_DIGEST, path: "artifacts/qa-core.log" }],
     actualValues: options.actualValues,
   };

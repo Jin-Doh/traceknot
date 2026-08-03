@@ -503,7 +503,7 @@ function evaluateEvidenceIndexed(input: EvidenceEvaluationContext): EvidenceAcce
   }
   const checkReasons = new Set<EvidenceRejectionReason>();
   reasonsFromChecks(evaluation.checks, checkReasons);
-  addReasons(reasons, checkReasons);
+  addReasons(reasons, reasonArray(checkReasons));
 
   if (evaluation.status === "REJECTED") {
     if (checkReasons.size === 0 || !reasonsMatch(evaluation.rejectionReasons, reasons)) {
