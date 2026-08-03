@@ -34,7 +34,7 @@ class FakeRepository {
   failNextState?: RunStateValue;
   readonly stageWrites: string[] = [];
   async loadRun(runId: string): Promise<CanonicalRunState | undefined> { return this.runs.get(runId); }
-  async saveRun(run: CanonicalRunState): Promise<void> { this.runs.set(run.runId, structuredClone(run)); if (this.failNextState === run.state) { this.failNextState = undefined; throw new Error("simulated saveRun crash"); } }
+  async saveRun(run: CanonicalRunState): Promise<void> { if (this.failNextState === run.state) { this.failNextState = undefined; throw new Error("simulated saveRun crash"); } this.runs.set(run.runId, structuredClone(run)); }
   async loadStageDocument(runId: string, stage: string): Promise<unknown | undefined> { return this.stageDocuments.get(`${runId}:${stage}`); }
   async saveStageDocument(runId: string, stage: string, document: unknown): Promise<void> { this.stageWrites.push(stage); this.stageDocuments.set(`${runId}:${stage}`, structuredClone(document)); }
 }
@@ -184,6 +184,15 @@ describe("verification run orchestration", () => {
     expect(plan.obligations.find(item => item.id === "obligation:condition:z-browser")?.evidenceType).toBe("browser-result");
     const execution = await executeObligations({ runId: RUN_ID, request, plan, dependencies: deps });
     expect(execution.observations.find(item => item.observationId === "observation:obligation:condition:z-browser")?.execution.kind).toBe("browser");
+    const browserRequest = { ...makeRequest(), testBasis: [{ id: "browser-only", kind: "acceptance-criterion" as const, origin: "explicit" as const, text: "The browser flow renders." }] } satisfies VerificationRequest;
+    const browserFakes = makeDependencies();
+    const browserBasis = await establishTestBasis({ request: browserRequest, dependencies: browserFakes.dependencies });
+    const browserDiscovery = await performRiskDiscovery({ request: browserRequest, basis: browserBasis, dependencies: browserFakes.dependencies });
+    const browserPlan = await buildVerificationPlan({ request: browserRequest, basis: browserBasis, discovery: browserDiscovery, dependencies: browserFakes.dependencies });
+    const browserExecution = await executeObligations({ runId: RUN_ID, request: browserRequest, plan: browserPlan, dependencies: browserFakes.dependencies });
+    expect(browserExecution.observations[0]?.execution.kind).toBe("browser");
+    expect(browserFakes.browserCalls).toBe(1);
+    expect(browserFakes.executorCalls).toBe(0);
   });
 
   test("rejects malformed persisted stages before use", async () => {
@@ -194,6 +203,18 @@ describe("verification run orchestration", () => {
     fakes.repository.runs.set(RUN_ID, { ...run, state: "PLANNED", updatedAt: FIXED_NOW });
     fakes.repository.stageDocuments.set(`${RUN_ID}:basis`, { schemaVersion: "wrong", requestId: REQUEST_ID, snapshotId: SNAPSHOT_ID });
     await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted basis");
+  });
+
+  test("rejects cross-stage plan references before execution", async () => {
+    const fakes = makeDependencies();
+    await runOnce(fakes.dependencies);
+    const run = fakes.repository.runs.get(RUN_ID);
+    const plan = fakes.repository.stageDocuments.get(`${RUN_ID}:plan`) as Record<string, unknown>;
+    if (!run || !plan) throw new Error("missing persisted plan");
+    const obligations = (plan.obligations as Array<Record<string, unknown>>).map(item => ({ ...item, conditionIds: ["condition:unknown"] }));
+    fakes.repository.stageDocuments.set(`${RUN_ID}:plan`, { ...plan, obligations });
+    fakes.repository.runs.set(RUN_ID, { ...run, state: "PLANNED", updatedAt: FIXED_NOW });
+    await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted plan reference");
   });
 
   test("requires persisted request and root identity on resume", async () => {
