@@ -88,21 +88,17 @@ function validArtifact(value: unknown): value is CanonicalVerificationResultArti
 const validDate = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value) && !Number.isNaN(Date.parse(value));
 function canonicalExecution(value: unknown): Execution | undefined {
   if (!isRecord(value) || !EXECUTION_KINDS.includes(value.kind as Execution["kind"]) || typeof value.identity !== "string" || !value.identity || !validDate(value.startedAt) || !validDate(value.finishedAt) || !EXIT_STATUSES.includes(value.exitStatus as Execution["exitStatus"]) || (value.exitCode !== undefined && (typeof value.exitCode !== "number" || !Number.isInteger(value.exitCode)))) return undefined;
+  const startedAt = Date.parse(value.startedAt);
+  const finishedAt = Date.parse(value.finishedAt);
+  if (finishedAt < startedAt) return undefined;
   return { kind: value.kind as Execution["kind"], identity: value.identity, startedAt: value.startedAt, finishedAt: value.finishedAt, exitStatus: value.exitStatus as Execution["exitStatus"], ...(value.exitCode === undefined ? {} : { exitCode: value.exitCode }) };
 }
 function validExecution(value: unknown): value is Execution {
   return isRecord(value) && exactOwnKeys(value, ["kind", "identity", "startedAt", "finishedAt", "exitStatus"], ["exitCode"]) && canonicalExecution(value) !== undefined;
 }
 function validObservation(value: unknown): value is Observation {
-  if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "observationId", "requestId", "snapshotId", "producer", "execution", "artifacts"], ["actualValues"]) || value.schemaVersion !== "observation/v1" || typeof value.observationId !== "string" || !value.observationId || typeof value.requestId !== "string" || !value.requestId || typeof value.snapshotId !== "string" || !value.snapshotId || !validProducer(value.producer) || !validExecution(value.execution) || !Array.isArray(value.artifacts) || value.artifacts.some(artifact => !validArtifact(artifact))) return false;
-  const actualValues = value.actualValues;
-  if (actualValues === undefined) return true;
-  if (!isRecord(actualValues) || Array.isArray(actualValues)) return false;
-  const keys = Object.keys(actualValues);
-  return keys.length > 0 && keys.every(key => {
-    const actualValue = actualValues[key];
-    return Boolean(key) && (actualValue === null || typeof actualValue === "string" || typeof actualValue === "boolean" || (typeof actualValue === "number" && Number.isFinite(actualValue)));
-  });
+  if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "observationId", "requestId", "snapshotId", "producer", "execution", "artifacts"], ["actualValues"]) || "actualValues" in value || value.schemaVersion !== "observation/v1" || typeof value.observationId !== "string" || !value.observationId || typeof value.requestId !== "string" || !value.requestId || typeof value.snapshotId !== "string" || !value.snapshotId || !validProducer(value.producer) || !validExecution(value.execution) || !Array.isArray(value.artifacts) || value.artifacts.some(artifact => !validArtifact(artifact))) return false;
+  return true;
 }
 export function validEvidenceClaim(value: unknown): value is EvidenceClaim {
   return isRecord(value) &&
@@ -226,6 +222,8 @@ export async function performRiskDiscovery(input: PerformRiskDiscoveryInput): Pr
 }
 export async function buildVerificationPlan(input: BuildVerificationPlanInput): Promise<PlanDocument> {
   validRequest(input.request);
+  const canonical = canonicalDiscovery(input.request, input.basis);
+  if (!structurallyEqual(canonical, input.discovery)) throw Error("invalid discovery canonicalization");
   const risks = [...input.discovery.risks].sort((a, b) => a.id.localeCompare(b.id));
   const conditions = [...input.discovery.conditions].sort((a, b) => a.id.localeCompare(b.id));
   const obligations = conditions.map(item => {

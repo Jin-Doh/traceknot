@@ -226,6 +226,21 @@ test("rejects an authority observedAt mismatch before execution persistence", as
   expect(replay.issued[0]).toEqual(replay.signed[0]);
   expect(fakes.repository.stageWrites).not.toContain("execution");
 });
+test("rejects a reverse-clock signed executor replay before execution persistence", async () => {
+  const fakes = makeDependencies();
+  const request = { ...makeRequest("authority-reverse-clock"), testBasis: [makeRequest().testBasis[0]!] };
+  const basis = await establishTestBasis({ request, dependencies: fakes.dependencies });
+  const discovery = await performRiskDiscovery({ request, basis, dependencies: fakes.dependencies });
+  const plan = await buildVerificationPlan({ request, basis, discovery, dependencies: fakes.dependencies });
+  const replay = makeReplayAuthority(fakes, binding => binding);
+  const times = ["2026-08-03T00:00:11.000Z", "2026-08-03T00:00:10.000Z"];
+  const dependencies = { ...replay.dependencies, now: () => times.shift() ?? "2026-08-03T00:00:10.000Z" };
+  await expect(executeObligations({ runId: "authority-reverse-clock", request, plan, dependencies })).rejects.toThrow("execution authority issue failed");
+  expect(replay.issued).toHaveLength(1);
+  expect(replay.signed[0]?.binding.execution.startedAt).toBe("2026-08-03T00:00:11.000Z");
+  expect(replay.signed[0]?.binding.execution.finishedAt).toBe("2026-08-03T00:00:10.000Z");
+  expect(fakes.repository.stageWrites).not.toContain("execution");
+});
 test("rejects self producer with independent independence in an authority replay", async () => {
   const fakes = makeDependencies();
   const request = { ...makeRequest("authority-self-independent"), testBasis: [makeRequest().testBasis[0]!] };
@@ -718,6 +733,24 @@ describe("verification run orchestration", () => {
     expect(browserFakes.browserCalls).toBe(1);
     expect(browserFakes.executorCalls).toBe(0);
   });
+  test("accepts canonical discovery and rejects downgraded or foreign discovery at the direct plan API", async () => {
+    const request = makeRequest("direct-plan-discovery");
+    const fakes = makeDependencies();
+    const basis = await establishTestBasis({ request, dependencies: fakes.dependencies });
+    const discovery = await performRiskDiscovery({ request, basis, dependencies: fakes.dependencies });
+    const plan = await buildVerificationPlan({ request, basis, discovery, dependencies: fakes.dependencies });
+    expect(plan.schemaVersion).toBe("verification-plan/v1");
+    expect(plan.requestId).toBe(request.requestId);
+    const downgraded = {
+      ...discovery,
+      risks: discovery.risks.map((risk, index) => index === 0 ? { ...risk, level: "R1" as const, impact: 1, likelihood: 1 } : risk),
+    };
+    await expect(buildVerificationPlan({ request, basis, discovery: downgraded, dependencies: fakes.dependencies })).rejects.toThrow("invalid discovery canonicalization");
+    const foreignRequest = makeRequest("foreign-direct-plan-discovery");
+    const foreignBasis = await establishTestBasis({ request: foreignRequest, dependencies: fakes.dependencies });
+    const foreignDiscovery = await performRiskDiscovery({ request: foreignRequest, basis: foreignBasis, dependencies: fakes.dependencies });
+    await expect(buildVerificationPlan({ request, basis, discovery: foreignDiscovery, dependencies: fakes.dependencies })).rejects.toThrow("invalid discovery canonicalization");
+  });
   test("derives R3 independent-producer obligations from migration change material with neutral basis", async () => {
     const request = { ...makeRequest(), change: { summary: "Apply the database migration safely.", paths: ["src/neutral-check.ts"] }, testBasis: [{ id: "neutral", kind: "request" as const, origin: "explicit" as const, text: "The requested check is recorded." }] } satisfies VerificationRequest;
     const dependencies = makeDependencies().dependencies;
@@ -1154,7 +1187,7 @@ describe("verification run orchestration", () => {
       expect(fakes.repository.runWrites.length).toBe(runWrites);
     }
   });
-  test.each(["EXECUTING", "TERMINAL"] as const)("resumes persisted observation with valid null actualValues on %s without executor redispatch", async state => {
+  test.each(["EXECUTING", "TERMINAL"] as const)("rejects persisted observation actualValues before writes or executor redispatch on %s resume", async state => {
     const fakes = makeDependencies();
     const runId = `observation-null-${state.toLowerCase()}`;
     await runOnce(fakes.dependencies, runId);
@@ -1166,9 +1199,12 @@ describe("verification run orchestration", () => {
     fakes.repository.stageDocuments.set(`${runId}:execution`, { ...saved, observations: [persistedObservation, ...saved.observations.slice(1)] });
     fakes.repository.runs.set(runId, { ...run, state, updatedAt: FIXED_NOW });
     const executorCalls = fakes.executorCalls;
-    const resumed = await runVerification({ runId, request: makeRequest(), dependencies: fakes.dependencies });
-    expect(resumed.run.state).toBe("TERMINAL");
+    const stageWrites = fakes.repository.stageWrites.length;
+    const runWrites = fakes.repository.runWrites.length;
+    await expect(runVerification({ runId, request: makeRequest(), dependencies: fakes.dependencies })).rejects.toThrow("invalid persisted execution reference");
     expect(fakes.executorCalls).toBe(executorCalls);
+    expect(fakes.repository.stageWrites.length).toBe(stageWrites);
+    expect(fakes.repository.runWrites.length).toBe(runWrites);
   });
   test.each(["EXECUTING", "TERMINAL"] as const)("rejects persisted observation array actualValues before writes or executor redispatch on %s resume", async state => {
     const fakes = makeDependencies();
