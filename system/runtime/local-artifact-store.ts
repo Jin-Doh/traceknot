@@ -110,9 +110,11 @@ function native(): Native {
   if (!NATIVE) throw new ArtifactPathError(`artifact storage is unsupported on platform ${process.platform}`);
   return NATIVE;
 }
+function errnoFrom(symbols: Native["symbols"]): number {
+  return ffiRead.i32(symbols.errno() as unknown as Parameters<typeof ffiRead.i32>[0]);
+}
 function errno(): number {
-  const n = native();
-  return ffiRead.i32(n.symbols.errno() as unknown as Parameters<typeof ffiRead.i32>[0]);
+  return errnoFrom(native().symbols);
 }
 function cstring(value: string): Buffer {
   return Buffer.concat([Buffer.from(value, "utf8"), Buffer.from([0])]);
@@ -258,17 +260,16 @@ function readFd(fd: number): Uint8Array {
   for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.byteLength; }
   return result;
 }
-function unlinkChild(dirFd: number, name: string): void {
-  const n = native();
-  const result = n.symbols.unlinkat(dirFd, cstring(name), 0);
+function unlinkChild(dirFd: number, name: string, symbols: Native["symbols"] = native().symbols): void {
+  const result = symbols.unlinkat(dirFd, cstring(name), 0);
   if (result >= 0) return;
-  const error = errno();
+  const error = errnoFrom(symbols);
   if (error === 2) return;
   throw new ArtifactPathError(`artifact temporary cleanup failed (errno ${error})`);
 }
-function cleanupChild(dirFd: number, name: string, primary?: unknown): void {
+function cleanupChild(dirFd: number, name: string, symbols: Native["symbols"], primary?: unknown): void {
   try {
-    unlinkChild(dirFd, name);
+    unlinkChild(dirFd, name, symbols);
   } catch (cleanupError) {
     if (primary === undefined) throw cleanupError;
     throw new AggregateError([primary, cleanupError], "artifact temporary cleanup failed", { cause: primary });
@@ -289,36 +290,36 @@ function readObject(objectsFd: number, digest: string): DecodedFrame | undefined
     closeFd(fd);
   }
 }
-function publishObject(objectsFd: number, digest: string, frame: Uint8Array, fsync: boolean): void {
-  const n = native();
+function publishObject(objectsFd: number, digest: string, frame: Uint8Array, fsync: boolean, symbols: Native["symbols"]): void {
   const temp = `.tmp-${digest}-${randomUUID()}`;
-  const fd = check(n.symbols.openat(objectsFd, cstring(temp), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600), "artifact temporary open");
+  const fd = check(symbols.openat(objectsFd, cstring(temp), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600), "artifact temporary open");
   try {
-    check(n.symbols.fchmod(fd, 0o600), "artifact temporary permissions");
+    check(symbols.fchmod(fd, 0o600), "artifact temporary permissions");
     let offset = 0;
     while (offset < frame.byteLength) {
       const count = writeSync(fd, frame, offset, frame.byteLength - offset, null);
       if (count <= 0) throw new ArtifactPathError("artifact temporary write failed");
       offset += count;
     }
-    if (fsync) check(n.symbols.fsync(fd), "artifact temporary fsync");
+    if (fsync) check(symbols.fsync(fd), "artifact temporary fsync");
   } catch (error) {
-    cleanupChild(objectsFd, temp, error);
+    cleanupChild(objectsFd, temp, symbols, error);
     throw error;
   } finally {
     closeFd(fd);
   }
-  const linked = n.symbols.linkat(objectsFd, cstring(temp), objectsFd, cstring(digest), 0);
+  const linked = symbols.linkat(objectsFd, cstring(temp), objectsFd, cstring(digest), 0);
   if (linked < 0) {
-    const error = errno();
+    const error = errnoFrom(symbols);
     const publicationError = error === 17 ? undefined : new ArtifactPathError(`artifact publication link failed (errno ${error})`);
-    cleanupChild(objectsFd, temp, publicationError);
+    cleanupChild(objectsFd, temp, symbols, publicationError);
     if (error === 17) return;
     throw publicationError;
   }
-  cleanupChild(objectsFd, temp);
-  if (fsync) check(n.symbols.fsync(objectsFd), "artifact objects directory fsync");
+  cleanupChild(objectsFd, temp, symbols);
+  if (fsync) check(symbols.fsync(objectsFd), "artifact objects directory fsync");
 }
+
 function outputArtifact(artifact: ArtifactLike): Artifact {
   return { type: artifact.type, digest: artifact.digest, ...(artifact.path === undefined ? {} : { path: artifact.path }) };
 }
@@ -328,12 +329,14 @@ export class LocalArtifactStore implements ArtifactStore {
   readonly rootDir: string;
   readonly fsync: boolean;
   private readonly rootFd: number;
+  private readonly symbols: Native["symbols"];
   private readonly objectsFd: number;
   private readonly lockFd: number;
   private operationTail: Promise<void> = Promise.resolve();
   private closed = false;
   constructor(rootDirOrOptions: string | LocalArtifactStoreOptions) {
-    native();
+    const n = native();
+    this.symbols = n.symbols;
     const rootDir = typeof rootDirOrOptions === "string" ? rootDirOrOptions : rootDirOrOptions.rootDir;
     if (typeof rootDir !== "string" || rootDir.length === 0) throw new ArtifactPathError("artifact root is required");
     this.rootDir = resolve(rootDir);
@@ -369,7 +372,7 @@ export class LocalArtifactStore implements ArtifactStore {
       return outputArtifact(artifact);
     }
     if (!bytes) throw new ArtifactPathError("stored artifact does not exist");
-    publishObject(this.objectsFd, artifact.digest, encodeFrame(artifact.digest, artifact.type, bytes), this.fsync);
+    publishObject(this.objectsFd, artifact.digest, encodeFrame(artifact.digest, artifact.type, bytes), this.fsync, this.symbols);
     const published = readObject(this.objectsFd, artifact.digest);
     if (!published || published.type !== artifact.type || !compareBytes(published.bytes, bytes)) throw new ArtifactCollisionError("artifact readback verification failed");
     return outputArtifact(artifact);

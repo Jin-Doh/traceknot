@@ -250,6 +250,48 @@ test("cross-instance source persistence, reads, and queued close remain ordered"
   }
 });
 
+test("native temporary cleanup failure rejects publication and permits deterministic retry", async () => {
+  const root = await temporaryDirectory();
+  const artifactRoot = join(root, "artifacts");
+  const bytes = Buffer.from("cleanup seam");
+  const artifactDigest = digest(bytes);
+  const store = new LocalArtifactStore(artifactRoot);
+  type Symbols = {
+    fsync: (fd: number) => number;
+    unlinkat: (dirfd: number, path: Buffer, flags: number) => number;
+    openat: (dirfd: number, path: Buffer, flags: number, mode: number) => number;
+  };
+  // Test-only access to the module-local syscall seam; production callers cannot reach this private field.
+  const internals = store as unknown as { symbols: Symbols };
+  const symbols = internals.symbols;
+  const originalFsync = symbols.fsync;
+  const originalUnlink = symbols.unlinkat;
+  try {
+    symbols.fsync = (() => {
+      symbols.openat(-1, Buffer.from(".\0"), 0, 0);
+      return -1;
+    }) as Symbols["fsync"];
+    symbols.unlinkat = ((dirfd, _path, _flags) => {
+      symbols.openat(-1, Buffer.from(".\0"), 0, 0);
+      return -1;
+    }) as Symbols["unlinkat"];
+    const failure = await store.store({ type: "seam", digest: artifactDigest, bytes } as never, request).then(() => undefined, error => error);
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect((failure as AggregateError).errors).toHaveLength(2);
+    expect((await readdir(join(artifactRoot, ".objects"))).some(name => name.startsWith(".tmp-"))).toBe(true);
+
+    symbols.fsync = originalFsync;
+    symbols.unlinkat = originalUnlink;
+    await store.store({ type: "seam", digest: artifactDigest, bytes } as never, request);
+    expect(await store.readArtifact(artifactDigest)).toEqual(bytes);
+  } finally {
+    symbols.fsync = originalFsync;
+    symbols.unlinkat = originalUnlink;
+    await store.close();
+    await cleanup(root);
+  }
+});
+
 test("local artifact store fails closed on mismatch, torn frames, corruption, and symlink sources", async () => {
   const root = await temporaryDirectory();
   const source = join(root, "source.bin");
