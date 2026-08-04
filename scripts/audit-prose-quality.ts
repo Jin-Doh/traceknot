@@ -98,12 +98,12 @@ const ZH_NUMBER_CORE = "(?:零|〇|一|二|两|三|四|五|六|七|八|九|十|�
 const ZH_SIGNED_NUMBER = `(?:正|负)?${ZH_NUMBER_CORE}`;
 const ZH_ARABIC_NUMBER = "(?:\\d+(?:[.,]\\d+)?)";
 const ZH_PERCENTAGE = `(?:正|负)?百分之${ZH_NUMBER_CORE}`;
-const ZH_CONCISE_MODALS = new Set(["需", "须", "可", "不可", "务必", "不必"]);
+const ZH_CONCISE_MODALS = new Set(["需", "须", "可", "不可", "务必", "不必", "切勿", "勿"]);
 const ZH_LEXICAL_PREFIXES = new Set(["刚", "必", "认", "许"]);
 const ZH_LEXICAL_MODAL_COMPOUNDS = ["可视化", "可惜", "可爱", "可口", "可观", "可疑", "不可思议"];
 const ZH_SEGMENTER = new Intl.Segmenter("zh-CN", { granularity: "word" });
 const ZH_SINGLE_QUANTITY_UNITS = new Set([
-  ..."个位项次名件条张本份台套组批艘盒亩只辆架头匹峰座间所家户杯瓶碗盘袋箱包支根枝把柄面扇层排列行页章节部册卷幅枚颗粒块片段场轮番遍趟回首曲声株棵朵束丝缕滴年月份日天倍元米克升瓦度秒吨寸安帕伏焦牛",
+  ..."个位项次名件条张本份台套组批艘盒亩只辆架头匹峰座间所家户杯瓶碗盘袋箱包支根枝把柄面扇层排列行页章节部册卷幅枚颗粒块片段场轮番遍趟回首曲声株棵朵束丝缕滴年月份日天倍元米克升瓦度秒吨寸安帕伏焦牛种类门款笔宗桩则例科道管",
 ]);
 const ZH_COMBINED_QUANTITY_UNITS = new Set([
   ...ZH_SINGLE_QUANTITY_UNITS,
@@ -1006,6 +1006,13 @@ function stripMarkdownContainerPrefix(value: string): string {
   );
 }
 
+function stripMarkdownSubjectFormatting(value: string): string {
+  return value
+    .replace(/!?\[([^\]\r\n]+)\]\([^\r\n)]*\)/gu, "$1")
+    .replace(/\[([^\]\r\n]+)\]\[[^\]\r\n]*\]/gu, "$1")
+    .replace(/(?:\*\*|__|~~|\*|_)/g, "");
+}
+
 function claimLabel(text: string, index: number, valueLength: number, bindSubject = false): string {
   const leftText = text.slice(0, index);
   const leftBoundary = lastClaimBoundary(leftText);
@@ -1018,9 +1025,9 @@ function claimLabel(text: string, index: number, valueLength: number, bindSubjec
   const left = leftLabels.at(-1);
   const right = rightLabels[0];
   if (!left && !right && bindSubject) {
-    const localClause = stripMarkdownContainerPrefix(
+    const localClause = stripMarkdownSubjectFormatting(stripMarkdownContainerPrefix(
       leftClause.split(/\b(?:while|whereas|and|but)\b/i).at(-1) ?? leftClause,
-    );
+    ));
     const chineseClause = localClause.trim();
     if (/^[\p{Script=Han}\s]{1,48}$/u.test(chineseClause)) {
       const segments = chineseWordSegments(chineseClause);

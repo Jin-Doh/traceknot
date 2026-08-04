@@ -443,6 +443,19 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("FAIL");
   });
 
+  test.each([
+    ["**甲组**", "**乙组**"],
+    ["[甲组](#group)", "[乙组](#group)"],
+  ])("strips inline Markdown formatting around Simplified Chinese subjects: %s", (first, second) => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const before = `${context}\n- [ ] ${first}有三项检查。\n- [x] ${second}有四项检查。`;
+    const after = `${context}\n- [ ] ${second}有三项检查。\n- [x] ${first}有四项检查。`;
+    const report = verifyPreservation(before, after);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+    expect(report.status).toBe("FAIL");
+  });
+
   test("derives Simplified Chinese quantity subjects without a predicate allowlist", () => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const before = `${context}\n甲组有三项检查，乙组有四项检查。`;
@@ -459,6 +472,11 @@ describe("rewrite preservation gate", () => {
     ["港口接收三艘船。", "港口接收四艘船。"],
     ["仓库保留三盒样本。", "仓库保留四盒样本。"],
     ["农场检查三亩土地。", "农场检查四亩土地。"],
+    ["系统支持三种方案。", "系统支持四种方案。"],
+    ["目录包含三类条目。", "目录包含四类条目。"],
+    ["课程提供三门科目。", "课程提供四门科目。"],
+    ["产品包含三款型号。", "产品包含四款型号。"],
+    ["账本记录三笔交易。", "账本记录四笔交易。"],
   ])("preserves quantities using common Simplified Chinese counters: %s", (source, rewrite) => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
@@ -649,6 +667,17 @@ describe("rewrite preservation gate", () => {
   test("protects common 务必 obligations", () => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n用户务必审核发布。`, `${context}\n用户不必审核发布。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+    expect(report.status).toBe("FAIL");
+  });
+
+  test.each([
+    ["用户切勿发布数据。", "用户随意发布数据。"],
+    ["用户勿发布数据。", "用户可发布数据。"],
+  ])("protects common prohibitive concise modals: %s", (source, rewrite) => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
     expect(report.status).toBe("FAIL");
