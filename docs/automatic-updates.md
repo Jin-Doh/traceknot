@@ -18,6 +18,28 @@ The installer and updater now:
 - stage immutable releases, verify provenance and digest, activate atomically, and retain one rollback target;
 - serialize update and uninstall operations and recover interrupted transactions.
 
+## Running the updater
+
+Select the active-layout executable with the legacy-layout fallback, then run the required operation:
+
+```sh
+TRACEKNOT_PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/traceknot"
+if [ -x "$TRACEKNOT_PREFIX/current/bin/traceknot-update" ]; then
+  TRACEKNOT_UPDATE="$TRACEKNOT_PREFIX/current/bin/traceknot-update"
+else
+  TRACEKNOT_UPDATE="$TRACEKNOT_PREFIX/bin/traceknot-update"
+fi
+
+"$TRACEKNOT_UPDATE" status
+"$TRACEKNOT_UPDATE" check
+"$TRACEKNOT_UPDATE" apply
+"$TRACEKNOT_UPDATE" disable
+"$TRACEKNOT_UPDATE" enable
+"$TRACEKNOT_UPDATE" rollback
+```
+
+For a custom installation, set `TRACEKNOT_PREFIX` to that absolute prefix before selecting the executable. `check` does not change installed files; `apply` activates the newest eligible verified release; `rollback` restores the immediately previous managed release.
+
 ## Test basis and acceptance criteria
 
 | ID | Source | Basis or observable acceptance criterion |

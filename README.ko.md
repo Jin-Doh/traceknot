@@ -173,6 +173,16 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh |
 
 통제된 환경에서는 실행 전에 스크립트를 검토하거나 고정 tag를 사용하세요. Installer는 `sudo` 없이 동작하고 `--dry-run`을 지원하며, 기본 경로는 `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`입니다.
 
+Bootstrap 스크립트와 다운로드 payload를 같은 tag 또는 commit으로 함께 고정합니다.
+
+<!-- shared-command:full-toolkit-pinned-install -->
+
+```sh
+TRACEKNOT_REF=<tag-or-commit>
+curl -fsSL "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/install.sh" \
+  | TRACEKNOT_REF="$TRACEKNOT_REF" sh
+```
+
 Skills CLI와 전체 Toolkit installer는 같은 사용자 영역 Skill 등록을 관리합니다. 설치 방식을 바꾸기 전에 기존 설치를 먼저 제거해야 합니다. 적용 조건, 검증, rollback, opt-out 정책은 [자동 업데이트 문서](docs/automatic-updates.md)를 참고하세요.
 
 기본 경로의 전체 Toolkit은 다음 명령으로 제거합니다.
@@ -184,6 +194,8 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
 ```
 
 사용자 지정 설치 경로라면 `sh` 뒤에 `-s -- --prefix /absolute/path`를 붙입니다.
+
+활성 layout과 legacy layout의 경로 선택을 포함한 updater 실행 명령은 [자동 업데이트 문서](docs/automatic-updates.md)에 있습니다.
 
 <!-- readme-section:documentation -->
 

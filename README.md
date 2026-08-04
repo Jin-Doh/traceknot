@@ -173,6 +173,16 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh |
 
 Inspect the script or use a fixed tag before running it in a controlled environment. The installer works without `sudo`, supports `--dry-run`, and defaults to `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`.
 
+Pin both the bootstrap script and downloaded payload to the same tag or commit:
+
+<!-- shared-command:full-toolkit-pinned-install -->
+
+```sh
+TRACEKNOT_REF=<tag-or-commit>
+curl -fsSL "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/install.sh" \
+  | TRACEKNOT_REF="$TRACEKNOT_REF" sh
+```
+
 The Skills CLI and full-toolkit installer manage the same user-local Skill registration. Remove one installation before switching methods. See [automatic updates](docs/automatic-updates.md) for eligibility, verification, rollback, and opt-out behavior.
 
 Remove the default full-toolkit installation with:
@@ -184,6 +194,8 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
 ```
 
 For a custom installation prefix, append `-s -- --prefix /absolute/path` after `sh`.
+
+Runnable updater commands, including active-layout and legacy-layout path selection, are documented in [automatic updates](docs/automatic-updates.md).
 
 <!-- readme-section:documentation -->
 

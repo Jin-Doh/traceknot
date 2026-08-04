@@ -173,6 +173,16 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh |
 
 在受控环境中运行前，请先检查脚本或固定到具体 tag。Installer 无需 `sudo`，支持 `--dry-run`，默认安装到 `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`。
 
+请将 bootstrap 脚本和下载的 payload 同时固定到同一个 tag 或 commit：
+
+<!-- shared-command:full-toolkit-pinned-install -->
+
+```sh
+TRACEKNOT_REF=<tag-or-commit>
+curl -fsSL "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/install.sh" \
+  | TRACEKNOT_REF="$TRACEKNOT_REF" sh
+```
+
 Skills CLI 和完整 Toolkit installer 管理同一份用户本地 Skill 注册。切换安装方式前应先删除现有安装。资格判定、验证、rollback 和 opt-out 行为请参阅[自动更新](docs/automatic-updates.md)。
 
 使用以下命令删除默认路径中的完整 Toolkit：
@@ -184,6 +194,8 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
 ```
 
 如果使用自定义安装路径，请在 `sh` 后附加 `-s -- --prefix /absolute/path`。
+
+包含当前 layout 与 legacy layout 路径选择逻辑的 updater 可执行命令，请参阅[自动更新](docs/automatic-updates.md)。
 
 <!-- readme-section:documentation -->
 
