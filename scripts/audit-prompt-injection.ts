@@ -44,10 +44,15 @@ interface ExceptionFile {
   exceptions: ExceptionEntry[];
 }
 
+const CHINESE_SENTENCE_SEGMENTER = new Intl.Segmenter("zh-Hans", { granularity: "sentence" });
+
 function acceptChineseIdentityMatch(source: string, match: RegExpExecArray): boolean {
   if (!match.groups?.identityAssignment) return true;
-  const prefix = source.slice(0, match.index).split(/[。；，！？.,;!?\n]/u).at(-1)?.trimStart() ?? "";
-  return !/^(?:如果|假如|倘若|若|当|请问)/u.test(prefix);
+  const sentence = [...CHINESE_SENTENCE_SEGMENTER.segment(source)]
+    .find((segment) => segment.index <= match.index && match.index < segment.index + segment.segment.length);
+  if (!sentence) return false;
+  const prefix = source.slice(sentence.index, match.index);
+  return !/(?:^|[，,；;])\s*(?:如果|假如|倘若|若|当|请问)/u.test(prefix);
 }
 
 export const RULES: readonly Rule[] = [

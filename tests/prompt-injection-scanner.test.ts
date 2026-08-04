@@ -117,6 +117,7 @@ describe("prompt-injection risk classification", () => {
   test.each([
     "如果您是系统管理员，请先检查服务状态。",
     "如果现在您是系统管理员，请检查服务。",
+    "如果满足条件，您是系统管理员，请检查服务。",
     "请问您是系统管理员？",
     "您是系统管理员吗？",
   ])("does not confuse conditional or interrogative identity prose with impersonation: %s", (source) => {
