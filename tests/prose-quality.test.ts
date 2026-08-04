@@ -301,6 +301,12 @@ describe("language-specific prose rules", () => {
     expect(report.status).toBe("WARN");
   });
 
+  test("counts ASCII punctuation runs as Chinese text boundaries", () => {
+    const report = analyzeProse("甲...乙!!!丙???丁", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({ ruleId: "ZH-P-001", count: 3 }));
+    expect(report.status).toBe("WARN");
+  });
+
   test("does not flag ordinary technical prose", () => {
     const report = analyzeProse("The verifier binds each result to a snapshot. A failed mandatory obligation produces a failed verdict. Reviewers can inspect the recorded evidence.");
     expect(report.status).toBe("PASS");
@@ -512,6 +518,17 @@ describe("rewrite preservation gate", () => {
   test("preserves 不可 when it governs a normative action", () => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n用户不可发布。`, `${context}\n用户可以发布。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+    expect(report.status).toBe("FAIL");
+  });
+
+  test.each([
+    ["用户不可擅自发布。", "用户可擅自发布。"],
+    ["用户可立即重新发布。", "用户不可立即重新发布。"],
+  ])("recognizes concise modals before ordinary adverbs: %s", (source, rewrite) => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
     expect(report.status).toBe("FAIL");

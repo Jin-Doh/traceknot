@@ -85,7 +85,7 @@ export const RULES: readonly ProseRule[] = [
   { id: "ZH-D-001", locale: "zh-Hans", severity: "S1", description: "套话或夸张表达重复", pattern: /在当今(?:快速|迅速)发展的|这充分体现了|具有划时代意义|不容忽视/g, threshold: 2 },
   { id: "ZH-G-001", locale: "zh-Hans", severity: "S2", description: "空泛提示语重复", pattern: /值得注意的是|需要指出的是|毋庸置疑/g, threshold: 2 },
   { id: "ZH-H-001", locale: "zh-Hans", severity: "S2", description: "段首连接词重复", pattern: /^(?:此外|同时|因此|总而言之)[，,\s]/gm, threshold: 3 },
-  { id: "ZH-P-001", locale: "zh-Hans", severity: "S2", description: "中文之间重复使用 ASCII 标点", pattern: /[\p{Script=Han}][,;:.?!][\t ]*(?=[\p{Script=Han}])/gu, threshold: 3 },
+  { id: "ZH-P-001", locale: "zh-Hans", severity: "S2", description: "中文之间重复使用 ASCII 标点", pattern: /[\p{Script=Han}][,;:.?!]+[\t ]*(?=[\p{Script=Han}])/gu, threshold: 3 },
 ];
 
 // `prose-quality.config.json` is the single publication-surface inventory.
@@ -100,7 +100,6 @@ const ZH_PERCENTAGE = `(?:正|负)?百分之${ZH_NUMBER_CORE}`;
 const ZH_ACTIONS = new Set([
   "审核", "验证", "检查", "记录", "保留", "批准", "执行", "运行", "发布", "提供", "确保", "完成", "遵守", "满足", "使用", "配置", "安装", "报告", "绑定", "评估", "选择", "提交", "更新", "读取", "写入", "删除", "创建", "调用", "等待", "返回", "通过", "拒绝", "阻止", "启用", "关闭", "输入", "输出", "处理", "确认", "声明", "查看",
 ]);
-const ZH_MODAL_MODIFIERS = new Set(["直接", "先", "再", "仅", "只", "不", "由", "被", "按", "根据", "在", "经", "用于", "供", "于"]);
 const ZH_CONCISE_MODALS = new Set(["需", "须", "可", "不可"]);
 const ZH_LEXICAL_PREFIXES = new Set(["刚", "必", "认", "许"]);
 const ZH_SEGMENTER = new Intl.Segmenter("zh-CN", { granularity: "word" });
@@ -182,10 +181,15 @@ function chineseNormativeOccurrences(text: string): Array<{ index: number; value
     const segment = segments[index];
     if (!ZH_CONCISE_MODALS.has(segment.segment)) continue;
     if (ZH_LEXICAL_PREFIXES.has(segments[index - 1]?.segment ?? "")) continue;
-    let actionIndex = index + 1;
-    while (ZH_MODAL_MODIFIERS.has(segments[actionIndex]?.segment ?? "")) actionIndex += 1;
-    if (!ZH_ACTIONS.has(segments[actionIndex]?.segment ?? "")) continue;
-    occurrences.push({ index: segment.index, value: segment.segment });
+    const modalEnd = segment.index + segment.segment.length;
+    for (let actionIndex = index + 1; actionIndex < segments.length; actionIndex += 1) {
+      const action = segments[actionIndex];
+      const intervening = text.slice(modalEnd, action.index);
+      if (intervening.length > 24 || /[.,;!?。；，！？\n]/u.test(intervening)) break;
+      if (!ZH_ACTIONS.has(action.segment)) continue;
+      occurrences.push({ index: segment.index, value: segment.segment });
+      break;
+    }
   }
   return occurrences;
 }
