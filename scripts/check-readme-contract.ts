@@ -1,5 +1,13 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
+import type { Element, Root as HastRoot } from "hast";
+import type { Code, Html, Parents, Root as MdastRoot } from "mdast";
+import rehypeRaw from "rehype-raw";
+import remarkGfm from "remark-gfm";
+import remarkParse from "remark-parse";
+import remarkRehype from "remark-rehype";
+import { unified } from "unified";
+import { visit } from "unist-util-visit";
 
 const ROOT = resolve(import.meta.dir, "..");
 const README_PATHS = ["README.md", "README.ko.md", "README.zh.md"] as const;
@@ -63,6 +71,21 @@ interface ReadmeRecord {
   sharedCommands: Map<string, string>;
 }
 
+const MARKDOWN_PROCESSOR = unified().use(remarkParse).use(remarkGfm);
+const HTML_PROCESSOR = unified()
+  .use(remarkParse)
+  .use(remarkGfm)
+  .use(remarkRehype, { allowDangerousHtml: true })
+  .use(rehypeRaw);
+
+function markdownTree(content: string): MdastRoot {
+  return MARKDOWN_PROCESSOR.parse(content) as MdastRoot;
+}
+
+function htmlTree(content: string): HastRoot {
+  return HTML_PROCESSOR.runSync(HTML_PROCESSOR.parse(content)) as HastRoot;
+}
+
 function collectMarkers(content: string, pattern: RegExp): Map<string, number> {
   const markers = new Map<string, number>();
   for (const match of content.matchAll(pattern)) {
@@ -72,35 +95,41 @@ function collectMarkers(content: string, pattern: RegExp): Map<string, number> {
   return markers;
 }
 
-function collectSharedCommands(content: string, path: string): Map<string, string> {
-  const markers = collectMarkers(content, /<!-- shared-command:([a-z0-9-]+) -->/g);
-  for (const [name, count] of markers) {
-    if (count !== 1) throw new Error(`${path}: shared-command marker ${name} must appear exactly once, found ${count}`);
-  }
-  const commands = new Map<string, string>();
-  const markerPattern = /<!-- shared-command:([a-z0-9-]+) -->/g;
-  for (const match of content.matchAll(markerPattern)) {
-    const name = match[1];
-    const afterMarker = content.slice((match.index ?? 0) + match[0].length);
-    const opening = afterMarker.match(/^[\t ]*(?:\r?\n[\t ]*)+(`{3,}|~{3,})([^\r\n]*)\r?\n/u);
-    if (!opening) continue;
-    const fence = opening[1];
-    if (!isValidFenceInfo(fence, opening[2])) continue;
-    const commandStart = (match.index ?? 0) + match[0].length + opening[0].length;
-    const closingPattern = new RegExp(`^[\\t ]{0,3}${fence[0] === "`" ? "`" : "~"}{${fence.length},}[\\t ]*$`, "gmu");
-    closingPattern.lastIndex = commandStart;
-    const closing = closingPattern.exec(content);
-    if (!closing) continue;
-    commands.set(name, content.slice(commandStart, closing.index).replace(/\r?\n$/, ""));
-  }
-  for (const name of markers.keys()) {
-    if (!commands.has(name)) throw new Error(`${path}: shared-command marker ${name} must be followed by a fenced block`);
-  }
-  return commands;
+function isClosedFencedCode(content: string, block: Code): boolean {
+  const start = block.position?.start.offset;
+  const end = block.position?.end.offset;
+  if (start === undefined || end === undefined) return false;
+  const source = content.slice(start, end);
+  const lines = source.split(/\r?\n/u);
+  const opening = lines[0]?.match(/^[\t ]{0,3}(`{3,}|~{3,})/u)?.[1];
+  if (!opening) return false;
+  const closing = lines.at(-1)?.match(/^[\t ]{0,3}(`+|~+)[\t ]*$/u)?.[1];
+  return Boolean(closing && closing[0] === opening[0] && closing.length >= opening.length);
 }
 
-function isValidFenceInfo(fence: string, info: string): boolean {
-  return fence[0] !== "`" || !info.includes("`");
+function collectSharedCommands(content: string, path: string): Map<string, string> {
+  const tree = markdownTree(content);
+  const markers = new Map<string, Array<{ parent: Parents; index: number }>>();
+  visit(tree, "html", (node: Html, index, parent) => {
+    const match = node.value.match(/^\s*<!-- shared-command:([a-z0-9-]+) -->\s*$/u);
+    if (!match || index === undefined || !parent) return;
+    const occurrences = markers.get(match[1]) ?? [];
+    occurrences.push({ parent, index });
+    markers.set(match[1], occurrences);
+  });
+  const commands = new Map<string, string>();
+  for (const [name, occurrences] of markers) {
+    if (occurrences.length !== 1) {
+      throw new Error(`${path}: shared-command marker ${name} must appear exactly once, found ${occurrences.length}`);
+    }
+    const occurrence = occurrences[0];
+    const block = occurrence.parent.children[occurrence.index + 1] as Code | undefined;
+    if (block?.type !== "code" || !isClosedFencedCode(content, block)) {
+      throw new Error(`${path}: shared-command marker ${name} must be followed by a fenced block`);
+    }
+    commands.set(name, block.value);
+  }
+  return commands;
 }
 
 function loadReadmes(): ReadmeRecord[] {
@@ -186,135 +215,6 @@ export function checkReadmeSharedCommands(records: Array<{ path: string; content
   })));
 }
 
-function isEscaped(content: string, index: number): boolean {
-  let backslashes = 0;
-  for (let cursor = index - 1; cursor >= 0 && content[cursor] === "\\"; cursor -= 1) backslashes += 1;
-  return backslashes % 2 === 1;
-}
-
-function stripMarkdownContainerPrefix(value: string): string {
-  let remaining = value;
-  while (true) {
-    const marker = remaining.match(/^[\t ]{0,3}(?:>[	 ]?|(?:[-+*]|\d+[.)])[	 ]+)/u)?.[0];
-    if (!marker) return remaining;
-    remaining = remaining.slice(marker.length);
-  }
-}
-
-function markdownListContentIndent(value: string): number {
-  let remaining = value;
-  let indent = 0;
-  while (true) {
-    const blockquote = remaining.match(/^[\t ]{0,3}>[\t ]?/u)?.[0];
-    if (blockquote) {
-      remaining = remaining.slice(blockquote.length);
-      continue;
-    }
-    const list = remaining.match(/^[\t ]{0,3}(?:[-+*]|\d+[.)])[\t ]+/u)?.[0];
-    if (!list) return indent;
-    indent += list.replace(/\t/g, "    ").length;
-    remaining = remaining.slice(list.length);
-  }
-}
-
-function markdownIndentAfterBlockquotes(value: string): number {
-  let remaining = value;
-  while (true) {
-    const blockquote = remaining.match(/^[\t ]{0,3}>[\t ]?/u)?.[0];
-    if (!blockquote) break;
-    remaining = remaining.slice(blockquote.length);
-  }
-  return remaining.match(/^[\t ]*/u)?.[0].replace(/\t/g, "    ").length ?? 0;
-}
-
-function markdownBlockquoteDepth(value: string): number {
-  const content = stripMarkdownContainerPrefix(value);
-  return (value.slice(0, value.length - content.length).match(/>/g) ?? []).length;
-}
-
-function maskMarkdownCode(content: string): string {
-  const masked = content.split("");
-  const lines = content.match(/.*(?:\r?\n|$)/g) ?? [];
-  let offset = 0;
-  let fence: { marker: string; length: number; blockquoteDepth: number; listContentIndent: number } | undefined;
-  let indentedCode = false;
-  let canStartIndentedCode = true;
-  const mask = (start: number, end: number) => {
-    for (let index = start; index < end; index += 1) {
-      if (masked[index] !== "\n" && masked[index] !== "\r") masked[index] = " ";
-    }
-  };
-  for (const line of lines) {
-    if (!line) continue;
-    const body = line.replace(/\r?\n$/, "");
-    const containerBody = stripMarkdownContainerPrefix(body);
-    const blockquoteDepth = markdownBlockquoteDepth(body);
-    const blank = /^[\t ]*$/u.test(containerBody);
-    if (fence && (
-      blockquoteDepth < fence.blockquoteDepth
-      || (fence.listContentIndent > 0
-        && !blank
-        && markdownIndentAfterBlockquotes(body) < fence.listContentIndent)
-    )) fence = undefined;
-    if (fence) {
-      mask(offset, offset + body.length);
-      const close = containerBody.match(/^[\t ]{0,3}(`+|~+)[\t ]*$/u)?.[1];
-      const closed = close?.[0] === fence.marker && close.length >= fence.length;
-      if (closed) fence = undefined;
-      offset += line.length;
-      canStartIndentedCode = Boolean(closed);
-      continue;
-    }
-    const openingMatch = containerBody.match(/^[\t ]{0,3}(`{3,}|~{3,})([^\r\n]*)$/u);
-    const opening = openingMatch?.[1];
-    if (opening && isValidFenceInfo(opening, openingMatch?.[2] ?? "")) {
-      fence = {
-        marker: opening[0],
-        length: opening.length,
-        blockquoteDepth,
-        listContentIndent: markdownListContentIndent(body),
-      };
-      mask(offset, offset + body.length);
-      offset += line.length;
-      indentedCode = false;
-      canStartIndentedCode = false;
-      continue;
-    }
-    if (/^(?: {4}|\t)/u.test(containerBody) && (indentedCode || canStartIndentedCode)) {
-      mask(offset, offset + body.length);
-      offset += line.length;
-      indentedCode = true;
-      canStartIndentedCode = true;
-      continue;
-    }
-    if (!blank) indentedCode = false;
-    offset += line.length;
-    canStartIndentedCode = blank || /^(?:#{1,6}(?:[\t ]|$)|=+[\t ]*$|(?:[-*_][\t ]*){3,}$|<\/?[A-Za-z][^>]*>[\t ]*$)/u.test(containerBody);
-  }
-  let visible = masked.join("");
-  for (let cursor = 0; cursor < visible.length;) {
-    if (visible[cursor] !== "`" || isEscaped(visible, cursor)) {
-      cursor += 1;
-      continue;
-    }
-    let runEnd = cursor + 1;
-    while (visible[runEnd] === "`") runEnd += 1;
-    const run = visible.slice(cursor, runEnd);
-    let close = visible.indexOf(run, runEnd);
-    while (close >= 0 && (visible[close - 1] === "`" || visible[close + run.length] === "`")) {
-      close = visible.indexOf(run, close + run.length);
-    }
-    if (close < 0) {
-      cursor = runEnd;
-      continue;
-    }
-    mask(cursor, close + run.length);
-    visible = masked.join("");
-    cursor = close + run.length;
-  }
-  return visible.replace(/<!--[\s\S]*?-->/g, (comment) => comment.replace(/[^\r\n]/g, " "));
-}
-
 function srcsetTargets(value: string): string[] {
   const targets: string[] = [];
   let cursor = 0;
@@ -332,86 +232,24 @@ function srcsetTargets(value: string): string[] {
   return targets;
 }
 
-function visibleHtmlTags(content: string): string[] {
-  const tags: string[] = [];
-  for (let start = content.indexOf("<"); start >= 0; start = content.indexOf("<", start + 1)) {
-    if (!/^\/?[A-Za-z]/u.test(content.slice(start + 1, start + 3))) continue;
-    let quote = "";
-    let cursor = start + 1;
-    for (; cursor < content.length; cursor += 1) {
-      const character = content[cursor];
-      if (quote) {
-        if (character === quote) quote = "";
-      } else if (character === '"' || character === "'") {
-        quote = character;
-      } else if (character === ">") {
-        tags.push(content.slice(start, cursor + 1));
-        break;
-      } else if (character === "<") {
-        break;
-      }
-    }
-    if (cursor > start) start = cursor;
-  }
-  return tags;
-}
-
 function localTargets(content: string): string[] {
-  content = maskMarkdownCode(content);
   const targets: string[] = [];
-  for (let opener = content.indexOf("["); opener >= 0; opener = content.indexOf("[", opener + 1)) {
-    if (isEscaped(content, opener)) continue;
-    let cursor = opener + 1;
-    let labelDepth = 1;
-    while (cursor < content.length && labelDepth > 0) {
-      if (isEscaped(content, cursor)) {
-        cursor += 1;
-      } else if (content[cursor] === "[") {
-        labelDepth += 1;
-      } else if (content[cursor] === "]") {
-        labelDepth -= 1;
-      }
-      cursor += 1;
-    }
-    if (labelDepth !== 0 || content[cursor] !== "(") continue;
-    cursor += 1;
-    while (/\s/.test(content[cursor] ?? "")) cursor += 1;
-    if (content[cursor] === "<") {
-      const end = content.indexOf(">", cursor + 1);
-      if (end > cursor + 1) targets.push(content.slice(cursor + 1, end));
-      continue;
-    }
-    const start = cursor;
-    let depth = 0;
-    while (cursor < content.length) {
-      const character = content[cursor];
-      if (character === "\\") {
-        cursor += 2;
-        continue;
-      }
-      if (character === "(") depth += 1;
-      else if (character === ")") {
-        if (depth === 0) break;
-        depth -= 1;
-      } else if (/\s/.test(character) && depth === 0) break;
-      cursor += 1;
-    }
-    if (cursor > start) targets.push(content.slice(start, cursor).replace(/\\([()])/g, "$1"));
-  }
-  for (const match of content.matchAll(/^[\t ]{0,3}\[[^\]\r\n]+\]:[\t ]*(?:\r?\n[\t ]+)?(?:<([^>\r\n]+)>|([^\s\r\n]+))/gm)) targets.push(match[1] ?? match[2]);
-  for (const tag of visibleHtmlTags(content)) {
-    for (const match of tag.matchAll(/\s(href|src|poster|action|formaction|cite|data|background|manifest|profile|longdesc|usemap|srcset|ping)\s*=\s*(?:(["'])(.*?)\2|([^\s"'=<>`]+))/gi)) {
-      const attribute = match[1].toLowerCase();
-      const value = match[3] ?? match[4];
-      if (attribute === "srcset") {
-        targets.push(...srcsetTargets(value));
-      } else if (attribute === "ping") {
-        targets.push(...value.trim().split(/\s+/).filter(Boolean));
-      } else {
-        targets.push(value);
+  const targetProperties = new Set([
+    "href", "src", "poster", "action", "formAction", "cite", "data", "background",
+    "manifest", "profile", "longDesc", "useMap",
+  ]);
+  visit(htmlTree(content), "element", (node: Element) => {
+    for (const [property, rawValue] of Object.entries(node.properties ?? {})) {
+      if (property === "srcSet" && typeof rawValue === "string") {
+        targets.push(...srcsetTargets(rawValue));
+      } else if (property === "ping") {
+        const values = Array.isArray(rawValue) ? rawValue : String(rawValue ?? "").trim().split(/\s+/u);
+        targets.push(...values.map(String).filter(Boolean));
+      } else if (targetProperties.has(property) && (typeof rawValue === "string" || typeof rawValue === "number")) {
+        targets.push(String(rawValue));
       }
     }
-  }
+  });
   return targets;
 }
 

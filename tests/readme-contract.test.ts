@@ -63,7 +63,7 @@ describe("README localization section contract", () => {
   });
 
   test("rejects missing unquoted HTML targets", () => {
-    expect(() => checkReadmeLocalLinks({ path: "README.md", content: "<img src=assets/not-here.png>" })).toThrow("local link does not exist");
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content: "<img src=not-here.png>" })).toThrow("local link does not exist");
   });
 
   test("parses balanced Markdown destinations and uppercase HTML attributes", () => {
@@ -112,8 +112,8 @@ describe("README localization section contract", () => {
       path: "README.md",
       content: "The src=docs/not-here.md token is illustrative.\n<!-- <img src=docs/not-here.md> -->",
     })).not.toThrow();
-    expect(() => checkReadmeLocalLinks({ path: "README.md", content: "<img\n src=docs/not-here.md>" })).toThrow(
-      "docs/not-here.md",
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content: "<img\n src=not-here.md>" })).toThrow(
+      "not-here.md",
     );
   });
 
@@ -139,6 +139,11 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLocalLinks({ path: "README.md", content })).toThrow("docs/not-here.md");
   });
 
+  test("keeps blockquote-shaped content inside a list-contained fence", () => {
+    const content = "- ```md\n  > [literal](docs/not-here.md)\n  ```";
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content })).not.toThrow();
+  });
+
   test("does not mask invalid backtick fence openers", () => {
     const content = "```sh`bad`\n[guide](docs/not-here.md)";
     expect(() => checkReadmeLocalLinks({ path: "README.md", content })).toThrow("docs/not-here.md");
@@ -152,6 +157,7 @@ describe("README localization section contract", () => {
   test.each([
     "# Example\n    [literal](docs/not-here.md)",
     "Example\n===\n    [literal](docs/not-here.md)",
+    "Example\n--\n    [literal](docs/not-here.md)",
     "---\n    [literal](docs/not-here.md)",
     "<section>\n    [literal](docs/not-here.md)",
   ])("recognizes indented code after a non-paragraph block: %s", (content) => {
