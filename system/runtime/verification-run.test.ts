@@ -2178,6 +2178,69 @@ describe("verification run orchestration", () => {
     expect(new Set(requests).size).toBe(1);
     expect([...store.dispatchClaims.values()][0]?.status).toBe("COMPLETED");
   });
+  test("replays an authenticated completion before capability gating after a crash", async () => {
+    const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
+    class CrashAfterCompleteRepository extends FakeRepository {
+      crash = true;
+      override async completeExecutionDispatch(claim: DispatchClaim, completion: VerificationExecutionCompletionEnvelope | undefined, now = FIXED_NOW) {
+        const completed = await super.completeExecutionDispatch(claim, completion, now);
+        if (this.crash) {
+          this.crash = false;
+          throw new Error("simulated completion crash before checkpoint");
+        }
+        return completed;
+      }
+    }
+    const runId = "claim-complete-capability-false";
+    const request = { ...makeRequest(), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    const repository = new CrashAfterCompleteRepository(store);
+    const fakes = makeDependencies({}, repository);
+    let capabilityAvailable = true;
+    let capabilityCalls = 0;
+    let executorCalls = 0;
+    let executionAuthorityIssues = 0;
+    const issueExecutionAuthority = fakes.dependencies.executionAuthority.issueExecutionAuthority!;
+    const verifyExecutionAuthority = fakes.dependencies.executionAuthority.verifyExecutionAuthority!;
+    const dependencies = {
+      ...fakes.dependencies,
+      dispatchOwnerId: "owner-completion",
+      capabilityProvider: {
+        hasCapability: async () => {
+          capabilityCalls++;
+          return capabilityAvailable;
+        },
+      },
+      executor: {
+        atomicSameKeyIdempotency: true as const,
+        executeObligation: async (requestInput: VerificationExecutionRequest) => {
+          executorCalls++;
+          return fakes.dependencies.executor.executeObligation!(requestInput);
+        },
+      },
+      executionAuthority: {
+        issueExecutionAuthority: async (binding: ExecutionAuthority["binding"]) => {
+          executionAuthorityIssues++;
+          return issueExecutionAuthority(binding);
+        },
+        verifyExecutionAuthority: (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]) => verifyExecutionAuthority(authority, binding),
+      },
+    } as unknown as VerificationRunDependencies;
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("simulated completion crash before checkpoint");
+    const persistedCompletion = [...store.dispatchClaims.values()][0]?.completion;
+    if (!persistedCompletion) throw new Error("missing persisted completion");
+    expect(executorCalls).toBe(1);
+    expect(executionAuthorityIssues).toBe(1);
+    capabilityAvailable = false;
+    capabilityCalls = 0;
+    const resumed = await runVerification({ runId, dependencies });
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(resumed.verdict.qaVerdict).toBe("PASS");
+    expect(capabilityCalls).toBe(0);
+    expect(executorCalls).toBe(1);
+    expect(executionAuthorityIssues).toBe(1);
+    expect(resumed.documents.execution?.authorities[0]).toEqual(persistedCompletion.authority);
+    expect(resumed.documents.execution?.observations[0]?.artifacts).toEqual(persistedCompletion.output.artifacts);
+  });
   test("rejects a mutated persisted completion envelope before replay", async () => {
     const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
     class CrashAfterCompleteRepository extends FakeRepository {
@@ -2286,7 +2349,7 @@ describe("verification run orchestration", () => {
     const resumed = await runVerification({ runId, request, dependencies });
     expect(resumed.run.state).toBe("TERMINAL");
     expect(resumed.verdict.qaVerdict).toBe("FAIL");
-    expect(freshnessInputs.at(-1)).toBe(FIXED_NOW);
+    expect(freshnessInputs.at(-1)).toBe(now);
   });
   test("fails closed when the freshness policy revokes an accepted checkpoint on resume", async () => {
     const fakes = makeDependencies();
@@ -2301,8 +2364,66 @@ describe("verification run orchestration", () => {
     } as unknown as VerificationRunDependencies;
     fakes.repository.failNextStage = "residual-risk";
     await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("simulated saveStage crash");
-    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow();
+    const resumed = await runVerification({ runId, dependencies });
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(resumed.verdict.qaVerdict).not.toBe("PASS");
     expect(evaluations).toBeGreaterThan(1);
+  });
+  test.each(["EVIDENCE_EVALUATED", "TERMINAL"] as const)("re-evaluates a historical freshness checkpoint at the resumed instant on %s resume", async state => {
+    const fakes = makeDependencies();
+    const runId = `freshness-boundary-${state.toLowerCase()}`;
+    const request = { ...makeRequest(`freshness-boundary-request-${state.toLowerCase()}`), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    let now = FIXED_NOW;
+    const freshnessInputs: string[] = [];
+    const dependencies = {
+      ...fakes.dependencies,
+      now: () => now,
+      freshnessPolicy: {
+        evaluateFreshness: async (input: { evaluatedAt: string }) => {
+          freshnessInputs.push(input.evaluatedAt);
+          return "fresh" as const;
+        },
+      },
+    } as unknown as VerificationRunDependencies;
+    const first = await runVerification({ runId, request, dependencies });
+    const originalEvidence = first.documents.evidence;
+    const originalRun = fakes.repository.runs.get(runId);
+    if (!originalEvidence || !originalRun) throw new Error("missing persisted freshness checkpoint");
+    now = "2026-08-03T00:00:10.000Z";
+    fakes.repository.runs.set(runId, { ...originalRun, state, updatedAt: FIXED_NOW });
+    const resumed = await runVerification({ runId, dependencies });
+    expect(freshnessInputs.at(-1)).toBe(now);
+    expect(resumed.documents.evidence?.freshnessEvaluatedAt).toBe(now);
+    expect(resumed.documents.evidence?.freshnessAuthority.binding.freshnessEvaluatedAt).toBe(now);
+    expect(resumed.documents.evidence?.freshnessAuthority).not.toEqual(originalEvidence.freshnessAuthority);
+    expect(resumed.verdict.qaVerdict).toBe("PASS");
+  });
+  test.each(["EVIDENCE_EVALUATED", "TERMINAL"] as const)("fails closed instead of retaining PASS when resumed freshness is stale on %s resume", async state => {
+    const fakes = makeDependencies();
+    const runId = `freshness-stale-boundary-${state.toLowerCase()}`;
+    const request = { ...makeRequest(`freshness-stale-boundary-request-${state.toLowerCase()}`), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    let now = FIXED_NOW;
+    const freshnessInputs: string[] = [];
+    const dependencies = {
+      ...fakes.dependencies,
+      now: () => now,
+      freshnessPolicy: {
+        evaluateFreshness: async (input: { evaluatedAt: string }) => {
+          freshnessInputs.push(input.evaluatedAt);
+          return input.evaluatedAt === FIXED_NOW ? "fresh" as const : "stale" as const;
+        },
+      },
+    } as unknown as VerificationRunDependencies;
+    const first = await runVerification({ runId, request, dependencies });
+    const originalRun = fakes.repository.runs.get(runId);
+    if (!first.documents.evidence || !originalRun) throw new Error("missing persisted freshness checkpoint");
+    now = "2026-08-03T00:00:10.000Z";
+    fakes.repository.runs.set(runId, { ...originalRun, state, updatedAt: FIXED_NOW });
+    const resumed = await runVerification({ runId, dependencies });
+    expect(freshnessInputs.at(-1)).toBe(now);
+    expect(resumed.documents.evidence?.freshnessEvaluatedAt).toBe(now);
+    expect(resumed.documents.evidence?.evaluations.every(item => item.checks.fresh === false)).toBe(true);
+    expect(resumed.verdict.qaVerdict).not.toBe("PASS");
   });
   test("rejects a persisted freshness timestamp mutation before resume", async () => {
     const fakes = makeDependencies();
