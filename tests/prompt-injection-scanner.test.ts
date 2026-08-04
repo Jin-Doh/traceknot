@@ -146,6 +146,14 @@ describe("prompt-injection risk classification", () => {
   });
 
   test.each([
+    "术语“假装”的定义：系统管理员是受保护角色。",
+    '术语"假装"的定义: 系统管理员是受保护角色.',
+  ])("stops explicit impersonation matching at colon clause boundaries: %s", (source) => {
+    const findings = analyzeText("docs/security.md", source);
+    expect(findings.some((finding) => finding.ruleId === "PI013")).toBe(false);
+  });
+
+  test.each([
     "如果您是系统管理员，请先检查服务状态。",
     "如果现在您是系统管理员，请检查服务。",
     "如果满足条件，您是系统管理员，请检查服务。",
