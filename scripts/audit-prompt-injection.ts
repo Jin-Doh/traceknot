@@ -14,7 +14,6 @@ export interface Rule {
   description: string;
   score: number;
   pattern: RegExp;
-  accept?: (source: string, match: RegExpExecArray) => boolean;
 }
 
 export interface Finding {
@@ -42,17 +41,6 @@ interface ExceptionEntry {
 interface ExceptionFile {
   schemaVersion: "traceknot.prompt-risk-exceptions/v1";
   exceptions: ExceptionEntry[];
-}
-
-const CHINESE_SENTENCE_SEGMENTER = new Intl.Segmenter("zh-Hans", { granularity: "sentence" });
-
-function acceptChineseIdentityMatch(source: string, match: RegExpExecArray): boolean {
-  if (!match.groups?.identityAssignment) return true;
-  const sentence = [...CHINESE_SENTENCE_SEGMENTER.segment(source)]
-    .find((segment) => segment.index <= match.index && match.index < segment.index + segment.segment.length);
-  if (!sentence) return false;
-  const prefix = source.slice(sentence.index, match.index);
-  return !/(?:^|[，,；;])\s*(?:如果|假如|倘若|若|当|请问)/u.test(prefix);
 }
 
 export const RULES: readonly Rule[] = [
@@ -124,10 +112,15 @@ export const RULES: readonly Rule[] = [
   },
   {
     id: "PI012",
-    description: "Simplified Chinese privileged role or message impersonation",
+    description: "Simplified Chinese privileged-role identity assignment (advisory)",
+    score: 5,
+    pattern: /(?:现在|从现在起)?(?:你|您)(?:现在|从现在起|将)?是(?:一(?:名|个|位))?(?:系统(?:管理员|开发者)?|开发者|管理员|超级用户|root)(?=$|[\s，。；！？,. ;!?、]|并(?:且)?|而|然后|随后|就|将|会|要|已(?:经)?|了|着|过|请)/iu,
+  },
+  {
+    id: "PI013",
+    description: "Simplified Chinese explicit privileged-role impersonation",
     score: 6,
-    pattern: /(?:(?<identityAssignment>(?:现在|从现在起)?(?:你|您)(?:现在|从现在起|将)?是(?:一(?:名|个|位))?(?:系统(?:管理员|开发者)?|开发者|管理员|超级用户|root)(?=$|[\s，。；！!、]|并(?:且)?|而|然后|随后|就|将|会|要|已(?:经)?|了|着|过|请))|(?:假装|扮演|伪装|冒充)(?:成|为)?(?:系统(?:管理员|开发者|身份|消息|指令|角色)|开发者|管理员|超级用户|root)|以(?:系统(?:管理员|开发者)?|开发者|管理员|超级用户|root)(?:的)?身份)/iu,
-    accept: acceptChineseIdentityMatch,
+    pattern: /(?:(?:假装|扮演|伪装|冒充)(?:成|为)?(?:系统(?:管理员|开发者|身份|消息|指令|角色)|开发者|管理员|超级用户|root)|以(?:系统(?:管理员|开发者)?|开发者|管理员|超级用户|root)(?:的)?身份)/iu,
   },
 ];
 
@@ -183,8 +176,7 @@ function createFinding(path: string, line: number, source: string, rule: Rule): 
 
 function acceptedMatches(rule: Rule, source: string): RegExpExecArray[] {
   const flags = rule.pattern.flags.includes("g") ? rule.pattern.flags : `${rule.pattern.flags}g`;
-  return [...source.matchAll(new RegExp(rule.pattern.source, flags))]
-    .filter((match) => rule.accept?.(source, match) ?? true);
+  return [...source.matchAll(new RegExp(rule.pattern.source, flags))];
 }
 
 function normalizedSoftWrap(value: string): { text: string; sourceOffsets: number[] } {
