@@ -297,6 +297,10 @@ test.each([
   ["empty basis", (request: VerificationRequest) => ({ ...request, testBasis: [] })],
   ["empty paths", (request: VerificationRequest) => ({ ...request, change: { ...request.change, paths: [] } })],
   ["duplicate paths", (request: VerificationRequest) => ({ ...request, change: { ...request.change, paths: ["same.ts", "same.ts"] } })],
+  ["duplicate basis IDs", (request: VerificationRequest) => ({ ...request, testBasis: [
+    { ...request.testBasis[0]!, text: "The first basis item differs from the second." },
+    { ...request.testBasis[1]!, id: request.testBasis[0]!.id, text: "The second basis item uses the same ID." },
+  ] })],
 ] as const)("rejects malformed requests before digest, writes, or dispatch: %s", async (_name, mutate) => {
   const invalid = mutate(makeRequest()) as VerificationRequest;
   expect(() => canonicalRequestDigest(invalid)).toThrow("invalid verification request");
@@ -702,6 +706,26 @@ describe("verification run orchestration", () => {
     expect(discovery.conditions[0]?.techniques).toContain("independent-producer");
     expect(plan.obligations[0]?.independence).toBe("independent-producer");
   });
+  test.each(["auth", "authentication", "authorization", "credential", "credentials", "injection", "injected"] as const)("derives R3 independent-producer obligations from %s basis material", async signal => {
+    const request = { ...makeRequest(`basis-signal-${signal}`), change: { summary: "Apply a neutral verification change.", paths: ["src/neutral-check.ts"] }, testBasis: [{ id: "neutral", kind: "request" as const, origin: "explicit" as const, text: `The neutral basis includes ${signal}.` }] } satisfies VerificationRequest;
+    const dependencies = makeDependencies().dependencies;
+    const basis = await establishTestBasis({ request, dependencies });
+    const discovery = await performRiskDiscovery({ request, basis, dependencies });
+    const plan = await buildVerificationPlan({ request, basis, discovery, dependencies });
+    expect(discovery.risks[0]?.level).toBe("R3");
+    expect(discovery.conditions[0]?.techniques).toContain("independent-producer");
+    expect(plan.obligations[0]?.independence).toBe("independent-producer");
+  });
+  test.each(["auth", "authentication", "authorization", "credential", "credentials", "injection", "injected"] as const)("derives R3 independent-producer obligations from %s declared change material", async signal => {
+    const request = { ...makeRequest(`change-signal-${signal}`), change: { summary: `Apply neutral ${signal} handling.`, paths: ["src/neutral-check.ts"] }, testBasis: [{ id: "neutral", kind: "request" as const, origin: "explicit" as const, text: "The requested check is recorded." }] } satisfies VerificationRequest;
+    const dependencies = makeDependencies().dependencies;
+    const basis = await establishTestBasis({ request, dependencies });
+    const discovery = await performRiskDiscovery({ request, basis, dependencies });
+    const plan = await buildVerificationPlan({ request, basis, discovery, dependencies });
+    expect(discovery.risks[0]?.level).toBe("R3");
+    expect(discovery.conditions[0]?.techniques).toContain("independent-producer");
+    expect(plan.obligations[0]?.independence).toBe("independent-producer");
+  });
 
   test("derives browser result and executor from UI/frontend change material with neutral basis", async () => {
     const request = { ...makeRequest(), change: { summary: "Refresh the frontend UI browser flow.", paths: ["frontend/components/"] }, testBasis: [{ id: "neutral", kind: "request" as const, origin: "explicit" as const, text: "The requested check is recorded." }] } satisfies VerificationRequest;
@@ -1034,6 +1058,29 @@ describe("verification run orchestration", () => {
     const executorCalls = fakes.executorCalls;
     await expect(runOnce(fakes.dependencies)).rejects.toThrow();
     expect(fakes.executorCalls).toBe(executorCalls);
+  });
+  test.each(["EXECUTING", "TERMINAL"] as const)("rejects persisted evidence envelope tampering before writes or redispatch on %s resume", async state => {
+    for (const mutation of ["extra key", "invalid contentHash"] as const) {
+      const fakes = makeDependencies();
+      const runId = `evidence-envelope-${state.toLowerCase()}-${mutation.replace(" ", "-")}`;
+      await runOnce(fakes.dependencies, runId);
+      const run = fakes.repository.runs.get(runId);
+      const saved = fakes.repository.stageDocuments.get(`${runId}:execution`) as ExecutionDocument;
+      if (!run || !saved || !saved.evidence[0]) throw new Error("missing complete execution");
+      const target = saved.evidence[0];
+      const tamperedEvidence = mutation === "extra key"
+        ? { ...target, unexpected: true }
+        : { ...target, contentHash: "A".repeat(64) };
+      fakes.repository.stageDocuments.set(`${runId}:execution`, { ...saved, evidence: [tamperedEvidence, ...saved.evidence.slice(1)] });
+      fakes.repository.runs.set(runId, { ...run, state, updatedAt: FIXED_NOW });
+      const executorCalls = fakes.executorCalls;
+      const stageWrites = fakes.repository.stageWrites.length;
+      const runWrites = fakes.repository.runWrites.length;
+      await expect(runVerification({ runId, request: makeRequest(), dependencies: fakes.dependencies })).rejects.toThrow("invalid persisted execution evidence reference");
+      expect(fakes.executorCalls).toBe(executorCalls);
+      expect(fakes.repository.stageWrites.length).toBe(stageWrites);
+      expect(fakes.repository.runWrites.length).toBe(runWrites);
+    }
   });
   test("rejects persisted observation and evidence PASS mutation against fixed FAIL authority before executor recall", async () => {
     const fakes = makeDependencies();

@@ -110,7 +110,7 @@ function clockNow(clock: Clock): string {
   return result;
 }
 function validRequest(request: unknown): void {
-  if (!isRecord(request) || !exactOwnKeys(request, ["schemaVersion", "requestId", "project", "change", "testBasis"]) || request.schemaVersion !== "verification-request/v1" || typeof request.requestId !== "string" || !request.requestId || !isRecord(request.project) || !exactOwnKeys(request.project, ["rootIdentity", "snapshotId"]) || typeof request.project.rootIdentity !== "string" || !request.project.rootIdentity || typeof request.project.snapshotId !== "string" || !request.project.snapshotId || !isRecord(request.change) || !exactOwnKeys(request.change, ["summary", "paths"]) || typeof request.change.summary !== "string" || !request.change.summary || !Array.isArray(request.change.paths) || request.change.paths.length < 1 || request.change.paths.some(path => typeof path !== "string" || !path) || new Set(request.change.paths as string[]).size !== request.change.paths.length || !Array.isArray(request.testBasis) || request.testBasis.length < 1 || request.testBasis.some(item => !validBasisItem(item))) throw new Error("invalid verification request");
+  if (!isRecord(request) || !exactOwnKeys(request, ["schemaVersion", "requestId", "project", "change", "testBasis"]) || request.schemaVersion !== "verification-request/v1" || typeof request.requestId !== "string" || !request.requestId || !isRecord(request.project) || !exactOwnKeys(request.project, ["rootIdentity", "snapshotId"]) || typeof request.project.rootIdentity !== "string" || !request.project.rootIdentity || typeof request.project.snapshotId !== "string" || !request.project.snapshotId || !isRecord(request.change) || !exactOwnKeys(request.change, ["summary", "paths"]) || typeof request.change.summary !== "string" || !request.change.summary || !Array.isArray(request.change.paths) || request.change.paths.length < 1 || request.change.paths.some(path => typeof path !== "string" || !path) || new Set(request.change.paths as string[]).size !== request.change.paths.length || !Array.isArray(request.testBasis) || request.testBasis.length < 1 || request.testBasis.some(item => !validBasisItem(item)) || new Set(request.testBasis.map(item => (item as VerificationBasisItem).id)).size !== request.testBasis.length) throw new Error("invalid verification request");
 }
 export function canonicalRequestDigest(request: VerificationRequest): string {
   validRequest(request);
@@ -163,7 +163,7 @@ function requestMaterial(request: VerificationRequest): string {
 }
 function riskLevel(item: VerificationBasisItem, request: VerificationRequest): RiskLevel {
   const text = `${material(item)} ${requestMaterial(request)}`;
-  if (/\b(release|migration|migrat\w*|persistence|persist\w*|destructive|delet\w*|drop|truncate|destroy\w*|irreversible|production|prod(?:uction)?|infrastructure|infra|deployment|deploy\w*|rollout|security)\b/.test(text) ||
+  if (/\b(release|migration|migrat\w*|persistence|persist\w*|destructive|delet\w*|drop|truncate|destroy\w*|irreversible|production|prod(?:uction)?|infrastructure|infra|deployment|deploy\w*|rollout|security|auth(?:entication|orization)?|credential(?:s)?|inject\w*)\b/.test(text) ||
       /\bunknown\s+(?:material\s+)?scope\b|\bmaterial(?:ly)?\s+unknown\s+scope\b|\bmaterial\s+scope\s+(?:is\s+)?(?:unknown|uncertain|undetermined|unbounded)\b|\bscope\s+(?:is\s+)?(?:materially\s+)?(?:unknown|uncertain|undetermined|unbounded)\b/.test(text)) return "R3";
   if (["contract", "invariant", "defect", "policy", "acceptance-criterion", "requirement"].includes(item.kind) ||
       /\b(runtime|concurr\w*|parallel\w*|race|retry|retries|recover\w*|browser|web|ui|visual|flow|frontend|front-end|orchestrat\w*|resume|checkpoint|snapshot|executor|capability|crash|timeout|cancel|idempot\w*)\b/.test(text)) return "R2";
@@ -256,6 +256,10 @@ function canonicalResult(value: unknown): VerificationEvidence["result"] | undef
   const artifacts = value.artifacts === undefined ? undefined : uniq((value.artifacts as string[]).map(digest => digest.toLowerCase()));
   return { verdict: value.verdict as VerificationEvidence["result"]["verdict"], summary: value.summary, ...(value.passed === undefined ? {} : { passed: value.passed }), ...(value.failed === undefined ? {} : { failed: value.failed }), ...(artifacts === undefined ? {} : { artifacts }) };
 }
+function validVerificationEvidence(value: unknown): value is VerificationEvidence {
+  if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "evidenceId", "requestId", "snapshotId", "obligationId", "producer", "execution", "result", "observedAt"], ["contentHash"]) || value.schemaVersion !== "verification-evidence/v1" || typeof value.evidenceId !== "string" || !value.evidenceId || typeof value.requestId !== "string" || !value.requestId || typeof value.snapshotId !== "string" || !value.snapshotId || typeof value.obligationId !== "string" || !value.obligationId || !validProducer(value.producer) || !validExecution(value.execution) || canonicalResult(value.result) === undefined || !validDate(value.observedAt) || (value.contentHash !== undefined && (typeof value.contentHash !== "string" || !/^[0-9a-f]{64}$/.test(value.contentHash)))) return false;
+  return true;
+}
 function validAuthority(value: unknown): value is ExecutionAuthority {
   if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "authorityId", "issuer", "binding"]) || value.schemaVersion !== "verification-execution-authority/v1" || typeof value.authorityId !== "string" || !value.authorityId || typeof value.issuer !== "string" || !value.issuer || !isRecord(value.binding) || !exactOwnKeys(value.binding, ["runId", "requestId", "requestDigest", "snapshotId", "obligationId", "idempotencyKey", "producer", "execution", "result", "observedAt", "artifactDigests"])) return false;
   const binding = value.binding;
@@ -312,7 +316,7 @@ function assertExecutionEvidenceBindings(execution: ExecutionDocument, request?:
     claims.set(claim.obligationId, claim);
   }
   for (const item of execution.evidence) {
-    if (item.evidenceId !== `evidence:${item.obligationId}` || evidence.has(item.obligationId) || (expectedObligations && !expectedObligations.has(item.obligationId)) || !validDate(item.observedAt)) throw Error("invalid execution evidence binding");
+    if (!validVerificationEvidence(item) || item.evidenceId !== `evidence:${item.obligationId}` || evidence.has(item.obligationId) || (expectedObligations && !expectedObligations.has(item.obligationId)) || !validDate(item.observedAt)) throw Error("invalid execution evidence binding");
     if (item.result.artifacts !== undefined && (!Array.isArray(item.result.artifacts) || item.result.artifacts.some(digest => typeof digest !== "string"))) throw Error("invalid execution evidence binding");
     evidence.set(item.obligationId, item);
   }
@@ -657,7 +661,7 @@ function validateStage(stage: StageName, value: unknown, request: VerificationRe
       claimObligations.add(claim.obligationId);
     }
     for (const item of value.evidence) {
-      if (!isRecord(item) || item.schemaVersion !== "verification-evidence/v1" || typeof item.evidenceId !== "string" || item.evidenceId !== `evidence:${item.obligationId}` || item.requestId !== request.requestId || item.snapshotId !== request.project.snapshotId || typeof item.obligationId !== "string" || !item.obligationId || (obligationSet && !obligationSet.has(item.obligationId)) || !validProducer(item.producer) || !validExecution(item.execution) || !isRecord(item.result) || !["PASS","FAIL","BLOCKED","INCOMPLETE"].includes(item.result.verdict as string)) throw Error("invalid persisted execution evidence reference");
+      if (!validVerificationEvidence(item) || item.evidenceId !== `evidence:${item.obligationId}` || item.requestId !== request.requestId || item.snapshotId !== request.project.snapshotId || (obligationSet && !obligationSet.has(item.obligationId))) throw Error("invalid persisted execution evidence reference");
       if (evidenceObligations.has(item.obligationId)) throw Error("invalid persisted execution evidence reference");
       evidenceObligations.add(item.obligationId);
     }
