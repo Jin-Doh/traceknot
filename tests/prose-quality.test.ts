@@ -463,6 +463,19 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("PASS");
   });
 
+  test("locates the real inline destination after escaped label delimiters", () => {
+    const report = analyzeProse("[前缀\\](中文English](dest)", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+  });
+
+  test("masks repeated Markdown blockquotes by source range", () => {
+    const source = "资料原文是“> 中文English\\n结束”。\n\n> 中文English\n";
+    expect(analyzeProse(source, ["zh-Hans"], "zh-Hans").findings).toEqual([]);
+  });
+
   test("protects four-space-indented Markdown code", () => {
     const before = "Run this command:\n\n    traceknot verify\n\nDone.";
     const after = "Run this command:\n\n    traceknot delete\n\nDone.";

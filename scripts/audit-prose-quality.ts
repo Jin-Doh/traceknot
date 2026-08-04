@@ -372,9 +372,15 @@ function blockquoteContent(line: string): string | null {
   return line.slice(match[0].length);
 }
 
-function markdownBlockquotes(text: string): string[] {
+function markdownBlockquoteRanges(text: string): TextRange[] {
   const lines = text.match(/[^\n]*(?:\n|$)/g)?.filter((line) => line.length > 0) ?? [];
-  const blocks: string[] = [];
+  const offsets: number[] = [];
+  let offset = 0;
+  for (const line of lines) {
+    offsets.push(offset);
+    offset += line.length;
+  }
+  const ranges: TextRange[] = [];
   for (let index = 0; index < lines.length; index += 1) {
     const openingContent = blockquoteContent(lines[index]);
     const listMarker = lines[index].match(/^([ \t]*)((?:[-+*]|\d+[.)]))([ \t]+)>/);
@@ -410,14 +416,18 @@ function markdownBlockquotes(text: string): string[] {
       if (!allowsLazyContinuation || startsInterruptingMarkdownBlock(next.slice(containerIndent))) break;
       end += 1;
     }
-    blocks.push(lines.slice(index, end + 1).join(""));
+    ranges.push({ start: offsets[index], end: offsets[end] + lines[end].length });
     index = end;
   }
-  return blocks;
+  return ranges;
 }
 
-function htmlBlockquotes(text: string): string[] {
-  const blocks: string[] = [];
+function markdownBlockquotes(text: string): string[] {
+  return markdownBlockquoteRanges(text).map((range) => text.slice(range.start, range.end));
+}
+
+function htmlBlockquoteRanges(text: string): TextRange[] {
+  const ranges: TextRange[] = [];
   let depth = 0;
   let start = -1;
   for (const match of text.matchAll(/<\/?(?:blockquote|q)\b[^>]*>/gi)) {
@@ -427,13 +437,17 @@ function htmlBlockquotes(text: string): string[] {
     } else if (depth > 0) {
       depth -= 1;
       if (depth === 0) {
-        blocks.push(text.slice(start, match.index + match[0].length));
+        ranges.push({ start, end: match.index + match[0].length });
         start = -1;
       }
     }
   }
-  if (depth > 0 && start >= 0) blocks.push(text.slice(start));
-  return blocks;
+  if (depth > 0 && start >= 0) ranges.push({ start, end: text.length });
+  return ranges;
+}
+
+function htmlBlockquotes(text: string): string[] {
+  return htmlBlockquoteRanges(text).map((range) => text.slice(range.start, range.end));
 }
 
 function htmlCodeSpans(text: string): Array<{ category: "code-block" | "inline-code"; value: string }> {
@@ -453,6 +467,15 @@ function isSyntheticDestination(value: string): boolean {
   return /^(?:inline|html|attr|ref):/u.test(value);
 }
 
+function inlineDestinationBoundary(source: string): number {
+  for (let boundary = source.indexOf("]("); boundary >= 0; boundary = source.indexOf("](", boundary + 2)) {
+    if (isEscaped(source, boundary)) continue;
+    const opening = openingLinkBracketIndex(source, boundary);
+    if (opening === 0 || (opening === 1 && source[0] === "!")) return boundary;
+  }
+  return -1;
+}
+
 function markdownQuotationSyntaxRanges(text: string): TextRange[] {
   const ranges: TextRange[] = [];
   const tree = MARKDOWN_PROCESSOR.parse(text);
@@ -466,7 +489,7 @@ function markdownQuotationSyntaxRanges(text: string): TextRange[] {
     }
     if (node.type === "link" || node.type === "image") {
       const source = text.slice(start, end);
-      const destinationBoundary = source.indexOf("](");
+      const destinationBoundary = inlineDestinationBoundary(source);
       if (destinationBoundary >= 0 && source.endsWith(")")) {
         ranges.push({ start: start + destinationBoundary + 2, end: end - 1 });
       } else {
@@ -499,8 +522,10 @@ function maskProtectedProse(markdown: string, maskedCharacter = " "): string {
   let prose = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, mask);
   prose = prose.replace(/<!--[\s\S]*?(?:-->|$)/g, mask);
   prose = maskQuotationSyntax(prose, maskedCharacter);
-  for (const quote of markdownBlockquotes(prose)) prose = prose.replace(quote, mask);
-  for (const quote of htmlBlockquotes(prose)) prose = prose.replace(quote, mask);
+  prose = maskRangesPreservingLines(prose, [
+    ...markdownBlockquoteRanges(prose),
+    ...htmlBlockquoteRanges(prose),
+  ], maskedCharacter);
   prose = maskRangesPreservingLines(prose, directQuotationRanges(prose), maskedCharacter);
   return prose;
 }
