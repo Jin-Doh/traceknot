@@ -260,7 +260,19 @@ function readFd(fd: number): Uint8Array {
 }
 function unlinkChild(dirFd: number, name: string): void {
   const n = native();
-  n.symbols.unlinkat(dirFd, cstring(name), 0);
+  const result = n.symbols.unlinkat(dirFd, cstring(name), 0);
+  if (result >= 0) return;
+  const error = errno();
+  if (error === 2) return;
+  throw new ArtifactPathError(`artifact temporary cleanup failed (errno ${error})`);
+}
+function cleanupChild(dirFd: number, name: string, primary?: unknown): void {
+  try {
+    unlinkChild(dirFd, name);
+  } catch (cleanupError) {
+    if (primary === undefined) throw cleanupError;
+    throw new AggregateError([primary, cleanupError], "artifact temporary cleanup failed", { cause: primary });
+  }
 }
 function readObject(objectsFd: number, digest: string): DecodedFrame | undefined {
   const n = native();
@@ -291,7 +303,7 @@ function publishObject(objectsFd: number, digest: string, frame: Uint8Array, fsy
     }
     if (fsync) check(n.symbols.fsync(fd), "artifact temporary fsync");
   } catch (error) {
-    unlinkChild(objectsFd, temp);
+    cleanupChild(objectsFd, temp, error);
     throw error;
   } finally {
     closeFd(fd);
@@ -299,11 +311,12 @@ function publishObject(objectsFd: number, digest: string, frame: Uint8Array, fsy
   const linked = n.symbols.linkat(objectsFd, cstring(temp), objectsFd, cstring(digest), 0);
   if (linked < 0) {
     const error = errno();
-    unlinkChild(objectsFd, temp);
+    const publicationError = error === 17 ? undefined : new ArtifactPathError(`artifact publication link failed (errno ${error})`);
+    cleanupChild(objectsFd, temp, publicationError);
     if (error === 17) return;
-    throw new ArtifactPathError(`artifact publication link failed (errno ${error})`);
+    throw publicationError;
   }
-  unlinkChild(objectsFd, temp);
+  cleanupChild(objectsFd, temp);
   if (fsync) check(n.symbols.fsync(objectsFd), "artifact objects directory fsync");
 }
 function outputArtifact(artifact: ArtifactLike): Artifact {
