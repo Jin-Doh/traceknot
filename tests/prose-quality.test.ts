@@ -323,6 +323,7 @@ describe("rewrite preservation gate", () => {
     ["用户应该审核发布。", "用户不应该审核发布。"],
     ["系统允许自动发布。", "系统不允许自动发布。"],
     ["用户须审核发布。", "用户无需审核发布。"],
+    ["用户需审核后发布。", "用户可直接发布。"],
   ])("preserves common Simplified Chinese normative forms: %s", (source, rewrite) => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
@@ -337,6 +338,30 @@ describe("rewrite preservation gate", () => {
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
     expect(report.status).toBe("FAIL");
+  });
+
+  test("preserves both endpoints of Simplified Chinese quantity ranges", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n系统每次运行三至四次。`, `${context}\n系统每次运行五至四次。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(report.status).toBe("FAIL");
+  });
+
+  test("does not extract embedded numerals from ordinary Simplified Chinese words", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n唯一条款和统一台账保持不变。`, `${context}\n唯一规则和统一记录保持不变。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures.some((failure) => failure.category === "number")).toBe(false);
+    expect(report.status).toBe("PASS");
+  });
+
+  test("does not treat lexical 须 as a Simplified Chinese obligation", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n他的胡须很长。`, `${context}\n他的胡子很长。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
+    expect(report.status).toBe("PASS");
   });
 
   test("warns at the review threshold and rejects at the hard threshold", () => {
