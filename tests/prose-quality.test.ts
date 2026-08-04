@@ -263,9 +263,12 @@ describe("language-specific prose rules", () => {
   test("counts adjacent Simplified Chinese ASCII punctuation at the declared boundary", () => {
     const belowThreshold = analyzeProse("甲,乙,丙", ["zh-Hans"], "zh-Hans");
     const atThreshold = analyzeProse("甲,乙;丙:丁", ["zh-Hans"], "zh-Hans");
+    const sentencePunctuation = analyzeProse("甲.乙?丙!丁", ["zh-Hans"], "zh-Hans");
     expect(belowThreshold.findings.some((finding) => finding.ruleId === "ZH-P-001")).toBe(false);
     expect(atThreshold.findings).toContainEqual(expect.objectContaining({ ruleId: "ZH-P-001", count: 3 }));
+    expect(sentencePunctuation.findings).toContainEqual(expect.objectContaining({ ruleId: "ZH-P-001", count: 3 }));
     expect(atThreshold.status).toBe("WARN");
+    expect(sentencePunctuation.status).toBe("WARN");
   });
 
   test("does not flag ordinary technical prose", () => {

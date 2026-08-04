@@ -85,7 +85,7 @@ export const RULES: readonly ProseRule[] = [
   { id: "ZH-D-001", locale: "zh-Hans", severity: "S1", description: "套话或夸张表达重复", pattern: /在当今(?:快速|迅速)发展的|这充分体现了|具有划时代意义|不容忽视/g, threshold: 2 },
   { id: "ZH-G-001", locale: "zh-Hans", severity: "S2", description: "空泛提示语重复", pattern: /值得注意的是|需要指出的是|毋庸置疑/g, threshold: 2 },
   { id: "ZH-H-001", locale: "zh-Hans", severity: "S2", description: "段首连接词重复", pattern: /^(?:此外|同时|因此|总而言之)[，,\s]/gm, threshold: 3 },
-  { id: "ZH-P-001", locale: "zh-Hans", severity: "S2", description: "中文之间重复使用 ASCII 标点", pattern: /[\p{Script=Han}][,;:](?=[\p{Script=Han}])/gu, threshold: 3 },
+  { id: "ZH-P-001", locale: "zh-Hans", severity: "S2", description: "中文之间重复使用 ASCII 标点", pattern: /[\p{Script=Han}][,;:.?!](?=[\p{Script=Han}])/gu, threshold: 3 },
 ];
 
 // `prose-quality.config.json` is the single publication-surface inventory.
