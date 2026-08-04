@@ -1,8 +1,13 @@
 import Ajv2020 from "ajv/dist/2020.js";
+import type { Nodes } from "mdast";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
 import { run as runZhLint } from "zhlint";
+import remarkGfm from "remark-gfm";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
+import { visit } from "unist-util-visit";
 
 export type ProseLocale = "ko" | "en" | "zh-Hans";
 export type Locale = ProseLocale | "mixed" | "unknown";
@@ -83,6 +88,8 @@ export const RULES: readonly ProseRule[] = [
   { id: "EN-G-001", locale: "en", severity: "S2", description: "generic meta-claim", pattern: /\b(?:it is important to note that|it is worth noting that)\b/gi, threshold: 2 },
   { id: "EN-H-001", locale: "en", severity: "S2", description: "repetitive paragraph transition", pattern: /^(?:Furthermore|Moreover|Additionally)[,\s]/gim, threshold: 3 },
 ];
+
+const MARKDOWN_PROCESSOR = unified().use(remarkParse).use(remarkGfm);
 
 // `prose-quality.config.json` is the single publication-surface inventory.
 // The scanner default reads it instead of maintaining a second include list.
@@ -446,17 +453,44 @@ function isSyntheticDestination(value: string): boolean {
   return /^(?:inline|html|attr|ref):/u.test(value);
 }
 
+function markdownQuotationSyntaxRanges(text: string): TextRange[] {
+  const ranges: TextRange[] = [];
+  const tree = MARKDOWN_PROCESSOR.parse(text);
+  visit(tree, (node: Nodes) => {
+    const start = node.position?.start.offset;
+    const end = node.position?.end.offset;
+    if (start === undefined || end === undefined) return;
+    if (node.type === "code" || node.type === "inlineCode") {
+      ranges.push({ start, end });
+      return;
+    }
+    if (node.type === "link" || node.type === "image") {
+      const source = text.slice(start, end);
+      const destinationBoundary = source.indexOf("](");
+      if (destinationBoundary >= 0 && source.endsWith(")")) {
+        ranges.push({ start: start + destinationBoundary + 2, end: end - 1 });
+      } else {
+        ranges.push({ start, end });
+      }
+      return;
+    }
+    if (node.type === "definition") {
+      const source = text.slice(start, end);
+      const destinationBoundary = source.indexOf("]:");
+      if (destinationBoundary >= 0) ranges.push({ start: start + destinationBoundary + 2, end });
+    }
+  });
+  return ranges;
+}
+
 function maskQuotationSyntax(text: string, maskedCharacter = " "): string {
   const mask = (value: string): string => maskValuePreservingLines(value, maskedCharacter);
-  let masked = text;
-  for (const block of markdownFencedBlocks(masked)) masked = masked.replace(block, mask);
+  let masked = maskRangesPreservingLines(text, markdownQuotationSyntaxRanges(text), maskedCharacter);
   for (const block of markdownIndentedCodeBlocks(masked)) masked = masked.replace(block, mask);
   for (const span of htmlCodeSpans(masked)) masked = masked.replace(span.value, mask);
-  for (const span of markdownInlineCodeSpans(masked)) masked = masked.replace(span, mask);
   for (const destination of markdownLinkDestinations(masked)) {
     if (destination && !isSyntheticDestination(destination)) masked = masked.replace(destination, mask);
   }
-  for (const destination of standaloneUrls(masked)) masked = masked.replace(destination, mask);
   return masked;
 }
 

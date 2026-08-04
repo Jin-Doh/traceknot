@@ -456,6 +456,13 @@ describe("rewrite preservation gate", () => {
     expect(preservation.failures.some((failure) => failure.category === "quotation")).toBe(false);
   });
 
+  test("masks Markdown destinations by source range rather than repeated value", () => {
+    const source = "> docs/中文English\n\n[证据](docs/中文English)";
+    const report = analyzeProse(source, ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe("PASS");
+  });
+
   test("protects four-space-indented Markdown code", () => {
     const before = "Run this command:\n\n    traceknot verify\n\nDone.";
     const after = "Run this command:\n\n    traceknot delete\n\nDone.";
