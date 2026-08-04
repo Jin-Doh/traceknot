@@ -340,6 +340,17 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("FAIL");
   });
 
+  test.each([
+    ["系统支持三位用户。", "系统支持四位用户。"],
+    ["系统包含三项检查。", "系统包含四项检查。"],
+  ])("preserves quantities using common Simplified Chinese counters: %s", (source, rewrite) => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(report.status).toBe("FAIL");
+  });
+
   test("preserves both endpoints of Simplified Chinese quantity ranges", () => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n系统每次运行三至四次。`, `${context}\n系统每次运行五至四次。`);
@@ -359,6 +370,18 @@ describe("rewrite preservation gate", () => {
   test("does not treat lexical 须 as a Simplified Chinese obligation", () => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n他的胡须很长。`, `${context}\n他的胡子很长。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
+    expect(report.status).toBe("PASS");
+  });
+
+  test.each([
+    ["团队认可审核结果。", "团队接受审核结果。"],
+    ["材料属于刚需审核样本。", "材料属于必要审核样本。"],
+    ["这是必需审核材料。", "这是必要审核材料。"],
+  ])("does not extract concise modals embedded in ordinary words: %s", (source, rewrite) => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
     expect(report.status).toBe("PASS");
