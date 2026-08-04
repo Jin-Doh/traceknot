@@ -213,7 +213,9 @@ export function checkReadmeSections(path: string, content: string): void {
 }
 
 function checkLanguageNavigation(record: ReadmeRecord): void {
-  const visibleTargets = new Set(visibleAnchorTargets(record.content).map((target) => target.split(/[?#]/, 1)[0]));
+  const visibleTargets = new Set(visibleAnchorTargets(record.content)
+    .filter((target) => !isExternalTarget(target))
+    .map(normalizedRepositoryRelativeTarget));
   for (const target of README_PATHS) {
     if (!visibleTargets.has(target)) {
       throw new Error(`${record.path}: missing language link to ${target}`);
@@ -309,11 +311,15 @@ function isExternalTarget(target: string): boolean {
   return target.startsWith("#") || target.startsWith("//") || /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(target);
 }
 
+function normalizedRepositoryRelativeTarget(rawTarget: string): string {
+  return posix.normalize(decodeURIComponent(rawTarget.split("#", 1)[0].split("?", 1)[0].replace(/^<|>$/g, "")));
+}
+
 function normalizedDocumentationTargets(content: string): Set<string> {
   const targets = new Set<string>();
   for (const rawTarget of visibleAnchorTargets(content)) {
     if (isExternalTarget(rawTarget)) continue;
-    const target = posix.normalize(decodeURIComponent(rawTarget.split("#", 1)[0].split("?", 1)[0].replace(/^<|>$/g, "")));
+    const target = normalizedRepositoryRelativeTarget(rawTarget);
     if (target.startsWith("docs/") || target.startsWith("skill/") || /^BRAND(?:\.[a-z-]+)?\.md$/i.test(target)) {
       targets.add(target);
     }

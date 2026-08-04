@@ -147,6 +147,11 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLanguageNavigation("README.md", visible)).not.toThrow();
   });
 
+  test("normalizes repository-relative language-navigation targets", () => {
+    const visible = "[English](./README.md) [한국어](README.%6Bo.md) [简体中文](./README.zh.md?view=1#top)";
+    expect(() => checkReadmeLanguageNavigation("README.md", visible)).not.toThrow();
+  });
+
   test("does not accept hidden raw-HTML language navigation", () => {
     const content = "[English](README.md) [한국어](README.ko.md) <a hidden href=\"README.zh.md\">简体中文</a>";
     expect(() => checkReadmeLanguageNavigation("README.md", content)).toThrow("missing language link to README.zh.md");
