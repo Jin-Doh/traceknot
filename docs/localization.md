@@ -39,6 +39,8 @@ bun scripts/check-readme-contract.ts
 
 The canonical CI gate runs the same contract check.
 
+`prose-quality.config.json` is the single publication-prose inventory. Its `**/*.md` include keeps every repository Markdown surface in scope automatically; locale detection and explicit overrides decide whether a document is checked or reported as skipped. The scanner default reads this file instead of carrying a second path list.
+
 ## Language-specific quality
 
 The repository's deterministic prose scanner supports Korean and English. It does not apply either rule set to Simplified Chinese. Chinese prose requires semantic review plus the shared command, link, and boundary checks above until a dedicated Chinese rule set exists.

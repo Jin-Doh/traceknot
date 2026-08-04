@@ -32,6 +32,24 @@ const REQUIRED_BOUNDARIES = [
   "authoritative: false",
   "phase1Authorized: false",
 ] as const;
+const REQUIRED_OPERATIONAL_LITERALS: Readonly<Record<string, readonly string[]>> = {
+  "README.md": [
+    "TRACEKNOT_REF=<tag-or-commit>",
+    "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/install.sh",
+    'TRACEKNOT_REF="$TRACEKNOT_REF" sh',
+    "TRACEKNOT_SKILLS_ROOT=/absolute/skills sh -s -- --prefix /absolute/path",
+  ],
+  "docs/automatic-updates.md": [
+    "$TRACEKNOT_PREFIX/current/bin/traceknot-update",
+    "$TRACEKNOT_PREFIX/bin/traceknot-update",
+    '"$TRACEKNOT_UPDATE" status',
+    '"$TRACEKNOT_UPDATE" check',
+    '"$TRACEKNOT_UPDATE" apply',
+    '"$TRACEKNOT_UPDATE" disable',
+    '"$TRACEKNOT_UPDATE" enable',
+    '"$TRACEKNOT_UPDATE" rollback',
+  ],
+};
 const LOCALIZED_DOCUMENT_ALTERNATIVES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   "README.ko.md": { "BRAND.md": "BRAND.ko.md" },
 };
@@ -185,6 +203,18 @@ export function checkReadmeLocalLinks(record: Pick<ReadmeRecord, "path" | "conte
   }
 }
 
+function checkPublicationContracts(): void {
+  const config = JSON.parse(readFileSync(resolve(ROOT, "prose-quality.config.json"), "utf8")) as { include?: unknown };
+  if (!Array.isArray(config.include) || config.include.length !== 1 || config.include[0] !== "**/*.md") {
+    throw new Error("prose-quality.config.json: repository publication coverage must remain **/*.md");
+  }
+  for (const [path, literals] of Object.entries(REQUIRED_OPERATIONAL_LITERALS)) {
+    const content = readFileSync(resolve(ROOT, path), "utf8");
+    const missing = literals.filter((literal) => !content.includes(literal));
+    if (missing.length > 0) throw new Error(`${path}: missing operational contract literals: ${missing.join(", ")}`);
+  }
+}
+
 export function checkReadmeContract(): void {
   const records = loadReadmes();
   for (const record of records) {
@@ -200,6 +230,7 @@ export function checkReadmeContract(): void {
     const content = readFileSync(resolve(ROOT, path), "utf8");
     checkReadmeLocalLinks({ path, content });
   }
+  checkPublicationContracts();
 }
 
 if (import.meta.main) {

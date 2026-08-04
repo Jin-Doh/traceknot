@@ -81,28 +81,11 @@ export const RULES: readonly ProseRule[] = [
   { id: "EN-H-001", locale: "en", severity: "S2", description: "repetitive paragraph transition", pattern: /^(?:Furthermore|Moreover|Additionally)[,\s]/gim, threshold: 3 },
 ];
 
-const DEFAULT_CONFIG: Config = {
-  schemaVersion: "prose-quality-config/v1",
-  enabled: true,
-  mode: "advisory",
-  locales: ["ko", "en"],
-  include: [
-    "README.md",
-    "README.ko.md",
-    "BRAND.md",
-    "BRAND.ko.md",
-    "assets/readme/README.md",
-    "docs/architecture.md",
-    "docs/automatic-updates.md",
-    "docs/qa-process.md",
-    "docs/trust-model.md",
-    "docs/localization.md",
-  ],
-  exclude: [],
-  minimumProseCharacters: 200,
-  maxChangeRate: 0.3,
-  rejectChangeRate: 0.5,
-};
+// `prose-quality.config.json` is the single publication-surface inventory.
+// The scanner default reads it instead of maintaining a second include list.
+const DEFAULT_CONFIG = JSON.parse(
+  readFileSync(resolve(import.meta.dir, "../prose-quality.config.json"), "utf8"),
+) as Config;
 
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
