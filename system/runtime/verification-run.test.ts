@@ -481,6 +481,32 @@ test("fails closed when a valid artifact is accompanied by a malformed artifact"
   expect(result.verdict.qaVerdict).not.toBe("PASS");
   expect(stores).toBe(0);
 });
+test.each(["BLOCKED", "INCOMPLETE"] as const)("rejects sparse diagnostic artifacts before storage for %s output", async status => {
+  const fakes = makeDependencies();
+  const digest = "s".repeat(64);
+  const sparseArtifacts: Artifact[] = [];
+  sparseArtifacts[1] = { type: "verification-result", digest };
+  let stores = 0;
+  const executor: VerificationExecutor = {
+    atomicSameKeyIdempotency: true,
+    executeObligation: async request => ({
+      status,
+      runId: request.runId,
+      requestId: request.requestId,
+      snapshotId: request.snapshotId,
+      idempotencyKey: request.idempotencyKey,
+      producer: { kind: "deterministic-verifier", identity: "sparse-diagnostic-executor", independence: "independent-producer" },
+      summary: `sparse diagnostic ${status.toLowerCase()}`,
+      artifacts: sparseArtifacts,
+    }),
+  };
+  const artifactStore: ArtifactStore = {
+    storeVerificationResultArtifact: async artifact => { stores++; return artifact; },
+  };
+  const result = await runOnce({ ...fakes.dependencies, executor, artifactStore }, `sparse-diagnostic-${status.toLowerCase()}`);
+  expect(result.verdict.qaVerdict).toBe("INCOMPLETE");
+  expect(stores).toBe(0);
+});
 test.each([
   ["malformed response", null],
   ["wrong response type", { type: "unexpected-artifact", digest: "b".repeat(64) }],
