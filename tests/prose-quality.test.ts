@@ -495,6 +495,14 @@ describe("rewrite preservation gate", () => {
     }));
   });
 
+  test("masks non-rendered HTML attribute syntax before quotation scanning", () => {
+    const report = analyzeProse('<span title=\'foo"\'>证据</span>中文English"', ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+  });
+
   test("parses HTML quotation boundaries independently of attribute text", () => {
     const source = '<q><span title="</q>">中文English</span></q>';
     expect(analyzeProse(source, ["zh-Hans"], "zh-Hans").findings).toEqual([]);

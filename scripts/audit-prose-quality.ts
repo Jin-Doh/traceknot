@@ -468,17 +468,12 @@ function inlineDestinationBoundary(source: string): number {
   return -1;
 }
 
-const URL_HTML_ATTRIBUTES = new Set([
-  "action", "background", "cite", "data", "formaction", "href", "itemid", "longdesc", "manifest", "ping", "poster", "profile", "src", "srcset", "usemap",
-]);
-
-function htmlDestinationAttributeRanges(source: string, sourceOffset: number): TextRange[] {
+function htmlAttributeRanges(source: string, sourceOffset: number): TextRange[] {
   const ranges: TextRange[] = [];
   const fragment = parseFragment(source, { sourceCodeLocationInfo: true });
   const collect = (node: DefaultTreeAdapterMap["node"]): void => {
     if ("attrs" in node) {
       for (const attribute of node.attrs) {
-        if (!URL_HTML_ATTRIBUTES.has(attribute.name.toLowerCase())) continue;
         const location = node.sourceCodeLocation?.attrs?.[attribute.name];
         if (location) ranges.push({ start: sourceOffset + location.startOffset, end: sourceOffset + location.endOffset });
       }
@@ -537,7 +532,7 @@ function markdownQuotationSyntaxRanges(text: string): TextRange[] {
       return;
     }
     if (node.type === "html") {
-      ranges.push(...htmlDestinationAttributeRanges(text.slice(start, end), start));
+      ranges.push(...htmlAttributeRanges(text.slice(start, end), start));
     }
   });
   return ranges;
