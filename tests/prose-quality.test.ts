@@ -294,6 +294,15 @@ describe("language-specific prose rules", () => {
     expect(report.status).toBe("PASS");
   });
 
+  test("masks inline code before deriving direct quotation ranges", () => {
+    const report = analyzeProse('`"`中文English"', ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+    expect(report.status).toBe("WARN");
+  });
+
   test.each([
     "资料原文是“中文English”。正文完整。",
     "资料原文是「中文English」。正文完整。",

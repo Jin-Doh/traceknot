@@ -451,8 +451,8 @@ function maskProtectedProse(markdown: string, maskedCharacter = " "): string {
   for (const span of htmlCodeSpans(prose)) prose = prose.replace(span.value, mask);
   for (const quote of markdownBlockquotes(prose)) prose = prose.replace(quote, mask);
   for (const quote of htmlBlockquotes(prose)) prose = prose.replace(quote, mask);
-  prose = maskRangesPreservingLines(prose, directQuotationRanges(prose), maskedCharacter);
   for (const span of markdownInlineCodeSpans(prose)) prose = prose.replace(span, mask);
+  prose = maskRangesPreservingLines(prose, directQuotationRanges(prose), maskedCharacter);
   return prose;
 }
 
