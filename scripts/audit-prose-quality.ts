@@ -3,6 +3,7 @@ import type { Nodes } from "mdast";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
+import { parseFragment, type DefaultTreeAdapterMap } from "parse5";
 import { run as runZhLint } from "zhlint";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
@@ -476,6 +477,26 @@ function inlineDestinationBoundary(source: string): number {
   return -1;
 }
 
+const URL_HTML_ATTRIBUTES = new Set(["href", "src", "srcset", "action", "formaction", "poster", "data"]);
+
+function htmlDestinationAttributeRanges(source: string, sourceOffset: number): TextRange[] {
+  const ranges: TextRange[] = [];
+  const fragment = parseFragment(source, { sourceCodeLocationInfo: true });
+  const collect = (node: DefaultTreeAdapterMap["node"]): void => {
+    if ("attrs" in node) {
+      for (const attribute of node.attrs) {
+        if (!URL_HTML_ATTRIBUTES.has(attribute.name.toLowerCase())) continue;
+        const location = node.sourceCodeLocation?.attrs?.[attribute.name];
+        if (location) ranges.push({ start: sourceOffset + location.startOffset, end: sourceOffset + location.endOffset });
+      }
+    }
+    if ("childNodes" in node) for (const child of node.childNodes) collect(child);
+    if ("content" in node) collect(node.content);
+  };
+  collect(fragment);
+  return ranges;
+}
+
 function markdownQuotationSyntaxRanges(text: string): TextRange[] {
   const ranges: TextRange[] = [];
   const tree = MARKDOWN_PROCESSOR.parse(text);
@@ -499,6 +520,10 @@ function markdownQuotationSyntaxRanges(text: string): TextRange[] {
     }
     if (node.type === "definition") {
       ranges.push({ start, end });
+      return;
+    }
+    if (node.type === "html") {
+      ranges.push(...htmlDestinationAttributeRanges(text.slice(start, end), start));
     }
   });
   return ranges;

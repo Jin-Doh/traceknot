@@ -479,6 +479,14 @@ describe("rewrite preservation gate", () => {
     }));
   });
 
+  test("masks raw HTML destinations by source range rather than repeated value", () => {
+    const report = analyzeProse('1" ... <a href=\'1"\'>证据</a>中文English"', ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+  });
+
   test("masks repeated Markdown blockquotes by source range", () => {
     const source = "资料原文是“> 中文English\\n结束”。\n\n> 中文English\n";
     expect(analyzeProse(source, ["zh-Hans"], "zh-Hans").findings).toEqual([]);

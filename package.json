@@ -23,6 +23,7 @@
     "ajv-cli": "5.0.0",
     "hast-util-to-text": "4.0.2",
     "mdast-util-to-string": "4.0.0",
+    "parse5": "7.3.0",
     "rehype-raw": "7.0.0",
     "remark-gfm": "4.0.1",
     "remark-parse": "11.0.0",
