@@ -410,7 +410,7 @@ test("selects the latest parsed instant across mixed fractional timestamps", asy
   });
   fakes.repository.stageDocuments.set(`${runId}:execution`, { ...execution, observations, evidence, authorities });
   fakes.repository.runs.set(runId, { ...run, state: "EXECUTING" });
-  const dependencies = { ...fakes.dependencies, executionAuthority: { ...fakes.dependencies.executionAuthority, verifyExecutionAuthority: async () => true } };
+  const dependencies = { ...fakes.dependencies, now: () => high, executionAuthority: { ...fakes.dependencies.executionAuthority, verifyExecutionAuthority: async () => true } };
   const replay = await runVerification({ runId, dependencies });
   expect(replay.documents.evidence?.evaluations.every(item => item.evaluatedAt === high)).toBe(true);
 });
@@ -557,6 +557,32 @@ test.each([
   expect(result.verdict.qaVerdict).toBe("INCOMPLETE");
   expect(execution?.evidence.every(item => item.result.verdict !== "PASS")).toBe(true);
   expect(execution?.authorities.some(authority => authority.binding.result.verdict === "PASS")).toBe(false);
+});
+test("releases the dispatch claim and retries after an artifact store exception", async () => {
+  const fakes = makeDependencies();
+  const runId = "artifact-store-retry";
+  const request = { ...makeRequest("artifact-store-retry-request"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+  let storeCalls = 0;
+  const artifactStore: ArtifactStore = {
+    storeVerificationResultArtifact: async artifact => {
+      storeCalls++;
+      if (storeCalls === 1) throw new Error("artifact store failed before write");
+      return artifact;
+    },
+  };
+  const dependencies = { ...fakes.dependencies, artifactStore };
+  await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("artifact store failed before write");
+  expect(fakes.repository.dispatchClaims.size).toBe(0);
+  expect(fakes.repository.runs.get(runId)?.state).toBe("PLANNED");
+  const executorCallsAfterFailure = fakes.executorCalls;
+  const resumed = await runVerification({ runId, dependencies });
+  expect(fakes.executorCalls).toBeGreaterThan(executorCallsAfterFailure);
+  expect(storeCalls).toBeGreaterThan(1);
+  expect(resumed.run.state).toBe("TERMINAL");
+  expect(resumed.verdict.qaVerdict).toBe("PASS");
+  const claim = [...fakes.repository.dispatchClaims.values()][0];
+  expect(claim?.status).toBe("COMPLETED");
+  expect(claim?.completion?.output.artifacts).toEqual([{ type: "verification-result", digest: "a".repeat(64) }]);
 });
 test.each(["BLOCKED", "INCOMPLETE"] as const)("retains diagnostic artifacts for a fresh %s output", async status => {
   const fakes = makeDependencies();
@@ -1933,7 +1959,9 @@ describe("verification run orchestration", () => {
     const dependencies = { ...fakes.dependencies, executor, artifactStore };
     await expect(runOnce(dependencies)).rejects.toThrow("artifact storage failed after external completion");
     await expect(runOnce(dependencies)).resolves.toMatchObject({ run: { state: "TERMINAL" } });
-    expect(requests).toHaveLength(2);
+    expect(requests).toHaveLength(3);
+    expect(requests[0]).toBe(requests[1]);
+    expect(requests[2]).not.toBe(requests[0]);
     expect(new Set(requests).size).toBe(2);
     expect([...sideEffects.values()].every(count => count === 1)).toBe(true);
   });
@@ -2555,6 +2583,117 @@ describe("verification run orchestration", () => {
     expect(resumed.documents.evidence?.freshnessEvaluatedAt).toBe(now);
     expect(resumed.documents.evidence?.evaluations.every(item => item.checks.fresh === false)).toBe(true);
     expect(resumed.verdict.qaVerdict).not.toBe("PASS");
+  });
+  test.each(["authority", "commit"] as const)("does not terminalize VERDICT_RESOLVED historical evidence before a refreshed %s transition succeeds", async mode => {
+    const fakes = makeDependencies();
+    const runId = `verdict-resolved-refresh-${mode}`;
+    const request = { ...makeRequest(`verdict-resolved-refresh-request-${mode}`), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    let now = FIXED_NOW;
+    let rejectRefresh = false;
+    const issueFreshnessAuthority = fakes.dependencies.freshnessAuthority.issueFreshnessAuthority!;
+    const verifyFreshnessAuthority = fakes.dependencies.freshnessAuthority.verifyFreshnessAuthority!;
+    const dependencies = {
+      ...fakes.dependencies,
+      now: () => now,
+      freshnessPolicy: {
+        evaluateFreshness: async (input: { evaluatedAt: string }) => input.evaluatedAt === FIXED_NOW ? "fresh" as const : "stale" as const,
+      },
+      freshnessAuthority: {
+        issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
+          if (rejectRefresh && binding.freshnessEvaluatedAt === now) throw new Error("simulated freshness authority failure");
+          return issueFreshnessAuthority(binding);
+        },
+        verifyFreshnessAuthority: async (authority: FreshnessAuthority, binding: FreshnessAuthority["binding"]) => {
+          if (rejectRefresh && binding.freshnessEvaluatedAt === now) throw new Error("simulated freshness authority failure");
+          return verifyFreshnessAuthority(authority, binding);
+        },
+      },
+    } as unknown as VerificationRunDependencies;
+    const first = await runVerification({ runId, request, dependencies });
+    const originalRun = fakes.repository.runs.get(runId);
+    if (!first.documents.evidence || !originalRun) throw new Error("missing persisted VERDICT_RESOLVED checkpoint");
+    const runWritesBefore = fakes.repository.runWrites.length;
+    fakes.repository.runs.set(runId, { ...originalRun, state: "VERDICT_RESOLVED", updatedAt: FIXED_NOW });
+    now = "2026-08-03T00:00:10.000Z";
+    if (mode === "authority") rejectRefresh = true;
+    else fakes.repository.failNextState = "TERMINAL";
+    await expect(runVerification({ runId, dependencies })).rejects.toThrow(mode === "authority" ? "simulated freshness authority failure" : "simulated saveRun crash");
+    expect(fakes.repository.runs.get(runId)?.state).toBe("VERDICT_RESOLVED");
+    expect(fakes.repository.runWrites.length).toBe(runWritesBefore);
+    rejectRefresh = false;
+    const resumed = await runVerification({ runId, dependencies });
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(resumed.verdict.qaVerdict).not.toBe("PASS");
+    expect(resumed.documents.evidence?.freshnessEvaluatedAt).toBe(now);
+  });
+  test("rejects an initial backward freshness clock before policy or freshness authority side effects", async () => {
+    const fakes = makeDependencies();
+    const runId = "freshness-backward-clock-initial";
+    const later = "2026-08-03T00:00:10.000Z";
+    let executorReturned = false;
+    let policyCalls = 0;
+    let issueCalls = 0;
+    const executeObligation = fakes.dependencies.executor.executeObligation!;
+    const executor: VerificationExecutor = {
+      ...fakes.dependencies.executor,
+      executeObligation: async input => {
+        executorReturned = true;
+        return executeObligation(input);
+      },
+    };
+    const issueFreshnessAuthority = fakes.dependencies.freshnessAuthority.issueFreshnessAuthority!;
+    const dependencies = {
+      ...fakes.dependencies,
+      executor,
+      now: () => executorReturned && fakes.repository.runs.get(runId)?.state === "EXECUTING" ? FIXED_NOW : executorReturned ? later : FIXED_NOW,
+      freshnessPolicy: { evaluateFreshness: async () => { policyCalls++; return "fresh" as const; } },
+      freshnessAuthority: {
+        ...fakes.dependencies.freshnessAuthority,
+        issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
+          issueCalls++;
+          return issueFreshnessAuthority(binding);
+        },
+      },
+    } as unknown as VerificationRunDependencies;
+    const request = { ...makeRequest("freshness-backward-clock-initial-request"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("freshness evaluation timestamp precedes authenticated observation");
+    expect(policyCalls).toBe(0);
+    expect(issueCalls).toBe(0);
+    expect(fakes.repository.runs.get(runId)?.state).toBe("EXECUTING");
+  });
+  test("rejects a backward freshness clock before policy or freshness authority side effects", async () => {
+    const fakes = makeDependencies();
+    const runId = "freshness-backward-clock";
+    const first = await runOnce(fakes.dependencies, runId);
+    const run = fakes.repository.runs.get(runId);
+    const execution = first.documents.execution;
+    if (!run || !execution) throw new Error("missing persisted execution");
+    const future = "2026-08-03T00:01:00.000Z";
+    const observations = execution.observations.map(item => ({ ...item, execution: { ...item.execution, startedAt: future, finishedAt: future } }));
+    const evidence = execution.evidence.map(item => ({ ...item, execution: { ...item.execution, startedAt: future, finishedAt: future }, observedAt: future }));
+    const authorities = execution.authorities.map(authority => ({ ...authority, binding: { ...authority.binding, execution: { ...authority.binding.execution, startedAt: future, finishedAt: future }, observedAt: future } }));
+    fakes.repository.stageDocuments.set(`${runId}:execution`, { ...execution, observations, evidence, authorities });
+    fakes.repository.runs.set(runId, { ...run, state: "EXECUTING", updatedAt: FIXED_NOW });
+    let policyCalls = 0;
+    let issueCalls = 0;
+    const issueFreshnessAuthority = fakes.dependencies.freshnessAuthority.issueFreshnessAuthority!;
+    const dependencies = {
+      ...fakes.dependencies,
+      now: () => FIXED_NOW,
+      executionAuthority: { ...fakes.dependencies.executionAuthority, verifyExecutionAuthority: async () => true },
+      freshnessPolicy: { evaluateFreshness: async () => { policyCalls++; return "fresh" as const; } },
+      freshnessAuthority: {
+        ...fakes.dependencies.freshnessAuthority,
+        issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
+          issueCalls++;
+          return issueFreshnessAuthority(binding);
+        },
+      },
+    } as unknown as VerificationRunDependencies;
+    await expect(runVerification({ runId, dependencies })).rejects.toThrow("freshness evaluation timestamp precedes authenticated observation");
+    expect(policyCalls).toBe(0);
+    expect(issueCalls).toBe(0);
+    expect(fakes.repository.runs.get(runId)?.state).toBe("EXECUTING");
   });
   test("rejects a persisted freshness timestamp mutation before resume", async () => {
     const fakes = makeDependencies();

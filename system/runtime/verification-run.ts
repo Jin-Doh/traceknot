@@ -627,7 +627,6 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     let startedAt: string;
     let finishedAt: string;
     let output: VerificationExecutionOutput | undefined;
-    let outputStorageError: unknown;
     if (available) {
       if (lease.owned) {
         startedAt = clockNow(input.dependencies.now);
@@ -644,9 +643,8 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
           try {
             output = await canonicalizeAndStoreExecutionOutput(output, request, input.dependencies.artifactStore);
           } catch (error) {
-            outputStorageError = error;
-            const canonical = canonicalExecutionOutput(output);
-            output = canonical && outputReceiptMatches(canonical, request) ? canonical : undefined;
+            await releaseExecutionDispatch(input.dependencies.repository, lease.claim, clockNow(input.dependencies.now));
+            throw error;
           }
         }
         const outputRequiresArtifact = output && ["PASS", "FAIL", "passed", "failed"].includes(output.status) && !(output.artifacts?.length);
@@ -656,11 +654,9 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
         if (completion) {
           completionAuthority = completion.authority;
           await completeExecutionDispatch(input.dependencies.repository, lease.claim, completion, clockNow(input.dependencies.now));
-          if (outputStorageError) throw outputStorageError;
         } else {
           await releaseExecutionDispatch(input.dependencies.repository, lease.claim, clockNow(input.dependencies.now));
           output = undefined;
-          if (outputStorageError) throw outputStorageError;
         }
       } else {
         if (!lease.completion || !await verifyExecutionAuthority(input.dependencies.executionAuthority, lease.completion.authority, lease.completion.authority.binding)) throw Error("invalid persisted dispatch completion authority");
@@ -799,6 +795,7 @@ async function evaluateEvidence(input: EvaluateEvidenceInput): Promise<EvidenceD
   const evaluatedAt = canonicalEvaluatedAt(input.execution);
   const freshnessEvaluatedAt = input.freshnessEvaluatedAt ?? clockNow(input.dependencies.now);
   if (!validDate(freshnessEvaluatedAt)) throw Error("freshness evaluation timestamp must be canonical");
+  if (Date.parse(freshnessEvaluatedAt) < Date.parse(evaluatedAt)) throw Error("freshness evaluation timestamp precedes authenticated observation");
   const observations = new Map(input.execution.observations.map(item => [item.observationId, item]));
   const evidenceByObligation = new Map(input.execution.evidence.map(item => [item.obligationId, item]));
   const evaluations = await Promise.all([...input.execution.claims].sort((a,b)=>a.claimId.localeCompare(b.claimId)).map(async claim => {
@@ -1085,10 +1082,14 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
     if (!basis || !discovery || !plan || !execution || !evidence || !residual || !verdict) throw Error("proof documents are missing");
     await assertCanonicalVerdict({ runId: input.runId, request: req, basis, discovery, plan, execution, evidence, residualRisk: residual, dependencies }, verdict);
     assertCanonicalRunIndexes(run, execution, evidence);
+    const resumedFreshnessAt = clockNow(dependencies.now);
+    const resumedEvidence = await evaluateEvidence({ runId: input.runId, request: req, plan, execution, dependencies, freshnessEvaluatedAt: resumedFreshnessAt, freshnessAuthority: evidence.freshnessEvaluatedAt === resumedFreshnessAt ? evidence.freshnessAuthority : undefined });
+    const canonicalVerdict = await resolveVerdict({ runId: input.runId, request: req, basis, discovery, plan, execution, evidence: resumedEvidence, residualRisk: residual, dependencies });
     const next = transitionRunState(run, "TERMINAL", clockNow(dependencies.now));
-    await commitStageAndRun(repository, next, undefined, undefined, run.revision);
+    await commitTerminalEvidenceAndVerdict(repository, next, resumedEvidence, canonicalVerdict, run.revision);
     run = next;
-    documents.verdict = verdict;
+    documents.evidence = resumedEvidence;
+    documents.verdict = canonicalVerdict;
   }
   const finalBasis = documents.basis ?? await loadCheckedStage<BasisDocument>(repository, input.runId, "basis", req, dependencies, documents);
   if (!finalBasis) throw Error("basis document is missing");
