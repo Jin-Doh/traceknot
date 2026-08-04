@@ -330,7 +330,7 @@ async function claimExecutionDispatch(repository: RepositoryPort, request: Verif
     if (!isRecord(result) || !exactOwnKeys(result, ["claimed", "status", "claim", "outputStored"], ["completion"]) || typeof result.claimed !== "boolean" || (result.status !== "CLAIMED" && result.status !== "COMPLETED") || typeof result.outputStored !== "boolean" || !validDispatchClaim(result.claim) || (result.completion !== undefined && !isRecord(result.completion))) throw Error("invalid dispatch claim result");
     if (!stableDispatchClaimMatches(result.claim, request)) throw Error("dispatch claim binding mismatch");
     if (result.claimed) {
-      if (result.status !== "CLAIMED" || result.outputStored || result.completion !== undefined || result.claim.ownerId !== claim.ownerId || Date.parse(result.claim.leaseExpiresAt) <= Date.parse(now)) throw Error("invalid dispatch claim result");
+      if (result.status !== "CLAIMED" || result.outputStored || result.completion !== undefined || result.claim.ownerId !== claim.ownerId || result.claim.acquisitionId !== claim.acquisitionId || Date.parse(result.claim.leaseExpiresAt) <= Date.parse(now)) throw Error("invalid dispatch claim result");
       return { owned: true, outputStored: false, claim: result.claim };
     }
     if (result.status === "CLAIMED") throw Error("dispatch claim already exists");
