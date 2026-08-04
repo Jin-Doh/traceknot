@@ -94,7 +94,8 @@ function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function zhlintFindings(markdown: string): ProseFinding[] {
+function zhlintFindings(markdown: string, protectedMask: string): ProseFinding[] {
+  if (protectedMask.length !== markdown.length) throw new Error("zhlint protection mask is not source-aligned");
   const result = runZhLint(markdown, {
     rules: { preset: "default", adjustedFullwidthPunctuation: "" },
   });
@@ -109,6 +110,16 @@ function zhlintFindings(markdown: string): ProseFinding[] {
     ) {
       throw new Error("zhlint returned an invalid finding offset");
     }
+    const influenceStart = Math.max(0, validation.index - 1);
+    const influenceEnd = Math.min(markdown.length, validation.index + Math.max(validation.length, 1) + 1);
+    let touchesProtectedContent = false;
+    for (let index = influenceStart; index < influenceEnd; index += 1) {
+      if (markdown[index] !== protectedMask[index]) {
+        touchesProtectedContent = true;
+        break;
+      }
+    }
+    if (touchesProtectedContent) continue;
     const current = grouped.get(validation.message);
     grouped.set(validation.message, {
       count: (current?.count ?? 0) + 1,
@@ -393,7 +404,7 @@ function htmlCodeSpans(text: string): Array<{ category: "code-block" | "inline-c
   return spans;
 }
 
-export function extractProse(markdown: string): string {
+function maskProtectedProse(markdown: string): string {
   let prose = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, maskContentPreservingLines);
   prose = prose.replace(/<!--[\s\S]*?(?:-->|$)/g, maskContentPreservingLines);
   for (const block of markdownFencedBlocks(prose)) prose = prose.replace(block, maskContentPreservingLines);
@@ -403,6 +414,11 @@ export function extractProse(markdown: string): string {
   for (const quote of htmlBlockquotes(prose)) prose = prose.replace(quote, maskContentPreservingLines);
   for (const quote of directQuotationSpans(prose)) prose = prose.replace(quote, maskContentPreservingLines);
   for (const span of markdownInlineCodeSpans(prose)) prose = prose.replace(span, maskContentPreservingLines);
+  return prose;
+}
+
+export function extractProse(markdown: string): string {
+  let prose = maskProtectedProse(markdown);
   prose = prose.replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1");
   prose = prose.replace(/<(?:(?:[A-Za-z][A-Za-z0-9+.-]*:[^>\s]+)|(?:[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}))>|https?:\/\/\S+/g, "");
   prose = prose.replace(/^\s*[-*+]\s*$/gm, "");
@@ -446,7 +462,7 @@ export function analyzeProse(markdown: string, allowedLocales: ReadonlyArray<Pro
       excerptHash: hash(excerpt),
     }];
   });
-  if (applicableLocales.includes("zh-Hans")) findings.push(...zhlintFindings(markdown));
+  if (applicableLocales.includes("zh-Hans")) findings.push(...zhlintFindings(markdown, maskProtectedProse(markdown)));
   const status: GateStatus = findings.some((finding) => finding.severity === "S1") ? "FAIL" : findings.length > 0 ? "WARN" : "PASS";
   return { locale, proseCharacters: prose.replace(/\s/g, "").length, findings, status };
 }

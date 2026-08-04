@@ -294,6 +294,25 @@ describe("language-specific prose rules", () => {
     expect(report.status).toBe("PASS");
   });
 
+  test.each([
+    "资料原文是“中文English”。正文完整。",
+    "> 中文English\n\n正文完整。",
+    "<blockquote>中文English</blockquote>\n\n正文完整。",
+  ])("keeps protected quotations outside the zhlint boundary: %s", (source) => {
+    const report = analyzeProse(source, ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe("PASS");
+  });
+
+  test("keeps visible zhlint findings outside protected quotations", () => {
+    const report = analyzeProse("中文English，资料原文是“中文English”。", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+    expect(report.status).toBe("WARN");
+  });
+
   test("does not lint Markdown link destinations as Chinese prose", () => {
     const report = analyzeProse("[证据](https://example.com/中文English)", ["zh-Hans"], "zh-Hans");
     expect(report.findings).toEqual([]);
