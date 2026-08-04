@@ -314,6 +314,12 @@ describe("language-specific prose rules", () => {
       .toContainEqual(expect.objectContaining({ category: "quotation" }));
   });
 
+  test("tracks protected whitespace independently from replacement text", () => {
+    const report = analyzeProse("资料原文是“甲, 乙”。", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe("PASS");
+  });
+
   test("keeps visible zhlint findings outside protected quotations", () => {
     const report = analyzeProse("中文English，资料原文是“中文English”。", ["zh-Hans"], "zh-Hans");
     expect(report.findings).toContainEqual(expect.objectContaining({

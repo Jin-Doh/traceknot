@@ -147,7 +147,11 @@ function clonePattern(pattern: RegExp): RegExp {
 }
 
 function maskContentPreservingLines(value: string): string {
-  return value.replace(/[^\n]/g, " ");
+  return maskValuePreservingLines(value, " ");
+}
+
+function maskValuePreservingLines(value: string, maskedCharacter: string): string {
+  return value.replace(/[^\n]/g, maskedCharacter);
 }
 
 function markdownFencedBlocks(text: string): string[] {
@@ -260,7 +264,7 @@ function directQuotationSpans(text: string): string[] {
   return directQuotationRanges(text).map((range) => text.slice(range.start, range.end));
 }
 
-function maskRangesPreservingLines(text: string, ranges: TextRange[]): string {
+function maskRangesPreservingLines(text: string, ranges: TextRange[], maskedCharacter = " "): string {
   const merged: TextRange[] = [];
   for (const range of ranges.sort((left, right) => left.start - right.start || right.end - left.end)) {
     const previous = merged.at(-1);
@@ -274,7 +278,7 @@ function maskRangesPreservingLines(text: string, ranges: TextRange[]): string {
   let cursor = 0;
   for (const range of merged) {
     result += text.slice(cursor, range.start);
-    result += maskContentPreservingLines(text.slice(range.start, range.end));
+    result += maskValuePreservingLines(text.slice(range.start, range.end), maskedCharacter);
     cursor = range.end;
   }
   return result + text.slice(cursor);
@@ -438,16 +442,17 @@ function htmlCodeSpans(text: string): Array<{ category: "code-block" | "inline-c
   return spans;
 }
 
-function maskProtectedProse(markdown: string): string {
-  let prose = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, maskContentPreservingLines);
-  prose = prose.replace(/<!--[\s\S]*?(?:-->|$)/g, maskContentPreservingLines);
-  for (const block of markdownFencedBlocks(prose)) prose = prose.replace(block, maskContentPreservingLines);
-  for (const block of markdownIndentedCodeBlocks(prose)) prose = prose.replace(block, maskContentPreservingLines);
-  for (const span of htmlCodeSpans(prose)) prose = prose.replace(span.value, maskContentPreservingLines);
-  for (const quote of markdownBlockquotes(prose)) prose = prose.replace(quote, maskContentPreservingLines);
-  for (const quote of htmlBlockquotes(prose)) prose = prose.replace(quote, maskContentPreservingLines);
-  prose = maskRangesPreservingLines(prose, directQuotationRanges(prose));
-  for (const span of markdownInlineCodeSpans(prose)) prose = prose.replace(span, maskContentPreservingLines);
+function maskProtectedProse(markdown: string, maskedCharacter = " "): string {
+  const mask = (value: string): string => maskValuePreservingLines(value, maskedCharacter);
+  let prose = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, mask);
+  prose = prose.replace(/<!--[\s\S]*?(?:-->|$)/g, mask);
+  for (const block of markdownFencedBlocks(prose)) prose = prose.replace(block, mask);
+  for (const block of markdownIndentedCodeBlocks(prose)) prose = prose.replace(block, mask);
+  for (const span of htmlCodeSpans(prose)) prose = prose.replace(span.value, mask);
+  for (const quote of markdownBlockquotes(prose)) prose = prose.replace(quote, mask);
+  for (const quote of htmlBlockquotes(prose)) prose = prose.replace(quote, mask);
+  prose = maskRangesPreservingLines(prose, directQuotationRanges(prose), maskedCharacter);
+  for (const span of markdownInlineCodeSpans(prose)) prose = prose.replace(span, mask);
   return prose;
 }
 
@@ -496,7 +501,7 @@ export function analyzeProse(markdown: string, allowedLocales: ReadonlyArray<Pro
       excerptHash: hash(excerpt),
     }];
   });
-  if (applicableLocales.includes("zh-Hans")) findings.push(...zhlintFindings(markdown, maskProtectedProse(markdown)));
+  if (applicableLocales.includes("zh-Hans")) findings.push(...zhlintFindings(markdown, maskProtectedProse(markdown, "\u0000")));
   const status: GateStatus = findings.some((finding) => finding.severity === "S1") ? "FAIL" : findings.length > 0 ? "WARN" : "PASS";
   return { locale, proseCharacters: prose.replace(/\s/g, "").length, findings, status };
 }
