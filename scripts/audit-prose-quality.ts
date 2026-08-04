@@ -96,15 +96,19 @@ const DEFAULT_CONFIG = JSON.parse(
 
 const ZH_NUMBER_CORE = "(?:零|〇|一|二|两|三|四|五|六|七|八|九|十|百|千|万|亿)+(?:点(?:零|〇|一|二|三|四|五|六|七|八|九)+)?";
 const ZH_SIGNED_NUMBER = `(?:正|负)?${ZH_NUMBER_CORE}`;
+const ZH_ARABIC_NUMBER = "(?:\\d+(?:[.,]\\d+)?)";
 const ZH_PERCENTAGE = `(?:正|负)?百分之${ZH_NUMBER_CORE}`;
 const ZH_ACTIONS = new Set([
   "审核", "验证", "检查", "记录", "保留", "批准", "执行", "运行", "发布", "提供", "确保", "完成", "遵守", "满足", "使用", "配置", "安装", "报告", "绑定", "评估", "选择", "提交", "更新", "读取", "写入", "删除", "创建", "调用", "等待", "返回", "通过", "拒绝", "阻止", "启用", "关闭", "输入", "输出", "处理", "确认", "声明", "查看",
 ]);
-const ZH_CONCISE_MODALS = new Set(["需", "须", "可", "不可"]);
+const ZH_CONCISE_MODALS = new Set(["需", "须", "可", "不可", "务必", "不必"]);
 const ZH_LEXICAL_PREFIXES = new Set(["刚", "必", "认", "许"]);
 const ZH_SEGMENTER = new Intl.Segmenter("zh-CN", { granularity: "word" });
+const ZH_SINGLE_QUANTITY_UNITS = new Set([
+  ..."个位项次名件条张本份台套组批艘盒亩只辆架头匹峰座间所家户杯瓶碗盘袋箱包支根枝把柄面扇层排列行页章节部册卷幅枚颗粒块片段场轮番遍趟回首曲声株棵朵束丝缕滴年月份日天倍元米克升瓦度秒",
+]);
 const ZH_COMBINED_QUANTITY_UNITS = new Set([
-  "个", "位", "项", "次", "名", "件", "条", "张", "本", "份", "台", "套", "组", "批", "年", "月", "日", "天", "倍", "元",
+  ...ZH_SINGLE_QUANTITY_UNITS,
   "小时", "分钟", "秒", "公里", "米", "厘米", "毫米", "公斤", "千克", "克", "毫克", "升", "毫升", "平方米", "立方米", "百分点", "美元", "个人",
 ]);
 const ZH_NON_UNIT_WORDS = new Set(["至", "到"]);
@@ -133,7 +137,7 @@ function chineseNumberSegment(
 ): { start: number; end: number; next: number } | undefined {
   const word = segments[index];
   if (!word) return undefined;
-  const exactNumber = new RegExp(`^${ZH_SIGNED_NUMBER}$`, "u");
+  const exactNumber = new RegExp(`^(?:${ZH_SIGNED_NUMBER}|${ZH_ARABIC_NUMBER})$`, "u");
   let numericIndex = index;
   let numericWord = word;
   if (/^(?:正|负)$/u.test(word.segment)) {
@@ -143,7 +147,9 @@ function chineseNumberSegment(
     if (!/^\s*$/u.test(text.slice(word.end, numericWord.index))) return undefined;
   } else if (!exactNumber.test(word.segment)) return undefined;
   if (segments[numericIndex - 1]?.segment === "之" && segments[numericIndex - 2]?.segment === "百分") return undefined;
-  return { start: word.index, end: numericWord.end, next: numericIndex + 1 };
+  const asciiSignIndex = word.index - 1;
+  const start = asciiSignIndex >= 0 && /[+−±-]/u.test(text[asciiSignIndex]) ? asciiSignIndex : word.index;
+  return { start, end: numericWord.end, next: numericIndex + 1 };
 }
 
 function chineseQuantityUnitEnd(text: string, segments: ChineseWordSegment[], index: number): { end: number; next: number } | undefined {
@@ -156,7 +162,7 @@ function chineseQuantityUnitEnd(text: string, segments: ChineseWordSegment[], in
     value += word.segment;
     previousEnd = word.end;
     if (ZH_NON_UNIT_WORDS.has(value)) continue;
-    if ((unitIndex === index && /^\p{Script=Han}$/u.test(value)) || isCombinedChineseUnit(value)) {
+    if ((unitIndex === index && ZH_SINGLE_QUANTITY_UNITS.has(value)) || isCombinedChineseUnit(value)) {
       accepted = { end: word.end, next: unitIndex + 1 };
     }
   }

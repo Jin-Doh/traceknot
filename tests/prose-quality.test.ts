@@ -479,6 +479,14 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("FAIL");
   });
 
+  test("preserves Chinese units attached to Arabic-digit quantities", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n路线长度为3公里。`, `${context}\n路线长度为3公斤。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(report.status).toBe("FAIL");
+  });
+
   test.each([
     ["系统每次运行三至四次。", "系统每次运行五至四次。"],
     ["系统每次运行三-四次。", "系统每次运行三-五次。"],
@@ -501,6 +509,7 @@ describe("rewrite preservation gate", () => {
   test.each([
     ["一切运行正常。", "全部运行正常。"],
     ["这个功能十分重要。", "这个功能非常重要。"],
+    ["系统一并处理结果。", "系统同时处理结果。"],
   ])("does not extract numeral-shaped lexical words: %s", (source, rewrite) => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
@@ -555,6 +564,14 @@ describe("rewrite preservation gate", () => {
   ])("recognizes concise modals before ordinary adverbs: %s", (source, rewrite) => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+    expect(report.status).toBe("FAIL");
+  });
+
+  test("protects common 务必 obligations", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n用户务必审核发布。`, `${context}\n用户不必审核发布。`);
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
     expect(report.status).toBe("FAIL");
