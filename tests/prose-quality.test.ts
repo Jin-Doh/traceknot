@@ -445,6 +445,17 @@ describe("rewrite preservation gate", () => {
     }));
   });
 
+  test("masks autolink destinations before deriving quotation ranges", () => {
+    const source = '<https://example.com/">中文English"';
+    const report = analyzeProse(source, ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+    const preservation = verifyPreservation(source, '<https://example.com/">修改文本"');
+    expect(preservation.failures.some((failure) => failure.category === "quotation")).toBe(false);
+  });
+
   test("protects four-space-indented Markdown code", () => {
     const before = "Run this command:\n\n    traceknot verify\n\nDone.";
     const after = "Run this command:\n\n    traceknot delete\n\nDone.";

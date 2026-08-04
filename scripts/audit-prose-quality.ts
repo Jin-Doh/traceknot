@@ -456,6 +456,7 @@ function maskQuotationSyntax(text: string, maskedCharacter = " "): string {
   for (const destination of markdownLinkDestinations(masked)) {
     if (destination && !isSyntheticDestination(destination)) masked = masked.replace(destination, mask);
   }
+  for (const destination of standaloneUrls(masked)) masked = masked.replace(destination, mask);
   return masked;
 }
 
