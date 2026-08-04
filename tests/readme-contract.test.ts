@@ -75,6 +75,23 @@ describe("README localization section contract", () => {
     })).not.toThrow();
   });
 
+  test("accepts case-insensitive external schemes", () => {
+    expect(() => checkReadmeLocalLinks({
+      path: "README.md",
+      content: "[site](HTTPS://example.com) [mail](MAILTO:test@example.com)",
+    })).not.toThrow();
+  });
+
+  test("extracts HTML URL attributes only from visible tags", () => {
+    expect(() => checkReadmeLocalLinks({
+      path: "README.md",
+      content: "The src=docs/not-here.md token is illustrative.\n<!-- <img src=docs/not-here.md> -->",
+    })).not.toThrow();
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content: "<img\n src=docs/not-here.md>" })).toThrow(
+      "docs/not-here.md",
+    );
+  });
+
   test("requires a real balanced Markdown label before validating a destination", () => {
     expect(() => checkReadmeLocalLinks({ path: "README.md", content: "[outer [inner]](docs/not-here.md)" })).toThrow(
       "docs/not-here.md",
@@ -94,5 +111,15 @@ describe("README localization section contract", () => {
       { path: "README.md", content: canonical },
       { path: "README.ko.md", content: `${canonical}\n${block("translation-only")}` },
     ])).toThrow("shared command marker set differs");
+  });
+
+  test("rejects every bare or duplicate reserved shared-command marker", () => {
+    const bare = "<!-- shared-command:translation-only -->";
+    expect(() => checkReadmeSharedCommands([{ path: "README.md", content: bare }])).toThrow(
+      "must be followed by a fenced block",
+    );
+    expect(() => checkReadmeSharedCommands([{ path: "README.md", content: `${bare}\n${bare}` }])).toThrow(
+      "must appear exactly once",
+    );
   });
 });

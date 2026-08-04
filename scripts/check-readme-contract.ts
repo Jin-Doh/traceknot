@@ -73,12 +73,19 @@ function collectMarkers(content: string, pattern: RegExp): Map<string, number> {
 }
 
 function collectSharedCommands(content: string, path: string): Map<string, string> {
+  const markers = collectMarkers(content, /<!-- shared-command:([a-z0-9-]+) -->/g);
+  for (const [name, count] of markers) {
+    if (count !== 1) throw new Error(`${path}: shared-command marker ${name} must appear exactly once, found ${count}`);
+  }
   const commands = new Map<string, string>();
   const pattern = /<!-- shared-command:([a-z0-9-]+) -->\s*\n+```[^\n]*\n([\s\S]*?)\n```/g;
   for (const match of content.matchAll(pattern)) {
     const name = match[1];
     if (commands.has(name)) throw new Error(`${path}: duplicate shared-command marker ${name}`);
     commands.set(name, match[2]);
+  }
+  for (const name of markers.keys()) {
+    if (!commands.has(name)) throw new Error(`${path}: shared-command marker ${name} must be followed by a fenced block`);
   }
   return commands;
 }
@@ -217,7 +224,31 @@ function maskMarkdownCode(content: string): string {
     }
     offset += line.length;
   }
-  return masked.join("");
+  return masked.join("").replace(/<!--[\s\S]*?-->/g, (comment) => comment.replace(/[^\r\n]/g, " "));
+}
+
+function visibleHtmlTags(content: string): string[] {
+  const tags: string[] = [];
+  for (let start = content.indexOf("<"); start >= 0; start = content.indexOf("<", start + 1)) {
+    if (!/^\/?[A-Za-z]/u.test(content.slice(start + 1, start + 3))) continue;
+    let quote = "";
+    let cursor = start + 1;
+    for (; cursor < content.length; cursor += 1) {
+      const character = content[cursor];
+      if (quote) {
+        if (character === quote) quote = "";
+      } else if (character === '"' || character === "'") {
+        quote = character;
+      } else if (character === ">") {
+        tags.push(content.slice(start, cursor + 1));
+        break;
+      } else if (character === "<") {
+        break;
+      }
+    }
+    if (cursor > start) start = cursor;
+  }
+  return tags;
 }
 
 function localTargets(content: string): string[] {
@@ -263,8 +294,10 @@ function localTargets(content: string): string[] {
     if (cursor > start) targets.push(content.slice(start, cursor).replace(/\\([()])/g, "$1"));
   }
   for (const match of content.matchAll(/^[\t ]{0,3}\[[^\]\r\n]+\]:[\t ]*(?:<([^>\r\n]+)>|([^\s\r\n]+))/gm)) targets.push(match[1] ?? match[2]);
-  for (const match of content.matchAll(/(?:href|src)\s*=\s*(?:(["'])(.*?)\1|([^\s"'=<>`]+))/gi)) {
-    targets.push(match[2] ?? match[3]);
+  for (const tag of visibleHtmlTags(content)) {
+    for (const match of tag.matchAll(/\s(?:href|src)\s*=\s*(?:(["'])(.*?)\1|([^\s"'=<>`]+))/gi)) {
+      targets.push(match[2] ?? match[3]);
+    }
   }
   return targets;
 }
@@ -272,7 +305,7 @@ function localTargets(content: string): string[] {
 function normalizedDocumentationTargets(content: string): Set<string> {
   const targets = new Set<string>();
   for (const rawTarget of localTargets(content)) {
-    if (/^(?:https?:|mailto:|data:|#)/.test(rawTarget)) continue;
+    if (/^(?:https?:|mailto:|data:|#)/i.test(rawTarget)) continue;
     const target = rawTarget.split("#", 1)[0].split("?", 1)[0].replace(/^<|>$/g, "");
     if (target.startsWith("docs/") || target.startsWith("skill/") || /^BRAND(?:\.[a-z-]+)?\.md$/i.test(target)) {
       targets.add(target);
@@ -306,7 +339,7 @@ function remainsInside(root: string, target: string): boolean {
 export function checkReadmeLocalLinks(record: Pick<ReadmeRecord, "path" | "content">): void {
   const canonicalRoot = realpathSync(ROOT);
   for (const rawTarget of localTargets(record.content)) {
-    if (/^(?:https?:|mailto:|data:|#)/.test(rawTarget)) continue;
+    if (/^(?:https?:|mailto:|data:|#)/i.test(rawTarget)) continue;
     const withoutAnchor = rawTarget.split("#", 1)[0].split("?", 1)[0];
     if (!withoutAnchor) continue;
     const decoded = decodeURIComponent(withoutAnchor.replace(/^<|>$/g, ""));
