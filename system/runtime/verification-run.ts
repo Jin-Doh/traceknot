@@ -484,8 +484,8 @@ function canonicalArtifacts(values: readonly unknown[]): CanonicalVerificationRe
 }
 function canonicalExecutionOutput(value: unknown): VerificationExecutionOutput | undefined {
   if (!isRecord(value) || !exactOwnKeys(value, ["status", "runId", "requestId", "snapshotId", "idempotencyKey", "producer"], ["summary", "artifacts", "executionKind", "identity", "exitCode"]) || !["passed", "failed", "blocked", "incomplete", "PASS", "FAIL", "BLOCKED", "INCOMPLETE"].includes(value.status as string) || typeof value.runId !== "string" || !value.runId || typeof value.requestId !== "string" || !value.requestId || typeof value.snapshotId !== "string" || !value.snapshotId || !validExecutionKey(value.idempotencyKey) || !validProducer(value.producer) || (value.summary !== undefined && (typeof value.summary !== "string" || !value.summary)) || (value.executionKind !== undefined && !EXECUTION_KINDS.includes(value.executionKind as Execution["kind"])) || (value.identity !== undefined && (typeof value.identity !== "string" || !value.identity)) || (value.exitCode !== undefined && (typeof value.exitCode !== "number" || !Number.isInteger(value.exitCode)))) return undefined;
-  const artifacts = value.artifacts === undefined ? undefined : Array.isArray(value.artifacts) ? value.artifacts.map(item => canonicalArtifact(item)) : undefined;
-  if (artifacts?.some(item => !item)) return undefined;
+  const artifacts = value.artifacts === undefined ? undefined : Array.isArray(value.artifacts) ? value.artifacts.map(item => canonicalArtifact(item)) : null;
+  if (artifacts === null || artifacts?.some(item => !item)) return undefined;
   return { status: value.status as VerificationExecutionOutput["status"], runId: value.runId, requestId: value.requestId, snapshotId: value.snapshotId, idempotencyKey: value.idempotencyKey, producer: canonicalProducer(value.producer)!, ...(value.summary === undefined ? {} : { summary: value.summary }), ...(artifacts === undefined ? {} : { artifacts: artifacts as CanonicalVerificationResultArtifact[] }), ...(value.executionKind === undefined ? {} : { executionKind: value.executionKind as Execution["kind"] }), ...(value.identity === undefined ? {} : { identity: value.identity }), ...(value.exitCode === undefined ? {} : { exitCode: value.exitCode }) };
 }
 function validCompletionEnvelope(value: unknown, request: VerificationExecutionRequest, claim: DispatchClaim): value is VerificationExecutionCompletionEnvelope {
@@ -520,6 +520,18 @@ async function storeArtifact(store: ArtifactStore, artifact: CanonicalVerificati
   const canonical = canonicalArtifact(savedRecord);
   const expected = canonicalArtifact(artifact);
   return canonical && expected && structurallyEqual(canonical, expected) ? canonical : undefined;
+}
+async function canonicalizeAndStoreExecutionOutput(value: unknown, input: VerificationExecutionRequest, store: ArtifactStore): Promise<VerificationExecutionOutput | undefined> {
+  const output = canonicalExecutionOutput(value);
+  if (!output || !outputReceiptMatches(output, input)) return undefined;
+  const artifacts = (output.artifacts ?? []) as readonly CanonicalVerificationResultArtifact[];
+  const stored: CanonicalVerificationResultArtifact[] = [];
+  for (const artifact of artifacts) {
+    const saved = await storeArtifact(store, artifact, input);
+    if (!saved) return undefined;
+    stored.push(saved);
+  }
+  return { ...output, ...(output.artifacts === undefined ? {} : { artifacts: stored }) };
 }
 async function assertCanonicalPlan(request: VerificationRequest, basis: BasisDocument, discovery: DiscoveryDocument, plan: PlanDocument, dependencies: VerificationRunDependencies): Promise<void> {
   const canonical = await buildVerificationPlan({ request, basis, discovery, dependencies });
@@ -599,10 +611,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     let startedAt: string;
     let finishedAt: string;
     let output: VerificationExecutionOutput | undefined;
-    let precheckedArtifacts: CanonicalVerificationResultArtifact[] | undefined;
-    let precheckArtifactFailure = false;
-    let precheckStoreException = false;
-    let precheckStoreError: unknown;
+    let outputStorageError: unknown;
     let lease: DispatchLease | undefined;
     if (available) {
       const executionPort = obligation.evidenceType === "browser-result" ? input.dependencies.browserExecutor : input.dependencies.executor;
@@ -619,39 +628,27 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
           throw error;
         }
         finishedAt = clockNow(input.dependencies.now);
-        if (output && ["PASS", "FAIL", "passed", "failed"].includes(output.status)) {
-          const supplied = Array.isArray(output.artifacts) ? output.artifacts : [];
-          if (output.artifacts !== undefined && supplied.length !== output.artifacts.length) {
-            precheckArtifactFailure = true;
-          } else if (supplied.some(item => !canonicalArtifact(item))) {
-            precheckArtifactFailure = true;
-          } else {
-            precheckedArtifacts = [];
-            for (const artifact of canonicalArtifacts(supplied)) {
-              try {
-                const stored = await storeArtifact(input.dependencies.artifactStore, artifact, request);
-                if (!stored) precheckArtifactFailure = true;
-                else precheckedArtifacts.push(stored);
-              } catch (error) {
-                precheckStoreException = true;
-                precheckStoreError = error;
-                precheckedArtifacts = undefined;
-                break;
-              }
-            }
+        if (output) {
+          try {
+            output = await canonicalizeAndStoreExecutionOutput(output, request, input.dependencies.artifactStore);
+          } catch (error) {
+            outputStorageError = error;
+            const canonical = canonicalExecutionOutput(output);
+            output = canonical && outputReceiptMatches(canonical, request) ? canonical : undefined;
           }
         }
-        const completionOutput = output && precheckedArtifacts ? { ...output, artifacts: precheckedArtifacts } : output;
-        const completion = precheckArtifactFailure || (!precheckStoreException && output && ["PASS", "FAIL", "passed", "failed"].includes(output.status) && (precheckedArtifacts === undefined || precheckedArtifacts.length === 0))
+        const outputRequiresArtifact = output && ["PASS", "FAIL", "passed", "failed"].includes(output.status) && !(output.artifacts?.length);
+        const completion = outputRequiresArtifact
           ? undefined
-          : await createCompletionEnvelope(request, lease.claim, completionOutput, startedAt, finishedAt, input.dependencies);
+          : await createCompletionEnvelope(request, lease.claim, output, startedAt, finishedAt, input.dependencies);
         if (completion) {
           completionAuthority = completion.authority;
           await completeExecutionDispatch(input.dependencies.repository, lease.claim, completion, clockNow(input.dependencies.now));
-          if (precheckStoreException) throw precheckStoreError;
+          if (outputStorageError) throw outputStorageError;
         } else {
           await releaseExecutionDispatch(input.dependencies.repository, lease.claim, clockNow(input.dependencies.now));
           output = undefined;
+          if (outputStorageError) throw outputStorageError;
         }
       } else {
         if (!lease.completion || !await verifyExecutionAuthority(input.dependencies.executionAuthority, lease.completion.authority, lease.completion.authority.binding)) throw Error("invalid persisted dispatch completion authority");
@@ -671,32 +668,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     const outputProducer = output ? canonicalProducer(output.producer) : undefined;
     let producer = outputProducer ?? UNAVAILABLE_PRODUCER;
     let summary = !available ? `Capability ${capabilityFor(obligation)} is unavailable.` : !output ? "No executor output was returned." : !receiptValid ? "Executor output did not echo the canonical idempotency receipt (provenance or idempotency mismatch)." : output.summary ?? `Obligation ${obligation.id} completed.`;
-    let artifacts: CanonicalVerificationResultArtifact[] = [];
-    const suppliedArtifacts = output?.artifacts;
-    const malformedExecutorArtifact = suppliedArtifacts !== undefined && (!Array.isArray(suppliedArtifacts) || suppliedArtifacts.some(item => !canonicalArtifact(item)));
-    if (malformedExecutorArtifact) {
-      hostGenerated = true;
-      verdict = "INCOMPLETE";
-      summary = "Executor output contained a malformed artifact.";
-    } else if (verdict === "PASS" || verdict === "FAIL") {
-      let malformedStoredArtifact = precheckArtifactFailure;
-      if (precheckedArtifacts) {
-        artifacts = [...precheckedArtifacts];
-      } else if (!precheckArtifactFailure) {
-        const supplied = Array.isArray(suppliedArtifacts) ? suppliedArtifacts : [];
-        for (const artifact of canonicalArtifacts(supplied)) {
-          const stored = await storeArtifact(input.dependencies.artifactStore, artifact, request);
-          if (stored) artifacts.push(stored);
-          else malformedStoredArtifact = true;
-        }
-      }
-      if (malformedStoredArtifact) {
-        hostGenerated = true;
-        verdict = "INCOMPLETE";
-        summary = "Artifact store returned a malformed or mismatched artifact.";
-        artifacts = [];
-      }
-    }
+    let artifacts: CanonicalVerificationResultArtifact[] = output?.artifacts ? canonicalArtifacts(output.artifacts) : [];
     if (verdict === "PASS" || verdict === "FAIL") {
       if (!output || !outputProducer) {
         hostGenerated = true;

@@ -510,6 +510,128 @@ test.each([
   expect(execution?.evidence.every(item => item.result.verdict !== "PASS")).toBe(true);
   expect(execution?.authorities.some(authority => authority.binding.result.verdict === "PASS")).toBe(false);
 });
+test.each(["BLOCKED", "INCOMPLETE"] as const)("retains diagnostic artifacts for a fresh %s output", async status => {
+  const fakes = makeDependencies();
+  const request = { ...makeRequest(`diagnostic-${status.toLowerCase()}`), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+  const runId = `diagnostic-fresh-${status.toLowerCase()}`;
+  const digest = status === "BLOCKED" ? "b".repeat(64) : "d".repeat(64);
+  let stores = 0;
+  const executor: VerificationExecutor = {
+    atomicSameKeyIdempotency: true,
+    executeObligation: async executionRequest => ({
+      status,
+      runId: executionRequest.runId,
+      requestId: executionRequest.requestId,
+      snapshotId: executionRequest.snapshotId,
+      idempotencyKey: executionRequest.idempotencyKey,
+      producer: { kind: "deterministic-verifier", identity: "diagnostic-executor", independence: "independent-producer" },
+      summary: `diagnostic ${status.toLowerCase()}`,
+      artifacts: [{ type: "verification-result", digest }],
+    }),
+  };
+  const artifactStore: ArtifactStore = {
+    storeVerificationResultArtifact: async artifact => { stores++; return artifact; },
+  };
+  const dependencies = { ...fakes.dependencies, executor, artifactStore };
+  const result = await runVerification({ runId, request, dependencies });
+  const execution = result.documents.execution;
+  const completion = [...fakes.repository.dispatchClaims.values()][0]?.completion;
+  expect(result.verdict.qaVerdict).toBe(status);
+  expect(stores).toBe(1);
+  expect(execution?.observations[0]?.artifacts).toEqual([{ type: "verification-result", digest }]);
+  expect(execution?.evidence[0]?.result.artifacts).toEqual([digest]);
+  expect(execution?.authorities[0]?.binding.artifacts).toEqual([{ type: "verification-result", digest }]);
+  expect(completion?.output.status).toBe(status);
+  expect(completion?.output.artifacts).toEqual([{ type: "verification-result", digest }]);
+});
+
+test.each(["BLOCKED", "INCOMPLETE"] as const)("retains diagnostic artifacts through completion crash/resume for %s output", async status => {
+  const fakes = makeDependencies();
+  fakes.repository.failNextStage = "execution";
+  const request = { ...makeRequest(`diagnostic-crash-${status.toLowerCase()}`), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+  const runId = `diagnostic-crash-${status.toLowerCase()}`;
+  const digest = status === "BLOCKED" ? "c".repeat(64) : "e".repeat(64);
+  let stores = 0;
+  let executorCalls = 0;
+  const executor: VerificationExecutor = {
+    atomicSameKeyIdempotency: true,
+    executeObligation: async executionRequest => {
+      executorCalls++;
+      return {
+        status,
+        runId: executionRequest.runId,
+        requestId: executionRequest.requestId,
+        snapshotId: executionRequest.snapshotId,
+        idempotencyKey: executionRequest.idempotencyKey,
+        producer: { kind: "deterministic-verifier", identity: "diagnostic-crash-executor", independence: "independent-producer" },
+        summary: `diagnostic ${status.toLowerCase()} after crash`,
+        artifacts: [{ type: "verification-result", digest }],
+      };
+    },
+  };
+  const artifactStore: ArtifactStore = {
+    storeVerificationResultArtifact: async artifact => { stores++; return artifact; },
+  };
+  const dependencies = { ...fakes.dependencies, executor, artifactStore };
+  await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("simulated saveStage crash");
+  expect(stores).toBe(1);
+  expect(executorCalls).toBe(1);
+  const persistedCompletion = [...fakes.repository.dispatchClaims.values()][0]?.completion;
+  expect(persistedCompletion?.output.artifacts).toEqual([{ type: "verification-result", digest }]);
+  const resumed = await runVerification({ runId, dependencies });
+  expect(resumed.verdict.qaVerdict).toBe(status);
+  expect(stores).toBe(1);
+  expect(executorCalls).toBe(1);
+  expect(resumed.documents.execution?.observations[0]?.artifacts).toEqual([{ type: "verification-result", digest }]);
+  expect(resumed.documents.execution?.authorities[0]?.binding.artifacts).toEqual([{ type: "verification-result", digest }]);
+});
+
+test.each([
+  "foreign run",
+  "foreign request",
+  "foreign snapshot",
+  "foreign idempotency",
+  "malformed producer",
+  "malformed artifacts field",
+  "malformed summary field",
+] as const)("rejects %s executor output before artifact storage", async mode => {
+  const fakes = makeDependencies();
+  let stores = 0;
+  const artifactStore: ArtifactStore = {
+    storeVerificationResultArtifact: async artifact => { stores++; return artifact; },
+  };
+  const executor: VerificationExecutor = {
+    atomicSameKeyIdempotency: true,
+    executeObligation: async executionRequest => {
+      const base = {
+        status: "PASS" as const,
+        runId: executionRequest.runId,
+        requestId: executionRequest.requestId,
+        snapshotId: executionRequest.snapshotId,
+        idempotencyKey: executionRequest.idempotencyKey,
+        producer: { kind: "deterministic-verifier" as const, identity: "foreign-output-executor", independence: "independent-producer" as const },
+        artifacts: [{ type: "verification-result", digest: "m".repeat(64) }],
+      };
+      const mutated = mode === "foreign run"
+        ? { ...base, runId: "foreign-run" }
+        : mode === "foreign request"
+          ? { ...base, requestId: "foreign-request" }
+          : mode === "foreign snapshot"
+            ? { ...base, snapshotId: "foreign-snapshot" }
+            : mode === "foreign idempotency"
+              ? { ...base, idempotencyKey: `verification:${"0".repeat(64)}` }
+              : mode === "malformed producer"
+                ? { ...base, producer: undefined }
+                : mode === "malformed artifacts field"
+                  ? { ...base, artifacts: { digest: "m".repeat(64) } }
+                  : { ...base, summary: 42 };
+      return mutated as unknown as VerificationExecutionOutput;
+    },
+  };
+  const result = await runOnce({ ...fakes.dependencies, executor, artifactStore }, `invalid-output-${mode.replaceAll(" ", "-")}`);
+  expect(result.verdict.qaVerdict).toBe("INCOMPLETE");
+  expect(stores).toBe(0);
+});
 
 
 describe("verification run orchestration", () => {
