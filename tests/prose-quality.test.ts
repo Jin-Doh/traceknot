@@ -588,6 +588,7 @@ describe("rewrite preservation gate", () => {
     ["系统一并处理结果。", "系统同时处理结果。"],
     ["说明：一度陷入困境。", "说明：曾经陷入困境。"],
     ["说明：一面处理结果。", "说明：同时处理结果。"],
+    ["这里一片混乱。", "这里非常混乱。"],
   ])("does not extract numeral-shaped lexical words: %s", (source, rewrite) => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
@@ -680,9 +681,28 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("PASS");
   });
 
+  test("keeps permissions whose object contains a 性 noun", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n用户可查看兼容性报告。`, `${context}\n用户无法查看兼容性报告。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+    expect(report.status).toBe("FAIL");
+  });
+
   test("excludes clause modifiers from Simplified Chinese subject bindings", () => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n甲组目前有三项检查。`, `${context}\n甲组当前有三项检查。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures.some((failure) => failure.category === "protected-context")).toBe(false);
+    expect(report.status).toBe("PASS");
+  });
+
+  test.each([
+    ["现阶段", "当前"],
+    ["通常", "一般"],
+  ])("excludes positionally trailing subject modifiers: %s", (beforeModifier, afterModifier) => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n甲组${beforeModifier}有三项检查。`, `${context}\n甲组${afterModifier}有三项检查。`);
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures.some((failure) => failure.category === "protected-context")).toBe(false);
     expect(report.status).toBe("PASS");
