@@ -105,6 +105,12 @@ export const RULES: readonly Rule[] = [
     score: 6,
     pattern: /(?:禁用|关闭|移除|绕过|规避).{0,24}(?:安全|验证|校验|扫描器|过滤器|沙箱|权限|审批|审计|日志)/,
   },
+  {
+    id: "PI012",
+    description: "Simplified Chinese privileged role or message impersonation",
+    score: 6,
+    pattern: /(?:(?:你|您)现在是(?:系统|开发者|管理员|超级用户|root)|(?:作为|以)(?:系统|开发者|管理员|超级用户|root)(?:身份|权限)|(?:按|以)(?:最高|系统|管理员|root)(?:权限|优先级)(?:执行|操作)|(?:伪装|冒充)(?:系统|开发者|管理员))/i,
+  },
 ];
 
 const LEVEL_RANK: Record<RiskLevel, number> = {
