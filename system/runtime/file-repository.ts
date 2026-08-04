@@ -125,6 +125,7 @@ function ensureDirectoryAt(parentFd: number, name: string): void {
   try { secureMkdirAt(parentFd, name, 0o700); } catch (error) { if (!isErrno(error, 17)) throw error; }
   const fd = secureOpenAt(parentFd, name, DIRECTORY_FLAGS, 0);
   closeQuietly(fd);
+  secureFsync(parentFd);
 }
 async function openRunDirectory(root: SecureRootDescriptor, runId: string, create: boolean): Promise<{ runsFd: number; runFd: number } | undefined> {
   assertRunId(runId);
@@ -207,6 +208,12 @@ export class FileVerificationRepository implements RepositoryPort {
     this.rootPromise ??= openSecureRoot(this.rootDir);
     return this.rootPromise;
   }
+  private async withPinnedRoot<T>(operation: (root: SecureRootDescriptor) => Promise<T>): Promise<T> {
+    const root = await this.root();
+    assertSecureRoot(root);
+    try { return await operation(root); }
+    finally { assertSecureRoot(root); }
+  }
   private async serialize<T>(runId: string, operation: (runFd: number) => Promise<T>): Promise<T> {
     const prior = this.operations.get(runId) ?? Promise.resolve();
     let release!: () => void;
@@ -231,9 +238,10 @@ export class FileVerificationRepository implements RepositoryPort {
     }
   }
   private async loadState(runId: string): Promise<PersistedState | undefined> {
-    const root = await this.root();
-    const value = await readJson(root, relativeRunPath(runId, "state.json"));
-    return value === undefined ? undefined : asState(value);
+    return this.withPinnedRoot(async root => {
+      const value = await readJson(root, relativeRunPath(runId, "state.json"));
+      return value === undefined ? undefined : asState(value);
+    });
   }
   private async loadStateAt(runFd: number): Promise<PersistedState | undefined> {
     try {
@@ -246,13 +254,14 @@ export class FileVerificationRepository implements RepositoryPort {
   }
   private async saveStateAt(runFd: number, state: PersistedState): Promise<void> { await atomicWriteAt(runFd, "state.json", state); }
   async readMetadata(runId: string): Promise<VerificationStateMetadata | undefined> {
-    const root = await this.root();
-    const value = await readJson(root, relativeRunPath(runId, "metadata.json"));
-    if (value === undefined) return undefined;
-    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid CLI state metadata");
-    const metadata = value as Partial<VerificationStateMetadata>;
-    if (metadata.schemaVersion !== "traceknot-cli-state/v1" || typeof metadata.rootIdentity !== "string" || typeof metadata.snapshotId !== "string" || typeof metadata.manifestDigest !== "string" || !Array.isArray(metadata.capabilities) || metadata.capabilities.some(item => typeof item !== "string")) throw new Error("invalid CLI state metadata");
-    return metadata as VerificationStateMetadata;
+    return this.withPinnedRoot(async root => {
+      const value = await readJson(root, relativeRunPath(runId, "metadata.json"));
+      if (value === undefined) return undefined;
+      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("invalid CLI state metadata");
+      const metadata = value as Partial<VerificationStateMetadata>;
+      if (metadata.schemaVersion !== "traceknot-cli-state/v1" || typeof metadata.rootIdentity !== "string" || typeof metadata.snapshotId !== "string" || typeof metadata.manifestDigest !== "string" || !Array.isArray(metadata.capabilities) || metadata.capabilities.some(item => typeof item !== "string")) throw new Error("invalid CLI state metadata");
+      return metadata as VerificationStateMetadata;
+    });
   }
   async writeMetadata(runId: string, metadata: VerificationStateMetadata): Promise<void> {
     if (metadata.schemaVersion !== "traceknot-cli-state/v1") throw new Error("invalid CLI state metadata");

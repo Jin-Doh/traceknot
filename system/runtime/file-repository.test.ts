@@ -15,7 +15,7 @@ describe("FileVerificationRepository descriptor boundaries", () => {
     try {
       await repository.writeMetadata("run", metadata("before"));
       await rename(root, moved); await symlink(attacker, root);
-      expect(JSON.parse(await readFile(join(moved, "runs", "run", "metadata.json"), "utf8")).manifestDigest).toBe("manifest-before");
+      await expect(repository.readMetadata("run")).rejects.toThrow("root directory changed");
       await expect(readFile(join(attacker, "runs", "run", "metadata.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
     } finally { await repository.close(); await rm(root, { recursive: true, force: true }); await rm(moved, { recursive: true, force: true }); await rm(attacker, { recursive: true, force: true }); }
   });
