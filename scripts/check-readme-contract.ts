@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-import type { Element, Root as HastRoot } from "hast";
+import type { Element, Nodes as HastNode, Root as HastRoot } from "hast";
 import type { Code, Html, Parents, Root as MdastRoot } from "mdast";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
@@ -35,10 +35,12 @@ const REQUIRED_SECTIONS = [
   "development",
 ] as const;
 const REQUIRED_SHARED_COMMANDS = ["skill-install", "full-toolkit-install", "full-toolkit-pinned-install", "full-toolkit-uninstall", "full-toolkit-custom-uninstall", "ci"] as const;
-const REQUIRED_BOUNDARIES = [
-  "npx skills add Jin-Doh/traceknot --skill traceknot --global",
+const REQUIRED_RENDERED_BOUNDARIES = [
   "authoritative: false",
   "phase1Authorized: false",
+] as const;
+const REQUIRED_RAW_BOUNDARIES = [
+  "npx skills add Jin-Doh/traceknot --skill traceknot --global",
 ] as const;
 const REQUIRED_OPERATIONAL_LITERALS: Readonly<Record<string, readonly string[]>> = {
   "README.md": [
@@ -84,6 +86,19 @@ function markdownTree(content: string): MdastRoot {
 
 function htmlTree(content: string): HastRoot {
   return HTML_PROCESSOR.runSync(HTML_PROCESSOR.parse(content)) as HastRoot;
+}
+
+function renderedProse(content: string): string {
+  const chunks: string[] = [];
+  const walk = (node: HastNode, suppressed = false): void => {
+    const nextSuppressed = suppressed || (node.type === "element" && ["pre", "script", "style", "template"].includes(node.tagName));
+    if (node.type === "text" && !nextSuppressed) chunks.push(node.value);
+    if ("children" in node) {
+      for (const child of node.children) walk(child, nextSuppressed);
+    }
+  };
+  walk(htmlTree(content));
+  return chunks.join("\n");
 }
 
 function collectMarkers(content: string, pattern: RegExp): Map<string, number> {
@@ -182,9 +197,17 @@ export function checkReadmeLanguageNavigation(path: string, content: string): vo
 }
 
 function checkBoundaries(record: ReadmeRecord): void {
-  for (const boundary of REQUIRED_BOUNDARIES) {
+  for (const boundary of REQUIRED_RAW_BOUNDARIES) {
     if (!record.content.includes(boundary)) throw new Error(`${record.path}: missing public boundary literal ${boundary}`);
   }
+  const prose = renderedProse(record.content);
+  for (const boundary of REQUIRED_RENDERED_BOUNDARIES) {
+    if (!prose.includes(boundary)) throw new Error(`${record.path}: missing rendered public boundary literal ${boundary}`);
+  }
+}
+
+export function checkReadmeBoundaries(path: string, content: string): void {
+  checkBoundaries({ path, content, sections: new Map(), sharedCommands: new Map() });
 }
 
 function checkSharedCommands(records: ReadmeRecord[]): void {

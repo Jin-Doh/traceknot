@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { checkPublicationInventory, checkReadmeDocumentationLinks, checkReadmeLanguageNavigation, checkReadmeLocalLinks, checkReadmeSections, checkReadmeSharedCommands } from "../scripts/check-readme-contract";
+import { checkPublicationInventory, checkReadmeBoundaries, checkReadmeDocumentationLinks, checkReadmeLanguageNavigation, checkReadmeLocalLinks, checkReadmeSections, checkReadmeSharedCommands } from "../scripts/check-readme-contract";
 
 const sections = [
   "hero",
@@ -20,6 +20,19 @@ function readmeWith(order: readonly string[]): string {
 describe("README localization section contract", () => {
   test("accepts the declared section order", () => {
     expect(() => checkReadmeSections("README.md", readmeWith(sections))).not.toThrow();
+  });
+
+  test("requires authority boundaries in rendered prose rather than comments or fenced examples", () => {
+    const command = "```sh\nnpx skills add Jin-Doh/traceknot --skill traceknot --global\n```";
+    expect(() => checkReadmeBoundaries("README.md", `${command}\n\`authoritative: false\`\n\`phase1Authorized: false\``)).not.toThrow();
+    expect(() => checkReadmeBoundaries(
+      "README.md",
+      `${command}\n<!-- authoritative: false -->\n\`phase1Authorized: false\``,
+    )).toThrow("missing rendered public boundary literal authoritative: false");
+    expect(() => checkReadmeBoundaries(
+      "README.md",
+      `${command}\n\`authoritative: false\`\n\`\`\`text\nphase1Authorized: false\n\`\`\``,
+    )).toThrow("missing rendered public boundary literal phase1Authorized: false");
   });
 
   test("rejects a complete but reordered section sequence", () => {

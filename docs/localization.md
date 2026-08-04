@@ -28,7 +28,7 @@ Every README contains stable `readme-section` markers and `shared-command` marke
 - required sections are present exactly once;
 - shared command blocks are byte-identical;
 - every README links to all three languages;
-- critical authority-boundary literals remain present;
+- critical authority-boundary literals remain present in rendered prose rather than only in comments or fenced examples;
 - local Markdown and HTML links resolve to repository files.
 
 Inline-link validation delegates Markdown grammar to the maintained unified stack: `remark-parse` and `remark-gfm` produce the CommonMark/GFM syntax tree, while `remark-rehype` and `rehype-raw` parse rendered HTML nodes and their URL-bearing attributes. Traceknot traverses that tree to enforce only repository policy: shared commands must be closed fenced-code nodes, local targets must exist without escaping the repository, translated documentation links must remain present, and complete `srcset` and `ping` target lists use the same boundary checks. Code spans, nested containers, Setext headings, reference links, comments, and raw HTML are therefore classified by the external parsers rather than a repository-owned Markdown state machine.
