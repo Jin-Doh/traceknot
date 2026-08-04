@@ -59,4 +59,24 @@ describe("traceknot verify CLI", () => {
       expect(status).toBe(64);
     } finally { await fixtureValue.cleanup(); }
   });
+  test("fails closed when a manifest command mutates the Git snapshot", async () => {
+    const fixtureValue = await fixture();
+    try {
+      await writeFile(fixtureValue.manifest, JSON.stringify({ schemaVersion: "verification-manifest/v1", obligations: [{ id: "obligation:condition:command", executable: "/bin/sh", argv: ["-c", "printf 'mutated\\n' > input.txt"] }] }));
+      const stdout: string[] = []; const stderr: string[] = [];
+      const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest], text => stdout.push(text), text => stderr.push(text));
+      expect(status).toBe(2); expect(stdout).toEqual([]); expect(stderr.join("")).toContain("snapshot");
+    } finally { await fixtureValue.cleanup(); }
+  });
+
+  test("classifies missing and malformed JSON inputs as usage errors", async () => {
+    const fixtureValue = await fixture();
+    try {
+      const missing = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", join(fixtureValue.config, "missing.json"), "--manifest", fixtureValue.manifest], () => undefined, () => undefined);
+      expect(missing).toBe(64);
+      await writeFile(join(fixtureValue.config, "bad.json"), "{");
+      const malformed = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", join(fixtureValue.config, "bad.json"), "--manifest", fixtureValue.manifest], () => undefined, () => undefined);
+      expect(malformed).toBe(64);
+    } finally { await fixtureValue.cleanup(); }
+  });
 });

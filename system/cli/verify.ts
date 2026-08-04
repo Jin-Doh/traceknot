@@ -69,12 +69,17 @@ function assertPlain(value: unknown, path = "$"): void {
   }
 }
 async function readBoundedJson(path: string): Promise<unknown> {
-  const info = await lstat(path);
-  if (!info.isFile() || info.isSymbolicLink()) fail(`input is not a real regular file: ${path}`);
-  if (info.size > MAX_INPUT_BYTES) fail(`input exceeds ${MAX_INPUT_BYTES} bytes: ${path}`);
-  const value = JSON.parse(await readFile(path, "utf8")) as unknown;
-  assertPlain(value);
-  return value;
+  try {
+    const info = await lstat(path);
+    if (!info.isFile() || info.isSymbolicLink()) throw new Error(`invalid input file (not a regular file): ${path}`);
+    if (info.size > MAX_INPUT_BYTES) throw new Error(`invalid input file (exceeds ${MAX_INPUT_BYTES} bytes): ${path}`);
+    const value = JSON.parse(await readFile(path, "utf8")) as unknown;
+    assertPlain(value);
+    return value;
+  } catch (error) {
+    if (error instanceof Error && /^(invalid input file|unsafe input key)/.test(error.message)) throw error;
+    throw new Error(`invalid input file ${path}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 function parseArgs(argv: readonly string[]): CliOptions {
   let rootDir = process.cwd();
@@ -223,16 +228,17 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
     return { status, runId: input.runId, requestId: input.requestId, snapshotId: input.snapshotId, idempotencyKey: input.idempotencyKey, producer: observation.producer, summary: `Command ${command.executable} completed with ${observation.execution.exitStatus}.`, artifacts, executionKind: "command", identity: observation.execution.identity, ...(observation.execution.exitCode === undefined ? {} : { exitCode: observation.execution.exitCode }) };
   }};
   const artifactStore = { storeArtifact: async (artifact: Artifact, input: Parameters<NonNullable<VerificationRunDependencies["executor"]["executeObligation"]>>[0]) => { const content = (artifact as Artifact & { bytes?: Uint8Array }).bytes; if (!content) { if (!await mainStore.hasArtifact(artifact.digest)) throw new Error(`artifact ${artifact.digest} was not published`); return artifact; } return mainStore.storeArtifact(artifact as Artifact & { bytes: Uint8Array }, input); } };
-  const dependencies: VerificationRunDependencies = { repository, executor, artifactStore, capabilityProvider: { has: () => true }, executionAuthority, freshnessPolicy: { evaluateFreshness: () => "fresh" }, freshnessAuthority, now: () => new Date() };
-  return { dependencies, close: async () => { await collectorStore.close(); await mainStore.close(); } };
+  const dependencies: VerificationRunDependencies = { repository, executor, artifactStore, capabilityProvider: { has: () => true }, executionAuthority, freshnessPolicy: { evaluateFreshness: () => "fresh" }, freshnessAuthority, snapshotVerifier: async () => { const current = await captureGitSnapshotIdentity(options.rootDir); return current.rootIdentity === request.project.rootIdentity && current.snapshotId === request.project.snapshotId; }, now: () => new Date() };
+  return { dependencies, close: async () => { await collectorStore.close(); await mainStore.close(); await repository.close(); } };
 }
 
 async function loadReport(repository: FileVerificationRepository, runId: string, snapshot: Awaited<ReturnType<typeof captureGitSnapshotIdentity>>): Promise<CliReport> {
   const run = await repository.loadRun(runId); if (!run) fail(`run does not exist: ${runId}`);
+  const metadata = await repository.readMetadata(runId);
   const request = await repository.loadStageDocument(runId, "request");
   const verdict = await repository.loadStageDocument(runId, "verdict");
   if (!request || !verdict) fail("run is missing persisted request or verdict");
-  if (run.rootIdentity !== snapshot.rootIdentity || run.snapshotId !== snapshot.snapshotId) fail("current Git snapshot does not match the persisted run");
+  if (!metadata || metadata.rootIdentity !== snapshot.rootIdentity || metadata.snapshotId !== snapshot.snapshotId || run.rootIdentity !== snapshot.rootIdentity || run.snapshotId !== snapshot.snapshotId) fail("current Git snapshot or persisted run metadata does not match the persisted run");
   return { schemaVersion: "traceknot-cli-report/v1", run, verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: { request, basis: await repository.loadStageDocument(runId, "basis"), discovery: await repository.loadStageDocument(runId, "discovery"), plan: await repository.loadStageDocument(runId, "plan"), execution: await repository.loadStageDocument(runId, "execution"), evidence: await repository.loadStageDocument(runId, "evidence"), residualRisk: await repository.loadStageDocument(runId, "residual-risk"), verdict } };
 }
 
@@ -284,8 +290,10 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
     stdout(reportOutput(report, options.format));
     return exitForVerdict(result.verdict);
   } catch (error) {
-    stderr(`${String(error instanceof Error ? error.message : error)}\n`);
-    return error instanceof Error && /required|invalid|unknown|missing|must|unsafe|identity|snapshot|manifest|format|run-id|outside/.test(error.message) ? VERIFY_EXIT_CODES.USAGE : VERIFY_EXIT_CODES.INTERNAL;
+    const message = error instanceof Error ? error.message : String(error);
+    stderr(`${message}\n`);
+    if (/Git snapshot changed during verification/.test(message)) return VERIFY_EXIT_CODES.BLOCKED;
+    return error instanceof Error && /required|invalid|unknown|missing|must|unsafe|identity|snapshot|manifest|format|run-id|outside/.test(message) ? VERIFY_EXIT_CODES.USAGE : VERIFY_EXIT_CODES.INTERNAL;
   } finally { await stores?.close().catch(error => stderr(`artifact cleanup failed: ${String(error)}\n`)); }
 }
 
