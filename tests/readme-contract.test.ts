@@ -134,6 +134,16 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLocalLinks({ path: "README.md", content })).toThrow("docs/not-here.md");
   });
 
+  test("stops a nested fence when its list container ends", () => {
+    const content = "- ```md\n[guide](docs/not-here.md)";
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content })).toThrow("docs/not-here.md");
+  });
+
+  test("does not mask invalid backtick fence openers", () => {
+    const content = "```sh`bad`\n[guide](docs/not-here.md)";
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content })).toThrow("docs/not-here.md");
+  });
+
   test("keeps indented paragraph-continuation links visible", () => {
     const content = "Paragraph text\n    [guide](docs/not-here.md)";
     expect(() => checkReadmeLocalLinks({ path: "README.md", content })).toThrow("docs/not-here.md");
@@ -141,6 +151,7 @@ describe("README localization section contract", () => {
 
   test.each([
     "# Example\n    [literal](docs/not-here.md)",
+    "Example\n===\n    [literal](docs/not-here.md)",
     "---\n    [literal](docs/not-here.md)",
     "<section>\n    [literal](docs/not-here.md)",
   ])("recognizes indented code after a non-paragraph block: %s", (content) => {

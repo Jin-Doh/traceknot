@@ -85,7 +85,7 @@ function collectSharedCommands(content: string, path: string): Map<string, strin
     const opening = afterMarker.match(/^[\t ]*(?:\r?\n[\t ]*)+(`{3,}|~{3,})([^\r\n]*)\r?\n/u);
     if (!opening) continue;
     const fence = opening[1];
-    if (fence[0] === "`" && opening[2].includes("`")) continue;
+    if (!isValidFenceInfo(fence, opening[2])) continue;
     const commandStart = (match.index ?? 0) + match[0].length + opening[0].length;
     const closingPattern = new RegExp(`^[\\t ]{0,3}${fence[0] === "`" ? "`" : "~"}{${fence.length},}[\\t ]*$`, "gmu");
     closingPattern.lastIndex = commandStart;
@@ -97,6 +97,10 @@ function collectSharedCommands(content: string, path: string): Map<string, strin
     if (!commands.has(name)) throw new Error(`${path}: shared-command marker ${name} must be followed by a fenced block`);
   }
   return commands;
+}
+
+function isValidFenceInfo(fence: string, info: string): boolean {
+  return fence[0] !== "`" || !info.includes("`");
 }
 
 function loadReadmes(): ReadmeRecord[] {
@@ -197,6 +201,32 @@ function stripMarkdownContainerPrefix(value: string): string {
   }
 }
 
+function markdownListContentIndent(value: string): number {
+  let remaining = value;
+  let indent = 0;
+  while (true) {
+    const blockquote = remaining.match(/^[\t ]{0,3}>[\t ]?/u)?.[0];
+    if (blockquote) {
+      remaining = remaining.slice(blockquote.length);
+      continue;
+    }
+    const list = remaining.match(/^[\t ]{0,3}(?:[-+*]|\d+[.)])[\t ]+/u)?.[0];
+    if (!list) return indent;
+    indent += list.replace(/\t/g, "    ").length;
+    remaining = remaining.slice(list.length);
+  }
+}
+
+function markdownIndentAfterBlockquotes(value: string): number {
+  let remaining = value;
+  while (true) {
+    const blockquote = remaining.match(/^[\t ]{0,3}>[\t ]?/u)?.[0];
+    if (!blockquote) break;
+    remaining = remaining.slice(blockquote.length);
+  }
+  return remaining.match(/^[\t ]*/u)?.[0].replace(/\t/g, "    ").length ?? 0;
+}
+
 function markdownBlockquoteDepth(value: string): number {
   const content = stripMarkdownContainerPrefix(value);
   return (value.slice(0, value.length - content.length).match(/>/g) ?? []).length;
@@ -206,7 +236,7 @@ function maskMarkdownCode(content: string): string {
   const masked = content.split("");
   const lines = content.match(/.*(?:\r?\n|$)/g) ?? [];
   let offset = 0;
-  let fence: { marker: string; length: number; blockquoteDepth: number } | undefined;
+  let fence: { marker: string; length: number; blockquoteDepth: number; listContentIndent: number } | undefined;
   let indentedCode = false;
   let canStartIndentedCode = true;
   const mask = (start: number, end: number) => {
@@ -220,7 +250,12 @@ function maskMarkdownCode(content: string): string {
     const containerBody = stripMarkdownContainerPrefix(body);
     const blockquoteDepth = markdownBlockquoteDepth(body);
     const blank = /^[\t ]*$/u.test(containerBody);
-    if (fence && blockquoteDepth < fence.blockquoteDepth) fence = undefined;
+    if (fence && (
+      blockquoteDepth < fence.blockquoteDepth
+      || (fence.listContentIndent > 0
+        && !blank
+        && markdownIndentAfterBlockquotes(body) < fence.listContentIndent)
+    )) fence = undefined;
     if (fence) {
       mask(offset, offset + body.length);
       const close = containerBody.match(/^[\t ]{0,3}(`+|~+)[\t ]*$/u)?.[1];
@@ -230,9 +265,15 @@ function maskMarkdownCode(content: string): string {
       canStartIndentedCode = Boolean(closed);
       continue;
     }
-    const opening = containerBody.match(/^[\t ]{0,3}(`{3,}|~{3,})/u)?.[1];
-    if (opening) {
-      fence = { marker: opening[0], length: opening.length, blockquoteDepth };
+    const openingMatch = containerBody.match(/^[\t ]{0,3}(`{3,}|~{3,})([^\r\n]*)$/u);
+    const opening = openingMatch?.[1];
+    if (opening && isValidFenceInfo(opening, openingMatch?.[2] ?? "")) {
+      fence = {
+        marker: opening[0],
+        length: opening.length,
+        blockquoteDepth,
+        listContentIndent: markdownListContentIndent(body),
+      };
       mask(offset, offset + body.length);
       offset += line.length;
       indentedCode = false;
@@ -248,7 +289,7 @@ function maskMarkdownCode(content: string): string {
     }
     if (!blank) indentedCode = false;
     offset += line.length;
-    canStartIndentedCode = blank || /^(?:#{1,6}(?:[\t ]|$)|(?:[-*_][\t ]*){3,}$|<\/?[A-Za-z][^>]*>[\t ]*$)/u.test(containerBody);
+    canStartIndentedCode = blank || /^(?:#{1,6}(?:[\t ]|$)|=+[\t ]*$|(?:[-*_][\t ]*){3,}$|<\/?[A-Za-z][^>]*>[\t ]*$)/u.test(containerBody);
   }
   let visible = masked.join("");
   for (let cursor = 0; cursor < visible.length;) {
