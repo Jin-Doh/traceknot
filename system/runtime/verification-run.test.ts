@@ -1910,8 +1910,10 @@ describe("verification run orchestration", () => {
     const started = new Promise<void>(resolve => { markStarted = resolve; });
     const firstGate = new Promise<void>(resolve => { releaseFirst = resolve; });
     const sideEffects = new Map<string, number>();
+    const invocationKeys: string[] = [];
     const executeIdempotently = async (request: VerificationExecutionRequest): Promise<VerificationExecutionOutput> => {
-      sideEffects.set(request.idempotencyKey, (sideEffects.get(request.idempotencyKey) ?? 0) + 1);
+      invocationKeys.push(request.idempotencyKey);
+      if (!sideEffects.has(request.idempotencyKey)) sideEffects.set(request.idempotencyKey, 1);
       return {
         status: "PASS",
         runId: request.runId,
@@ -1944,7 +1946,9 @@ describe("verification run orchestration", () => {
     expect(await first.repository.releaseExecutionDispatch(staleClaim, now)).toBe(false);
     releaseFirst();
     await expect(firstRun).rejects.toThrow("dispatch result persistence failed");
-    expect(sideEffects.get(staleClaim.idempotencyKey)).toBe(2);
+    expect(invocationKeys).toHaveLength(2);
+    expect(invocationKeys.every(key => key === staleClaim.idempotencyKey)).toBe(true);
+    expect(sideEffects.get(staleClaim.idempotencyKey)).toBe(1);
     expect([...store.dispatchClaims.values()][0]?.status).toBe("COMPLETED");
     expect([...store.dispatchClaims.values()][0]?.claim.ownerId).toBe("owner-b");
   });
