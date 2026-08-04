@@ -97,7 +97,7 @@ export const RULES: readonly Rule[] = [
     id: "PI010",
     description: "Simplified Chinese credential or hidden-context exfiltration request",
     score: 7,
-    pattern: /(?:显示|打印|泄露|发送|上传|导出).{0,32}(?:秘密|令牌|凭据|私钥|API\s*密钥|系统提示|开发者消息|环境变量|\.env)/i,
+    pattern: /(?:(?:显示|打印|泄露|发送|上传|导出).{0,32}(?:秘密|令牌|凭据|私钥|API\s*密钥|系统提示|开发者消息|环境变量|\.env)|(?:把|将)(?:秘密|令牌|凭据|私钥|API\s*密钥|系统提示|开发者消息|环境变量|\.env).{0,32}(?:显示|打印|泄露|发送|上传|导出))/i,
   },
   {
     id: "PI011",
@@ -109,7 +109,7 @@ export const RULES: readonly Rule[] = [
     id: "PI012",
     description: "Simplified Chinese privileged role or message impersonation",
     score: 6,
-    pattern: /(?:(?:你|您)(?:现在|从现在起|将)是(?:系统|开发者|管理员|超级用户|root)|(?:假装|扮演|伪装|冒充)(?:成|为)?(?:系统|开发者|管理员|超级用户|root))/i,
+    pattern: /(?:(?:你|您)(?:现在|从现在起|将)是(?:一(?:名|个|位))?(?:系统(?:管理员|开发者)?|开发者|管理员|超级用户|root)|(?:假装|扮演|伪装|冒充)(?:成|为)?(?:系统(?:管理员|开发者|身份|消息|指令|角色)|开发者|管理员|超级用户|root)|以(?:系统|开发者|管理员|超级用户|root)(?:的)?身份)/i,
   },
 ];
 

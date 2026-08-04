@@ -68,6 +68,19 @@ describe("README localization section contract", () => {
     );
   });
 
+  test("accepts angle-bracket external links and ignores non-link Markdown grammar", () => {
+    expect(() => checkReadmeLocalLinks({
+      path: "README.md",
+      content: "[site](<https://example.com>)\n`[literal](docs/not-here.md)`\n`` `[literal](docs/not-here.md)` ``\n\\](docs/not-here.md)",
+    })).not.toThrow();
+  });
+
+  test("requires a real balanced Markdown label before validating a destination", () => {
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content: "[outer [inner]](docs/not-here.md)" })).toThrow(
+      "docs/not-here.md",
+    );
+  });
+
   test("rejects exclusions that narrow the publication inventory", () => {
     expect(() => checkPublicationInventory({ include: ["**/*.md"], exclude: ["docs/**"] })).toThrow(
       "cannot exclude Markdown files",

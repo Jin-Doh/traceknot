@@ -163,11 +163,88 @@ export function checkReadmeSharedCommands(records: Array<{ path: string; content
   })));
 }
 
+function isEscaped(content: string, index: number): boolean {
+  let backslashes = 0;
+  for (let cursor = index - 1; cursor >= 0 && content[cursor] === "\\"; cursor -= 1) backslashes += 1;
+  return backslashes % 2 === 1;
+}
+
+function maskMarkdownCode(content: string): string {
+  const masked = content.split("");
+  const lines = content.match(/.*(?:\r?\n|$)/g) ?? [];
+  let offset = 0;
+  let fence: { marker: string; length: number } | undefined;
+  const mask = (start: number, end: number) => {
+    for (let index = start; index < end; index += 1) {
+      if (masked[index] !== "\n" && masked[index] !== "\r") masked[index] = " ";
+    }
+  };
+  for (const line of lines) {
+    if (!line) continue;
+    const body = line.replace(/\r?\n$/, "");
+    if (fence) {
+      mask(offset, offset + body.length);
+      const close = body.match(/^[\t ]{0,3}(`+|~+)[\t ]*$/u)?.[1];
+      if (close?.[0] === fence.marker && close.length >= fence.length) fence = undefined;
+      offset += line.length;
+      continue;
+    }
+    const opening = body.match(/^[\t ]{0,3}(`{3,}|~{3,})/u)?.[1];
+    if (opening) {
+      fence = { marker: opening[0], length: opening.length };
+      mask(offset, offset + body.length);
+      offset += line.length;
+      continue;
+    }
+    for (let cursor = 0; cursor < body.length;) {
+      if (body[cursor] !== "`" || isEscaped(body, cursor)) {
+        cursor += 1;
+        continue;
+      }
+      let runEnd = cursor + 1;
+      while (body[runEnd] === "`") runEnd += 1;
+      const run = body.slice(cursor, runEnd);
+      let close = body.indexOf(run, runEnd);
+      while (close >= 0 && (body[close - 1] === "`" || body[close + run.length] === "`")) {
+        close = body.indexOf(run, close + run.length);
+      }
+      if (close < 0) {
+        cursor = runEnd;
+        continue;
+      }
+      mask(offset + cursor, offset + close + run.length);
+      cursor = close + run.length;
+    }
+    offset += line.length;
+  }
+  return masked.join("");
+}
+
 function localTargets(content: string): string[] {
+  content = maskMarkdownCode(content);
   const targets: string[] = [];
-  for (let marker = content.indexOf("]("); marker >= 0; marker = content.indexOf("](", marker + 2)) {
-    let cursor = marker + 2;
+  for (let opener = content.indexOf("["); opener >= 0; opener = content.indexOf("[", opener + 1)) {
+    if (isEscaped(content, opener)) continue;
+    let cursor = opener + 1;
+    let labelDepth = 1;
+    while (cursor < content.length && labelDepth > 0) {
+      if (isEscaped(content, cursor)) {
+        cursor += 1;
+      } else if (content[cursor] === "[") {
+        labelDepth += 1;
+      } else if (content[cursor] === "]") {
+        labelDepth -= 1;
+      }
+      cursor += 1;
+    }
+    if (labelDepth !== 0 || content[cursor] !== "(") continue;
+    cursor += 1;
     while (/\s/.test(content[cursor] ?? "")) cursor += 1;
+    if (content[cursor] === "<") {
+      const end = content.indexOf(">", cursor + 1);
+      if (end > cursor + 1) targets.push(content.slice(cursor + 1, end));
+      continue;
+    }
     const start = cursor;
     let depth = 0;
     while (cursor < content.length) {
