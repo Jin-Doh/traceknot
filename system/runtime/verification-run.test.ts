@@ -42,6 +42,7 @@ type RunInput = Parameters<typeof runVerification>[0];
 type RunStateValue = CanonicalRunState["state"];
 type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerKind?: "self" | "harness-managed" | "deterministic-verifier" | "ci" | "human" | "external-system"; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean; invalidProducer?: boolean };
 
+type FakeDispatchClaimResult = { claimed: boolean; status: "CLAIMED" | "COMPLETED"; claim: DispatchClaim; outputStored: boolean; completion?: VerificationExecutionCompletionEnvelope };
 type FakeRepositoryStore = {
   runs: Map<string, CanonicalRunState>;
   stageDocuments: Map<string, unknown>;
@@ -63,7 +64,7 @@ class FakeRepository {
   readonly runWrites: CanonicalRunState[] = [];
   async loadRun(runId: string): Promise<CanonicalRunState | undefined> { return this.runs.get(runId); }
   async loadStageDocument(runId: string, stage: string): Promise<unknown | undefined> { return this.stageDocuments.get(`${runId}:${stage}`); }
-  async claimExecutionDispatch(claim: DispatchClaim, now = FIXED_NOW): Promise<{ claimed: boolean; status: "CLAIMED" | "COMPLETED"; claim: DispatchClaim; outputStored: boolean; completion?: VerificationExecutionCompletionEnvelope }> {
+  async claimExecutionDispatch(claim: DispatchClaim, now = FIXED_NOW, _attemptToken?: symbol): Promise<FakeDispatchClaimResult> {
     const existing = this.dispatchClaims.get(claim.claimKey);
     if (existing?.status === "COMPLETED") return { claimed: false, ...structuredClone(existing) };
     if (existing) {
@@ -78,13 +79,13 @@ class FakeRepository {
   }
   async completeExecutionDispatch(claim: DispatchClaim, completion: VerificationExecutionCompletionEnvelope | undefined, now = FIXED_NOW): Promise<boolean> {
     const existing = this.dispatchClaims.get(claim.claimKey);
-    if (!existing || existing.status !== "CLAIMED" || existing.claim.ownerId !== claim.ownerId || existing.claim.leaseGeneration !== claim.leaseGeneration || Date.parse(now) > Date.parse(existing.claim.leaseExpiresAt)) return false;
+    if (!existing || existing.status !== "CLAIMED" || existing.claim.ownerId !== claim.ownerId || existing.claim.leaseGeneration !== claim.leaseGeneration || existing.claim.acquisitionId !== claim.acquisitionId || Date.parse(now) > Date.parse(existing.claim.leaseExpiresAt)) return false;
     this.dispatchClaims.set(claim.claimKey, { ...existing, status: "COMPLETED", outputStored: completion !== undefined, ...(completion === undefined ? {} : { completion: structuredClone(completion) }) });
     return true;
   }
   async releaseExecutionDispatch(claim: DispatchClaim, now = FIXED_NOW): Promise<boolean> {
     const existing = this.dispatchClaims.get(claim.claimKey);
-    if (!existing || existing.status !== "CLAIMED" || existing.claim.ownerId !== claim.ownerId || existing.claim.leaseGeneration !== claim.leaseGeneration || Date.parse(now) > Date.parse(existing.claim.leaseExpiresAt)) return false;
+    if (!existing || existing.status !== "CLAIMED" || existing.claim.ownerId !== claim.ownerId || existing.claim.leaseGeneration !== claim.leaseGeneration || existing.claim.acquisitionId !== claim.acquisitionId || Date.parse(now) > Date.parse(existing.claim.leaseExpiresAt)) return false;
     this.dispatchClaims.delete(claim.claimKey);
     return true;
   }
@@ -2216,11 +2217,12 @@ describe("verification run orchestration", () => {
     let originalError!: DispatchClaimAcquisitionError;
     class CrashAfterClaimRepository extends FakeRepository {
       crash = true;
-      override async claimExecutionDispatch(claim: DispatchClaim, now = FIXED_NOW) {
-        const result = await super.claimExecutionDispatch(claim, now);
+      override async claimExecutionDispatch(claim: DispatchClaim, now = FIXED_NOW, attemptToken?: symbol) {
+        if (!attemptToken) throw new Error("missing claim attempt token");
+        const result = await super.claimExecutionDispatch(claim, now, attemptToken);
         if (this.crash) {
           this.crash = false;
-          originalError = new DispatchClaimAcquisitionError("simulated crash after durable claim", result.claim);
+          originalError = new DispatchClaimAcquisitionError("simulated crash after durable claim", result.claim, attemptToken);
           throw originalError;
         }
         return result;
@@ -2251,6 +2253,32 @@ describe("verification run orchestration", () => {
     expect(dispatch).toHaveLength(1);
     expect(dispatch[0]?.status).toBe("COMPLETED");
     expect(dispatch[0]?.completion).toBeDefined();
+  });
+  test("does not release a same-owner claim from a forged different-generation proof", async () => {
+    const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
+    class ForgedProofRepository extends FakeRepository {
+      releaseCalls = 0;
+      override async releaseExecutionDispatch(claim: DispatchClaim, now = FIXED_NOW) {
+        this.releaseCalls++;
+        return super.releaseExecutionDispatch(claim, now);
+      }
+      override async claimExecutionDispatch(claim: DispatchClaim, now = FIXED_NOW, attemptToken?: symbol): Promise<FakeDispatchClaimResult> {
+        if (!attemptToken) throw new Error("missing claim attempt token");
+        const result = await super.claimExecutionDispatch(claim, now, attemptToken);
+        throw new DispatchClaimAcquisitionError("forged claim acquisition proof", { ...result.claim, leaseGeneration: result.claim.leaseGeneration + 1, acquisitionId: globalThis.crypto.randomUUID() }, Symbol("forged-attempt"));
+      }
+    }
+    const runId = "claim-forged-proof";
+    const request = { ...makeRequest(), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    const repository = new ForgedProofRepository(store);
+    const first = makeDependencies({}, repository);
+    await expect(runVerification({ runId, request, dependencies: first.dependencies })).rejects.toThrow("forged claim acquisition proof");
+    expect(repository.releaseCalls).toBe(0);
+    expect(store.dispatchClaims.size).toBe(1);
+    expect([...store.dispatchClaims.values()][0]?.claim.ownerId).toBe("verification-runtime");
+    expect([...store.dispatchClaims.values()][0]?.claim.leaseGeneration).toBe(1);
+    const retry = makeDependencies({}, new FakeRepository(store));
+    await expect(runVerification({ runId, dependencies: retry.dependencies })).rejects.toThrow("dispatch claim already exists");
   });
 
   test("fences stale completion and release after a repository-CAS takeover", async () => {

@@ -33,19 +33,21 @@ export interface CapabilityProvider {readonly hasCapability?:(s:string)=>MaybePr
 export interface BrowserExecutor {readonly atomicSameKeyIdempotency?:true;readonly executeBrowser?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>;readonly execute?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>};
 export interface ApprovalProvider {readonly requestApproval?:(i:ApprovalRequest)=>MaybePromise<ApprovalResult|undefined>;readonly approve?:(i:ApprovalRequest)=>MaybePromise<ApprovalResult|undefined>};
 export interface UsageRecorder {readonly atomicSameKeyIdempotency?:true;readonly recordUsage?:(e:UsageEvent)=>MaybePromise<void>;readonly record?:(e:UsageEvent)=>MaybePromise<void>};
-export type DispatchClaim=Readonly<{schemaVersion:"verification-dispatch-claim/v1";claimKey:string;runId:string;requestId:string;rootIdentity:string;snapshotId:string;planDigest:string;obligationId:string;idempotencyKey:string;ownerId:string;leaseGeneration:number;leaseExpiresAt:string}>;
+export type DispatchClaim=Readonly<{schemaVersion:"verification-dispatch-claim/v1";claimKey:string;acquisitionId:string;runId:string;requestId:string;rootIdentity:string;snapshotId:string;planDigest:string;obligationId:string;idempotencyKey:string;ownerId:string;leaseGeneration:number;leaseExpiresAt:string}>;
 export type DispatchClaimResult=Readonly<{claimed:boolean;status:"CLAIMED"|"COMPLETED";claim:DispatchClaim;outputStored:boolean;completion?:VerificationExecutionCompletionEnvelope}>;
-/** A repository may throw this only after durably persisting the supplied claim identity. */
+/** A repository may throw this only after durably persisting the supplied claim identity for this attempt token. */
 export class DispatchClaimAcquisitionError extends Error {
   readonly claim: DispatchClaim;
-  constructor(message: string, claim: DispatchClaim) {
+  readonly token: symbol;
+  constructor(message: string, claim: DispatchClaim, token: symbol) {
     super(message);
     this.name = "DispatchClaimAcquisitionError";
     this.claim = claim;
+    this.token = token;
   }
 }
 export type RepositoryTransition=Readonly<{runId:string;expectedRevision?:number;stage?:StageName;document?:StageDocument;run:CanonicalRunState}>;
-export interface RepositoryPort {readonly loadRun:(id:string)=>MaybePromise<CanonicalRunState|undefined>;readonly loadStageDocument:(id:string,s:StageName)=>MaybePromise<unknown|undefined>;readonly commitTransition:(transition:RepositoryTransition)=>MaybePromise<boolean>;readonly claimExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<DispatchClaimResult>;readonly completeExecutionDispatch?:(claim:DispatchClaim,completion:VerificationExecutionCompletionEnvelope|undefined,now?:string)=>MaybePromise<boolean>;readonly releaseExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<boolean>};
+export interface RepositoryPort {readonly loadRun:(id:string)=>MaybePromise<CanonicalRunState|undefined>;readonly loadStageDocument:(id:string,s:StageName)=>MaybePromise<unknown|undefined>;readonly commitTransition:(transition:RepositoryTransition)=>MaybePromise<boolean>;readonly claimExecutionDispatch?:(claim:DispatchClaim,now?:string,attemptToken?:symbol)=>MaybePromise<DispatchClaimResult>;readonly completeExecutionDispatch?:(claim:DispatchClaim,completion:VerificationExecutionCompletionEnvelope|undefined,now?:string)=>MaybePromise<boolean>;readonly releaseExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<boolean>};
 export type TerminalEvidenceVerdictTransition=Readonly<{runId:string;expectedRevision?:number;evidence:EvidenceDocument;verdict:VerdictDocument;run:CanonicalRunState}>;
 export interface RepositoryPort {readonly commitEvidenceAndVerdict?:(transition:TerminalEvidenceVerdictTransition)=>MaybePromise<boolean>};
 export type VerificationRunDependencies=Readonly<{repository:RepositoryPort;executor:VerificationExecutor;artifactStore:ArtifactStore;capabilityProvider:CapabilityProvider;executionAuthority:ExecutionAuthorityPort;freshnessPolicy:FreshnessPolicy;freshnessAuthority:FreshnessAuthorityPort;browserExecutor?:BrowserExecutor;approvalProvider?:ApprovalProvider;usageRecorder?:UsageRecorder;now:Clock;dispatchOwnerId?:string;ownerId?:string;dispatchLeaseDurationMs?:number;leaseDurationMs?:number}>;
@@ -56,6 +58,7 @@ type ExecuteObligationsResult=Readonly<{document:ExecutionDocument;checkpointRev
 
 const DIGEST = /^[0-9a-fA-F]{64}$/;
 const REQUEST_DIGEST = /^[0-9a-f]{64}$/;
+const ACQUISITION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const uniq = (xs: readonly string[]): string[] => [...new Set(xs)].sort();
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 function canonicalJsonValue(value: unknown): unknown {
@@ -307,18 +310,13 @@ function dispatchClaimKeyFor(request: VerificationExecutionRequest): string {
   return `verification-dispatch:${canonicalSha256([request.runId, request.requestId, request.rootIdentity, request.snapshotId, request.planDigest, request.obligation.id, request.idempotencyKey])}`;
 }
 function dispatchClaimFor(request: VerificationExecutionRequest, ownerId: string, now: string, duration: number): DispatchClaim {
-  return { schemaVersion: "verification-dispatch-claim/v1", claimKey: dispatchClaimKeyFor(request), runId: request.runId, requestId: request.requestId, rootIdentity: request.rootIdentity, snapshotId: request.snapshotId, planDigest: request.planDigest, obligationId: request.obligation.id, idempotencyKey: request.idempotencyKey, ownerId, leaseGeneration: 1, leaseExpiresAt: new Date(Date.parse(now) + duration).toISOString() };
+  return { schemaVersion: "verification-dispatch-claim/v1", claimKey: dispatchClaimKeyFor(request), acquisitionId: globalThis.crypto.randomUUID(), runId: request.runId, requestId: request.requestId, rootIdentity: request.rootIdentity, snapshotId: request.snapshotId, planDigest: request.planDigest, obligationId: request.obligation.id, idempotencyKey: request.idempotencyKey, ownerId, leaseGeneration: 1, leaseExpiresAt: new Date(Date.parse(now) + duration).toISOString() };
 }
 function validDispatchClaim(value: unknown): value is DispatchClaim {
-  return isRecord(value) && exactOwnKeys(value, ["schemaVersion", "claimKey", "runId", "requestId", "rootIdentity", "snapshotId", "planDigest", "obligationId", "idempotencyKey", "ownerId", "leaseGeneration", "leaseExpiresAt"]) && value.schemaVersion === "verification-dispatch-claim/v1" && typeof value.claimKey === "string" && value.claimKey.startsWith("verification-dispatch:") && typeof value.runId === "string" && Boolean(value.runId) && typeof value.requestId === "string" && Boolean(value.requestId) && typeof value.rootIdentity === "string" && Boolean(value.rootIdentity) && typeof value.snapshotId === "string" && Boolean(value.snapshotId) && typeof value.planDigest === "string" && REQUEST_DIGEST.test(value.planDigest) && typeof value.obligationId === "string" && Boolean(value.obligationId) && validExecutionKey(value.idempotencyKey) && typeof value.ownerId === "string" && Boolean(value.ownerId) && typeof value.leaseGeneration === "number" && Number.isInteger(value.leaseGeneration) && value.leaseGeneration > 0 && validDate(value.leaseExpiresAt);
+  return isRecord(value) && exactOwnKeys(value, ["schemaVersion", "claimKey", "acquisitionId", "runId", "requestId", "rootIdentity", "snapshotId", "planDigest", "obligationId", "idempotencyKey", "ownerId", "leaseGeneration", "leaseExpiresAt"]) && value.schemaVersion === "verification-dispatch-claim/v1" && typeof value.claimKey === "string" && value.claimKey.startsWith("verification-dispatch:") && typeof value.acquisitionId === "string" && ACQUISITION_ID.test(value.acquisitionId) && typeof value.runId === "string" && Boolean(value.runId) && typeof value.requestId === "string" && Boolean(value.requestId) && typeof value.rootIdentity === "string" && Boolean(value.rootIdentity) && typeof value.snapshotId === "string" && Boolean(value.snapshotId) && typeof value.planDigest === "string" && REQUEST_DIGEST.test(value.planDigest) && typeof value.obligationId === "string" && Boolean(value.obligationId) && validExecutionKey(value.idempotencyKey) && typeof value.ownerId === "string" && Boolean(value.ownerId) && typeof value.leaseGeneration === "number" && Number.isInteger(value.leaseGeneration) && value.leaseGeneration > 0 && validDate(value.leaseExpiresAt);
 }
 function stableDispatchClaimMatches(value: DispatchClaim, request: VerificationExecutionRequest): boolean {
   return value.claimKey === dispatchClaimKeyFor(request) && value.runId === request.runId && value.requestId === request.requestId && value.rootIdentity === request.rootIdentity && value.snapshotId === request.snapshotId && value.planDigest === request.planDigest && value.obligationId === request.obligation.id && value.idempotencyKey === request.idempotencyKey;
-}
-function dispatchClaimAcquisitionProof(error: unknown, request: VerificationExecutionRequest, dependencies: VerificationRunDependencies): DispatchClaim | undefined {
-  if (!(error instanceof DispatchClaimAcquisitionError) || !validDispatchClaim(error.claim) || !stableDispatchClaimMatches(error.claim, request)) return undefined;
-  const owner = dependencies.dispatchOwnerId ?? dependencies.ownerId ?? "verification-runtime";
-  return typeof owner === "string" && owner.length > 0 && error.claim.ownerId === owner ? error.claim : undefined;
 }
 type DispatchLease=Readonly<{owned:boolean;outputStored:boolean;claim:DispatchClaim;completion?:VerificationExecutionCompletionEnvelope}>;
 async function claimExecutionDispatch(repository: RepositoryPort, request: VerificationExecutionRequest, dependencies: VerificationRunDependencies): Promise<DispatchLease> {
@@ -326,16 +324,28 @@ async function claimExecutionDispatch(repository: RepositoryPort, request: Verif
   const claim = dispatchClaimFor(request, dispatchOwnerFor(dependencies), now, dispatchLeaseDurationFor(dependencies));
   const claimMethod = repository.claimExecutionDispatch;
   if (!claimMethod) throw Error("atomic dispatch claim facility is required");
-  const result = await claimMethod.call(repository, claim, now);
-  if (!isRecord(result) || !exactOwnKeys(result, ["claimed", "status", "claim", "outputStored"], ["completion"]) || typeof result.claimed !== "boolean" || (result.status !== "CLAIMED" && result.status !== "COMPLETED") || typeof result.outputStored !== "boolean" || !validDispatchClaim(result.claim) || (result.completion !== undefined && !isRecord(result.completion))) throw Error("invalid dispatch claim result");
-  if (!stableDispatchClaimMatches(result.claim, request)) throw Error("dispatch claim binding mismatch");
-  if (result.claimed) {
-    if (result.status !== "CLAIMED" || result.outputStored || result.completion !== undefined || result.claim.ownerId !== claim.ownerId || Date.parse(result.claim.leaseExpiresAt) <= Date.parse(now)) throw Error("invalid dispatch claim result");
-    return { owned: true, outputStored: false, claim: result.claim };
+  const attemptToken = Symbol("verification-dispatch-claim");
+  try {
+    const result = await claimMethod.call(repository, claim, now, attemptToken);
+    if (!isRecord(result) || !exactOwnKeys(result, ["claimed", "status", "claim", "outputStored"], ["completion"]) || typeof result.claimed !== "boolean" || (result.status !== "CLAIMED" && result.status !== "COMPLETED") || typeof result.outputStored !== "boolean" || !validDispatchClaim(result.claim) || (result.completion !== undefined && !isRecord(result.completion))) throw Error("invalid dispatch claim result");
+    if (!stableDispatchClaimMatches(result.claim, request)) throw Error("dispatch claim binding mismatch");
+    if (result.claimed) {
+      if (result.status !== "CLAIMED" || result.outputStored || result.completion !== undefined || result.claim.ownerId !== claim.ownerId || Date.parse(result.claim.leaseExpiresAt) <= Date.parse(now)) throw Error("invalid dispatch claim result");
+      return { owned: true, outputStored: false, claim: result.claim };
+    }
+    if (result.status === "CLAIMED") throw Error("dispatch claim already exists");
+    if (!result.outputStored || !result.completion || !validCompletionEnvelope(result.completion, request, result.claim)) throw Error("invalid persisted dispatch completion");
+    return { owned: false, outputStored: true, claim: result.claim, completion: result.completion };
+  } catch (error) {
+    if (error instanceof DispatchClaimAcquisitionError && error.token === attemptToken && validDispatchClaim(error.claim) && stableDispatchClaimMatches(error.claim, request) && error.claim.ownerId === claim.ownerId && error.claim.acquisitionId === claim.acquisitionId) {
+      try {
+        await releaseExecutionDispatch(repository, error.claim, now);
+      } catch {
+        // Preserve the acquisition failure when cleanup cannot confirm release.
+      }
+    }
+    throw error;
   }
-  if (result.status === "CLAIMED") throw Error("dispatch claim already exists");
-  if (!result.outputStored || !result.completion || !validCompletionEnvelope(result.completion, request, result.claim)) throw Error("invalid persisted dispatch completion");
-  return { owned: false, outputStored: true, claim: result.claim, completion: result.completion };
 }
 async function completeExecutionDispatch(repository: RepositoryPort, claim: DispatchClaim, completion: VerificationExecutionCompletionEnvelope | undefined, now: string): Promise<void> {
   if (!repository.completeExecutionDispatch) throw Error("durable dispatch completion facility is required");
@@ -633,21 +643,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     const planDigest = canonicalPlanDigest(input.plan);
     const obligationDigest = canonicalObligationDigest(obligation);
     const request = { runId: input.runId, requestId: input.request.requestId, requestDigest, planDigest, obligationDigest, rootIdentity: input.request.project.rootIdentity, snapshotId: input.request.project.snapshotId, obligation, conditionIds: uniq(obligation.conditionIds), idempotencyKey: idempotencyKeyFor(input.runId, requestDigest, planDigest, obligationDigest) };
-    let lease: DispatchLease;
-    try {
-      lease = await claimExecutionDispatch(input.dependencies.repository, request, input.dependencies);
-    } catch (error) {
-      // Never derive a release claim from an unproven error: it could match another same-owner lease.
-      const proof = dispatchClaimAcquisitionProof(error, request, input.dependencies);
-      if (proof) {
-        try {
-          await releaseExecutionDispatch(input.dependencies.repository, proof, clockNow(input.dependencies.now));
-        } catch {
-          // Preserve the acquisition failure when cleanup cannot confirm release.
-        }
-      }
-      throw error;
-    }
+    const lease = await claimExecutionDispatch(input.dependencies.repository, request, input.dependencies);
     let claimReleased = false;
     let completionPersisted = false;
     const releaseClaim = async (preserveError: boolean): Promise<void> => {
