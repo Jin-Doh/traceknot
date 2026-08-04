@@ -439,9 +439,20 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("FAIL");
   });
 
-  test("preserves both endpoints of Simplified Chinese quantity ranges", () => {
+  test("preserves complete multi-character Simplified Chinese units", () => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n系统每次运行三至四次。`, `${context}\n系统每次运行五至四次。`);
+    const report = verifyPreservation(`${context}\n路线长度为三公里。`, `${context}\n路线长度为三公斤。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(report.status).toBe("FAIL");
+  });
+
+  test.each([
+    ["系统每次运行三至四次。", "系统每次运行五至四次。"],
+    ["系统每次运行三-四次。", "系统每次运行三-五次。"],
+  ])("preserves both endpoints of Simplified Chinese quantity ranges: %s", (source, rewrite) => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
     expect(report.status).toBe("FAIL");
@@ -450,6 +461,17 @@ describe("rewrite preservation gate", () => {
   test("does not extract embedded numerals from ordinary Simplified Chinese words", () => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n唯一条款和统一台账保持不变。`, `${context}\n唯一规则和统一记录保持不变。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures.some((failure) => failure.category === "number")).toBe(false);
+    expect(report.status).toBe("PASS");
+  });
+
+  test.each([
+    ["一切运行正常。", "全部运行正常。"],
+    ["这个功能十分重要。", "这个功能非常重要。"],
+  ])("does not extract numeral-shaped lexical words: %s", (source, rewrite) => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures.some((failure) => failure.category === "number")).toBe(false);
     expect(report.status).toBe("PASS");
@@ -513,6 +535,16 @@ describe("rewrite preservation gate", () => {
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
     expect(report.status).toBe("FAIL");
+  });
+
+  test("stops normative clauses at adjacent Markdown block boundaries", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const before = `${context}\n- 用户必须审核\n- 界面采用蓝色`;
+    const after = `${context}\n- 用户必须审核\n- 界面采用绿色`;
+    const report = verifyPreservation(before, after);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
+    expect(report.status).toBe("PASS");
   });
 
   test("warns at the review threshold and rejects at the hard threshold", () => {
