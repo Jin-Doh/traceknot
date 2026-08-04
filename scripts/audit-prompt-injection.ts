@@ -87,6 +87,24 @@ export const RULES: readonly Rule[] = [
     score: 10,
     pattern: /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]/,
   },
+  {
+    id: "PI009",
+    description: "Simplified Chinese instruction hierarchy override",
+    score: 5,
+    pattern: /(?:忽略|无视|覆盖|绕过).{0,24}(?:之前|先前|系统|开发者|安全|指令|规则|策略|防护)/,
+  },
+  {
+    id: "PI010",
+    description: "Simplified Chinese credential or hidden-context exfiltration request",
+    score: 7,
+    pattern: /(?:显示|打印|泄露|发送|上传|导出).{0,32}(?:秘密|令牌|凭据|私钥|API\s*密钥|系统提示|开发者消息|环境变量|\.env)/i,
+  },
+  {
+    id: "PI011",
+    description: "Simplified Chinese safety control suppression",
+    score: 6,
+    pattern: /(?:禁用|关闭|移除|绕过|规避).{0,24}(?:安全|验证|校验|扫描器|过滤器|沙箱|权限|审批|审计|日志)/,
+  },
 ];
 
 const LEVEL_RANK: Record<RiskLevel, number> = {

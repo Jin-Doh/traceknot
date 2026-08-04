@@ -64,7 +64,9 @@ The preserved `quality-capability/v1` schema remains valid for existing records.
 
 ### Traceknot Core
 
-`system/core/` contains the host-neutral TypeScript resolver. It accepts a mandatory result only through the proof-carrying chain Observation → Evidence Claim → Evidence Evaluation → Obligation Outcome. It rejects or fails closed on unsupported claims, missing structured actual values, cross-snapshot evidence, inadequate producer independence, incomplete traceability, open material defects, and expired risk acceptance.
+`system/core/` contains the host-neutral TypeScript resolvers. `resolveProofCarryingQaVerdict` accepts a mandatory result only through the proof-carrying chain Observation → Evidence Claim → Evidence Evaluation → Obligation Outcome. It rejects or fails closed on unsupported claims, missing structured actual values, cross-snapshot evidence, inadequate producer independence, incomplete traceability, open material defects, and expired risk acceptance.
+
+`resolveQaVerdict` remains a legacy compatibility path for callers that provide `ObligationResult` values without the proof-carrying records. It preserves the older verdict behavior and must not be presented as proof-carrying enforcement. Integrators that require the evidence-record guarantees above must call `resolveProofCarryingQaVerdict`.
 
 The core always emits `authoritative: false`. It does not orchestrate reviewers, prove global quiescence, or enforce harness completion.
 

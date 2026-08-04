@@ -81,6 +81,19 @@ function checkSections(record: ReadmeRecord): void {
   }
   const unexpected = [...record.sections.keys()].filter((section) => !REQUIRED_SECTIONS.includes(section as typeof REQUIRED_SECTIONS[number]));
   if (unexpected.length > 0) throw new Error(`${record.path}: unexpected sections: ${unexpected.join(", ")}`);
+  const actualOrder = [...record.sections.keys()];
+  if (actualOrder.some((section, index) => section !== REQUIRED_SECTIONS[index])) {
+    throw new Error(`${record.path}: section order must be ${REQUIRED_SECTIONS.join(" -> ")}, found ${actualOrder.join(" -> ")}`);
+  }
+}
+
+export function checkReadmeSections(path: string, content: string): void {
+  checkSections({
+    path,
+    content,
+    sections: collectMarkers(content, /<!-- readme-section:([a-z0-9-]+) -->/g),
+    sharedCommands: new Map(),
+  });
 }
 
 function checkLanguageNavigation(record: ReadmeRecord): void {
