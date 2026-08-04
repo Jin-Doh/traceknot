@@ -8,7 +8,7 @@
   "observationIds": ["observation-1"],
   "claimIds": ["claim-1"],
   "evaluationIds": ["evaluation-1"],
-  "revision": 1,
   "createdAt": "2026-08-03T00:00:00.000Z",
-  "updatedAt": "2026-08-03T00:00:02.000Z"
+  "updatedAt": "2026-08-03T00:00:02.000Z",
+  "unexpected": true
 }

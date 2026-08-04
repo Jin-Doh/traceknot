@@ -60,8 +60,17 @@ bun run test
 bun run typecheck
 
 printf '%s\n' '==> canonical schemas and capability records'
-# The schema glob compiles both the preserved v1 and adapter v2 capability contracts.
-bun x --no-install ajv compile --spec=draft2020 -s 'contracts/*.schema.json'
+# Compile the evaluation document with its published record contract registered;
+# all other schemas remain independently self-contained.
+for schema in contracts/*.schema.json; do
+    if [ "$schema" = contracts/evidence-evaluation-document.schema.json ]; then
+        bun x --no-install ajv compile --spec=draft2020 \
+            -s "$schema" \
+            -r contracts/evidence-evaluation.schema.json
+    else
+        bun x --no-install ajv compile --spec=draft2020 -s "$schema"
+    fi
+done
 bun x --no-install ajv validate --spec=draft2020 \
     -s contracts/codeql-policy.schema.json \
     -d codeql-policy.json

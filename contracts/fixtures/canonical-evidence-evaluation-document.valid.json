@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "verification-evidence-evaluation/v1",
+  "requestId": "request-1",
+  "snapshotId": "snapshot-1",
+  "freshnessEvaluatedAt": "2026-08-03T00:00:02.000Z",
+  "freshnessAuthority": {
+    "schemaVersion": "verification-freshness-authority/v1",
+    "authorityId": "freshness-authority-1",
+    "issuer": "fixture-authority",
+    "binding": {
+      "schemaVersion": "verification-freshness-binding/v1",
+      "requestId": "request-1",
+      "snapshotId": "snapshot-1",
+      "planDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "executionDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "freshnessEvaluatedAt": "2026-08-03T00:00:02.000Z",
+      "evaluationIds": ["evaluation-1"],
+      "evaluationsDigest": "0b88cf7898b367ef24651985767def66fb17b792e7ce0e6b8a30cf10d46f3d28",
+      "acceptedClaimIds": ["claim-1"],
+      "coverage": {
+        "basisIds": ["basis-1"],
+        "coveredBasisIds": ["basis-1"],
+        "riskIds": ["risk-1"],
+        "coveredRiskIds": ["risk-1"],
+        "conditionIds": ["condition-1"],
+        "coveredConditionIds": ["condition-1"]
+      }
+    }
+  },
+  "evaluations": [
+    {
+      "schemaVersion": "evidence-evaluation/v1",
+      "evaluationId": "evaluation-1",
+      "requestId": "request-1",
+      "snapshotId": "snapshot-1",
+      "claimId": "claim-1",
+      "status": "ACCEPTED",
+      "checks": {
+        "snapshotBound": true,
+        "fresh": true,
+        "scopeComplete": true,
+        "producerAllowed": true,
+        "independenceSatisfied": true,
+        "expectedResultDemonstrated": true,
+        "expectedResultViolated": false,
+        "integrityVerified": true,
+        "artifactRequirementsSatisfied": true
+      },
+      "rejectionReasons": [],
+      "evaluatedAt": "2026-08-03T00:00:02.000Z"
+    }
+  ],
+  "acceptedClaimIds": ["claim-1"],
+  "coverage": {
+    "basisIds": ["basis-1"],
+    "coveredBasisIds": ["basis-1"],
+    "riskIds": ["risk-1"],
+    "coveredRiskIds": ["risk-1"],
+    "conditionIds": ["condition-1"],
+    "coveredConditionIds": ["condition-1"]
+  }
+}

@@ -826,6 +826,8 @@ describe("resolveProofCarryingQaVerdict", () => {
       criterionId: "criterion-unknown",
     };
     expect(() => resolveProofCarryingQaVerdict({ ...graph(entry), claims: [unknownCriterion] })).toThrow(/unknown.*criterion|criterion.*unknown/i);
+    const duplicateEvaluation = { ...entry.evaluation!, evaluationId: "evaluation-duplicate" };
+    expect(() => resolveProofCarryingQaVerdict({ ...graph(entry), evaluations: [entry.evaluation!, duplicateEvaluation] })).toThrow(/duplicate evaluation/i);
   });
 });
 

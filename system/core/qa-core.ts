@@ -382,12 +382,8 @@ function buildGraphIndexes(
   }
   for (const evaluation of evaluations) {
     if (!claimsById.has(evaluation.claimId)) throw new Error(`unknown claim ${evaluation.claimId}`);
-    let groupedEvaluations = evaluationsByClaim.get(evaluation.claimId);
-    if (!groupedEvaluations) {
-      groupedEvaluations = [];
-      evaluationsByClaim.set(evaluation.claimId, groupedEvaluations);
-    }
-    groupedEvaluations.push(evaluation);
+    if (evaluationsByClaim.has(evaluation.claimId)) throw new Error(`duplicate evaluation for claim ${evaluation.claimId}`);
+    evaluationsByClaim.set(evaluation.claimId, [evaluation]);
   }
   return { obligationsById, criteriaById, observationsById, claimsById, evaluationsById, claimsByObligation, evaluationsByClaim };
 }
