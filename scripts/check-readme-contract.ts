@@ -111,7 +111,13 @@ function renderedMarkdownText(content: string): string {
 function visibleAnchorTargets(content: string): string[] {
   const targets: string[] = [];
   visit(visibleHtmlTree(content), "element", (node: Element) => {
-    if (node.tagName === "a" && (typeof node.properties.href === "string" || typeof node.properties.href === "number")) {
+    const accessibleLabel = node.properties.ariaLabel;
+    const hasAccessibleLabel = typeof accessibleLabel === "string" && accessibleLabel.trim().length > 0;
+    const hasRenderedText = toText(node).trim().length > 0;
+    const hasImageAlt = node.children.some((child) => child.type === "element"
+      && child.tagName === "img" && typeof child.properties.alt === "string" && child.properties.alt.trim().length > 0);
+    if (node.tagName === "a" && (hasRenderedText || hasAccessibleLabel || hasImageAlt)
+      && (typeof node.properties.href === "string" || typeof node.properties.href === "number")) {
       targets.push(String(node.properties.href));
     }
   });

@@ -157,6 +157,13 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLanguageNavigation("README.md", content)).toThrow("missing language link to README.zh.md");
   });
 
+  test("requires usable content in language-navigation anchors", () => {
+    const empty = "[English](README.md) [한국어](README.ko.md) <a href=\"README.zh.md\"></a>";
+    const hiddenOnly = "[English](README.md) [한국어](README.ko.md) <a href=\"README.zh.md\"><span hidden>简体中文</span></a>";
+    expect(() => checkReadmeLanguageNavigation("README.md", empty)).toThrow("missing language link to README.zh.md");
+    expect(() => checkReadmeLanguageNavigation("README.md", hiddenOnly)).toThrow("missing language link to README.zh.md");
+  });
+
   test("does not accept hidden documentation links for translation parity", () => {
     const canonical = "[Architecture](docs/architecture.md)";
     const translated = '<a hidden href="docs/architecture.md">Architecture</a>';

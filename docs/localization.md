@@ -27,7 +27,7 @@ Every README contains stable `readme-section` markers and `shared-command` marke
 - all three files exist;
 - required sections are present exactly once;
 - shared command blocks are byte-identical;
-- every README exposes rendered links to all three languages; anchors in standard HTML `hidden` subtrees do not satisfy navigation parity;
+- every README exposes rendered links with usable visible or accessible labels to all three languages; empty anchors and anchors in standard HTML `hidden` subtrees do not satisfy navigation parity;
 - translated documentation parity uses the same visible-anchor tree, so hidden anchors cannot preserve a removed reader-facing link;
 - critical authority-boundary literals remain present in text derived by `hast-util-to-text`, with fenced examples removed first;
 - the public Skill install literal remains in the parsed `skill-install` shared command block rather than arbitrary source text;

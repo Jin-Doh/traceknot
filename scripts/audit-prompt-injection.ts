@@ -1,9 +1,13 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { relative, resolve } from "node:path";
-import type { Paragraph } from "mdast";
+import type { Element, Root as HastRoot, Text } from "hast";
+import type { Html, Paragraph } from "mdast";
 import { toString } from "mdast-util-to-string";
+import rehypeRaw from "rehype-raw";
+import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
+import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 import { visit } from "unist-util-visit";
 
@@ -147,6 +151,11 @@ const DEFAULT_TARGETS = [
 ];
 
 const TEXT_EXTENSIONS = new Set([".md", ".json", ".txt", ".yaml", ".yml"]);
+const HTML_PROCESSOR = unified()
+  .use(remarkParse)
+  .use(remarkGfm)
+  .use(remarkRehype, { allowDangerousHtml: true })
+  .use(rehypeRaw);
 
 export function levelForScore(score: number): RiskLevel {
   if (score >= 10) return "critical";
@@ -198,25 +207,49 @@ function normalizedSoftWrap(value: string): { text: string; sourceOffsets: numbe
   return { text, sourceOffsets };
 }
 
+function visibleHtmlTree(content: string): HastRoot {
+  const tree = HTML_PROCESSOR.runSync(HTML_PROCESSOR.parse(content)) as HastRoot;
+  const prune = (node: HastRoot | Element): void => {
+    node.children = node.children.filter((child) => child.type !== "element"
+      || (child.tagName !== "pre" && child.properties.hidden == null));
+    for (const child of node.children) {
+      if (child.type === "element") prune(child);
+    }
+  };
+  prune(tree);
+  return tree;
+}
+
+function softWrappedSourceFindings(path: string, source: string, startLine: number): Finding[] {
+  if (!source.includes("\n")) return [];
+  const findings: Finding[] = [];
+  const normalized = normalizedSoftWrap(source);
+  for (const rule of RULES) {
+    for (const match of acceptedMatches(rule, normalized.text)) {
+      const matchStart = match.index;
+      const matchEnd = matchStart + match[0].length;
+      const originalStart = normalized.sourceOffsets[matchStart];
+      const originalEnd = normalized.sourceOffsets[Math.max(matchEnd - 1, matchStart)];
+      if (originalStart === undefined || originalEnd === undefined || !source.slice(originalStart, originalEnd + 1).includes("\n")) continue;
+      const line = startLine + source.slice(0, originalStart).split("\n").length - 1;
+      findings.push(createFinding(path, line, source, rule));
+    }
+  }
+  return findings;
+}
+
 function softWrappedMarkdownFindings(path: string, text: string): Finding[] {
   if (!/\.md$/iu.test(path)) return [];
   const findings: Finding[] = [];
   const tree = unified().use(remarkParse).parse(text);
   visit(tree, "paragraph", (node: Paragraph) => {
-    const source = toString(node);
-    if (!source.includes("\n")) return;
-    const normalized = normalizedSoftWrap(source);
-    for (const rule of RULES) {
-      for (const match of acceptedMatches(rule, normalized.text)) {
-        const matchStart = match.index;
-        const matchEnd = matchStart + match[0].length;
-        const originalStart = normalized.sourceOffsets[matchStart];
-        const originalEnd = normalized.sourceOffsets[Math.max(matchEnd - 1, matchStart)];
-        if (originalStart === undefined || originalEnd === undefined || !source.slice(originalStart, originalEnd + 1).includes("\n")) continue;
-        const line = (node.position?.start.line ?? 1) + source.slice(0, originalStart).split("\n").length - 1;
-        findings.push(createFinding(path, line, source, rule));
-      }
-    }
+    findings.push(...softWrappedSourceFindings(path, toString(node), node.position?.start.line ?? 1));
+  });
+  visit(tree, "html", (node: Html) => {
+    visit(visibleHtmlTree(node.value), "text", (textNode: Text) => {
+      const startLine = (node.position?.start.line ?? 1) + (textNode.position?.start.line ?? 1) - 1;
+      findings.push(...softWrappedSourceFindings(path, textNode.value, startLine));
+    });
   });
   return findings;
 }
