@@ -121,6 +121,7 @@ const DEFAULT_TARGETS = [
   "README.zh.md",
   "BRAND.md",
   "BRAND.ko.md",
+  "assets/readme",
   "docs",
   "skill",
   "contracts",
