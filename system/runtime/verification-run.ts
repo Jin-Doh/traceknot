@@ -620,13 +620,25 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     const obligationDigest = canonicalObligationDigest(obligation);
     const request = { runId: input.runId, requestId: input.request.requestId, requestDigest, planDigest, obligationDigest, rootIdentity: input.request.project.rootIdentity, snapshotId: input.request.project.snapshotId, obligation, conditionIds: uniq(obligation.conditionIds), idempotencyKey: idempotencyKeyFor(input.runId, requestDigest, planDigest, obligationDigest) };
     const lease = await claimExecutionDispatch(input.dependencies.repository, request, input.dependencies);
+    let claimReleased = false;
+    let completionPersisted = false;
+    const releaseClaim = async (preserveError: boolean): Promise<void> => {
+      if (!lease.owned || claimReleased || completionPersisted) return;
+      try {
+        await releaseExecutionDispatch(input.dependencies.repository, lease.claim, clockNow(input.dependencies.now));
+        claimReleased = true;
+      } catch (error) {
+        if (!preserveError) throw error;
+      }
+    };
     const executionPort = obligation.evidenceType === "browser-result" ? input.dependencies.browserExecutor : input.dependencies.executor;
+    try {
     let available: boolean;
     try {
       available = !lease.owned || await hasCapability(input.dependencies.capabilityProvider, capabilityFor(obligation));
       if (lease.owned && available && (!executionPort || executionPort.atomicSameKeyIdempotency !== true)) throw Error("executor must declare atomic same-key idempotency");
     } catch (error) {
-      if (lease.owned) await releaseExecutionDispatch(input.dependencies.repository, lease.claim, clockNow(input.dependencies.now));
+      await releaseClaim(true);
       throw error;
     }
     let startedAt: string;
@@ -640,7 +652,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
             ? await executeBrowser(input.dependencies.browserExecutor!, request)
             : await executeExecutor(input.dependencies.executor, request);
         } catch (error) {
-          await releaseExecutionDispatch(input.dependencies.repository, lease.claim, clockNow(input.dependencies.now));
+          await releaseClaim(true);
           throw error;
         }
         finishedAt = clockNow(input.dependencies.now);
@@ -648,7 +660,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
           try {
             output = await canonicalizeAndStoreExecutionOutput(output, request, input.dependencies.artifactStore);
           } catch (error) {
-            await releaseExecutionDispatch(input.dependencies.repository, lease.claim, clockNow(input.dependencies.now));
+            await releaseClaim(true);
             throw error;
           }
         }
@@ -659,8 +671,9 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
         if (completion) {
           completionAuthority = completion.authority;
           await completeExecutionDispatch(input.dependencies.repository, lease.claim, completion, clockNow(input.dependencies.now));
+          completionPersisted = true;
         } else {
-          await releaseExecutionDispatch(input.dependencies.repository, lease.claim, clockNow(input.dependencies.now));
+          await releaseClaim(false);
           output = undefined;
         }
       } else {
@@ -671,7 +684,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
         finishedAt = lease.completion.authority.binding.execution.finishedAt;
       }
     } else {
-      await releaseExecutionDispatch(input.dependencies.repository, lease.claim, clockNow(input.dependencies.now));
+      await releaseClaim(false);
       startedAt = clockNow(input.dependencies.now);
       finishedAt = startedAt;
     }
@@ -742,6 +755,10 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     }
     await persistCheckpoint();
     await flushPendingUsage();
+    } catch (error) {
+      await releaseClaim(true);
+      throw error;
+    }
   }
   const finalDocument: ExecutionDocument = { schemaVersion: "verification-execution/v1", requestId: input.request.requestId, snapshotId: input.request.project.snapshotId, observations: observations.sort((a, b) => a.observationId.localeCompare(b.observationId)), claims: claims.sort((a, b) => a.claimId.localeCompare(b.claimId)), evidence: evidence.sort((a, b) => a.evidenceId.localeCompare(b.evidenceId)), authorities: authorities.sort((a, b) => a.binding.obligationId.localeCompare(b.binding.obligationId)), usageOutbox: usageOutbox.sort((a, b) => a.eventKey.localeCompare(b.eventKey)) };
   assertExecutionEvidenceBindings(finalDocument, input.request, input.plan, input.runId);

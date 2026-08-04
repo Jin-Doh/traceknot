@@ -584,6 +584,70 @@ test("releases the dispatch claim and retries after an artifact store exception"
   expect(claim?.status).toBe("COMPLETED");
   expect(claim?.completion?.output.artifacts).toEqual([{ type: "verification-result", digest: "a".repeat(64) }]);
 });
+test("releases the dispatch claim when the execution authority issuer throws and retries immediately", async () => {
+  const fakes = makeDependencies();
+  const runId = "authority-issuer-retry";
+  const request = { ...makeRequest("authority-issuer-retry-request"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+  let failIssuer = true;
+  const baseAuthority = fakes.dependencies.executionAuthority;
+  const dependencies = {
+    ...fakes.dependencies,
+    executionAuthority: {
+      issueExecutionAuthority: async (binding: ExecutionAuthority["binding"]) => {
+        if (failIssuer) {
+          failIssuer = false;
+          throw new Error("execution authority issuer failed");
+        }
+        return baseAuthority.issueExecutionAuthority!(binding);
+      },
+      verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]) => baseAuthority.verifyExecutionAuthority!(authority, binding),
+    },
+  };
+  await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("execution authority issuer failed");
+  expect(fakes.repository.dispatchClaims.size).toBe(0);
+  expect(fakes.repository.stageDocuments.has(`${runId}:execution`)).toBe(false);
+  const executorCallsAfterFailure = fakes.executorCalls;
+  const resumed = await runVerification({ runId, dependencies });
+  expect(fakes.executorCalls).toBeGreaterThan(executorCallsAfterFailure);
+  expect(resumed.run.state).toBe("TERMINAL");
+  expect(resumed.verdict.qaVerdict).toBe("PASS");
+  const dispatch = [...fakes.repository.dispatchClaims.values()];
+  expect(dispatch).toHaveLength(1);
+  expect(dispatch[0]?.status).toBe("COMPLETED");
+  expect(dispatch[0]?.completion).toBeDefined();
+});
+test("releases the dispatch claim when execution authority verification throws and retries immediately", async () => {
+  const fakes = makeDependencies();
+  const runId = "authority-verifier-retry";
+  const request = { ...makeRequest("authority-verifier-retry-request"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+  let failVerifier = true;
+  const baseAuthority = fakes.dependencies.executionAuthority;
+  const dependencies = {
+    ...fakes.dependencies,
+    executionAuthority: {
+      issueExecutionAuthority: async (binding: ExecutionAuthority["binding"]) => baseAuthority.issueExecutionAuthority!(binding),
+      verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]) => {
+        if (failVerifier) {
+          failVerifier = false;
+          throw new Error("execution authority verifier failed");
+        }
+        return baseAuthority.verifyExecutionAuthority!(authority, binding);
+      },
+    },
+  };
+  await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("execution authority verifier failed");
+  expect(fakes.repository.dispatchClaims.size).toBe(0);
+  expect(fakes.repository.stageDocuments.has(`${runId}:execution`)).toBe(false);
+  const executorCallsAfterFailure = fakes.executorCalls;
+  const resumed = await runVerification({ runId, dependencies });
+  expect(fakes.executorCalls).toBeGreaterThan(executorCallsAfterFailure);
+  expect(resumed.run.state).toBe("TERMINAL");
+  expect(resumed.verdict.qaVerdict).toBe("PASS");
+  const dispatch = [...fakes.repository.dispatchClaims.values()];
+  expect(dispatch).toHaveLength(1);
+  expect(dispatch[0]?.status).toBe("COMPLETED");
+  expect(dispatch[0]?.completion).toBeDefined();
+});
 test.each(["BLOCKED", "INCOMPLETE"] as const)("retains diagnostic artifacts for a fresh %s output", async status => {
   const fakes = makeDependencies();
   const request = { ...makeRequest(`diagnostic-${status.toLowerCase()}`), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
