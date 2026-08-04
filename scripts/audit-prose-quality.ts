@@ -380,7 +380,7 @@ export function detectLocale(text: string): Locale {
   const han = (text.match(/[\p{Script=Han}]/gu) ?? []).length;
   const total = korean + english + han;
   if (total === 0) return "unknown";
-  if (han >= 20 && han / total >= 0.4) return "unknown";
+  if (han > 0 && han / total >= 0.4) return "unknown";
   if (korean >= 20 && english >= 20) return "mixed";
   if (korean / total >= 0.6) return "ko";
   if (english / total >= 0.8) return "en";
