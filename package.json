@@ -30,6 +30,7 @@
     "skills": "1.5.21",
     "typescript": "7.0.2",
     "unified": "11.0.5",
-    "unist-util-visit": "5.1.0"
+    "unist-util-visit": "5.1.0",
+    "zhlint": "0.8.2"
   }
 }

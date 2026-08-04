@@ -2,6 +2,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
+import { run as runZhLint } from "zhlint";
 
 export type ProseLocale = "ko" | "en" | "zh-Hans";
 export type Locale = ProseLocale | "mixed" | "unknown";
@@ -81,11 +82,6 @@ export const RULES: readonly ProseRule[] = [
   { id: "EN-D-001", locale: "en", severity: "S1", description: "formulaic or inflated prose", pattern: /\b(?:in today's rapidly evolving landscape|this underscores the importance of|transformative potential)\b/gi, threshold: 2 },
   { id: "EN-G-001", locale: "en", severity: "S2", description: "generic meta-claim", pattern: /\b(?:it is important to note that|it is worth noting that)\b/gi, threshold: 2 },
   { id: "EN-H-001", locale: "en", severity: "S2", description: "repetitive paragraph transition", pattern: /^(?:Furthermore|Moreover|Additionally)[,\s]/gim, threshold: 3 },
-  { id: "ZH-C-001", locale: "zh-Hans", severity: "S1", description: "机械式三段并列结构", pattern: /第一(?:，|,|、)[\s\S]{0,800}第二(?:，|,|、)[\s\S]{0,800}第三(?:，|,|、)/g, threshold: 1 },
-  { id: "ZH-D-001", locale: "zh-Hans", severity: "S1", description: "套话或夸张表达重复", pattern: /在当今(?:快速|迅速)发展的|这充分体现了|具有划时代意义|不容忽视/g, threshold: 2 },
-  { id: "ZH-G-001", locale: "zh-Hans", severity: "S2", description: "空泛提示语重复", pattern: /值得注意的是|需要指出的是|毋庸置疑/g, threshold: 2 },
-  { id: "ZH-H-001", locale: "zh-Hans", severity: "S2", description: "段首连接词重复", pattern: /^(?:此外|同时|因此|总而言之)[，,\s]/gm, threshold: 3 },
-  { id: "ZH-P-001", locale: "zh-Hans", severity: "S2", description: "中文之间重复使用 ASCII 标点", pattern: /[\p{Script=Han}][,;:.?!]+[\t ]*(?=[\p{Script=Han}])/gu, threshold: 3 },
 ];
 
 // `prose-quality.config.json` is the single publication-surface inventory.
@@ -94,176 +90,40 @@ const DEFAULT_CONFIG = JSON.parse(
   readFileSync(resolve(import.meta.dir, "../prose-quality.config.json"), "utf8"),
 ) as Config;
 
-const ZH_NUMBER_CORE = "(?:零|〇|一|二|两|三|四|五|六|七|八|九|十|百|千|万|亿)+(?:点(?:零|〇|一|二|三|四|五|六|七|八|九)+)?";
-const ZH_SIGNED_NUMBER = `(?:正|负)?${ZH_NUMBER_CORE}`;
-const ZH_ARABIC_NUMBER = "(?:\\d+(?:[.,]\\d+)?)";
-const ZH_PERCENTAGE = `(?:正|负)?百分之${ZH_NUMBER_CORE}`;
-const ZH_CONCISE_MODALS = new Set(["需", "须", "可", "不可", "务必", "不必", "切勿", "勿"]);
-const ZH_LEXICAL_PREFIXES = new Set(["刚", "必", "认", "许"]);
-const ZH_LEXICAL_MODAL_COMPOUNDS = ["可视化", "可惜", "可爱", "可口", "可观", "可疑", "不可思议"];
-const ZH_SUBJECT_MODIFIERS = new Set(["目前", "当前", "现在", "如今", "暂时", "已经", "仍然", "仍", "还", "仅", "只", "总共", "共", "大约", "约"]);
-const ZH_AMBIGUOUS_COMBINED_QUANTITIES = new Set(["一度", "一面", "一片"]);
-const ZH_SEGMENTER = new Intl.Segmenter("zh-CN", { granularity: "word" });
-const ZH_SINGLE_QUANTITY_UNITS = new Set([
-  ..."个位项次名件条张本份台套组批艘盒亩只辆架头匹峰座间所家户杯瓶碗盘袋箱包支根枝把柄面扇层排列行页章节部册卷幅枚颗粒块片段场轮番遍趟回首曲声株棵朵束丝缕滴年月份日天倍元米克升瓦度秒吨寸安帕伏焦牛种类门款笔宗桩则例科道管",
-]);
-const ZH_COMBINED_QUANTITY_UNITS = new Set([
-  ...ZH_SINGLE_QUANTITY_UNITS,
-  "小时", "分钟", "秒", "公里", "米", "厘米", "毫米", "公斤", "千克", "克", "毫克", "升", "毫升", "平方米", "立方米", "百分点", "美元", "个人",
-]);
-const ZH_NON_UNIT_WORDS = new Set(["至", "到"]);
-const ZH_UNIT_TERMINAL = /(?:度|米|克|升|瓦|赫兹|字节|比特|秒|分钟|小时|天|周|月|年|元|百分点|吨|寸|安(?:培)?|帕|伏(?:特)?|欧姆|焦(?:耳)?|牛(?:顿)?|摩尔|坎德拉)$/u;
-
-interface ChineseWordSegment {
-  segment: string;
-  index: number;
-  end: number;
-}
-
-function chineseWordSegments(text: string): ChineseWordSegment[] {
-  return [...ZH_SEGMENTER.segment(text)]
-    .filter((segment) => segment.isWordLike)
-    .map((segment) => ({ segment: segment.segment, index: segment.index, end: segment.index + segment.segment.length }));
-}
-
-function isCombinedChineseUnit(unit: string): boolean {
-  return ZH_COMBINED_QUANTITY_UNITS.has(unit) || ZH_UNIT_TERMINAL.test(unit);
-}
-
-function chineseNumberSegment(
-  text: string,
-  segments: ChineseWordSegment[],
-  index: number,
-): { start: number; end: number; next: number } | undefined {
-  const word = segments[index];
-  if (!word) return undefined;
-  const exactNumber = new RegExp(`^(?:${ZH_SIGNED_NUMBER}|${ZH_ARABIC_NUMBER})$`, "u");
-  const exactChineseNumber = new RegExp(`^${ZH_NUMBER_CORE}$`, "u");
-  let numericIndex = index;
-  let numericWord = word;
-  if (/^(?:正|负)$/u.test(word.segment)) {
-    numericIndex += 1;
-    numericWord = segments[numericIndex];
-    if (!numericWord || !exactNumber.test(numericWord.segment)) return undefined;
-    if (!/^\s*$/u.test(text.slice(word.end, numericWord.index))) return undefined;
-  } else if (!exactNumber.test(word.segment)) return undefined;
-  if (segments[numericIndex - 1]?.segment === "之" && segments[numericIndex - 2]?.segment === "百分") return undefined;
-  if (exactChineseNumber.test(numericWord.segment)) {
-    while (numericIndex + 1 < segments.length) {
-      const nextWord = segments[numericIndex + 1];
-      if (!exactChineseNumber.test(nextWord.segment) || !/^\s*$/u.test(text.slice(numericWord.end, nextWord.index))) break;
-      numericIndex += 1;
-      numericWord = nextWord;
-    }
-  }
-  const asciiSignIndex = word.index - 1;
-  const start = asciiSignIndex >= 0 && /[+−±-]/u.test(text[asciiSignIndex]) ? asciiSignIndex : word.index;
-  return { start, end: numericWord.end, next: numericIndex + 1 };
-}
-
-function chineseQuantityUnitEnd(
-  text: string,
-  segments: ChineseWordSegment[],
-  index: number,
-  allowLeadingNumeralPrefix = false,
-): { end: number; next: number } | undefined {
-  let value = "";
-  let previousEnd = segments[index - 1]?.end ?? 0;
-  let accepted: { end: number; next: number } | undefined;
-  for (let unitIndex = index; unitIndex < Math.min(index + 3, segments.length); unitIndex += 1) {
-    const word = segments[unitIndex];
-    if (!/^\s*$/u.test(text.slice(previousEnd, word.index)) || !/^\p{Script=Han}+$/u.test(word.segment)) break;
-    const attached = allowLeadingNumeralPrefix && unitIndex === index
-      ? word.segment.match(new RegExp(`^${ZH_NUMBER_CORE}(\\p{Script=Han}+)$`, "u"))
-      : undefined;
-    value += attached?.[1] ?? word.segment;
-    previousEnd = word.end;
-    if (ZH_NON_UNIT_WORDS.has(value)) continue;
-    if ((unitIndex === index && ZH_SINGLE_QUANTITY_UNITS.has(value)) || isCombinedChineseUnit(value)) {
-      accepted = { end: word.end, next: unitIndex + 1 };
-    }
-  }
-  return accepted;
-}
-
-function chineseQuantityOperand(
-  text: string,
-  segments: ChineseWordSegment[],
-  index: number,
-): { start: number; end: number; next: number } | undefined {
-  const word = segments[index];
-  if (!word) return undefined;
-  const number = chineseNumberSegment(text, segments, index);
-  if (number) {
-    const writtenOperand = new RegExp(`^(?:正|负)?${ZH_NUMBER_CORE}$`, "u").test(text.slice(number.start, number.end));
-    const unit = chineseQuantityUnitEnd(text, segments, number.next, writtenOperand);
-    if (!unit) return undefined;
-    return { start: number.start, end: unit.end, next: unit.next };
-  }
-  const combined = word.segment.match(new RegExp(`^(${ZH_SIGNED_NUMBER})(\\p{Script=Han}+)$`, "u"));
-  if (!combined || !isCombinedChineseUnit(combined[2])) return undefined;
-  if (ZH_AMBIGUOUS_COMBINED_QUANTITIES.has(word.segment)) {
-    const leftContext = text.slice(Math.max(0, word.index - 16), word.index);
-    if (!/(?:数量|总计|共有|包含|温度|角度|偏差|变化|范围|墙|旗|镜|鼓|屏|侧面|表面|有|为|是|约|达到|等于|零下)[：:\s]*$/u.test(leftContext)) return undefined;
-  }
-  return { start: word.index, end: word.end, next: index + 1 };
-}
-
-function chineseQuantityOccurrences(text: string): string[] {
-  const segments = chineseWordSegments(text);
-  const quantities: string[] = [];
-  for (let index = 0; index < segments.length; index += 1) {
-    const first = chineseNumberSegment(text, segments, index);
-    if (first) {
-      let rangeMatched = false;
-      for (const secondIndex of [first.next, first.next + 1]) {
-        const second = chineseQuantityOperand(text, segments, secondIndex);
-        if (!second || !/^\s*(?:至|到|[-–—])\s*$/u.test(text.slice(first.end, second.start))) continue;
-        quantities.push(text.slice(first.start, second.end));
-        index = second.next - 1;
-        rangeMatched = true;
-        break;
-      }
-      if (rangeMatched) continue;
-    }
-    const quantity = chineseQuantityOperand(text, segments, index);
-    if (!quantity) continue;
-    quantities.push(text.slice(quantity.start, quantity.end));
-    index = quantity.next - 1;
-  }
-  return quantities;
-}
-
-function chineseNormativeOccurrences(text: string): Array<{ index: number; value: string }> {
-  const segments = [...ZH_SEGMENTER.segment(text)].filter((segment) => segment.isWordLike);
-  const occurrences: Array<{ index: number; value: string }> = [];
-  for (let index = 0; index < segments.length; index += 1) {
-    const segment = segments[index];
-    if (!ZH_CONCISE_MODALS.has(segment.segment)) continue;
-    if (ZH_LEXICAL_PREFIXES.has(segments[index - 1]?.segment ?? "")) continue;
-    if (ZH_LEXICAL_MODAL_COMPOUNDS.some((word) => text.startsWith(word, segment.index))) continue;
-    const modalEnd = segment.index + segment.segment.length;
-    const adjective = segments[index + 1];
-    const adjectiveSuffix = segments[index + 2];
-    if (segment.segment === "可"
-      && adjective?.index === modalEnd
-      && /^\p{Script=Han}{2,}$/u.test(adjective.segment)
-      && adjectiveSuffix?.segment === "性"
-      && adjectiveSuffix.index === adjective.index + adjective.segment.length) continue;
-    for (let clauseIndex = index + 1; clauseIndex < segments.length; clauseIndex += 1) {
-      const clauseWord = segments[clauseIndex];
-      const intervening = text.slice(modalEnd, clauseWord.index);
-      if (intervening.length > 24 || /[.,;!?。；，！？\n]/u.test(intervening)) break;
-      if (!/^\p{Script=Han}{2,}$/u.test(clauseWord.segment)) continue;
-      occurrences.push({ index: segment.index, value: segment.segment });
-      break;
-    }
-  }
-  return occurrences;
-}
-
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function zhlintFindings(markdown: string): ProseFinding[] {
+  const result = runZhLint(markdown, {
+    rules: { preset: "default", adjustedFullwidthPunctuation: "" },
+  });
+  if (result.disabled || result.origin !== markdown) throw new Error("zhlint returned an invalid source binding");
+  const grouped = new Map<string, { count: number; index: number; length: number }>();
+  for (const validation of result.validations) {
+    if (
+      typeof validation.message !== "string" || validation.message.length === 0 ||
+      !Number.isInteger(validation.index) || validation.index < 0 ||
+      !Number.isInteger(validation.length) || validation.length < 0 ||
+      validation.index + validation.length > markdown.length
+    ) {
+      throw new Error("zhlint returned an invalid finding offset");
+    }
+    const current = grouped.get(validation.message);
+    grouped.set(validation.message, {
+      count: (current?.count ?? 0) + 1,
+      index: Math.min(current?.index ?? validation.index, validation.index),
+      length: current?.length ?? validation.length,
+    });
+  }
+  return [...grouped].sort((left, right) => left[1].index - right[1].index || left[0].localeCompare(right[0])).map(([message, finding]) => ({
+    ruleId: `ZH-ZHLINT-${hash(message).slice(0, 8).toUpperCase()}`,
+    severity: "S2",
+    description: `zhlint: ${message}`,
+    count: finding.count,
+    line: markdown.slice(0, finding.index).split(/\r?\n/u).length,
+    excerptHash: hash(markdown.slice(finding.index, finding.index + Math.max(finding.length, 1))),
+  }));
 }
 
 function clonePattern(pattern: RegExp): RegExp {
@@ -573,7 +433,7 @@ export function analyzeProse(markdown: string, allowedLocales: ReadonlyArray<Pro
   const applicableLocales = locale === "mixed"
     ? allowedLocales.filter((entry) => entry !== "zh-Hans")
     : locale === "unknown" ? [] : allowedLocales.filter((entry) => entry === locale);
-  const findings = RULES.filter((rule) => applicableLocales.includes(rule.locale)).flatMap((rule) => {
+  const findings: ProseFinding[] = RULES.filter((rule) => applicableLocales.includes(rule.locale)).flatMap((rule) => {
     const matches = [...prose.matchAll(clonePattern(rule.pattern))];
     if (matches.length < rule.threshold) return [];
     const excerpt = matches[0]?.[0] ?? rule.id;
@@ -586,6 +446,7 @@ export function analyzeProse(markdown: string, allowedLocales: ReadonlyArray<Pro
       excerptHash: hash(excerpt),
     }];
   });
+  if (applicableLocales.includes("zh-Hans")) findings.push(...zhlintFindings(markdown));
   const status: GateStatus = findings.some((finding) => finding.severity === "S1") ? "FAIL" : findings.length > 0 ? "WARN" : "PASS";
   return { locale, proseCharacters: prose.replace(/\s/g, "").length, findings, status };
 }
@@ -849,11 +710,8 @@ function normativeClauses(text: string): string[] {
     const beginsMarkdownBlock = /^(?:[ ]{4}|\t)|^[\t ]{0,3}(?:[-+*][\t ]+|\d+[.)][\t ]+|#{1,6}[\t ]+|>|`{3,}|~{3,}|(?:[-*_][\t ]*){3,}|={3,}[\t ]*$|\||<\/?[A-Za-z])/u.test(next);
     return beginsMarkdownBlock ? `${line}\n` : `${line} `;
   }).join("").replace(/\n$/, "");
-  const pattern = /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|\b(?:is|are|was|were)(?:\s+not)?\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|\b(?:will(?:\s+not)?\s+be|has(?:\s+not)?\s+been|have(?:\s+not)?\s+been|had(?:\s+not)?\s+been)\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|(?:(?:(?:해서는|하여서는|하면|한다면)\s+안\s+(?:된다|됩니다))|(?:해야|하여야)\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))|(?:不应该|不允许|无需|需要|应该|允许|必须|不得|禁止|应当|不应|可以|可选)/gi;
-  const occurrences = [
-    ...[...text.matchAll(pattern)].map((match) => ({ index: match.index, value: match[0] })),
-    ...chineseNormativeOccurrences(text),
-  ].sort((left, right) => left.index - right.index);
+  const pattern = /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|\b(?:is|are|was|were)(?:\s+not)?\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|\b(?:will(?:\s+not)?\s+be|has(?:\s+not)?\s+been|have(?:\s+not)?\s+been|had(?:\s+not)?\s+been)\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|(?:(?:(?:해서는|하여서는|하면|한다면)\s+안\s+(?:된다|됩니다))|(?:해야|하여야)\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))/gi;
+  const occurrences = [...text.matchAll(pattern)].map((match) => ({ index: match.index, value: match[0] }));
   for (const match of occurrences) {
     const leftText = text.slice(0, match.index);
     const leftBoundary = [...leftText.matchAll(/[.,;!?。；，！？\n]/g)].at(-1)?.index ?? -1;
@@ -894,11 +752,9 @@ function protectedValues(text: string): Map<string, { category: string; count: n
     ["number", /\b(?:(?:(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?),?\s+)?(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:(?:,\s*|\s+)\d{4})?|(?:(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?),?\s+)?\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)(?:\s+\d{4})?)\b/gi],
     ["number", /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|trillion)(?:[\s-]+(?:(?:and)[\s-]+)?(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|trillion))*\b(?=\s+(?:retries?|attempts?|items?|users?|deployments?|records?|files?|requests?|seconds?|minutes?|hours?|days?|weeks?|months?|years?|bytes?|bits?))|(?:한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)(?=\s*(?:개|명|건|회|번|원|년|월|일|시간|분|초|대|권|장|마리|곳|배))/gi],
     ["number", /(?:영|공|일|이|삼|사|오|육|칠|팔|구|십|백|천|만)(?:\s*(?:영|공|일|이|삼|사|오|육|칠|팔|구|십|백|천|만))*(?=\s*(?:개|명|건|회|번|원|년|월|일|시간|분|초|대|권|장|마리|곳|배))/g],
-    ["number", new RegExp(`${ZH_PERCENTAGE}\\s*(?:至|到|[-–—])\\s*(?:正|负)?(?:百分之)?${ZH_NUMBER_CORE}`, "gu")],
-    ["number", new RegExp(ZH_PERCENTAGE, "gu")],
     ["number", /(?<![\w.])(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s*(?:%|°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|[KMGTPE]i?B|[KMGTPE]?bps|bytes?|bits?|thousand|million|billion|trillion|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))?\s*[-–—/:]\s*(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s*(?:%|°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|[KMGTPE]i?B|[KMGTPE]?bps|bytes?|bits?|thousand|million|billion|trillion|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))?(?!\w|\.\d)/gi],
     ["number", /\b\d{4}-\d{2}-\d{2}\b|(?<![\w.])(?:(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?\s*[-–—/:]\s*(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?)\b|\bv?\d+(?:\.\d+)+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?\b|(?<![\w.])(?:(?:[<>]=?|[≤≥=≠])\s*)?(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|thousand|million|billion|trillion)\b|(?:%|°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
-    ["normative", /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|\b(?:is|are|was|were)(?:\s+not)?\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|\b(?:will(?:\s+not)?\s+be|has(?:\s+not)?\s+been|have(?:\s+not)?\s+been|had(?:\s+not)?\s+been)\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|(?:(?:(?:해서는|하여서는|하면|한다면)\s+안\s+(?:된다|됩니다))|(?:해야|하여야)\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))|(?:不应该|不允许|无需|需要|应该|允许|必须|不得|禁止|应当|不应|可以|可选)/gi],
+    ["normative", /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|\b(?:is|are|was|were)(?:\s+not)?\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|\b(?:will(?:\s+not)?\s+be|has(?:\s+not)?\s+been|have(?:\s+not)?\s+been|had(?:\s+not)?\s+been)\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|(?:(?:(?:해서는|하여서는|하면|한다면)\s+안\s+(?:된다|됩니다))|(?:해야|하여야)\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))/gi],
   ];
   const values = new Map<string, { category: string; count: number }>();
   for (const [category, pattern] of categories) {
@@ -908,16 +764,6 @@ function protectedValues(text: string): Map<string, { category: string; count: n
       const current = values.get(key);
       values.set(key, { category, count: (current?.count ?? 0) + 1 });
     }
-  }
-  for (const quantity of chineseQuantityOccurrences(text)) {
-    const key = `number\u0000${quantity}`;
-    const current = values.get(key);
-    values.set(key, { category: "number", count: (current?.count ?? 0) + 1 });
-  }
-  for (const occurrence of chineseNormativeOccurrences(text)) {
-    const key = `normative\u0000${occurrence.value}`;
-    const current = values.get(key);
-    values.set(key, { category: "normative", count: (current?.count ?? 0) + 1 });
   }
   for (const quote of directQuotationSpans(text)) {
     const key = `quotation\u0000${quote}`;
@@ -1006,58 +852,6 @@ function lastClaimBoundary(text: string): number {
   return boundary;
 }
 
-function stripMarkdownContainerPrefix(value: string): string {
-  return value.replace(
-    /^[\t ]{0,3}(?:(?:(?:[-+*]|\d+[.)])\s+(?:\[[ xX]\]\s+)?|>\s*))+/u,
-    "",
-  );
-}
-
-function stripMarkdownSubjectFormatting(value: string): string {
-  let normalized = "";
-  let cursor = 0;
-  let search = 0;
-  while (search < value.length) {
-    const closingLabel = value.indexOf("](", search);
-    if (closingLabel < 0) break;
-    const openingLabel = openingLinkBracketIndex(value, closingLabel);
-    if (openingLabel < cursor || isEscaped(value, closingLabel)) {
-      search = closingLabel + 2;
-      continue;
-    }
-    let depth = 1;
-    let escaped = false;
-    let inAngleDestination = value[closingLabel + 2] === "<";
-    let closingDestination = -1;
-    for (let index = closingLabel + 2; index < value.length; index += 1) {
-      const character = value[index];
-      if (escaped) {
-        escaped = false;
-      } else if (character === "\\") {
-        escaped = true;
-      } else if (inAngleDestination) {
-        if (character === ">") inAngleDestination = false;
-      } else if (character === "(") {
-        depth += 1;
-      } else if (character === ")") {
-        depth -= 1;
-        if (depth === 0) {
-          closingDestination = index;
-          break;
-        }
-      }
-    }
-    if (closingDestination < 0) break;
-    normalized += value.slice(cursor, openingLabel) + value.slice(openingLabel + 1, closingLabel);
-    cursor = closingDestination + 1;
-    search = cursor;
-  }
-  normalized += value.slice(cursor);
-  return normalized
-    .replace(/\[([^\]\r\n]+)\]\[[^\]\r\n]*\]/gu, "$1")
-    .replace(/(?:\*\*|__|~~|\*|_)/g, "");
-}
-
 function claimLabel(text: string, index: number, valueLength: number, bindSubject = false): string {
   const leftText = text.slice(0, index);
   const leftBoundary = lastClaimBoundary(leftText);
@@ -1070,20 +864,7 @@ function claimLabel(text: string, index: number, valueLength: number, bindSubjec
   const left = leftLabels.at(-1);
   const right = rightLabels[0];
   if (!left && !right && bindSubject) {
-    const localClause = stripMarkdownSubjectFormatting(stripMarkdownContainerPrefix(
-      leftClause.split(/\b(?:while|whereas|and|but)\b/i).at(-1) ?? leftClause,
-    ));
-    const chineseClause = localClause.trim();
-    if (/^[\p{Script=Han}\s]{1,48}$/u.test(chineseClause)) {
-      const segments = chineseWordSegments(chineseClause);
-      const subjectSegments = segments.length > 1 ? segments.slice(0, -1) : [...segments];
-      while (subjectSegments.length > 1 && ZH_SUBJECT_MODIFIERS.has(subjectSegments.at(-1)?.segment ?? "")) subjectSegments.pop();
-      if (segments.at(-1)?.segment === "有" && subjectSegments.length > 2 && (subjectSegments.at(-1)?.segment.length ?? 0) > 1) {
-        subjectSegments.pop();
-      }
-      const chineseSubject = subjectSegments.map((segment) => segment.segment).join("");
-      if (chineseSubject) return chineseSubject;
-    }
+    const localClause = leftClause.split(/\b(?:while|whereas|and|but)\b/i).at(-1) ?? leftClause;
     const words = localClause.match(/[\p{L}_][\p{L}\p{N}_-]*/gu) ?? [];
     const relationSubject = localClause.match(/(?:^|\s)(?:the\s+|a\s+|an\s+)?([\p{L}_][\p{L}\p{N}_-]*)\s+(?:listens?|runs?|serves?|uses?|routes?|maps?|connects?|belongs?)\b/iu)?.[1]?.toLowerCase();
     const object = rightClause.match(/^\s*(?:(?:serves?|routes?|maps?|connects?|belongs?)\s+(?:to\s+)?|(?:(?:is|are|was|were)|will\s+be|(?:has|have|had)\s+been)\s+(?:assigned|mapped|routed|connected)\s+to\s+(?:the\s+|a\s+|an\s+)?)([\p{L}_][\p{L}\p{N}_-]*)/iu)?.[1]?.toLowerCase();

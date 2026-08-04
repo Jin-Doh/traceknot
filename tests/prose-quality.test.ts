@@ -183,26 +183,27 @@ describe("language-specific prose rules", () => {
     expect(report.status).toBe("FAIL");
   });
 
-  test("applies Simplified Chinese rules only through an explicit zh-Hans override", () => {
-    const source = "在当今快速发展的技术环境中，工具不断变化。这充分体现了流程的价值。第一，记录事实。第二，评估证据。第三，给出判定。";
+  test("applies zhlint only through an explicit zh-Hans override", () => {
+    const source = "自动在中文和English之间加入空格。";
     const report = analyzeProse(source, ["ko", "en", "zh-Hans"], "zh-Hans");
     expect(report.locale).toBe("zh-Hans");
-    expect(report.findings.map((finding) => finding.ruleId)).toEqual(expect.arrayContaining(["ZH-C-001", "ZH-D-001"]));
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      ruleId: expect.stringMatching(/^ZH-ZHLINT-/),
+      severity: "S2",
+      count: 2,
+    }));
     expect(report.findings.some((finding) => finding.ruleId.startsWith("KO-") || finding.ruleId.startsWith("EN-"))).toBe(false);
-    expect(report.status).toBe("FAIL");
+    expect(report.status).toBe("WARN");
   });
 
-  test("recognizes the Chinese enumeration comma in mechanical three-part structures", () => {
-    const report = analyzeProse("第一、记录事实。第二、评估证据。第三、给出判定。", ["zh-Hans"], "zh-Hans");
-    expect(report.findings).toContainEqual(expect.objectContaining({ ruleId: "ZH-C-001", severity: "S1" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("counts separate Simplified Chinese stock phrases in the same sentence", () => {
-    const source = "在当今快速发展的环境中，这充分体现了流程的价值。";
-    const report = analyzeProse(source, ["zh-Hans"], "zh-Hans");
-    expect(report.findings).toContainEqual(expect.objectContaining({ ruleId: "ZH-D-001", count: 2 }));
-    expect(report.status).toBe("FAIL");
+  test("aggregates zhlint diagnostics by stable message", () => {
+    const report = analyzeProse("甲,乙;丙:丁", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      ruleId: expect.stringMatching(/^ZH-ZHLINT-/),
+      description: "zhlint: 此处标点符号需要使用全角",
+      count: 3,
+    }));
+    expect(report.status).toBe("WARN");
   });
 
   test("does not apply zh-Hans rules to inferred Korean and English mixed prose", () => {
@@ -232,7 +233,7 @@ describe("language-specific prose rules", () => {
 
   test("routes README.zh.md through its configured zh-Hans path override", () => {
     const root = mkdtempSync(join(tmpdir(), "traceknot-prose-zh-hans-"));
-    writeFileSync(join(root, "README.zh.md"), "此外，系统稳定。\n此外，证据完整。\n此外，判定明确。");
+    writeFileSync(join(root, "README.zh.md"), "自动在中文和English之间加入空格。");
     const config: Config = {
       schemaVersion: "prose-quality-config/v1",
       enabled: true,
@@ -248,7 +249,10 @@ describe("language-specific prose rules", () => {
     const report = scanRepository(root, config);
     expect(report.summary.checked).toBe(1);
     expect(report.files[0]).toEqual(expect.objectContaining({ path: "README.zh.md", locale: "zh-Hans", status: "WARN" }));
-    expect(report.files[0]?.findings).toContainEqual(expect.objectContaining({ ruleId: "ZH-H-001", count: 3 }));
+    expect(report.files[0]?.findings).toContainEqual(expect.objectContaining({
+      ruleId: expect.stringMatching(/^ZH-ZHLINT-/),
+      count: 2,
+    }));
   });
 
   test("does not infer zh-Hans rules from Chinese script without an override", () => {
@@ -284,26 +288,28 @@ describe("language-specific prose rules", () => {
     expect(report.status).toBe("PASS");
   });
 
-  test("counts adjacent Simplified Chinese ASCII punctuation at the declared boundary", () => {
-    const belowThreshold = analyzeProse("甲,乙,丙", ["zh-Hans"], "zh-Hans");
-    const atThreshold = analyzeProse("甲,乙;丙:丁", ["zh-Hans"], "zh-Hans");
-    const sentencePunctuation = analyzeProse("甲.乙?丙!丁", ["zh-Hans"], "zh-Hans");
-    expect(belowThreshold.findings.some((finding) => finding.ruleId === "ZH-P-001")).toBe(false);
-    expect(atThreshold.findings).toContainEqual(expect.objectContaining({ ruleId: "ZH-P-001", count: 3 }));
-    expect(sentencePunctuation.findings).toContainEqual(expect.objectContaining({ ruleId: "ZH-P-001", count: 3 }));
-    expect(atThreshold.status).toBe("WARN");
-    expect(sentencePunctuation.status).toBe("WARN");
+  test("delegates Markdown code exclusions to zhlint without using autofix", () => {
+    const report = analyzeProse("`中文English`\n\n```txt\n中文English\n```\n\n正文完整。", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe("PASS");
   });
 
-  test("counts Simplified Chinese ASCII punctuation followed by horizontal whitespace", () => {
+  test("does not lint Markdown link destinations as Chinese prose", () => {
+    const report = analyzeProse("[证据](https://example.com/中文English)", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe("PASS");
+  });
+
+  test("accepts Chinese quotation punctuation under the repository preset", () => {
+    const report = analyzeProse("他说：“证据完整”。审阅者可以继续检查。", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe("PASS");
+  });
+
+  test("reports fullwidth punctuation and spacing diagnostics", () => {
     const report = analyzeProse("甲, 乙; 丙: 丁", ["zh-Hans"], "zh-Hans");
-    expect(report.findings).toContainEqual(expect.objectContaining({ ruleId: "ZH-P-001", count: 3 }));
-    expect(report.status).toBe("WARN");
-  });
-
-  test("counts ASCII punctuation runs as Chinese text boundaries", () => {
-    const report = analyzeProse("甲...乙!!!丙???丁", ["zh-Hans"], "zh-Hans");
-    expect(report.findings).toContainEqual(expect.objectContaining({ ruleId: "ZH-P-001", count: 3 }));
+    expect(report.findings).toContainEqual(expect.objectContaining({ description: "zhlint: 此处标点符号需要使用全角", count: 3 }));
+    expect(report.findings).toContainEqual(expect.objectContaining({ description: "zhlint: 此处标点符号后不需要空格", count: 3 }));
     expect(report.status).toBe("WARN");
   });
 
@@ -339,421 +345,10 @@ describe("rewrite preservation gate", () => {
     expect(new Set(report.failures.map((failure) => failure.category))).toEqual(new Set(["code-block", "inline-code", "link-destination", "url", "number", "normative"]));
   });
 
-  test("preserves Simplified Chinese normative terms", () => {
-    const report = verifyPreservation("发布前必须验证，且不得跳过审计。", "发布前可以验证，也可以跳过审计。");
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
-  });
-
-  test("binds Simplified Chinese normative terms to their clauses", () => {
+  test("does not claim semantic preservation for Simplified Chinese grammar", () => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const before = `${context}\n管理员必须批准发布，访客可以查看状态。`;
-    const after = `${context}\n访客必须查看状态，管理员可以批准发布。`;
-    const report = verifyPreservation(before, after);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test.each([
-    ["用户需要审核发布。", "用户无需审核发布。"],
-    ["用户应该审核发布。", "用户不应该审核发布。"],
-    ["系统允许自动发布。", "系统不允许自动发布。"],
-    ["用户须审核发布。", "用户无需审核发布。"],
-    ["用户需审核后发布。", "用户可直接发布。"],
-  ])("preserves common Simplified Chinese normative forms: %s", (source, rewrite) => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("preserves Simplified Chinese written quantities", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n系统运行三次。`, `${context}\n系统运行四次。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("preserves Simplified Chinese written percentages", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n成功率为百分之三十。`, `${context}\n成功率为百分之四十。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("preserves the sign of Simplified Chinese written percentages", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n成功率为百分之三十。`, `${context}\n成功率为负百分之三十。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test.each([
-    ["成功率为百分之三十至四十。", "成功率为百分之三十至五十。"],
-    ["成功率为负百分之三十到负百分之四十。", "成功率为负百分之三十到负百分之五十。"],
-  ])("preserves both endpoints of Simplified Chinese percentage ranges: %s", (source, rewrite) => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("binds Simplified Chinese quantities to their clause subjects", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const before = `${context}\n甲组包含三项检查，乙组包含四项检查。`;
-    const after = `${context}\n乙组包含三项检查，甲组包含四项检查。`;
-    const report = verifyPreservation(before, after);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("binds Simplified Chinese quantity subjects inside Markdown containers", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const before = `${context}\n- 甲组包含三项检查。\n- 乙组包含四项检查。`;
-    const after = `${context}\n- 乙组包含三项检查。\n- 甲组包含四项检查。`;
-    const report = verifyPreservation(before, after);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("binds Simplified Chinese quantity subjects inside task-list containers", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const before = `${context}\n- [ ] 甲组有三项检查。\n- [x] 乙组有四项检查。`;
-    const after = `${context}\n- [ ] 乙组有三项检查。\n- [x] 甲组有四项检查。`;
-    const report = verifyPreservation(before, after);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("preserves task-list line starts when binding Simplified Chinese subjects", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const before = `${context}\n## 检查\n- [ ] 甲组有三项检查\n- [x] 乙组有四项检查`;
-    const after = `${context}\n## 检查\n- [ ] 乙组有三项检查\n- [x] 甲组有四项检查`;
-    const report = verifyPreservation(before, after);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test.each([
-    ["**甲组**", "**乙组**"],
-    ["[甲组](#group)", "[乙组](#group)"],
-    ["[甲组](docs/page_(v1).md)", "[乙组](docs/page_(v1).md)"],
-  ])("strips inline Markdown formatting around Simplified Chinese subjects: %s", (first, second) => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const before = `${context}\n- [ ] ${first}有三项检查。\n- [x] ${second}有四项检查。`;
-    const after = `${context}\n- [ ] ${second}有三项检查。\n- [x] ${first}有四项检查。`;
-    const report = verifyPreservation(before, after);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("derives Simplified Chinese quantity subjects without a predicate allowlist", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const before = `${context}\n甲组有三项检查，乙组有四项检查。`;
-    const after = `${context}\n乙组有三项检查，甲组有四项检查。`;
-    const report = verifyPreservation(before, after);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test.each([
-    ["系统支持三位用户。", "系统支持四位用户。"],
-    ["系统包含三项检查。", "系统包含四项检查。"],
-    ["港口接收三艘船。", "港口接收四艘船。"],
-    ["仓库保留三盒样本。", "仓库保留四盒样本。"],
-    ["农场检查三亩土地。", "农场检查四亩土地。"],
-    ["系统支持三种方案。", "系统支持四种方案。"],
-    ["目录包含三类条目。", "目录包含四类条目。"],
-    ["课程提供三门科目。", "课程提供四门科目。"],
-    ["产品包含三款型号。", "产品包含四款型号。"],
-    ["账本记录三笔交易。", "账本记录四笔交易。"],
-  ])("preserves quantities using common Simplified Chinese counters: %s", (source, rewrite) => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("preserves the counter attached to a Simplified Chinese quantity", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n港口接收三艘船。`, `${context}\n港口接收三批船。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("preserves complete multi-character Simplified Chinese units", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n路线长度为三公里。`, `${context}\n路线长度为三公斤。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("assembles written Chinese numerals split across word segments", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n路线长度为二十三公里。`, `${context}\n路线长度为二十三公斤。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("consumes numeral prefixes attached to Simplified Chinese unit tokens", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n共有二十一项检查。`, `${context}\n共有三十一项检查。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("includes separately segmented signs in Simplified Chinese quantities", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n偏差：三公里。`, `${context}\n偏差：负三公里。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("includes written signs before Arabic Simplified Chinese quantities", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n偏差：3公里。`, `${context}\n偏差：负3公里。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test.each([
-    ["重量为三吨。", "重量为四吨。"],
-    ["长度为三寸。", "长度为四寸。"],
-    ["电流为三安。", "电流为四安。"],
-    ["压力为三兆帕。", "压力为四兆帕。"],
-  ])("preserves common Simplified Chinese measurement terminals: %s", (source, rewrite) => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("assembles compound units emitted as multiple Chinese word segments", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n温度为三摄氏度。`, `${context}\n温度为四摄氏度。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("preserves Chinese units attached to Arabic-digit quantities", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n路线长度为3公里。`, `${context}\n路线长度为3公斤。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test.each([
-    ["系统每次运行三至四次。", "系统每次运行五至四次。"],
-    ["系统每次运行三-四次。", "系统每次运行三-五次。"],
-  ])("preserves both endpoints of Simplified Chinese quantity ranges: %s", (source, rewrite) => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("does not extract embedded numerals from ordinary Simplified Chinese words", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n唯一条款和统一台账保持不变。`, `${context}\n唯一规则和统一记录保持不变。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures.some((failure) => failure.category === "number")).toBe(false);
-    expect(report.status).toBe("PASS");
-  });
-
-  test.each([
-    ["一切运行正常。", "全部运行正常。"],
-    ["这个功能十分重要。", "这个功能非常重要。"],
-    ["系统一并处理结果。", "系统同时处理结果。"],
-    ["说明：一度陷入困境。", "说明：曾经陷入困境。"],
-    ["说明：一面处理结果。", "说明：同时处理结果。"],
-    ["这里一片混乱。", "这里非常混乱。"],
-  ])("does not extract numeral-shaped lexical words: %s", (source, rewrite) => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures.some((failure) => failure.category === "number")).toBe(false);
-    expect(report.status).toBe("PASS");
-  });
-
-  test("does not treat lexical 须 as a Simplified Chinese obligation", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n他的胡须很长。`, `${context}\n他的胡子很长。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
-    expect(report.status).toBe("PASS");
-  });
-
-  test.each([
-    ["团队认可审核结果。", "团队接受审核结果。"],
-    ["材料属于刚需审核样本。", "材料属于必要审核样本。"],
-    ["这是必需审核材料。", "这是必要审核材料。"],
-    ["团队许可审核流程。", "团队批准审核流程。"],
-    ["这是需求审核样本。", "这是请求审核样本。"],
-    ["这个可惜审核结果。", "这个遗憾审核结果。"],
-    ["团队急需审核支持。", "团队迫切审核支持。"],
-  ])("does not extract concise modals embedded in ordinary words: %s", (source, rewrite) => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
-    expect(report.status).toBe("PASS");
-  });
-
-  test("does not treat 不可 inside an ordinary adjective as an obligation", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n这个结果不可思议。`, `${context}\n这个结果令人惊讶。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
-    expect(report.status).toBe("PASS");
-  });
-
-  test("preserves 不可 when it governs a normative action", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n用户不可发布。`, `${context}\n用户可以发布。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test.each([
-    ["用户不可擅自发布。", "用户可擅自发布。"],
-    ["用户可立即重新发布。", "用户不可立即重新发布。"],
-  ])("recognizes concise modals before ordinary adverbs: %s", (source, rewrite) => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test.each([
-    ["用户不可访问数据。", "用户可访问数据。"],
-    ["用户不可登录系统。", "用户可登录系统。"],
-    ["用户须先登录系统。", "用户不必先登录系统。"],
-    ["用户不可再发布数据。", "用户可再发布数据。"],
-  ])("recognizes concise modals before actions outside a finite verb list: %s", (source, rewrite) => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("does not parse 可 inside 可视化 as a concise modal", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n界面采用可视化发布结果。`, `${context}\n界面采用图形化发布结果。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
-    expect(report.status).toBe("PASS");
-  });
-
-  test.each([
-    ["组件可维护性很好。", "组件易于维护。"],
-    ["接口可扩展性很好。", "接口容易扩展。"],
-    ["页面可访问性很好。", "页面便于访问。"],
-  ])("does not parse productive 可…性 adjectives as concise modals: %s", (source, rewrite) => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
-    expect(report.status).toBe("PASS");
-  });
-
-  test("keeps permissions whose object contains a 性 noun", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n用户可查看兼容性报告。`, `${context}\n用户无法查看兼容性报告。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("excludes clause modifiers from Simplified Chinese subject bindings", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n甲组目前有三项检查。`, `${context}\n甲组当前有三项检查。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures.some((failure) => failure.category === "protected-context")).toBe(false);
-    expect(report.status).toBe("PASS");
-  });
-
-  test.each([
-    ["现阶段", "当前"],
-    ["通常", "一般"],
-  ])("excludes positionally trailing subject modifiers: %s", (beforeModifier, afterModifier) => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n甲组${beforeModifier}有三项检查。`, `${context}\n甲组${afterModifier}有三项检查。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures.some((failure) => failure.category === "protected-context")).toBe(false);
-    expect(report.status).toBe("PASS");
-  });
-
-  test("protects common 务必 obligations", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n用户务必审核发布。`, `${context}\n用户不必审核发布。`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test.each([
-    ["用户切勿发布数据。", "用户随意发布数据。"],
-    ["用户勿发布数据。", "用户可发布数据。"],
-  ])("protects common prohibitive concise modals: %s", (source, rewrite) => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("stops Simplified Chinese normative clauses at ASCII sentence marks", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const before = `${context}\n用户必须登录!界面采用蓝色。审阅者可以查看状态?页脚保持简洁。`;
-    const after = `${context}\n用户必须登录!界面采用绿色。审阅者可以查看状态?页脚保持清晰。`;
-    const report = verifyPreservation(before, after);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
-    expect(report.status).toBe("PASS");
-  });
-
-  test("keeps Markdown soft line breaks inside normative clauses", () => {
-    const context = Array(20).fill("The system records every result and retains complete evidence for reviewers.").join("\n");
-    const before = `${context}\nUsers MUST\napprove releases.`;
-    const after = `${context}\nUsers MUST\nreject releases.`;
-    const report = verifyPreservation(before, after);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
-    expect(report.status).toBe("FAIL");
-  });
-
-  test("stops normative clauses at adjacent Markdown block boundaries", () => {
-    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
-    const before = `${context}\n- 用户必须审核\n- 界面采用蓝色`;
-    const after = `${context}\n- 用户必须审核\n- 界面采用绿色`;
-    const report = verifyPreservation(before, after);
-    expect(report.tokenChangeRate).toBeLessThan(0.3);
-    expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
+    const report = verifyPreservation(`${context}\n用户必须审核三项检查。`, `${context}\n用户可以审核四项检查。`);
+    expect(report.failures).toEqual([]);
     expect(report.status).toBe("PASS");
   });
 
