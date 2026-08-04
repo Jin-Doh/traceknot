@@ -110,8 +110,13 @@ function zhlintFindings(markdown: string, protectedMask: string): ProseFinding[]
     ) {
       throw new Error("zhlint returned an invalid finding offset");
     }
-    const influenceStart = Math.max(0, validation.index - 1);
-    const influenceEnd = Math.min(markdown.length, validation.index + Math.max(validation.length, 1) + 1);
+    const knownTarget = validation.target === "value" || validation.target === "startValue" || validation.target === "endValue"
+      || validation.target === "spaceAfter" || validation.target === "innerSpaceBefore";
+    if (!knownTarget) throw new Error("zhlint returned an invalid finding target");
+    const influenceStart = validation.target === "value" || validation.target === "startValue"
+      ? validation.index
+      : validation.index + validation.length;
+    const influenceEnd = Math.min(markdown.length, influenceStart + (validation.target === "value" ? Math.max(validation.length, 1) : 1));
     let touchesProtectedContent = false;
     for (let index = influenceStart; index < influenceEnd; index += 1) {
       if (markdown[index] !== protectedMask[index]) {

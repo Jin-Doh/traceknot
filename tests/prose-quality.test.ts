@@ -315,6 +315,15 @@ describe("language-specific prose rules", () => {
     expect(report.status).toBe("WARN");
   });
 
+  test("keeps adjacent punctuation findings outside protected quotations", () => {
+    const report = analyzeProse("资料原文是:“引用”。", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处标点符号需要使用全角",
+      count: 1,
+    }));
+    expect(report.status).toBe("WARN");
+  });
+
   test("does not lint Markdown link destinations as Chinese prose", () => {
     const report = analyzeProse("[证据](https://example.com/中文English)", ["zh-Hans"], "zh-Hans");
     expect(report.findings).toEqual([]);
