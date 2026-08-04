@@ -7,6 +7,7 @@ import {
   establishTestBasis,
   canonicalRequestDigest,
   performRiskDiscovery,
+  evaluateEvidence,
   runVerification,
   transitionRunState,
   type ArtifactStore,
@@ -134,6 +135,43 @@ async function runOnce(dependencies: VerificationRunDependencies, runId = RUN_ID
   const input = { runId, request: makeRequest(requestId), dependencies, now: FIXED_NOW } as unknown as RunInput;
   return runVerification(input);
 }
+test("evaluateEvidence accepts a canonical signed authority through its direct API", async () => {
+  const fakes = makeDependencies();
+  const runId = "evaluate-direct-canonical";
+  const first = await runOnce(fakes.dependencies, runId);
+  const request = makeRequest();
+  const plan = first.documents.plan;
+  const execution = first.documents.execution;
+  const evidence = first.documents.evidence;
+  if (!plan || !execution || !evidence) throw new Error("missing canonical plan, execution, or evidence");
+  const evaluated = await evaluateEvidence({ runId, request, plan, execution, dependencies: fakes.dependencies, evaluatedAt: FIXED_NOW });
+  expect(evaluated).toEqual(evidence);
+});
+
+test("evaluateEvidence rejects a self-consistent forged authority through its direct API", async () => {
+  const fakes = makeDependencies();
+  const runId = "evaluate-direct-forged";
+  const first = await runOnce(fakes.dependencies, runId);
+  const request = makeRequest();
+  const plan = first.documents.plan;
+  const execution = first.documents.execution;
+  if (!plan || !execution) throw new Error("missing canonical plan or execution");
+  const forged: ExecutionDocument = {
+    ...execution,
+    authorities: execution.authorities.map((authority, index) => index === 0 ? { ...authority, issuer: "forged-authority" } : authority),
+  };
+  await expect(evaluateEvidence({ runId, request, plan, execution: forged, dependencies: fakes.dependencies, evaluatedAt: FIXED_NOW })).rejects.toThrow("invalid persisted execution authority");
+});
+
+test("evaluateEvidence rejects a genuine authority bound to a foreign runId through its direct API", async () => {
+  const fakes = makeDependencies();
+  const first = await runOnce(fakes.dependencies, "evaluate-direct-foreign");
+  const request = makeRequest();
+  const plan = first.documents.plan;
+  const execution = first.documents.execution;
+  if (!plan || !execution) throw new Error("missing canonical plan or execution");
+  await expect(evaluateEvidence({ runId: "foreign-run", request, plan, execution, dependencies: fakes.dependencies, evaluatedAt: FIXED_NOW })).rejects.toThrow("invalid execution authority binding");
+});
 function reorderObjectKeysDeep<T>(value: T): T {
   if (Array.isArray(value)) return value.map(item => reorderObjectKeysDeep(item)) as T;
   if (value !== null && typeof value === "object") {
@@ -863,6 +901,17 @@ describe("verification run orchestration", () => {
       expect(validate(evidence), validate.errors ? JSON.stringify(validate.errors) : undefined).toBe(true);
     }
   });
+  test("validates the saved direct verdict and documents.verdict with the canonical AJV schema", async () => {
+    const fakes = makeDependencies();
+    const result = await runOnce(fakes.dependencies, "runtime-verdict-ajv");
+    const schema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verdict.schema.json`).text()) as object;
+    const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
+    const saved = fakes.repository.stageDocuments.get("runtime-verdict-ajv:verdict");
+    expect(saved).toBeDefined();
+    for (const verdict of [result.verdict, result.documents.verdict, saved]) {
+      expect(validate(verdict), validate.errors ? JSON.stringify(validate.errors) : undefined).toBe(true);
+    }
+  });
 
   test.each([
     "release",
@@ -1459,38 +1508,35 @@ describe("verification run orchestration", () => {
   });
 
 
-  test("validates nested verdict identity on terminal and verdict-resolved resume", async () => {
+  test("validates direct verdict identity on terminal and verdict-resolved resume", async () => {
     const fakes = makeDependencies();
     const first = await runOnce(fakes.dependencies);
     const saved = fakes.repository.stageDocuments.get(`${RUN_ID}:verdict`) as Record<string, unknown>;
-    const nested = saved.verdict as Record<string, unknown>;
     const rerun = await runVerification({ runId: RUN_ID, request: makeRequest(), dependencies: fakes.dependencies });
     expect(rerun.verdict).toEqual(first.verdict);
-    fakes.repository.stageDocuments.set(`${RUN_ID}:verdict`, { ...saved, verdict: { ...nested, requestId: "wrong-request" } });
+    fakes.repository.stageDocuments.set(`${RUN_ID}:verdict`, { ...saved, requestId: "wrong-request" });
     await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted verdict stage");
-    fakes.repository.stageDocuments.set(`${RUN_ID}:verdict`, { ...saved, requestId: "wrong-request", verdict: nested });
-    await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted verdict envelope");
     fakes.repository.stageDocuments.set(`${RUN_ID}:verdict`, saved);
     const run = fakes.repository.runs.get(RUN_ID);
     if (!run) throw new Error("missing run");
     fakes.repository.runs.set(RUN_ID, { ...run, state: "VERDICT_RESOLVED", updatedAt: FIXED_NOW });
-    fakes.repository.stageDocuments.set(`${RUN_ID}:verdict`, { ...saved, verdict: { ...nested, snapshotId: "wrong-snapshot" } });
+    fakes.repository.stageDocuments.set(`${RUN_ID}:verdict`, { ...saved, snapshotId: "wrong-snapshot" });
     await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted verdict stage");
   });
 
-  test.each(["TERMINAL", "VERDICT_RESOLVED"] as const)("rejects a tampered nested verdict payload on %s resume", async state => {
+  test.each(["TERMINAL", "VERDICT_RESOLVED"] as const)("rejects a tampered direct verdict payload on %s resume", async state => {
     const fakes = makeDependencies({ missingExecutorOutput: true });
     await runOnce(fakes.dependencies);
     const run = fakes.repository.runs.get(RUN_ID);
     const saved = fakes.repository.stageDocuments.get(`${RUN_ID}:verdict`) as Record<string, unknown>;
-    const nested = saved.verdict as Record<string, unknown>;
     if (!run) throw new Error("missing run");
     fakes.repository.runs.set(RUN_ID, { ...run, state, updatedAt: FIXED_NOW });
-    fakes.repository.stageDocuments.set(`${RUN_ID}:verdict`, { ...saved, verdict: { ...nested, qaVerdict: "PASS" } });
+    fakes.repository.stageDocuments.set(`${RUN_ID}:verdict`, { ...saved, qaVerdict: "PASS" });
     const executorCalls = fakes.executorCalls;
     await expect(runOnce(fakes.dependencies)).rejects.toThrow("invalid persisted verdict canonicalization");
     expect(fakes.executorCalls).toBe(executorCalls);
   });
+
 
   test("persists one checkpoint per obligation and resumes only the unfinished obligation", async () => {
     const fakes = makeDependencies();
