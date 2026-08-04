@@ -28,7 +28,7 @@ type Native = {
   symbols: {
     openat: (dirfd: number, path: Buffer, flags: number, mode: number) => number;
     mkdirat: (dirfd: number, path: Buffer, mode: number) => number;
-    renameat: (oldfd: number, oldpath: Buffer, newfd: number, newpath: Buffer) => number;
+    linkat: (oldfd: number, oldpath: Buffer, newfd: number, newpath: Buffer, flags: number) => number;
     unlinkat: (dirfd: number, path: Buffer, flags: number) => number;
     fchmod: (fd: number, mode: number) => number;
     fsync: (fd: number) => number;
@@ -50,9 +50,10 @@ function loadNative(): Native | undefined {
       mkdirat: { args: [FFIType.i32, FFIType.cstring, FFIType.i32], returns: FFIType.i32 },
       renameat: { args: [FFIType.i32, FFIType.cstring, FFIType.i32, FFIType.cstring], returns: FFIType.i32 },
       unlinkat: { args: [FFIType.i32, FFIType.cstring, FFIType.i32], returns: FFIType.i32 },
-      fsync: { args: [FFIType.i32], returns: FFIType.i32 },
+      linkat: { args: [FFIType.i32, FFIType.cstring, FFIType.i32, FFIType.cstring, FFIType.i32], returns: FFIType.i32 },
       close: { args: [FFIType.i32], returns: FFIType.i32 },
       fchmod: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+      fsync: { args: [FFIType.i32], returns: FFIType.i32 },
       flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
       [errnoSymbol]: { args: [], returns: FFIType.ptr },
     });
@@ -299,16 +300,14 @@ function publishObject(objectsFd: number, digest: string, frame: Uint8Array, fsy
   } finally {
     closeFd(fd);
   }
-  if (readObject(objectsFd, digest)) {
-    unlinkChild(objectsFd, temp);
-    return;
-  }
-  const renamed = n.symbols.renameat(objectsFd, cstring(temp), objectsFd, cstring(digest));
-  if (renamed < 0) {
+  const linked = n.symbols.linkat(objectsFd, cstring(temp), objectsFd, cstring(digest), 0);
+  if (linked < 0) {
     const error = errno();
     unlinkChild(objectsFd, temp);
-    throw new ArtifactPathError(`artifact publication rename failed (errno ${error})`);
+    if (error === 17) return;
+    throw new ArtifactPathError(`artifact publication link failed (errno ${error})`);
   }
+  unlinkChild(objectsFd, temp);
   if (fsync) check(n.symbols.fsync(objectsFd), "artifact objects directory fsync");
 }
 function outputArtifact(artifact: ArtifactLike): Artifact {
@@ -329,7 +328,7 @@ export class LocalArtifactStore implements ArtifactStore {
     const rootDir = typeof rootDirOrOptions === "string" ? rootDirOrOptions : rootDirOrOptions.rootDir;
     if (typeof rootDir !== "string" || rootDir.length === 0) throw new ArtifactPathError("artifact root is required");
     this.rootDir = resolve(rootDir);
-    this.fsync = true;
+    this.fsync = typeof rootDirOrOptions === "string" ? true : rootDirOrOptions.fsync !== false;
     const rootFd = openPinnedDirectory(this.rootDir);
     let objectsFd: number | undefined;
     let lockFd: number | undefined;

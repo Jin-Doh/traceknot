@@ -327,6 +327,21 @@ test("portable native dispatch covers Darwin actual bindings and Linux static bi
     }
   }
 });
+test("artifact store preserves optional fsync configuration without pathname fallback", async () => {
+  const root = await temporaryDirectory();
+  const bytes = Buffer.from("fsync option");
+  const artifactDigest = digest(bytes);
+  try {
+    const store = new LocalArtifactStore({ rootDir: join(root, "artifacts"), fsync: false });
+    expect(store.fsync).toBe(false);
+    await store.store({ type: "option", digest: artifactDigest, bytes } as never, request);
+    expect(await store.readArtifact(artifactDigest)).toEqual(bytes);
+    await store.close();
+  } finally {
+    await cleanup(root);
+  }
+});
+
 
 
 test("local artifact store stays pinned when its configured root is renamed and replaced", async () => {
