@@ -33,6 +33,20 @@ describe("README localization section contract", () => {
       "README.md",
       `${command}\n\`authoritative: false\`\n\`\`\`text\nphase1Authorized: false\n\`\`\``,
     )).toThrow("missing rendered public boundary literal phase1Authorized: false");
+    expect(() => checkReadmeBoundaries(
+      "README.md",
+      `${command}\n<span hidden>authoritative: false phase1Authorized: false</span>`,
+    )).toThrow("missing rendered public boundary literal authoritative: false");
+  });
+
+  test.each([
+    "```md\n<!-- readme-section:hero -->\n```",
+    "`<!-- readme-section:hero -->`",
+  ])("does not count section markers inside code: %s", (hiddenMarker) => {
+    const visible = readmeWith(sections.slice(1));
+    expect(() => checkReadmeSections("README.md", `${hiddenMarker}\n${visible}`)).toThrow(
+      "section hero must appear exactly once, found 0",
+    );
   });
 
   test("rejects a complete but reordered section sequence", () => {
@@ -133,6 +147,7 @@ describe("README localization section contract", () => {
   test.each([
     '<video poster="assets/not-here.png">',
     '<img srcset="assets/not-here.png 1x, assets/also-missing.png 2x">',
+    '<svg><image xlink:href="assets/not-here.png" /></svg>',
   ])("validates URL-bearing HTML attributes: %s", (content) => {
     expect(() => checkReadmeLocalLinks({ path: "README.md", content })).toThrow("local link does not exist");
   });

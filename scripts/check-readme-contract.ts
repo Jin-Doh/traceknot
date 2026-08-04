@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-import type { Element, Nodes as HastNode, Root as HastRoot } from "hast";
-import type { Code, Html, Parents, Root as MdastRoot } from "mdast";
+import type { Element, Root as HastRoot } from "hast";
+import type { Code, Html, Nodes as MdastNode, Parents, Root as MdastRoot } from "mdast";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
@@ -88,25 +88,28 @@ function htmlTree(content: string): HastRoot {
   return HTML_PROCESSOR.runSync(HTML_PROCESSOR.parse(content)) as HastRoot;
 }
 
-function renderedProse(content: string): string {
-  const chunks: string[] = [];
-  const walk = (node: HastNode, suppressed = false): void => {
-    const nextSuppressed = suppressed || (node.type === "element" && ["pre", "script", "style", "template"].includes(node.tagName));
-    if (node.type === "text" && !nextSuppressed) chunks.push(node.value);
-    if ("children" in node) {
-      for (const child of node.children) walk(child, nextSuppressed);
+function renderedMarkdownText(content: string): string {
+  const chunks: Array<{ offset: number; value: string }> = [];
+  const walk = (node: MdastNode, suppressed = false): void => {
+    if (!suppressed && (node.type === "text" || node.type === "inlineCode")) {
+      chunks.push({ offset: node.position?.start.offset ?? Number.MAX_SAFE_INTEGER, value: node.value });
     }
+    if (!("children" in node)) return;
+    const suppressChildren = suppressed || (node.type !== "root" && node.children.some((child) => child.type === "html"));
+    for (const child of node.children) walk(child, suppressChildren);
   };
-  walk(htmlTree(content));
-  return chunks.join("\n");
+  walk(markdownTree(content));
+  return chunks.sort((left, right) => left.offset - right.offset).map((chunk) => chunk.value).join("\n");
 }
 
-function collectMarkers(content: string, pattern: RegExp): Map<string, number> {
+function collectSectionMarkers(content: string): Map<string, number> {
   const markers = new Map<string, number>();
-  for (const match of content.matchAll(pattern)) {
+  visit(markdownTree(content), "html", (node: Html) => {
+    const match = node.value.match(/^\s*<!-- readme-section:([a-z0-9-]+) -->\s*$/u);
+    if (!match) return;
     const name = match[1];
     markers.set(name, (markers.get(name) ?? 0) + 1);
-  }
+  });
   return markers;
 }
 
@@ -155,7 +158,7 @@ function loadReadmes(): ReadmeRecord[] {
     return {
       path,
       content,
-      sections: collectMarkers(content, /<!-- readme-section:([a-z0-9-]+) -->/g),
+      sections: collectSectionMarkers(content),
       sharedCommands: collectSharedCommands(content, path),
     };
   });
@@ -178,7 +181,7 @@ export function checkReadmeSections(path: string, content: string): void {
   checkSections({
     path,
     content,
-    sections: collectMarkers(content, /<!-- readme-section:([a-z0-9-]+) -->/g),
+    sections: collectSectionMarkers(content),
     sharedCommands: new Map(),
   });
 }
@@ -200,7 +203,7 @@ function checkBoundaries(record: ReadmeRecord): void {
   for (const boundary of REQUIRED_RAW_BOUNDARIES) {
     if (!record.content.includes(boundary)) throw new Error(`${record.path}: missing public boundary literal ${boundary}`);
   }
-  const prose = renderedProse(record.content);
+  const prose = renderedMarkdownText(record.content);
   for (const boundary of REQUIRED_RENDERED_BOUNDARIES) {
     if (!prose.includes(boundary)) throw new Error(`${record.path}: missing rendered public boundary literal ${boundary}`);
   }
@@ -258,7 +261,7 @@ function srcsetTargets(value: string): string[] {
 function localTargets(content: string): string[] {
   const targets: string[] = [];
   const targetProperties = new Set([
-    "href", "src", "poster", "action", "formAction", "cite", "data", "background",
+    "href", "xLinkHref", "src", "poster", "action", "formAction", "cite", "data", "background",
     "manifest", "profile", "longDesc", "useMap",
   ]);
   visit(htmlTree(content), "element", (node: Element) => {

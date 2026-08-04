@@ -91,7 +91,7 @@ export const RULES: readonly Rule[] = [
     id: "PI009",
     description: "Simplified Chinese instruction hierarchy override",
     score: 5,
-    pattern: /(?:忽略|无视|覆盖|绕过).{0,24}(?:之前|先前|系统|开发者|安全|指令|规则|策略|防护)/,
+    pattern: /(?:忽略|无视|覆盖|绕过)[^。；，！？\n]{0,24}(?:之前|先前|系统|开发者|安全|指令|规则|策略|防护)/,
   },
   {
     id: "PI010",
@@ -103,7 +103,7 @@ export const RULES: readonly Rule[] = [
     id: "PI011",
     description: "Simplified Chinese safety control suppression",
     score: 6,
-    pattern: /(?:禁用|关闭|移除|绕过|规避).{0,24}(?:安全|验证|校验|扫描器|过滤器|沙箱|权限|审批|审计|日志)/,
+    pattern: /(?:禁用|关闭|移除|绕过|规避)[^。；，！？\n]{0,24}(?:安全|验证|校验|扫描器|过滤器|沙箱|权限|审批|审计|日志)/,
   },
   {
     id: "PI012",
