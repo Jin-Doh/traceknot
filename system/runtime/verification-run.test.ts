@@ -3,6 +3,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import type { Artifact } from "../core/qa-core";
 import {
   buildVerificationPlan,
+  DispatchClaimAcquisitionError,
   createInitialRun,
   establishTestBasis,
   canonicalRequestDigest,
@@ -2210,53 +2211,46 @@ describe("verification run orchestration", () => {
     expect(fakes.executorCalls).toBe(1);
   });
 
-  test("retakes a crashed claim only after strict expiry with one stable idempotency key", async () => {
+  test("releases a proofed claim after acquisition throws and permits an immediate retry", async () => {
     const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
+    let originalError!: DispatchClaimAcquisitionError;
     class CrashAfterClaimRepository extends FakeRepository {
       crash = true;
       override async claimExecutionDispatch(claim: DispatchClaim, now = FIXED_NOW) {
         const result = await super.claimExecutionDispatch(claim, now);
         if (this.crash) {
           this.crash = false;
-          throw new Error("simulated crash after durable claim");
+          originalError = new DispatchClaimAcquisitionError("simulated crash after durable claim", result.claim);
+          throw originalError;
         }
         return result;
       }
     }
     const runId = "claim-crash-recovery";
     const request = { ...makeRequest(), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
-    let now = FIXED_NOW;
     const firstRepository = new CrashAfterClaimRepository(store);
     const first = makeDependencies({}, firstRepository);
-    const firstDependencies = { ...first.dependencies, dispatchOwnerId: "owner-a", now: () => now };
-    await expect(runVerification({ runId, request, dependencies: firstDependencies })).rejects.toThrow("simulated crash after durable claim");
+    const firstRun = runVerification({ runId, request, dependencies: first.dependencies });
+    let rejection: unknown;
+    try {
+      await firstRun;
+    } catch (error) {
+      rejection = error;
+    }
+    expect(originalError).toBeInstanceOf(DispatchClaimAcquisitionError);
+    expect(rejection).toBe(originalError);
     expect(first.executorCalls).toBe(0);
-    const persistedClaim = [...store.dispatchClaims.values()][0]?.claim;
-    if (!persistedClaim) throw new Error("missing durable claim");
+    expect(store.dispatchClaims.size).toBe(0);
+    expect(store.stageDocuments.has(`${runId}:execution`)).toBe(false);
     const second = makeDependencies({}, new FakeRepository(store));
-    const beforeExpiry = { ...second.dependencies, dispatchOwnerId: "owner-b", now: () => now };
-    await expect(runVerification({ runId, dependencies: beforeExpiry })).rejects.toThrow("dispatch claim already exists");
-    expect(second.executorCalls).toBe(0);
-    now = new Date(Date.parse(persistedClaim.leaseExpiresAt) + 1).toISOString();
-    const keys: string[] = [];
-    const takeoverExecutor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => {
-      keys.push(request.idempotencyKey);
-      return {
-        status: "PASS",
-        runId: request.runId,
-        requestId: request.requestId,
-        snapshotId: request.snapshotId,
-        idempotencyKey: request.idempotencyKey,
-        producer: { kind: "deterministic-verifier", identity: "takeover-executor", independence: "independent-producer" },
-        artifacts: [{ type: "verification-result", digest: "c".repeat(64) }],
-      };
-    }, }
-    const resumed = await runVerification({ runId, dependencies: { ...second.dependencies, dispatchOwnerId: "owner-b", now: () => now, executor: takeoverExecutor } });
+    const resumed = await runVerification({ runId, dependencies: second.dependencies });
+    expect(second.executorCalls).toBe(1);
     expect(resumed.run.state).toBe("TERMINAL");
-    expect(keys).toHaveLength(1);
-    expect(keys[0]).toBe(persistedClaim.idempotencyKey);
-    expect([...store.dispatchClaims.values()][0]?.claim.leaseGeneration).toBe(2);
-    expect([...store.dispatchClaims.values()][0]?.claim.ownerId).toBe("owner-b");
+    expect(resumed.verdict.qaVerdict).toBe("PASS");
+    const dispatch = [...store.dispatchClaims.values()];
+    expect(dispatch).toHaveLength(1);
+    expect(dispatch[0]?.status).toBe("COMPLETED");
+    expect(dispatch[0]?.completion).toBeDefined();
   });
 
   test("fences stale completion and release after a repository-CAS takeover", async () => {
