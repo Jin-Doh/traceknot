@@ -104,6 +104,21 @@ function validObservation(value: unknown): value is Observation {
     return Boolean(key) && (actualValue === null || typeof actualValue === "string" || typeof actualValue === "boolean" || (typeof actualValue === "number" && Number.isFinite(actualValue)));
   });
 }
+export function validEvidenceClaim(value: unknown): value is EvidenceClaim {
+  return isRecord(value) &&
+    exactOwnKeys(value, ["schemaVersion", "claimId", "requestId", "snapshotId", "obligationId", "criterionId", "observationIds", "claim"]) &&
+    value.schemaVersion === "evidence-claim/v1" &&
+    typeof value.claimId === "string" && Boolean(value.claimId) &&
+    typeof value.requestId === "string" && Boolean(value.requestId) &&
+    typeof value.snapshotId === "string" && Boolean(value.snapshotId) &&
+    typeof value.obligationId === "string" && Boolean(value.obligationId) &&
+    typeof value.criterionId === "string" && Boolean(value.criterionId) &&
+    typeof value.claim === "string" && Boolean(value.claim) &&
+    Array.isArray(value.observationIds) &&
+    value.observationIds.length > 0 &&
+    value.observationIds.every(item => typeof item === "string" && Boolean(item)) &&
+    new Set(value.observationIds).size === value.observationIds.length;
+}
 function validBasisItem(value: unknown): value is VerificationBasisItem {
   return isRecord(value) && exactOwnKeys(value, ["id", "kind", "origin", "text"], ["source"]) && typeof value.id === "string" && Boolean(value.id) && BASIS_KINDS.includes(value.kind as BasisKind) && (value.origin === "explicit" || value.origin === "derived") && typeof value.text === "string" && Boolean(value.text) && (value.source === undefined || (typeof value.source === "string" && Boolean(value.source)));
 }
@@ -324,7 +339,7 @@ function assertExecutionEvidenceBindings(execution: ExecutionDocument, request?:
     observations.set(obligationId, observation);
   }
   for (const claim of execution.claims) {
-    if (claim.observationIds.length !== 1 || claim.claimId !== `claim:${claim.obligationId}` || claim.observationIds[0] !== `observation:${claim.obligationId}` || claims.has(claim.obligationId) || (expectedObligations && !expectedObligations.has(claim.obligationId))) throw Error("invalid execution claim binding");
+    if (!validEvidenceClaim(claim) || claim.observationIds.length !== 1 || claim.claimId !== `claim:${claim.obligationId}` || claim.observationIds[0] !== `observation:${claim.obligationId}` || claims.has(claim.obligationId) || (expectedObligations && !expectedObligations.has(claim.obligationId))) throw Error("invalid execution claim binding");
     claims.set(claim.obligationId, claim);
   }
   for (const item of execution.evidence) {
@@ -339,8 +354,9 @@ function assertExecutionEvidenceBindings(execution: ExecutionDocument, request?:
   if (authorityByObligation.size !== authorities.length) throw Error("invalid execution authority binding");
   if (observations.size !== claims.size || observations.size !== evidence.size || [...observations.keys()].some(id => !claims.has(id) || !evidence.has(id))) throw Error("invalid execution binding universe");
   for (const [obligationId, observation] of observations) {
+    const claim = claims.get(obligationId);
     const item = evidence.get(obligationId);
-    if (!item || (request && (observation.requestId !== request.requestId || observation.snapshotId !== request.project.snapshotId || item.requestId !== request.requestId || item.snapshotId !== request.project.snapshotId)) || observation.requestId !== item.requestId || observation.snapshotId !== item.snapshotId || !validProducer(observation.producer) || !validExecution(observation.execution) || observation.artifacts.some(artifact => !validArtifact(artifact)) || !structurallyEqual(observation.producer, item.producer) || !structurallyEqual(observation.execution, item.execution)) throw Error("invalid execution evidence binding");
+    if (!claim || !item || claim.claim !== item.result.summary || (request && (observation.requestId !== request.requestId || observation.snapshotId !== request.project.snapshotId || claim.requestId !== request.requestId || claim.snapshotId !== request.project.snapshotId || item.requestId !== request.requestId || item.snapshotId !== request.project.snapshotId)) || observation.requestId !== item.requestId || observation.snapshotId !== item.snapshotId || claim.requestId !== item.requestId || claim.snapshotId !== item.snapshotId || !validProducer(observation.producer) || !validExecution(observation.execution) || observation.artifacts.some(artifact => !validArtifact(artifact)) || !structurallyEqual(observation.producer, item.producer) || !structurallyEqual(observation.execution, item.execution)) throw Error("invalid execution evidence binding");
     const observationDigests = uniq(observation.artifacts.map(artifact => artifact.digest.toLowerCase()));
     const evidenceDigests = uniq([...(item.result.artifacts ?? [])].filter(digest => typeof digest === "string" && DIGEST.test(digest)).map(digest => digest.toLowerCase()));
     if (observationDigests.length !== (item.result.artifacts?.length ?? 0) || JSON.stringify(observationDigests) !== JSON.stringify(evidenceDigests)) throw Error("invalid execution evidence binding");
@@ -668,7 +684,7 @@ function validateStage(stage: StageName, value: unknown, request: VerificationRe
     if (usageOutbox.some(item => !validUsageOutboxEntry(item, request, runId) || (obligationSet && isRecord(item) && typeof item.obligationId === "string" && !obligationSet.has(item.obligationId))) || usageEventKeys.some(key => !key) || new Set(usageEventKeys).size !== usageEventKeys.length || JSON.stringify(usageEventKeys) !== JSON.stringify([...usageEventKeys].sort())) throw Error("invalid persisted execution usage outbox");
     for (const observation of value.observations) if (!validObservation(observation) || observation.requestId !== request.requestId || observation.snapshotId !== request.project.snapshotId) throw Error("invalid persisted execution reference");
     for (const claim of value.claims) {
-      if (!isRecord(claim) || claim.schemaVersion !== "evidence-claim/v1" || claim.requestId !== request.requestId || claim.snapshotId !== request.project.snapshotId || typeof claim.claimId !== "string" || claim.claimId !== `claim:${claim.obligationId}` || !Array.isArray(claim.observationIds) || claim.observationIds.length !== 1 || claim.observationIds[0] !== `observation:${claim.obligationId}` || typeof claim.obligationId !== "string" || !claim.obligationId || typeof claim.criterionId !== "string" || claim.criterionId !== `criterion:${claim.obligationId}` || (obligationSet && !obligationSet.has(claim.obligationId))) throw Error("invalid persisted claim reference");
+      if (!validEvidenceClaim(claim) || claim.requestId !== request.requestId || claim.snapshotId !== request.project.snapshotId || claim.claimId !== `claim:${claim.obligationId}` || claim.observationIds.length !== 1 || claim.observationIds[0] !== `observation:${claim.obligationId}` || claim.criterionId !== `criterion:${claim.obligationId}` || (obligationSet && !obligationSet.has(claim.obligationId))) throw Error("invalid persisted claim reference");
       if (claimObligations.has(claim.obligationId)) throw Error("invalid persisted claim reference");
       claimObligations.add(claim.obligationId);
     }

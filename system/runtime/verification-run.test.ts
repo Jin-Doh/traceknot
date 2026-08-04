@@ -1104,6 +1104,31 @@ describe("verification run orchestration", () => {
       expect(fakes.repository.runWrites.length).toBe(runWrites);
     }
   });
+  test.each(["EXECUTING", "TERMINAL"] as const)("rejects persisted claim tampering before writes or executor redispatch on %s resume", async state => {
+    for (const mutation of ["extra key", "empty claim", "altered nonempty claim"] as const) {
+      const fakes = makeDependencies();
+      const runId = `claim-envelope-${state.toLowerCase()}-${mutation.replaceAll(" ", "-")}`;
+      await runOnce(fakes.dependencies, runId);
+      const run = fakes.repository.runs.get(runId);
+      const saved = fakes.repository.stageDocuments.get(`${runId}:execution`) as ExecutionDocument;
+      if (!run || !saved || !saved.claims[0]) throw new Error("missing complete execution");
+      const target = saved.claims[0];
+      const tamperedClaim = mutation === "extra key"
+        ? { ...target, unexpected: true }
+        : mutation === "empty claim"
+          ? { ...target, claim: "" }
+          : { ...target, claim: `${target.claim} tampered` };
+      fakes.repository.stageDocuments.set(`${runId}:execution`, { ...saved, claims: [tamperedClaim, ...saved.claims.slice(1)] });
+      fakes.repository.runs.set(runId, { ...run, state, updatedAt: FIXED_NOW });
+      const executorCalls = fakes.executorCalls;
+      const stageWrites = fakes.repository.stageWrites.length;
+      const runWrites = fakes.repository.runWrites.length;
+      await expect(runVerification({ runId, request: makeRequest(), dependencies: fakes.dependencies })).rejects.toThrow();
+      expect(fakes.executorCalls).toBe(executorCalls);
+      expect(fakes.repository.stageWrites.length).toBe(stageWrites);
+      expect(fakes.repository.runWrites.length).toBe(runWrites);
+    }
+  });
   test.each(["EXECUTING", "TERMINAL"] as const)("rejects persisted observation envelope tampering before writes or redispatch on %s resume", async state => {
     for (const mutation of ["extra key", "empty actualValues", "nested actual value"] as const) {
       const fakes = makeDependencies();
