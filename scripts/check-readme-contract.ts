@@ -165,9 +165,28 @@ export function checkReadmeSharedCommands(records: Array<{ path: string; content
 
 function localTargets(content: string): string[] {
   const targets: string[] = [];
-  for (const match of content.matchAll(/!?\[[^\]]*\]\(([^)]+)\)/g)) targets.push(match[1].trim().split(/\s+["']/)[0]);
+  for (let marker = content.indexOf("]("); marker >= 0; marker = content.indexOf("](", marker + 2)) {
+    let cursor = marker + 2;
+    while (/\s/.test(content[cursor] ?? "")) cursor += 1;
+    const start = cursor;
+    let depth = 0;
+    while (cursor < content.length) {
+      const character = content[cursor];
+      if (character === "\\") {
+        cursor += 2;
+        continue;
+      }
+      if (character === "(") depth += 1;
+      else if (character === ")") {
+        if (depth === 0) break;
+        depth -= 1;
+      } else if (/\s/.test(character) && depth === 0) break;
+      cursor += 1;
+    }
+    if (cursor > start) targets.push(content.slice(start, cursor).replace(/\\([()])/g, "$1"));
+  }
   for (const match of content.matchAll(/^[\t ]{0,3}\[[^\]\r\n]+\]:[\t ]*(?:<([^>\r\n]+)>|([^\s\r\n]+))/gm)) targets.push(match[1] ?? match[2]);
-  for (const match of content.matchAll(/(?:href|src)\s*=\s*(?:(["'])(.*?)\1|([^\s"'=<>`]+))/g)) {
+  for (const match of content.matchAll(/(?:href|src)\s*=\s*(?:(["'])(.*?)\1|([^\s"'=<>`]+))/gi)) {
     targets.push(match[2] ?? match[3]);
   }
   return targets;

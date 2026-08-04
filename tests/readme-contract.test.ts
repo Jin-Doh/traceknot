@@ -59,6 +59,15 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLocalLinks({ path: "README.md", content: "<img src=assets/not-here.png>" })).toThrow("local link does not exist");
   });
 
+  test("parses balanced Markdown destinations and uppercase HTML attributes", () => {
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content: "[guide](docs/not-here(v2).md)" })).toThrow(
+      "docs/not-here(v2).md",
+    );
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content: '<IMG SRC="assets/not-here.png">' })).toThrow(
+      "local link does not exist",
+    );
+  });
+
   test("rejects exclusions that narrow the publication inventory", () => {
     expect(() => checkPublicationInventory({ include: ["**/*.md"], exclude: ["docs/**"] })).toThrow(
       "cannot exclude Markdown files",

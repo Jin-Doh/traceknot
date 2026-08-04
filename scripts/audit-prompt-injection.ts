@@ -109,7 +109,7 @@ export const RULES: readonly Rule[] = [
     id: "PI012",
     description: "Simplified Chinese privileged role or message impersonation",
     score: 6,
-    pattern: /(?:(?:你|您)现在是(?:系统|开发者|管理员|超级用户|root)|(?:作为|以)(?:系统|开发者|管理员|超级用户|root)(?:身份|权限)|(?:按|以)(?:最高|系统|管理员|root)(?:权限|优先级)(?:执行|操作)|(?:伪装|冒充)(?:系统|开发者|管理员))/i,
+    pattern: /(?:(?:你|您)(?:现在|从现在起|将)是(?:系统|开发者|管理员|超级用户|root)|(?:假装|扮演|伪装|冒充)(?:成|为)?(?:系统|开发者|管理员|超级用户|root))/i,
   },
 ];
 
