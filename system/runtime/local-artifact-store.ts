@@ -28,6 +28,7 @@ type Native = {
   symbols: {
     openat: (dirfd: number, path: Buffer, flags: number, mode: number) => number;
     mkdirat: (dirfd: number, path: Buffer, mode: number) => number;
+    renameat: (oldfd: number, oldpath: Buffer, newfd: number, newpath: Buffer) => number;
     linkat: (oldfd: number, oldpath: Buffer, newfd: number, newpath: Buffer, flags: number) => number;
     unlinkat: (dirfd: number, path: Buffer, flags: number) => number;
     fchmod: (fd: number, mode: number) => number;
@@ -58,7 +59,20 @@ function loadNative(): Native | undefined {
       [errnoSymbol]: { args: [], returns: FFIType.ptr },
     });
     const symbols = loaded.symbols as unknown as Native["symbols"] & Record<string, () => unknown>;
-    return { symbols: Object.assign(symbols, { errno: symbols[errnoSymbol] }) };
+    return {
+      symbols: {
+        openat: symbols.openat,
+        mkdirat: symbols.mkdirat,
+        renameat: symbols.renameat,
+        linkat: symbols.linkat,
+        unlinkat: symbols.unlinkat,
+        fchmod: symbols.fchmod,
+        fsync: symbols.fsync,
+        close: symbols.close,
+        flock: symbols.flock,
+        errno: symbols[errnoSymbol],
+      },
+    };
   } catch {
     return undefined;
   }
