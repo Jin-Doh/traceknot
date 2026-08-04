@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -78,5 +78,24 @@ describe("traceknot verify CLI", () => {
       const malformed = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", join(fixtureValue.config, "bad.json"), "--manifest", fixtureValue.manifest], () => undefined, () => undefined);
       expect(malformed).toBe(64);
     } finally { await fixtureValue.cleanup(); }
+  });
+
+  test("rejects symbolic-link input files", async () => {
+    const fixtureValue = await fixture();
+    const aliasRoot = await mkdtemp(join(tmpdir(), "traceknot-cli-e2e-alias-"));
+    try {
+      const alias = join(aliasRoot, "request.json");
+      await symlink(fixtureValue.request, alias);
+      const stderr: string[] = [];
+      const status = await runVerify(
+        ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", alias, "--manifest", fixtureValue.manifest],
+        () => undefined,
+        text => stderr.push(text),
+      );
+      expect(status).toBe(64);
+      expect(stderr.join("")).toContain("invalid input file");
+    } finally {
+      await Promise.all([fixtureValue.cleanup(), rm(aliasRoot, { recursive: true, force: true })]);
+    }
   });
 });

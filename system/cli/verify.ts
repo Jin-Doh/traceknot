@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, stat, lstat } from "node:fs/promises";
+import { mkdir, lstat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { Artifact, Producer } from "../core/qa-core";
 import {
   buildVerificationPlan,
@@ -19,6 +19,7 @@ import { captureGitSnapshotIdentity } from "../runtime/git-snapshot";
 import { LocalArtifactStore } from "../runtime/local-artifact-store";
 import { LocalShellCollector, type ShellArtifactDeclaration } from "../runtime/local-shell-collector";
 import { FileVerificationRepository } from "../runtime/file-repository";
+import { closeSecureRoot, openSecureRoot, readSecureRegularFile } from "../runtime/local-artifact-store";
 
 export const VERIFY_EXIT_CODES = Object.freeze({ PASS: 0, FAIL: 1, BLOCKED: 2, INCOMPLETE: 3, USAGE: 64, INTERNAL: 70 });
 const MAX_INPUT_BYTES = 4 * 1024 * 1024;
@@ -69,16 +70,19 @@ function assertPlain(value: unknown, path = "$"): void {
   }
 }
 async function readBoundedJson(path: string): Promise<unknown> {
+  let root;
   try {
-    const info = await lstat(path);
-    if (!info.isFile() || info.isSymbolicLink()) throw new Error(`invalid input file (not a regular file): ${path}`);
-    if (info.size > MAX_INPUT_BYTES) throw new Error(`invalid input file (exceeds ${MAX_INPUT_BYTES} bytes): ${path}`);
-    const value = JSON.parse(await readFile(path, "utf8")) as unknown;
+    const absolute = resolve(path);
+    root = await openSecureRoot(dirname(absolute));
+    const bytes = await readSecureRegularFile(root.fd, basename(absolute), MAX_INPUT_BYTES);
+    const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
     assertPlain(value);
     return value;
   } catch (error) {
     if (error instanceof Error && /^(invalid input file|unsafe input key)/.test(error.message)) throw error;
     throw new Error(`invalid input file ${path}: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    if (root) await closeSecureRoot(root);
   }
 }
 function parseArgs(argv: readonly string[]): CliOptions {
