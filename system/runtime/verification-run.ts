@@ -32,7 +32,7 @@ export interface ArtifactStore {readonly storeVerificationResultArtifact?:(a:Can
 export interface CapabilityProvider {readonly hasCapability?:(s:string)=>MaybePromise<boolean>;readonly has?:(s:string)=>MaybePromise<boolean>;readonly getCapabilities?:()=>MaybePromise<readonly string[]>;readonly capabilities?:readonly string[]};
 export interface BrowserExecutor {readonly atomicSameKeyIdempotency?:true;readonly executeBrowser?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>;readonly execute?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>};
 export interface ApprovalProvider {readonly requestApproval?:(i:ApprovalRequest)=>MaybePromise<ApprovalResult|undefined>;readonly approve?:(i:ApprovalRequest)=>MaybePromise<ApprovalResult|undefined>};
-export interface UsageRecorder {readonly recordUsage?:(e:UsageEvent)=>MaybePromise<void>;readonly record?:(e:UsageEvent)=>MaybePromise<void>};
+export interface UsageRecorder {readonly atomicSameKeyIdempotency?:true;readonly recordUsage?:(e:UsageEvent)=>MaybePromise<void>;readonly record?:(e:UsageEvent)=>MaybePromise<void>};
 export type DispatchClaim=Readonly<{schemaVersion:"verification-dispatch-claim/v1";claimKey:string;runId:string;requestId:string;rootIdentity:string;snapshotId:string;planDigest:string;obligationId:string;idempotencyKey:string;ownerId:string;leaseGeneration:number;leaseExpiresAt:string}>;
 export type DispatchClaimResult=Readonly<{claimed:boolean;status:"CLAIMED"|"COMPLETED";claim:DispatchClaim;outputStored:boolean;completion?:VerificationExecutionCompletionEnvelope}>;
 export type RepositoryTransition=Readonly<{runId:string;expectedRevision?:number;stage?:StageName;document?:StageDocument;run:CanonicalRunState}>;
@@ -560,6 +560,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
   const usageOutbox: UsageOutboxEntry[] = [...(input.checkpoint?.usageOutbox ?? [])];
   const usageEnabled = usageRecorderConfigured(input.dependencies.usageRecorder);
   if (usageOutbox.length > 0 && !usageEnabled) throw Error("usage recorder is required to flush pending usage outbox");
+  if (usageEnabled && input.dependencies.usageRecorder?.atomicSameKeyIdempotency !== true) throw Error("usage recorder must declare atomic same-key idempotency");
   const completed = new Set(claims.map(item => item.obligationId));
   const persistCheckpoint = async (): Promise<void> => {
     const checkpoint: ExecutionDocument = {
@@ -588,6 +589,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
   };
   await flushPendingUsage();
   for (const obligation of [...input.plan.obligations].sort((a, b) => a.id.localeCompare(b.id))) {
+    let completionAuthority: ExecutionAuthority | undefined;
     if (completed.has(obligation.id)) continue;
     const requestDigest = canonicalRequestDigest(input.request);
     const planDigest = canonicalPlanDigest(input.plan);
@@ -644,6 +646,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
           ? undefined
           : await createCompletionEnvelope(request, lease.claim, completionOutput, startedAt, finishedAt, input.dependencies);
         if (completion) {
+          completionAuthority = completion.authority;
           await completeExecutionDispatch(input.dependencies.repository, lease.claim, completion, clockNow(input.dependencies.now));
           if (precheckStoreException) throw precheckStoreError;
         } else {
@@ -652,6 +655,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
         }
       } else {
         if (!lease.completion || !await verifyExecutionAuthority(input.dependencies.executionAuthority, lease.completion.authority, lease.completion.authority.binding)) throw Error("invalid persisted dispatch completion authority");
+        completionAuthority = lease.completion.authority;
         output = lease.completion.output;
         startedAt = lease.completion.authority.binding.execution.startedAt;
         finishedAt = lease.completion.authority.binding.execution.finishedAt;
@@ -713,20 +717,21 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     let result: VerificationEvidence["result"] = { verdict, summary, ...(verdict === "PASS" ? { passed: 1 } : verdict === "FAIL" ? { failed: 1 } : {}), artifacts: uniq(artifacts.map(item => item.digest)) };
     let item: VerificationEvidence = { schemaVersion: "verification-evidence/v1", evidenceId: `evidence:${obligation.id}`, requestId: observationRequestId, snapshotId: observationSnapshotId, obligationId: obligation.id, producer, execution, result, observedAt: finishedAt };
     const binding = authorityBindingFor(input.runId, requestDigest, planDigest, obligationDigest, input.request.project.rootIdentity, observation, item);
-    const candidate = await issueExecutionAuthority(input.dependencies.executionAuthority, binding);
+    const candidate = completionAuthority ?? await issueExecutionAuthority(input.dependencies.executionAuthority, binding);
     if (!candidate || !validAuthority(candidate)) throw Error("execution authority issue failed");
     let verifiedBinding: VerificationExecutionAuthorityBinding;
     if (structurallyEqual(candidate.binding, binding)) {
       if (!await verifyExecutionAuthority(input.dependencies.executionAuthority, candidate, binding)) throw Error("execution authority verification failed");
       verifiedBinding = candidate.binding;
     } else {
-      if (!authorityBindingReplayMatches(input.runId, request, binding, candidate.binding) || !await verifyExecutionAuthority(input.dependencies.executionAuthority, candidate, candidate.binding)) throw Error("execution authority replay verification failed");
+      if (!authorityBindingReplayMatches(input.runId, request, binding, candidate.binding)) throw Error("execution authority replay verification failed");
       const replayCanonical = canonicalEvidenceFromAuthority(candidate.binding, artifacts);
       if (!replayCanonical) throw Error("execution authority binding is not canonical");
       const replayObservation = { ...observation, producer: replayCanonical.producer, execution: replayCanonical.execution, artifacts: replayCanonical.artifacts };
       const replayItem = { ...item, producer: replayCanonical.producer, execution: replayCanonical.execution, result: replayCanonical.result, observedAt: replayCanonical.observedAt };
       const expectedBinding = authorityBindingFor(input.runId, requestDigest, planDigest, obligationDigest, input.request.project.rootIdentity, replayObservation, replayItem);
       if (!structurallyEqual(candidate.binding, expectedBinding)) throw Error("execution authority replay binding is not canonical");
+      if (!await verifyExecutionAuthority(input.dependencies.executionAuthority, candidate, expectedBinding)) throw Error("execution authority replay verification failed");
       verifiedBinding = candidate.binding;
     }
     const canonical = canonicalEvidenceFromAuthority(verifiedBinding, artifacts);

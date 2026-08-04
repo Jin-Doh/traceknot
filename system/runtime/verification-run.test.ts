@@ -188,7 +188,7 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
     store: async (artifact: Artifact) => options.missingArtifactStorage ? { type: "unexpected-artifact", digest: "c".repeat(64) } : artifact,
   };
   const approvalProvider = { requestApproval: async () => ({ approved: true, approvalId: "approval-001" }) } as unknown as ApprovalProvider;
-  const usageRecorder = { recordUsage: async () => undefined, record: async () => undefined } as unknown as UsageRecorder;
+  const usageRecorder = { atomicSameKeyIdempotency: true as const, recordUsage: async () => undefined, record: async () => undefined } as unknown as UsageRecorder;
   const dependencies = {
     executionAuthority,
     freshnessAuthority,
@@ -247,6 +247,26 @@ function makeReplayAuthority(
     },
   };
   return { dependencies: { ...fakes.dependencies, executionAuthority }, issued, signed };
+}
+function makeOneShotExecutionAuthority(): { port: VerificationRunDependencies["executionAuthority"]; issued: ExecutionAuthority[] } {
+  const authorities = new Map<string, ExecutionAuthority>();
+  const issuedKeys = new Set<string>();
+  const issued: ExecutionAuthority[] = [];
+  const port = {
+    issueExecutionAuthority: async (binding: ExecutionAuthority["binding"]): Promise<ExecutionAuthority> => {
+      if (issuedKeys.has(binding.idempotencyKey)) throw new Error("one-shot authority issuer called twice");
+      const authority: ExecutionAuthority = { schemaVersion: "verification-execution-authority/v1", authorityId: `authority:${binding.obligationId}`, issuer: "one-shot-fixture", binding: structuredClone(binding) };
+      issuedKeys.add(binding.idempotencyKey);
+      authorities.set(binding.idempotencyKey, authority);
+      issued.push(authority);
+      return authority;
+    },
+    verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]): Promise<boolean> => {
+      const stored = authorities.get(binding.idempotencyKey);
+      return Boolean(stored && JSON.stringify(stored) === JSON.stringify(authority) && JSON.stringify(stored.binding) === JSON.stringify(binding));
+    },
+  };
+  return { port, issued };
 }
 test.each(["uppercase", "reordered"] as const)("rejects a %s noncanonical authority replay before persistence without mutating the signed binding", async mode => {
   const fakes = makeDependencies();
@@ -507,6 +527,43 @@ describe("verification run orchestration", () => {
     expect(fakes.executorCalls).toBeGreaterThan(0);
     expect(fakes.repository.stageWrites.slice(0, 4)).toEqual(["request", "basis", "discovery", "plan"]);
     expect(fakes.repository.stageWrites.filter(stage => stage === "execution").length).toBeGreaterThanOrEqual(2);
+  });
+  test("uses each completion authority once on normal completion", async () => {
+    const fakes = makeDependencies();
+    const oneShot = makeOneShotExecutionAuthority();
+    const result = await runOnce({ ...fakes.dependencies, executionAuthority: oneShot.port }, "authority-one-shot-normal");
+    expect(result.run.state).toBe("TERMINAL");
+    expect(oneShot.issued).toHaveLength(result.documents.execution?.authorities.length ?? 0);
+    expect(new Set(oneShot.issued.map(authority => authority.binding.idempotencyKey)).size).toBe(oneShot.issued.length);
+  });
+
+  test("reuses the completion authority after a crash before execution checkpoint persistence", async () => {
+    const fakes = makeDependencies();
+    fakes.repository.failNextStage = "execution";
+    const oneShot = makeOneShotExecutionAuthority();
+    const dependencies = { ...fakes.dependencies, executionAuthority: oneShot.port };
+    const runId = "authority-one-shot-crash-resume";
+    await expect(runOnce(dependencies, runId)).rejects.toThrow("simulated saveStage crash");
+    const issuedBeforeResume = oneShot.issued.length;
+    const executorCalls = fakes.executorCalls;
+    const resumed = await runOnce(dependencies, runId);
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(oneShot.issued.length).toBe(issuedBeforeResume + 1);
+    expect(fakes.executorCalls).toBe(executorCalls + 1);
+  });
+
+  test.each([["absent", undefined], ["false", false]] as const)("rejects a configured usage recorder with %s idempotency declaration before recording", async (_name, declaration) => {
+    const fakes = makeDependencies();
+    let calls = 0;
+    const usageRecorder = declaration === undefined
+      ? { recordUsage: async () => { calls++; } }
+      : { atomicSameKeyIdempotency: declaration, recordUsage: async () => { calls++; } };
+    const dependencies = { ...fakes.dependencies, usageRecorder: usageRecorder as unknown as UsageRecorder };
+    const runId = `usage-recorder-contract-${_name}`;
+    await expect(runOnce(dependencies, runId)).rejects.toThrow("usage recorder must declare atomic same-key idempotency");
+    expect(calls).toBe(0);
+    expect(fakes.executorCalls).toBe(0);
+    expect(fakes.repository.stageWrites).not.toContain("execution");
   });
 
   test("resumes from a persisted intermediate state without repeating completed stages", async () => {
@@ -1041,7 +1098,7 @@ describe("verification run orchestration", () => {
     let artifactCalls = 0;
     let usageCalls = 0;
     const artifactStore: ArtifactStore = { storeVerificationResultArtifact: async artifact => { artifactCalls++; return artifact; } };
-    const usageRecorder: UsageRecorder = { recordUsage: async () => { usageCalls++; } };
+    const usageRecorder: UsageRecorder = { atomicSameKeyIdempotency: true, recordUsage: async () => { usageCalls++; } };
     const dependencies = { ...fakes.dependencies, artifactStore, usageRecorder };
     await runOnce(dependencies);
     const changed = { ...makeRequest(), change: { summary: "changed request B", paths: ["other/path.ts"] }, testBasis: [{ id: "basis-B", kind: "acceptance-criterion" as const, origin: "explicit" as const, text: "A different test basis." }] } satisfies VerificationRequest;
@@ -1572,6 +1629,7 @@ describe("verification run orchestration", () => {
     let executionUsageCalls = 0;
     let throwOnce = true;
     const usageRecorder: UsageRecorder = {
+      atomicSameKeyIdempotency: true,
       recordUsage: async event => {
         if (event.event === "execution") {
           executionUsageCalls++;
@@ -1595,9 +1653,15 @@ describe("verification run orchestration", () => {
     const fakes = makeDependencies();
     const request = { ...makeRequest(), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
     const events: UsageEvent[] = [];
+    const committed = new Map<string, UsageEvent>();
     let throwOnce = true;
     const usageRecorder: UsageRecorder = {
+      atomicSameKeyIdempotency: true,
       recordUsage: async event => {
+        if (!event.eventKey) throw new Error("usage event missing key");
+        const previous = committed.get(event.eventKey);
+        if (previous && JSON.stringify(previous) !== JSON.stringify(event)) throw new Error("usage event key payload changed");
+        committed.set(event.eventKey, event);
         events.push(event);
         if (event.event === "execution" && throwOnce) { throwOnce = false; throw new Error("usage recorder failed once"); }
       },
@@ -1620,6 +1684,7 @@ describe("verification run orchestration", () => {
     expect(executionEvents[0]?.eventKey).toBe(executionEvents[1]?.eventKey);
     expect(executionEvents[0]?.eventKey).toBe(pendingExecution?.eventKey);
     expect(executionEvents[0]?.executionKey).toBe(executionEvents[1]?.executionKey);
+    expect(committed.size).toBe(2);
   });
 
   test("keeps a pending usage outbox non-terminal without a recorder and flushes it after recorder restoration", async () => {
@@ -1629,6 +1694,7 @@ describe("verification run orchestration", () => {
     const initialEvents: UsageEvent[] = [];
     let failOnce = true;
     const failingRecorder: UsageRecorder = {
+      atomicSameKeyIdempotency: true,
       recordUsage: async event => {
         initialEvents.push(event);
         if (event.event === "execution" && failOnce) { failOnce = false; throw new Error("usage recorder failed before resume"); }
@@ -1646,7 +1712,7 @@ describe("verification run orchestration", () => {
     expect(fakes.executorCalls).toBe(executorCalls);
 
     const restoredEvents: UsageEvent[] = [];
-    const restoredDependencies = { ...omittedDependencies, usageRecorder: { recordUsage: async (event: UsageEvent) => { restoredEvents.push(event); } } satisfies UsageRecorder };
+    const restoredDependencies = { ...omittedDependencies, usageRecorder: { atomicSameKeyIdempotency: true, recordUsage: async (event: UsageEvent) => { restoredEvents.push(event); } } satisfies UsageRecorder };
     const resumed = await runVerification({ runId, dependencies: restoredDependencies });
     expect(resumed.run.state).toBe("TERMINAL");
     expect(fakes.executorCalls).toBe(executorCalls);
@@ -1662,6 +1728,7 @@ describe("verification run orchestration", () => {
     const runId = "usage-outbox-run-binding";
     let failOnce = true;
     const usageRecorder: UsageRecorder = {
+      atomicSameKeyIdempotency: true,
       recordUsage: async event => {
         if (event.event === "execution" && failOnce) { failOnce = false; throw new Error("usage recorder failed for tamper fixture"); }
       },
