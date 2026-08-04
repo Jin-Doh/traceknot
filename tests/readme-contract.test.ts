@@ -159,6 +159,13 @@ describe("README localization section contract", () => {
       .toThrow("missing documentation links");
   });
 
+  test("normalizes repository-relative documentation paths for translation parity", () => {
+    const canonical = "[Architecture](./docs/architecture.md)";
+    const translated = "[Trust](docs/trust-model.md)";
+    expect(() => checkReadmeDocumentationLinks("README.md", canonical, "README.zh.md", translated))
+      .toThrow("docs/architecture.md");
+  });
+
   test("requires operational literals in their marked parsed command block", () => {
     const content = "<!-- required --><!-- operational-command:updater -->\n```sh\necho unrelated\n```";
     expect(() => checkOperationalCommandBlocks("docs/automatic-updates.md", content, { updater: ["required"] }))

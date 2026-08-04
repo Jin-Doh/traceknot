@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, isAbsolute, posix, relative, resolve } from "node:path";
 import { toText } from "hast-util-to-text";
 import type { Element, Root as HastRoot } from "hast";
 import type { Code, Html, Parents, Root as MdastRoot } from "mdast";
@@ -313,7 +313,7 @@ function normalizedDocumentationTargets(content: string): Set<string> {
   const targets = new Set<string>();
   for (const rawTarget of visibleAnchorTargets(content)) {
     if (isExternalTarget(rawTarget)) continue;
-    const target = rawTarget.split("#", 1)[0].split("?", 1)[0].replace(/^<|>$/g, "");
+    const target = posix.normalize(decodeURIComponent(rawTarget.split("#", 1)[0].split("?", 1)[0].replace(/^<|>$/g, "")));
     if (target.startsWith("docs/") || target.startsWith("skill/") || /^BRAND(?:\.[a-z-]+)?\.md$/i.test(target)) {
       targets.add(target);
     }

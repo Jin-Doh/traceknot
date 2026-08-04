@@ -14,6 +14,7 @@ export interface Rule {
   description: string;
   score: number;
   pattern: RegExp;
+  accept?: (source: string, match: RegExpExecArray) => boolean;
 }
 
 export interface Finding {
@@ -41,6 +42,11 @@ interface ExceptionEntry {
 interface ExceptionFile {
   schemaVersion: "traceknot.prompt-risk-exceptions/v1";
   exceptions: ExceptionEntry[];
+}
+
+function acceptChineseIdentityMatch(source: string, match: RegExpExecArray): boolean {
+  const prefix = source.slice(0, match.index).split(/[。；，！？.,;!?\n]/u).at(-1)?.trimStart() ?? "";
+  return !/^(?:如果|假如|倘若|若|当|请问)/u.test(prefix);
 }
 
 export const RULES: readonly Rule[] = [
@@ -96,25 +102,26 @@ export const RULES: readonly Rule[] = [
     id: "PI009",
     description: "Simplified Chinese instruction hierarchy override",
     score: 5,
-    pattern: /(?:忽略|无视|覆盖|绕过)[^。；，！？\n]{0,24}(?:之前|先前|系统|开发者|安全|指令|规则|策略|防护)/,
+    pattern: /(?:忽略|无视|覆盖|绕过)[^。；，！？.,;!?\n]{0,24}(?:之前|先前|系统|开发者|安全|指令|规则|策略|防护)/,
   },
   {
     id: "PI010",
     description: "Simplified Chinese credential or hidden-context exfiltration request",
     score: 7,
-    pattern: /(?:(?:显示|打印|泄露|发送|上传|导出)[^。；，！？\n]{0,32}(?:秘密|令牌|凭据|私钥|API\s*密钥|系统提示|开发者消息|环境变量|\.env)|(?:把|将)[^。；，！？\n]{0,12}(?:秘密|令牌|凭据|私钥|API\s*密钥|系统提示|开发者消息|环境变量|\.env)[^。；，！？\n]{0,32}(?:显示|打印|泄露|发送|上传|导出))/i,
+    pattern: /(?:(?:显示|打印|泄露|发送|上传|导出)[^。；，！？.,;!?\n]{0,32}(?:秘密|令牌|凭据|私钥|API\s*密钥|系统提示|开发者消息|环境变量|\.env)|(?:把|将)[^。；，！？.,;!?\n]{0,12}(?:秘密|令牌|凭据|私钥|API\s*密钥|系统提示|开发者消息|环境变量|\.env)[^。；，！？.,;!?\n]{0,32}(?:显示|打印|泄露|发送|上传|导出))/i,
   },
   {
     id: "PI011",
     description: "Simplified Chinese safety control suppression",
     score: 6,
-    pattern: /(?:禁用|关闭|移除|绕过|规避)[^。；，！？\n]{0,24}(?:安全|验证|校验|扫描器|过滤器|沙箱|权限|审批|审计|日志)/,
+    pattern: /(?:禁用|关闭|移除|绕过|规避)[^。；，！？.,;!?\n]{0,24}(?:安全|验证|校验|扫描器|过滤器|沙箱|权限|审批|审计|日志)/,
   },
   {
     id: "PI012",
     description: "Simplified Chinese privileged role or message impersonation",
     score: 6,
-    pattern: /(?:(?:^|[。；，！？!?\n])\s*(?!(?:如果|假如|倘若|若|当|请问)[^。；，！？!?\n]{0,12})(?:现在|从现在起)?(?:你|您)(?:现在|从现在起|将)?是(?:一(?:名|个|位))?(?:系统(?:管理员|开发者)?|开发者|管理员|超级用户|root)(?=$|[\s，。；！!、]|并(?:且)?|而|然后|随后|就|将|会|要|已(?:经)?|了|着|过|请)|(?:假装|扮演|伪装|冒充)(?:成|为)?(?:系统(?:管理员|开发者|身份|消息|指令|角色)|开发者|管理员|超级用户|root)|以(?:系统(?:管理员|开发者)?|开发者|管理员|超级用户|root)(?:的)?身份)/iu,
+    pattern: /(?:(?:现在|从现在起)?(?:你|您)(?:现在|从现在起|将)?是(?:一(?:名|个|位))?(?:系统(?:管理员|开发者)?|开发者|管理员|超级用户|root)(?=$|[\s，。；！!、]|并(?:且)?|而|然后|随后|就|将|会|要|已(?:经)?|了|着|过|请)|(?:假装|扮演|伪装|冒充)(?:成|为)?(?:系统(?:管理员|开发者|身份|消息|指令|角色)|开发者|管理员|超级用户|root)|以(?:系统(?:管理员|开发者)?|开发者|管理员|超级用户|root)(?:的)?身份)/iu,
+    accept: acceptChineseIdentityMatch,
   },
 ];
 
@@ -168,6 +175,12 @@ function createFinding(path: string, line: number, source: string, rule: Rule): 
   };
 }
 
+function acceptedMatches(rule: Rule, source: string): RegExpExecArray[] {
+  const flags = rule.pattern.flags.includes("g") ? rule.pattern.flags : `${rule.pattern.flags}g`;
+  return [...source.matchAll(new RegExp(rule.pattern.source, flags))]
+    .filter((match) => rule.accept?.(source, match) ?? true);
+}
+
 function normalizedSoftWrap(value: string): { text: string; sourceOffsets: number[] } {
   let text = "";
   const sourceOffsets: number[] = [];
@@ -196,8 +209,7 @@ function softWrappedMarkdownFindings(path: string, text: string): Finding[] {
     if (!source.includes("\n")) return;
     const normalized = normalizedSoftWrap(source);
     for (const rule of RULES) {
-      const pattern = new RegExp(rule.pattern.source, rule.pattern.flags.includes("g") ? rule.pattern.flags : `${rule.pattern.flags}g`);
-      for (const match of normalized.text.matchAll(pattern)) {
+      for (const match of acceptedMatches(rule, normalized.text)) {
         const matchStart = match.index;
         const matchEnd = matchStart + match[0].length;
         const originalStart = normalized.sourceOffsets[matchStart];
@@ -216,8 +228,7 @@ export function analyzeText(path: string, text: string): Finding[] {
   const lines = text.split(/\r?\n/);
   lines.forEach((line, index) => {
     for (const rule of RULES) {
-      rule.pattern.lastIndex = 0;
-      if (!rule.pattern.test(line)) continue;
+      if (acceptedMatches(rule, line).length === 0) continue;
       findings.push(createFinding(path, index + 1, line, rule));
     }
   });
