@@ -284,6 +284,18 @@ test("native temporary cleanup failure rejects publication and permits determini
     symbols.unlinkat = originalUnlink;
     await store.store({ type: "seam", digest: artifactDigest, bytes } as never, request);
     expect(await store.readArtifact(artifactDigest)).toEqual(bytes);
+
+    const committedBytes = Buffer.from("link committed before cleanup failure");
+    const committedDigest = digest(committedBytes);
+    symbols.unlinkat = ((_dirfd, _path, _flags) => {
+      symbols.openat(-1, Buffer.from(".\0"), 0, 0);
+      return -1;
+    }) as Symbols["unlinkat"];
+    await expect(store.store({ type: "seam", digest: committedDigest, bytes: committedBytes } as never, request)).rejects.toBeInstanceOf(ArtifactPathError);
+    expect(await store.readArtifact(committedDigest)).toEqual(committedBytes);
+    symbols.unlinkat = originalUnlink;
+    await store.store({ type: "seam", digest: committedDigest, bytes: committedBytes } as never, request);
+    expect(await store.readArtifact(committedDigest)).toEqual(committedBytes);
   } finally {
     symbols.fsync = originalFsync;
     symbols.unlinkat = originalUnlink;

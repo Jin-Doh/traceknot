@@ -199,7 +199,11 @@ function openLock(rootFd: number): number {
   check(n.symbols.fchmod(fd, 0o600), "artifact lock permissions");
   return fd;
 }
-function withLock<T>(lockFd: number, operation: () => T): T {
+function withLock<T>(
+  lockFd: number,
+  operation: () => T,
+  ...promiseGuard: T extends PromiseLike<unknown> ? [never] : []
+): T {
   const n = native();
   check(n.symbols.flock(lockFd, LOCK_EX), "artifact lock acquire");
   try {
