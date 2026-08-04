@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "bun:test";
@@ -92,6 +92,90 @@ test("Git snapshot root identity follows the canonical repository path", async (
   }
 });
 
+test("Git snapshot ignores hostile repository and config environment overrides", async () => {
+  const root = await repository();
+  const alternate = await repository();
+  const hostile: Record<string, string> = {
+    GIT_DIR: join(alternate, ".git"),
+    GIT_WORK_TREE: alternate,
+    GIT_INDEX_FILE: join(alternate, ".git", "index"),
+    GIT_OBJECT_DIRECTORY: join(alternate, ".git", "objects"),
+    GIT_ALTERNATE_OBJECT_DIRECTORIES: join(alternate, ".git", "objects"),
+    GIT_COMMON_DIR: join(alternate, ".git"),
+    GIT_CONFIG_GLOBAL: join(alternate, "hostile.gitconfig"),
+    GIT_CONFIG_SYSTEM: join(alternate, "hostile-system.gitconfig"),
+    GIT_CONFIG_NOSYSTEM: "0",
+    GIT_CONFIG_PARAMETERS: "'core.repositoryformatversion'='99'",
+    GIT_SSH_COMMAND: "/bin/false",
+    GIT_ASKPASS: "/bin/false",
+    GIT_TERMINAL_PROMPT: "1",
+  };
+  const saved = new Map<string, string | undefined>();
+  try {
+    const baseline = await captureGitSnapshotIdentity(root);
+    for (const [key, value] of Object.entries(hostile)) {
+      saved.set(key, process.env[key]);
+      process.env[key] = value;
+    }
+    const poisoned = await captureGitSnapshotIdentity(root);
+    expect(poisoned.snapshotId).toBe(baseline.snapshotId);
+    expect(poisoned.canonicalState).toBe(baseline.canonicalState);
+  } finally {
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await cleanup(root);
+    await cleanup(alternate);
+  }
+});
+
+test("Git snapshot captures symlink identity without following an outside target", async () => {
+  const root = await repository();
+  const outside = join(await temporaryDirectory(), "outside.bin");
+  try {
+    await writeFile(outside, Buffer.from("outside secret"));
+    await unlink(join(root, "tracked.bin"));
+    await symlink(outside, join(root, "tracked.bin"));
+    const snapshot = await captureGitSnapshotIdentity(root);
+    const trackedPath = Buffer.from("tracked.bin").toString("base64");
+    const entry = snapshot.worktree.find(item => item.path === trackedPath);
+    expect(entry?.kind).toBe("symlink");
+    expect(entry?.digest).toBe(digest(Buffer.from(outside)));
+    expect(entry?.digest).not.toBe(digest(Buffer.from("outside secret")));
+  } finally {
+    await cleanup(root);
+    await cleanup(outside);
+    await cleanup(outside.slice(0, outside.lastIndexOf("/")));
+  }
+});
+
+test("Git snapshot retries or fails closed while a tracked file is concurrently rewritten", async () => {
+  const root = await repository();
+  const tracked = join(root, "tracked.bin");
+  const first = Buffer.alloc(4 * 1024 * 1024, 0x11);
+  const second = Buffer.alloc(4 * 1024 * 1024, 0x22);
+  try {
+    await writeFile(tracked, first);
+    const mutation = (async () => {
+      for (let index = 0; index < 12; index += 1) {
+        await writeFile(tracked, index % 2 === 0 ? second : first);
+        await Bun.sleep(0);
+      }
+    })();
+    const result = await Promise.allSettled([captureGitSnapshotIdentity(root), mutation]);
+    expect(result[1]!.status).toBe("fulfilled");
+    if (result[0]!.status === "fulfilled") {
+      const entry = result[0]!.value.worktree.find(item => item.path === Buffer.from("tracked.bin").toString("base64"));
+      expect([digest(first), digest(second)]).toContain(entry?.digest ?? "");
+    } else {
+      expect(result[0]!.reason).toBeInstanceOf(Error);
+    }
+  } finally {
+    await cleanup(root);
+  }
+});
+
 test("local artifact store verifies bytes, publishes atomically, and is idempotent", async () => {
   const root = await temporaryDirectory();
   const source = join(root, "source.bin");
@@ -134,6 +218,36 @@ test("local artifact store fails closed on mismatch, collision, and symlink targ
     const sourceLink = join(root, "source-link");
     await symlink(source, sourceLink);
     await expect(store.storeArtifact({ type: "result", digest: artifactDigest, path: sourceLink }, request)).rejects.toBeInstanceOf(ArtifactPathError);
+  } finally {
+    await cleanup(root);
+  }
+});
+
+test("local artifact store fails closed when its configured root is replaced", async () => {
+  const root = await temporaryDirectory();
+  const source = join(root, "source.bin");
+  const artifactRoot = join(root, "artifacts");
+  const preservedRoot = join(root, "artifacts-preserved");
+  const outside = join(root, "outside");
+  const bytes = Buffer.from("root replacement");
+  const artifactDigest = digest(bytes);
+  try {
+    await writeFile(source, bytes);
+    await mkdir(outside);
+    const store = new LocalArtifactStore(artifactRoot);
+    await store.storeArtifact({ type: "result", digest: artifactDigest, path: source }, request);
+
+    await rename(artifactRoot, preservedRoot);
+    await mkdir(artifactRoot);
+    const newBytes = Buffer.from("new bytes");
+    await expect(store.storeArtifact({ type: "result", digest: digest(newBytes), bytes: newBytes } as never, request)).rejects.toBeInstanceOf(ArtifactPathError);
+    expect(await readdir(artifactRoot)).toEqual([]);
+
+    await rm(artifactRoot, { recursive: true, force: true });
+    await symlink(outside, artifactRoot, "dir");
+    await expect(store.readArtifact(artifactDigest)).rejects.toBeInstanceOf(ArtifactPathError);
+    await expect(store.storeArtifact({ type: "result", digest: artifactDigest, path: source }, request)).rejects.toBeInstanceOf(ArtifactPathError);
+    expect(await readdir(outside)).toEqual([]);
   } finally {
     await cleanup(root);
   }

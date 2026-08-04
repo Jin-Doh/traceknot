@@ -57,6 +57,10 @@ function isInside(rootDir: string, candidate: string): boolean {
   return path === "" || (path !== ".." && !path.startsWith(`..${"/"}`) && !isAbsolute(path));
 }
 
+function rootFingerprint(stat: Awaited<ReturnType<typeof lstat>>): string {
+  return `${String(stat.dev)}:${String(stat.ino)}`;
+}
+
 async function readSourceBytes(artifact: ArtifactLike): Promise<Uint8Array> {
   const embedded = asBytes(artifact.bytes) ?? asBytes(artifact.data) ?? (typeof artifact.content === "string" ? new TextEncoder().encode(artifact.content) : asBytes(artifact.content));
   if (embedded) return embedded;
@@ -92,7 +96,7 @@ async function closeQuietly(handle: Awaited<ReturnType<typeof open>> | undefined
 export class LocalArtifactStore implements ArtifactStore {
   readonly rootDir: string;
   readonly fsync: boolean;
-  private initializedRoot?: string;
+  private rootFingerprint?: string;
 
   constructor(rootDirOrOptions: string | LocalArtifactStoreOptions) {
     const rootDir = typeof rootDirOrOptions === "string" ? rootDirOrOptions : rootDirOrOptions.rootDir;
@@ -102,13 +106,35 @@ export class LocalArtifactStore implements ArtifactStore {
   }
 
   private async ensureRoot(): Promise<string> {
-    if (this.initializedRoot) return this.initializedRoot;
-    await mkdir(this.rootDir, { recursive: true, mode: 0o700 });
+    let stat;
+    try {
+      stat = await lstat(this.rootDir);
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT")) {
+        throw new ArtifactPathError(`artifact root cannot be inspected: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      try {
+        await mkdir(this.rootDir, { recursive: true, mode: 0o700 });
+        stat = await lstat(this.rootDir);
+      } catch (mkdirError) {
+        throw new ArtifactPathError(`artifact root cannot be created: ${mkdirError instanceof Error ? mkdirError.message : String(mkdirError)}`);
+      }
+    }
+    if (stat.isSymbolicLink() || !stat.isDirectory()) throw new ArtifactPathError("artifact root must be a directory");
     const canonicalRoot = await realpath(this.rootDir);
-    const stat = await lstat(canonicalRoot);
-    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new ArtifactPathError("artifact root must be a directory");
-    this.initializedRoot = canonicalRoot;
+    const canonicalStat = await lstat(canonicalRoot);
+    if (canonicalStat.isSymbolicLink() || !canonicalStat.isDirectory() || rootFingerprint(stat) !== rootFingerprint(canonicalStat)) {
+      throw new ArtifactPathError("artifact root changed during validation");
+    }
+    const fingerprint = rootFingerprint(canonicalStat);
+    if (this.rootFingerprint && this.rootFingerprint !== fingerprint) throw new ArtifactPathError("artifact root was replaced");
+    this.rootFingerprint ??= fingerprint;
     return canonicalRoot;
+  }
+
+  private async assertTarget(root: string, target: string): Promise<void> {
+    const liveRoot = await this.ensureRoot();
+    if (liveRoot !== root || !isInside(root, target)) throw new ArtifactPathError("artifact path escapes configured root");
   }
 
   private async targetForDigest(digest: string): Promise<{ root: string; target: string }> {
@@ -119,27 +145,56 @@ export class LocalArtifactStore implements ArtifactStore {
     return { root, target };
   }
 
-  private async existingTargetBytes(target: string, digest: string): Promise<Uint8Array | undefined> {
+  private async existingTargetBytes(root: string, target: string, digest: string): Promise<Uint8Array | undefined> {
+    await this.assertTarget(root, target);
     let stat;
     try {
       stat = await lstat(target);
     } catch (error) {
-      if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") {
+        await this.assertTarget(root, target);
+        return undefined;
+      }
       throw new ArtifactPathError(`artifact target cannot be inspected: ${error instanceof Error ? error.message : String(error)}`);
     }
     if (stat.isSymbolicLink() || !stat.isFile()) throw new ArtifactCollisionError("content-addressed target is not a regular file");
-    const bytes = await readFile(target);
-    if (sha256(bytes) !== digest) throw new ArtifactCollisionError("content-addressed target has a digest collision or was modified");
-    return bytes;
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      handle = await open(target, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+      const opened = await handle.stat();
+      if (!opened.isFile() || opened.isSymbolicLink()) throw new ArtifactCollisionError("content-addressed target is not a regular file");
+      const bytes = await handle.readFile();
+      if (sha256(bytes) !== digest) throw new ArtifactCollisionError("content-addressed target has a digest collision or was modified");
+      await this.assertTarget(root, target);
+      return bytes;
+    } catch (error) {
+      if (error instanceof ArtifactStoreError) throw error;
+      if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ELOOP") {
+        throw new ArtifactCollisionError("content-addressed target is not a regular file");
+      }
+      throw new ArtifactPathError(`artifact target cannot be read: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      await closeQuietly(handle);
+    }
   }
 
-  private async readVerifiedTarget(target: string, digest: string): Promise<Uint8Array> {
-    const bytes = await this.existingTargetBytes(target, digest);
+  private async readVerifiedTarget(root: string, target: string, digest: string): Promise<Uint8Array> {
+    const bytes = await this.existingTargetBytes(root, target, digest);
     if (!bytes) throw new ArtifactPathError("stored artifact does not exist");
     return bytes;
   }
 
+  private async cleanupTemporary(root: string, temporary: string): Promise<void> {
+    try {
+      await this.ensureRoot();
+      await unlink(temporary);
+    } catch {
+      // Never follow a replaced root during cleanup; an orphaned temp is safer than an outside unlink.
+    }
+  }
+
   private async publish(root: string, target: string, digest: string, bytes: Uint8Array): Promise<void> {
+    await this.assertTarget(root, target);
     const temporary = join(root, `.tmp-${digest}-${globalThis.crypto.randomUUID()}`);
     let handle: Awaited<ReturnType<typeof open>> | undefined;
     let published = false;
@@ -153,6 +208,7 @@ export class LocalArtifactStore implements ArtifactStore {
       if (this.fsync) await handle.sync();
       await handle.close();
       handle = undefined;
+      await this.assertTarget(root, target);
       try {
         await link(temporary, target);
         published = true;
@@ -160,6 +216,7 @@ export class LocalArtifactStore implements ArtifactStore {
         if (!(error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "EEXIST")) throw error;
       }
       if (this.fsync && published) {
+        await this.assertTarget(root, target);
         let directory;
         try {
           directory = await open(root, constants.O_RDONLY);
@@ -169,23 +226,21 @@ export class LocalArtifactStore implements ArtifactStore {
         }
       }
     } catch (error) {
+      if (error instanceof ArtifactStoreError) throw error;
       throw new ArtifactPathError(`artifact publication failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       await closeQuietly(handle);
-      try {
-        await unlink(temporary);
-      } catch {
-        // A successful hard-link publication leaves only the target.
-      }
+      await this.cleanupTemporary(root, temporary);
     }
     if (published) {
       try {
-        await this.readVerifiedTarget(target, digest);
+        await this.readVerifiedTarget(root, target, digest);
       } catch (error) {
         try {
+          await this.assertTarget(root, target);
           await unlink(target);
         } catch {
-          // Preserve the original integrity failure.
+          // Preserve the original integrity failure without following a replaced root.
         }
         throw error;
       }
@@ -199,14 +254,14 @@ export class LocalArtifactStore implements ArtifactStore {
     const { root, target } = await this.targetForDigest(artifact.digest);
     const sourceAvailable = (typeof artifact.path === "string" && artifact.path.length > 0) || asBytes(artifact.bytes) !== undefined || asBytes(artifact.data) !== undefined || asBytes(artifact.content) !== undefined || typeof artifact.content === "string";
     if (!sourceAvailable) {
-      await this.readVerifiedTarget(target, artifact.digest);
+      await this.readVerifiedTarget(root, target, artifact.digest);
       return { type: artifact.type, digest: artifact.digest, path: target };
     }
     const bytes = await readSourceBytes(artifact);
     if (sha256(bytes) !== artifact.digest) throw new ArtifactIntegrityError("artifact content does not match supplied digest");
-    const existing = await this.existingTargetBytes(target, artifact.digest);
+    const existing = await this.existingTargetBytes(root, target, artifact.digest);
     if (!existing) await this.publish(root, target, artifact.digest, bytes);
-    await this.readVerifiedTarget(target, artifact.digest);
+    await this.readVerifiedTarget(root, target, artifact.digest);
     return { type: artifact.type, digest: artifact.digest, path: target };
   }
 
@@ -227,8 +282,8 @@ export class LocalArtifactStore implements ArtifactStore {
   }
 
   async readArtifact(digest: string): Promise<Uint8Array> {
-    const { target } = await this.targetForDigest(digest);
-    return this.readVerifiedTarget(target, digest);
+    const { root, target } = await this.targetForDigest(digest);
+    return this.readVerifiedTarget(root, target, digest);
   }
 
   async hasArtifact(digest: string): Promise<boolean> {

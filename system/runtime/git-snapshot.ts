@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { lstat, readFile, readlink, realpath } from "node:fs/promises";
+import { constants, existsSync } from "node:fs";
+import { lstat, open, readlink, realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const utf8 = new TextDecoder("utf-8", { fatal: false });
@@ -99,15 +100,22 @@ function parseAsciiFields(value: Uint8Array): string[] {
   return decode(value).split(" ");
 }
 
+const SAFE_GIT_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
+const SAFE_GIT_EXECUTABLE = ["/usr/bin/git", "/bin/git", "/usr/local/bin/git", "/opt/homebrew/bin/git"].find(path => existsSync(path)) ?? "git";
+
 async function runGit(repositoryRoot: string, args: readonly string[], allowFailure = false): Promise<Buffer> {
-  const process = Bun.spawn(["git", "-C", repositoryRoot, ...args], {
+  const process = Bun.spawn([SAFE_GIT_EXECUTABLE, "-C", repositoryRoot, ...args], {
     stdout: "pipe",
     stderr: "pipe",
     env: {
-      ...globalThis.process?.env,
+      PATH: SAFE_GIT_PATH,
       LC_ALL: "C",
       LANG: "C",
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_SYSTEM: "/dev/null",
       GIT_OPTIONAL_LOCKS: "0",
+      GIT_TERMINAL_PROMPT: "0",
     },
   });
   const [stdout, stderr, exitCode] = await Promise.all([
@@ -138,6 +146,8 @@ function pathParts(path: GitPath): Buffer[] {
   return path.toString("binary").split("/").map(part => Buffer.from(part, "binary"));
 }
 
+const NO_FOLLOW = constants.O_NOFOLLOW ?? 0;
+
 async function readWorktreeEntry(repositoryRoot: string, path: GitPath): Promise<GitWorktreeEntry> {
   const parts = pathParts(path);
   let current = Buffer.from(repositoryRoot);
@@ -162,8 +172,16 @@ async function readWorktreeEntry(repositoryRoot: string, path: GitPath): Promise
     return { path: bytesToKey(path), kind: "symlink", mode, size: targetBytes.byteLength, digest: digestBytes(targetBytes), linkTarget: bytesToKey(targetBytes) };
   }
   if (stat.isFile()) {
-    const content = await readFile(current);
-    return { path: bytesToKey(path), kind: "file", mode, size: content.byteLength, digest: digestBytes(content) };
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      handle = await open(current, constants.O_RDONLY | NO_FOLLOW);
+      const opened = await handle.stat();
+      if (!opened.isFile() || opened.isSymbolicLink()) throw new Error("Git path is not a regular file");
+      const content = await handle.readFile();
+      return { path: bytesToKey(path), kind: "file", mode: Number(opened.mode) & 0o7777, size: content.byteLength, digest: digestBytes(content) };
+    } finally {
+      if (handle) await handle.close();
+    }
   }
   if (stat.isDirectory()) return { path: bytesToKey(path), kind: "directory", mode, size: null, digest: null };
   return { path: bytesToKey(path), kind: "special", mode, size: null, digest: null };
@@ -244,16 +262,25 @@ function canonicalize(value: unknown): string {
   return JSON.stringify(value);
 }
 
-/** Capture a deterministic Git worktree identity using machine-readable Git output. */
-export async function captureGitSnapshotIdentity(repositoryPath: string): Promise<GitSnapshotIdentity> {
-  if (typeof repositoryPath !== "string" || repositoryPath.length === 0) throw new Error("repository path is required");
-  const requestedRoot = await realpath(resolve(repositoryPath));
+const MAX_CAPTURE_ATTEMPTS = 4;
+
+type GitSnapshotAttempt = Readonly<{
+  repositoryRoot: string;
+  head: string;
+  index: readonly GitSnapshotIndexEntry[];
+  worktree: readonly GitWorktreeEntry[];
+  status: readonly StatusEntry[];
+  canonicalState: string;
+}>;
+
+async function captureGitSnapshotAttempt(requestedRoot: string): Promise<GitSnapshotAttempt> {
   const shownRootBytes = removeOneTerminalNewline(await runGit(requestedRoot, ["rev-parse", "--show-toplevel"]));
   const repositoryRoot = await realpath(decode(shownRootBytes));
   if (repositoryRoot !== requestedRoot) throw new Error("Git repository root does not match requested path");
 
   const headOutput = await runGit(repositoryRoot, ["rev-parse", "--verify", "HEAD^{commit}"], true);
-  const head = removeOneTerminalNewline(headOutput).byteLength > 0 ? decode(removeOneTerminalNewline(headOutput)) : "UNBORN";
+  const trimmedHead = removeOneTerminalNewline(headOutput);
+  const head = trimmedHead.byteLength > 0 ? decode(trimmedHead) : "UNBORN";
   const indexMap = parseIndex(await runGit(repositoryRoot, ["ls-files", "--stage", "-z"]));
   const statusResult = parseStatus(await runGit(repositoryRoot, ["status", "--porcelain=v2", "--untracked-files=all", "-z"]));
   const allPaths = new Map<string, GitPath>();
@@ -274,21 +301,40 @@ export async function captureGitSnapshotIdentity(repositoryPath: string): Promis
     worktree,
     status,
   });
-  const snapshotId = digestBytes(encoder.encode(canonicalState));
-  return {
-    schemaVersion: "git-snapshot/v1",
-    rootIdentity: repositoryRoot,
-    repositoryRoot,
-    head,
-    headCommit: head,
-    dirty: status.length > 0,
-    snapshotId,
-    stateDigest: snapshotId,
-    canonicalState,
-    index,
-    worktree,
-    status,
-  };
+  return { repositoryRoot, head, index, worktree, status, canonicalState };
+}
+
+/** Capture a deterministic Git worktree identity using machine-readable Git output. */
+export async function captureGitSnapshotIdentity(repositoryPath: string): Promise<GitSnapshotIdentity> {
+  if (typeof repositoryPath !== "string" || repositoryPath.length === 0) throw new Error("repository path is required");
+  const requestedRoot = await realpath(resolve(repositoryPath));
+  let previous: GitSnapshotAttempt | undefined;
+  for (let attempt = 0; attempt < MAX_CAPTURE_ATTEMPTS; attempt += 1) {
+    const liveRootBefore = await realpath(resolve(repositoryPath));
+    if (liveRootBefore !== requestedRoot) throw new Error("Git repository root changed during snapshot capture");
+    const candidate = await captureGitSnapshotAttempt(requestedRoot);
+    const liveRootAfter = await realpath(resolve(repositoryPath));
+    if (liveRootAfter !== requestedRoot) throw new Error("Git repository root changed during snapshot capture");
+    if (previous?.canonicalState === candidate.canonicalState) {
+      const stateDigest = digestBytes(encoder.encode(candidate.canonicalState));
+      return {
+        schemaVersion: "git-snapshot/v1",
+        rootIdentity: candidate.repositoryRoot,
+        repositoryRoot: candidate.repositoryRoot,
+        head: candidate.head,
+        headCommit: candidate.head,
+        dirty: candidate.status.length > 0,
+        snapshotId: stateDigest,
+        stateDigest,
+        canonicalState: candidate.canonicalState,
+        index: candidate.index,
+        worktree: candidate.worktree,
+        status: candidate.status,
+      };
+    }
+    previous = candidate;
+  }
+  throw new Error("Git repository state changed during snapshot capture");
 }
 
 export const createGitSnapshotIdentity = captureGitSnapshotIdentity;
