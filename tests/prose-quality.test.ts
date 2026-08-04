@@ -206,6 +206,24 @@ describe("language-specific prose rules", () => {
     expect(report.findings.some((finding) => finding.ruleId.startsWith("ZH-"))).toBe(false);
   });
 
+  test("skips inferred mixed prose when no applicable inferred locale is enabled", () => {
+    const root = mkdtempSync(join(tmpdir(), "traceknot-prose-mixed-disabled-"));
+    writeFileSync(join(root, "README.md"), "한국어 설명을 충분히 작성하고 문맥도 자연스럽게 이어갑니다. English context is also deliberately substantial here.");
+    const report = scanRepository(root, {
+      schemaVersion: "prose-quality-config/v1",
+      enabled: true,
+      mode: "blocking",
+      locales: ["zh-Hans"],
+      include: ["README.md"],
+      exclude: [],
+      minimumProseCharacters: 1,
+      maxChangeRate: 0.3,
+      rejectChangeRate: 0.5,
+    });
+    expect(report.summary).toEqual({ checked: 0, passed: 0, warned: 0, failed: 0, skipped: 1 });
+    expect(report.status).toBe("BLOCKED");
+  });
+
   test("routes README.zh.md through its configured zh-Hans path override", () => {
     const root = mkdtempSync(join(tmpdir(), "traceknot-prose-zh-hans-"));
     writeFileSync(join(root, "README.zh.md"), "此外，系统稳定。\n此外，证据完整。\n此外，判定明确。");
@@ -269,6 +287,12 @@ describe("language-specific prose rules", () => {
     expect(sentencePunctuation.findings).toContainEqual(expect.objectContaining({ ruleId: "ZH-P-001", count: 3 }));
     expect(atThreshold.status).toBe("WARN");
     expect(sentencePunctuation.status).toBe("WARN");
+  });
+
+  test("counts Simplified Chinese ASCII punctuation followed by horizontal whitespace", () => {
+    const report = analyzeProse("甲, 乙; 丙: 丁", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({ ruleId: "ZH-P-001", count: 3 }));
+    expect(report.status).toBe("WARN");
   });
 
   test("does not flag ordinary technical prose", () => {
@@ -335,6 +359,14 @@ describe("rewrite preservation gate", () => {
   test("preserves Simplified Chinese written quantities", () => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n系统运行三次。`, `${context}\n系统运行四次。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(report.status).toBe("FAIL");
+  });
+
+  test("preserves Simplified Chinese written percentages", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n成功率为百分之三十。`, `${context}\n成功率为百分之四十。`);
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
     expect(report.status).toBe("FAIL");
