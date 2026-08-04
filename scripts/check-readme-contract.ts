@@ -32,6 +32,9 @@ const REQUIRED_BOUNDARIES = [
   "authoritative: false",
   "phase1Authorized: false",
 ] as const;
+const LOCALIZED_DOCUMENT_ALTERNATIVES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "README.ko.md": { "BRAND.md": "BRAND.ko.md" },
+};
 
 interface ReadmeRecord {
   path: string;
@@ -132,6 +135,35 @@ function localTargets(content: string): string[] {
   return targets;
 }
 
+function normalizedDocumentationTargets(content: string): Set<string> {
+  const targets = new Set<string>();
+  for (const rawTarget of localTargets(content)) {
+    if (/^(?:https?:|mailto:|data:|#)/.test(rawTarget)) continue;
+    const target = rawTarget.split("#", 1)[0].split("?", 1)[0].replace(/^<|>$/g, "");
+    if (target.startsWith("docs/") || target.startsWith("skill/") || /^BRAND(?:\.[a-z-]+)?\.md$/i.test(target)) {
+      targets.add(target);
+    }
+  }
+  return targets;
+}
+
+export function checkReadmeDocumentationLinks(
+  canonicalPath: string,
+  canonicalContent: string,
+  translatedPath: string,
+  translatedContent: string,
+): void {
+  const canonicalTargets = normalizedDocumentationTargets(canonicalContent);
+  const actualTargets = normalizedDocumentationTargets(translatedContent);
+  const alternatives = LOCALIZED_DOCUMENT_ALTERNATIVES[translatedPath] ?? {};
+  const missing = [...canonicalTargets]
+    .map((target) => alternatives[target] ?? target)
+    .filter((target) => !actualTargets.has(target));
+  if (missing.length > 0) {
+    throw new Error(`${translatedPath}: missing documentation links from ${canonicalPath}: ${missing.join(", ")}`);
+  }
+}
+
 function checkLocalLinks(record: Pick<ReadmeRecord, "path" | "content">): void {
   for (const rawTarget of localTargets(record.content)) {
     if (/^(?:https?:|mailto:|data:|#)/.test(rawTarget)) continue;
@@ -153,6 +185,9 @@ export function checkReadmeContract(): void {
     checkBoundaries(record);
   }
   checkSharedCommands(records);
+  for (const record of records.slice(1)) {
+    checkReadmeDocumentationLinks(records[0].path, records[0].content, record.path, record.content);
+  }
   for (const path of LINKED_DOCUMENT_PATHS) {
     const content = readFileSync(resolve(ROOT, path), "utf8");
     checkLocalLinks({ path, content });

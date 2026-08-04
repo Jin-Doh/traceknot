@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { checkReadmeSections } from "../scripts/check-readme-contract";
+import { checkReadmeDocumentationLinks, checkReadmeSections } from "../scripts/check-readme-contract";
 
 const sections = [
   "hero",
@@ -25,5 +25,19 @@ describe("README localization section contract", () => {
   test("rejects a complete but reordered section sequence", () => {
     const reordered = [sections[0], sections[1], sections[6], ...sections.slice(2, 6), ...sections.slice(7)];
     expect(() => checkReadmeSections("README.zh.md", readmeWith(reordered))).toThrow("section order must be");
+  });
+
+  test("rejects a translation that drops or replaces a canonical documentation link", () => {
+    const canonical = "[Architecture](docs/architecture.md) [Trust](docs/trust-model.md)";
+    const translated = "[Architecture](https://example.com/architecture) [Trust](docs/trust-model.md)";
+    expect(() => checkReadmeDocumentationLinks("README.md", canonical, "README.zh.md", translated)).toThrow(
+      "missing documentation links from README.md: docs/architecture.md",
+    );
+  });
+
+  test("accepts an explicitly declared localized documentation alternative", () => {
+    expect(() =>
+      checkReadmeDocumentationLinks("README.md", "[Brand](BRAND.md)", "README.ko.md", "[브랜드](BRAND.ko.md)"),
+    ).not.toThrow();
   });
 });
