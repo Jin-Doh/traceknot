@@ -675,9 +675,9 @@ function normativeClauses(text: string): string[] {
   const pattern = /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|\b(?:is|are|was|were)(?:\s+not)?\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|\b(?:will(?:\s+not)?\s+be|has(?:\s+not)?\s+been|have(?:\s+not)?\s+been|had(?:\s+not)?\s+been)\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|(?:(?:(?:해서는|하여서는|하면|한다면)\s+안\s+(?:된다|됩니다))|(?:해야|하여야)\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))|(?:不应该|不允许|无需|需要|应该|允许|必须|不得|禁止|应当|不应|可以|可选)|(?:需|须|可)(?=(?:直接|先|再|仅|只|不|由|被|按|根据|在|经|用于|供|于)?(?:审核|验证|检查|记录|保留|批准|执行|运行|发布|提供|确保|完成|遵守|满足|使用|配置|安装|报告|绑定|评估|选择|提交|更新|读取|写入|删除|创建|调用|等待|返回|通过|拒绝|阻止|启用|关闭|输入|输出|处理|确认|声明|查看))/gi;
   for (const match of text.matchAll(pattern)) {
     const leftText = text.slice(0, match.index);
-    const leftBoundary = [...leftText.matchAll(/[.,;。；，！？\n]/g)].at(-1)?.index ?? -1;
+    const leftBoundary = [...leftText.matchAll(/[.,;!?。；，！？\n]/g)].at(-1)?.index ?? -1;
     const rightText = text.slice(match.index + match[0].length);
-    const rightBoundary = rightText.match(/[.,;。；，！？\n]/)?.index;
+    const rightBoundary = rightText.match(/[.,;!?。；，！？\n]/)?.index;
     const left = leftBoundary + 1;
     const right = rightBoundary === undefined ? text.length : match.index + match[0].length + rightBoundary;
     const clause = text.slice(left, right).trim().replace(/\s+/g, " ");

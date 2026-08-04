@@ -364,6 +364,16 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("PASS");
   });
 
+  test("stops Simplified Chinese normative clauses at ASCII sentence marks", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const before = `${context}\n用户必须登录!界面采用蓝色。审阅者可以查看状态?页脚保持简洁。`;
+    const after = `${context}\n用户必须登录!界面采用绿色。审阅者可以查看状态?页脚保持清晰。`;
+    const report = verifyPreservation(before, after);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
+    expect(report.status).toBe("PASS");
+  });
+
   test("warns at the review threshold and rejects at the hard threshold", () => {
     const base = "one two three four five six seven eight nine ten";
     expect(verifyPreservation(base, "one two three four five six seven alpha beta ten", 0.2, 0.5).status).toBe("WARN");
