@@ -195,6 +195,15 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
 
 사용자 지정 설치 경로라면 `sh` 뒤에 `-s -- --prefix /absolute/path`를 붙입니다.
 
+사용자 지정 Skills root도 사용했다면 installer에 지정했던 같은 값을 uninstaller에 전달합니다.
+
+<!-- shared-command:full-toolkit-custom-uninstall -->
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh \
+  | TRACEKNOT_SKILLS_ROOT=/absolute/skills sh -s -- --prefix /absolute/path
+```
+
 활성 layout과 legacy layout의 경로 선택을 포함한 updater 실행 명령은 [자동 업데이트 문서](docs/automatic-updates.md)에 있습니다.
 
 <!-- readme-section:documentation -->

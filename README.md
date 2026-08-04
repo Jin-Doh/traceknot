@@ -195,6 +195,15 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
 
 For a custom installation prefix, append `-s -- --prefix /absolute/path` after `sh`.
 
+If the installation also used a custom Skills root, pass the same value to the uninstaller:
+
+<!-- shared-command:full-toolkit-custom-uninstall -->
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh \
+  | TRACEKNOT_SKILLS_ROOT=/absolute/skills sh -s -- --prefix /absolute/path
+```
+
 Runnable updater commands, including active-layout and legacy-layout path selection, are documented in [automatic updates](docs/automatic-updates.md).
 
 <!-- readme-section:documentation -->

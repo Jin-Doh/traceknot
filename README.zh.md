@@ -195,6 +195,15 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
 
 如果使用自定义安装路径，请在 `sh` 后附加 `-s -- --prefix /absolute/path`。
 
+如果安装时还使用了自定义 Skills root，请把同一个值传给 uninstaller：
+
+<!-- shared-command:full-toolkit-custom-uninstall -->
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh \
+  | TRACEKNOT_SKILLS_ROOT=/absolute/skills sh -s -- --prefix /absolute/path
+```
+
 包含当前 layout 与 legacy layout 路径选择逻辑的 updater 可执行命令，请参阅[自动更新](docs/automatic-updates.md)。
 
 <!-- readme-section:documentation -->

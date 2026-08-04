@@ -93,6 +93,7 @@ const DEFAULT_CONFIG: Config = {
     "BRAND.ko.md",
     "assets/readme/README.md",
     "docs/architecture.md",
+    "docs/automatic-updates.md",
     "docs/qa-process.md",
     "docs/trust-model.md",
     "docs/localization.md",

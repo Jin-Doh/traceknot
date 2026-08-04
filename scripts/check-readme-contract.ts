@@ -26,7 +26,7 @@ const REQUIRED_SECTIONS = [
   "documentation",
   "development",
 ] as const;
-const REQUIRED_SHARED_COMMANDS = ["skill-install", "full-toolkit-install", "full-toolkit-pinned-install", "full-toolkit-uninstall", "ci"] as const;
+const REQUIRED_SHARED_COMMANDS = ["skill-install", "full-toolkit-install", "full-toolkit-pinned-install", "full-toolkit-uninstall", "full-toolkit-custom-uninstall", "ci"] as const;
 const REQUIRED_BOUNDARIES = [
   "npx skills add Jin-Doh/traceknot --skill traceknot --global",
   "authoritative: false",
