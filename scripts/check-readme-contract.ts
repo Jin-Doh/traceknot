@@ -42,12 +42,12 @@ const REQUIRED_OPERATIONAL_LITERALS: Readonly<Record<string, readonly string[]>>
   "docs/automatic-updates.md": [
     "$TRACEKNOT_PREFIX/current/bin/traceknot-update",
     "$TRACEKNOT_PREFIX/bin/traceknot-update",
-    '"$TRACEKNOT_UPDATE" status',
-    '"$TRACEKNOT_UPDATE" check',
-    '"$TRACEKNOT_UPDATE" apply',
-    '"$TRACEKNOT_UPDATE" disable',
-    '"$TRACEKNOT_UPDATE" enable',
-    '"$TRACEKNOT_UPDATE" rollback',
+    '"$TRACEKNOT_UPDATE" status --prefix "$TRACEKNOT_PREFIX"',
+    '"$TRACEKNOT_UPDATE" check --prefix "$TRACEKNOT_PREFIX"',
+    '"$TRACEKNOT_UPDATE" apply --prefix "$TRACEKNOT_PREFIX"',
+    '"$TRACEKNOT_UPDATE" disable --prefix "$TRACEKNOT_PREFIX"',
+    '"$TRACEKNOT_UPDATE" enable --prefix "$TRACEKNOT_PREFIX"',
+    '"$TRACEKNOT_UPDATE" rollback --prefix "$TRACEKNOT_PREFIX"',
   ],
 };
 const LOCALIZED_DOCUMENT_ALTERNATIVES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
@@ -135,21 +135,37 @@ function checkBoundaries(record: ReadmeRecord): void {
 
 function checkSharedCommands(records: ReadmeRecord[]): void {
   const canonical = records[0];
+  const expectedNames = [...canonical.sharedCommands.keys()].sort();
   for (const name of REQUIRED_SHARED_COMMANDS) {
     const expected = canonical.sharedCommands.get(name);
     if (expected === undefined) throw new Error(`${canonical.path}: missing shared command ${name}`);
-    for (const record of records.slice(1)) {
-      const actual = record.sharedCommands.get(name);
-      if (actual === undefined) throw new Error(`${record.path}: missing shared command ${name}`);
-      if (actual !== expected) throw new Error(`${record.path}: shared command ${name} differs from ${canonical.path}`);
+  }
+  for (const record of records.slice(1)) {
+    const actualNames = [...record.sharedCommands.keys()].sort();
+    if (actualNames.join("\u0000") !== expectedNames.join("\u0000")) {
+      throw new Error(`${record.path}: shared command marker set differs from ${canonical.path}`);
+    }
+    for (const name of expectedNames) {
+      if (record.sharedCommands.get(name) !== canonical.sharedCommands.get(name)) {
+        throw new Error(`${record.path}: shared command ${name} differs from ${canonical.path}`);
+      }
     }
   }
+}
+
+export function checkReadmeSharedCommands(records: Array<{ path: string; content: string }>): void {
+  checkSharedCommands(records.map((record) => ({
+    ...record,
+    sections: new Map(),
+    sharedCommands: collectSharedCommands(record.content, record.path),
+  })));
 }
 
 function localTargets(content: string): string[] {
   const targets: string[] = [];
   for (const match of content.matchAll(/!?\[[^\]]*\]\(([^)]+)\)/g)) targets.push(match[1].trim().split(/\s+["']/)[0]);
-  for (const match of content.matchAll(/(?:href|src)="([^"]+)"/g)) targets.push(match[1]);
+  for (const match of content.matchAll(/^[\t ]{0,3}\[[^\]\r\n]+\]:[\t ]*(?:<([^>\r\n]+)>|([^\s\r\n]+))/gm)) targets.push(match[1] ?? match[2]);
+  for (const match of content.matchAll(/(?:href|src)\s*=\s*(["'])(.*?)\1/g)) targets.push(match[2]);
   return targets;
 }
 

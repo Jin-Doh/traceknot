@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { checkReadmeDocumentationLinks, checkReadmeLocalLinks, checkReadmeSections } from "../scripts/check-readme-contract";
+import { checkReadmeDocumentationLinks, checkReadmeLocalLinks, checkReadmeSections, checkReadmeSharedCommands } from "../scripts/check-readme-contract";
 
 const sections = [
   "hero",
@@ -48,5 +48,19 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLocalLinks({ path: "README.md", content: "[parent](../../../../etc/passwd)" })).toThrow(
       "local link escapes repository",
     );
+  });
+
+  test("rejects missing reference-style and single-quoted HTML targets", () => {
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content: "[guide][g]\n\n[g]: docs/not-here.md" })).toThrow("local link does not exist");
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content: "<img src='assets/not-here.png'>" })).toThrow("local link does not exist");
+  });
+
+  test("rejects unpaired shared-command markers", () => {
+    const block = (name: string) => `<!-- shared-command:${name} -->\n\n\`\`\`sh\necho ok\n\`\`\``;
+    const canonical = ["skill-install", "full-toolkit-install", "full-toolkit-pinned-install", "full-toolkit-uninstall", "full-toolkit-custom-uninstall", "ci"].map(block).join("\n");
+    expect(() => checkReadmeSharedCommands([
+      { path: "README.md", content: canonical },
+      { path: "README.ko.md", content: `${canonical}\n${block("translation-only")}` },
+    ])).toThrow("shared command marker set differs");
   });
 });

@@ -30,15 +30,15 @@ else
   TRACEKNOT_UPDATE="$TRACEKNOT_PREFIX/bin/traceknot-update"
 fi
 
-"$TRACEKNOT_UPDATE" status
-"$TRACEKNOT_UPDATE" check
-"$TRACEKNOT_UPDATE" apply
-"$TRACEKNOT_UPDATE" disable
-"$TRACEKNOT_UPDATE" enable
-"$TRACEKNOT_UPDATE" rollback
+"$TRACEKNOT_UPDATE" status --prefix "$TRACEKNOT_PREFIX"
+"$TRACEKNOT_UPDATE" check --prefix "$TRACEKNOT_PREFIX"
+"$TRACEKNOT_UPDATE" apply --prefix "$TRACEKNOT_PREFIX"
+"$TRACEKNOT_UPDATE" disable --prefix "$TRACEKNOT_PREFIX"
+"$TRACEKNOT_UPDATE" enable --prefix "$TRACEKNOT_PREFIX"
+"$TRACEKNOT_UPDATE" rollback --prefix "$TRACEKNOT_PREFIX"
 ```
 
-For a custom installation, set `TRACEKNOT_PREFIX` to that absolute prefix before selecting the executable. `check` does not change installed files; `apply` activates the newest eligible verified release; `rollback` restores the immediately previous managed release.
+For a custom installation, set `TRACEKNOT_PREFIX` to that absolute prefix before selecting the executable. Every invocation passes it explicitly because the updater does not read this shell variable as configuration. `check` does not change installed files; `apply` activates the newest eligible verified release; `rollback` restores the immediately previous managed release.
 
 ## Test basis and acceptance criteria
 
