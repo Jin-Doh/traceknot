@@ -192,6 +192,12 @@ describe("language-specific prose rules", () => {
     expect(report.status).toBe("FAIL");
   });
 
+  test("recognizes the Chinese enumeration comma in mechanical three-part structures", () => {
+    const report = analyzeProse("第一、记录事实。第二、评估证据。第三、给出判定。", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({ ruleId: "ZH-C-001", severity: "S1" }));
+    expect(report.status).toBe("FAIL");
+  });
+
   test("counts separate Simplified Chinese stock phrases in the same sentence", () => {
     const source = "在当今快速发展的环境中，这充分体现了流程的价值。";
     const report = analyzeProse(source, ["zh-Hans"], "zh-Hans");
@@ -372,6 +378,14 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("FAIL");
   });
 
+  test("preserves the sign of Simplified Chinese written percentages", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n成功率为百分之三十。`, `${context}\n成功率为负百分之三十。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(report.status).toBe("FAIL");
+  });
+
   test("binds Simplified Chinese quantities to their clause subjects", () => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const before = `${context}\n甲组包含三项检查，乙组包含四项检查。`;
@@ -453,6 +467,16 @@ describe("rewrite preservation gate", () => {
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
     expect(report.status).toBe("PASS");
+  });
+
+  test("keeps Markdown soft line breaks inside normative clauses", () => {
+    const context = Array(20).fill("The system records every result and retains complete evidence for reviewers.").join("\n");
+    const before = `${context}\nUsers MUST\napprove releases.`;
+    const after = `${context}\nUsers MUST\nreject releases.`;
+    const report = verifyPreservation(before, after);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+    expect(report.status).toBe("FAIL");
   });
 
   test("warns at the review threshold and rejects at the hard threshold", () => {
