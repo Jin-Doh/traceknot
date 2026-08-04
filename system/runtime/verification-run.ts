@@ -14,8 +14,12 @@ export type CanonicalVerificationResultArtifact=Readonly<{type:"verification-res
 export type VerificationEvidence=Readonly<{schemaVersion:"verification-evidence/v1";evidenceId:string;requestId:string;snapshotId:string;obligationId:string;producer:Producer;execution:Execution;result:Readonly<{verdict:"PASS"|"FAIL"|"BLOCKED"|"INCOMPLETE";summary:string;passed?:number;failed?:number;artifacts?:readonly string[]}>;observedAt:string}>;
 export type VerificationExecutionRequest=Readonly<{runId:string;requestId:string;requestDigest:string;planDigest:string;obligationDigest:string;rootIdentity:string;snapshotId:string;obligation:VerificationObligationPlan;conditionIds:readonly string[];idempotencyKey:string}>;
 export type VerificationExecutionOutput=Readonly<{status:"passed"|"failed"|"blocked"|"incomplete"|"PASS"|"FAIL"|"BLOCKED"|"INCOMPLETE";runId:string;requestId:string;snapshotId:string;idempotencyKey:string;producer:Producer;summary?:string;artifacts?:readonly Artifact[];executionKind?:Execution["kind"];identity?:string;exitCode?:number}>;
-export type VerificationExecutionAuthorityBinding=Readonly<{runId:string;requestId:string;requestDigest:string;planDigest:string;obligationDigest:string;snapshotId:string;obligationId:string;idempotencyKey:string;producer:Producer;execution:Execution;result:VerificationEvidence["result"];observedAt:string;artifacts:readonly CanonicalVerificationResultArtifact[]}>;
+export type VerificationExecutionAuthorityBinding=Readonly<{runId:string;requestId:string;requestDigest:string;planDigest:string;obligationDigest:string;rootIdentity:string;snapshotId:string;obligationId:string;idempotencyKey:string;producer:Producer;execution:Execution;result:VerificationEvidence["result"];observedAt:string;artifacts:readonly CanonicalVerificationResultArtifact[]}>;
 export type ExecutionAuthority=Readonly<{schemaVersion:"verification-execution-authority/v1";authorityId:string;issuer:string;binding:VerificationExecutionAuthorityBinding}>;
+export type VerificationExecutionCompletionEnvelope=Readonly<{schemaVersion:"verification-execution-completion/v1";runId:string;requestId:string;rootIdentity:string;snapshotId:string;planDigest:string;obligationId:string;idempotencyKey:string;output:VerificationExecutionOutput;authority:ExecutionAuthority}>;
+export type FreshnessAuthorityBinding=Readonly<{schemaVersion:"verification-freshness-binding/v1";requestId:string;snapshotId:string;planDigest:string;executionDigest:string;freshnessEvaluatedAt:string;evaluationIds:readonly string[];acceptedClaimIds:readonly string[];coverage:CoverageInput}>;
+export type FreshnessAuthority=Readonly<{schemaVersion:"verification-freshness-authority/v1";authorityId:string;issuer:string;binding:FreshnessAuthorityBinding}>;
+export interface FreshnessAuthorityPort {readonly issueFreshnessAuthority?:(i:FreshnessAuthorityBinding)=>MaybePromise<FreshnessAuthority|undefined>;readonly issue?:(i:FreshnessAuthorityBinding)=>MaybePromise<FreshnessAuthority|undefined>;readonly verifyFreshnessAuthority?:(a:FreshnessAuthority,i:FreshnessAuthorityBinding)=>MaybePromise<boolean|FreshnessAuthority|undefined>;readonly verify?:(a:FreshnessAuthority,i:FreshnessAuthorityBinding)=>MaybePromise<boolean|FreshnessAuthority|undefined>};
 export interface ExecutionAuthorityPort {readonly issueExecutionAuthority?:(i:VerificationExecutionAuthorityBinding)=>MaybePromise<ExecutionAuthority|undefined>;readonly issueAuthority?:(i:VerificationExecutionAuthorityBinding)=>MaybePromise<ExecutionAuthority|undefined>;readonly issue?:(i:VerificationExecutionAuthorityBinding)=>MaybePromise<ExecutionAuthority|undefined>;readonly verifyExecutionAuthority?:(a:ExecutionAuthority,i:VerificationExecutionAuthorityBinding)=>MaybePromise<boolean|ExecutionAuthority|undefined>;readonly verifyAuthority?:(a:ExecutionAuthority,i:VerificationExecutionAuthorityBinding)=>MaybePromise<boolean|ExecutionAuthority|undefined>;readonly verify?:(a:ExecutionAuthority,i:VerificationExecutionAuthorityBinding)=>MaybePromise<boolean|ExecutionAuthority|undefined>};
 export type FreshnessStatus = "fresh" | "stale" | "unknown";
 export type FreshnessEvaluationInput = Readonly<{observation:Observation;evidence:VerificationEvidence;evaluatedAt:string}>;
@@ -23,20 +27,20 @@ export interface FreshnessPolicy {readonly evaluateFreshness?:(input:FreshnessEv
 export type FreshnessPolicyPort = FreshnessPolicy;
 export type BrowserExecutionRequest=VerificationExecutionRequest; export type BrowserExecutionOutput=VerificationExecutionOutput; export type StoredArtifact=CanonicalVerificationResultArtifact; export type ApprovalRequest=Readonly<{runId:string;defect:DefectSummary}>; export type ApprovalResult=Readonly<{approved:boolean;acceptanceExpiresAt?:string}>; export type UsageEvent=Readonly<{runId:string;obligationId?:string;event:"execution"|"artifact"|"approval";executionKey?:string;eventKey?:string}>;
 export type StageName="request"|"basis"|"discovery"|"plan"|"execution"|"evidence"|"residual-risk"|"verdict";
-export interface VerificationExecutor {readonly executeObligation?:(i:VerificationExecutionRequest)=>MaybePromise<VerificationExecutionOutput|undefined>;readonly execute?:(i:VerificationExecutionRequest)=>MaybePromise<VerificationExecutionOutput|undefined>};
+export interface VerificationExecutor {readonly atomicSameKeyIdempotency?:true;readonly executeObligation?:(i:VerificationExecutionRequest)=>MaybePromise<VerificationExecutionOutput|undefined>;readonly execute?:(i:VerificationExecutionRequest)=>MaybePromise<VerificationExecutionOutput|undefined>};
 export interface ArtifactStore {readonly storeVerificationResultArtifact?:(a:CanonicalVerificationResultArtifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly storeArtifact?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly putArtifact?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly store?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>};
 export interface CapabilityProvider {readonly hasCapability?:(s:string)=>MaybePromise<boolean>;readonly has?:(s:string)=>MaybePromise<boolean>;readonly getCapabilities?:()=>MaybePromise<readonly string[]>;readonly capabilities?:readonly string[]};
-export interface BrowserExecutor {readonly executeBrowser?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>;readonly execute?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>};
+export interface BrowserExecutor {readonly atomicSameKeyIdempotency?:true;readonly executeBrowser?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>;readonly execute?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>};
 export interface ApprovalProvider {readonly requestApproval?:(i:ApprovalRequest)=>MaybePromise<ApprovalResult|undefined>;readonly approve?:(i:ApprovalRequest)=>MaybePromise<ApprovalResult|undefined>};
 export interface UsageRecorder {readonly recordUsage?:(e:UsageEvent)=>MaybePromise<void>;readonly record?:(e:UsageEvent)=>MaybePromise<void>};
 export type DispatchClaim=Readonly<{schemaVersion:"verification-dispatch-claim/v1";claimKey:string;runId:string;requestId:string;rootIdentity:string;snapshotId:string;planDigest:string;obligationId:string;idempotencyKey:string;ownerId:string;leaseGeneration:number;leaseExpiresAt:string}>;
-export type DispatchClaimResult=Readonly<{claimed:boolean;status:"CLAIMED"|"COMPLETED";claim:DispatchClaim;outputStored:boolean;output?:VerificationExecutionOutput}>;
+export type DispatchClaimResult=Readonly<{claimed:boolean;status:"CLAIMED"|"COMPLETED";claim:DispatchClaim;outputStored:boolean;completion?:VerificationExecutionCompletionEnvelope}>;
 export type RepositoryTransition=Readonly<{runId:string;expectedRevision?:number;stage?:StageName;document?:StageDocument;run:CanonicalRunState}>;
-export interface RepositoryPort {readonly loadRun:(id:string)=>MaybePromise<CanonicalRunState|undefined>;readonly loadStageDocument:(id:string,s:StageName)=>MaybePromise<unknown|undefined>;readonly commitTransition:(transition:RepositoryTransition)=>MaybePromise<boolean>;readonly claimExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<DispatchClaimResult>;readonly completeExecutionDispatch?:(claim:DispatchClaim,output:VerificationExecutionOutput|undefined,now?:string)=>MaybePromise<boolean>;readonly releaseExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<boolean>};
-export type VerificationRunDependencies=Readonly<{repository:RepositoryPort;executor:VerificationExecutor;artifactStore:ArtifactStore;capabilityProvider:CapabilityProvider;executionAuthority:ExecutionAuthorityPort;freshnessPolicy:FreshnessPolicy;browserExecutor?:BrowserExecutor;approvalProvider?:ApprovalProvider;usageRecorder?:UsageRecorder;now:Clock;dispatchOwnerId?:string;ownerId?:string;dispatchLeaseDurationMs?:number;leaseDurationMs?:number}>;
-export type BasisDocument=Readonly<{schemaVersion:"verification-basis/v1";requestId:string;snapshotId:string;basis:readonly VerificationBasisItem[];basisIds:readonly string[]}>; export type DiscoveryDocument=Readonly<{schemaVersion:"risk-discovery/v1";requestId:string;snapshotId:string;risks:readonly VerificationRisk[];conditions:readonly VerificationCondition[]}>; export type PlanDocument=VerificationPlan; export type UsageOutboxEntry=Readonly<{executionKey:string;obligationId:string;event:"execution"|"artifact";eventKey:string}>; export type ExecutionDocument=Readonly<{schemaVersion:"verification-execution/v1";requestId:string;snapshotId:string;observations:readonly Observation[];claims:readonly EvidenceClaim[];evidence:readonly VerificationEvidence[];authorities:readonly ExecutionAuthority[];usageOutbox:readonly UsageOutboxEntry[]}>; export type EvidenceDocument=Readonly<{schemaVersion:"verification-evidence-evaluation/v1";requestId:string;snapshotId:string;freshnessEvaluatedAt:string;evaluations:readonly EvidenceEvaluation[];acceptedClaimIds:readonly string[];coverage:CoverageInput}>; export type ResidualRiskDocument=Readonly<{schemaVersion:"verification-residual-risk/v1";requestId:string;snapshotId:string;defects:readonly DefectSummary[]}>; export type VerdictDocument=VerdictResult; export type StageDocument=VerificationRequest|BasisDocument|DiscoveryDocument|PlanDocument|ExecutionDocument|EvidenceDocument|ResidualRiskDocument|VerdictDocument;
+export interface RepositoryPort {readonly loadRun:(id:string)=>MaybePromise<CanonicalRunState|undefined>;readonly loadStageDocument:(id:string,s:StageName)=>MaybePromise<unknown|undefined>;readonly commitTransition:(transition:RepositoryTransition)=>MaybePromise<boolean>;readonly claimExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<DispatchClaimResult>;readonly completeExecutionDispatch?:(claim:DispatchClaim,completion:VerificationExecutionCompletionEnvelope|undefined,now?:string)=>MaybePromise<boolean>;readonly releaseExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<boolean>};
+export type VerificationRunDependencies=Readonly<{repository:RepositoryPort;executor:VerificationExecutor;artifactStore:ArtifactStore;capabilityProvider:CapabilityProvider;executionAuthority:ExecutionAuthorityPort;freshnessPolicy:FreshnessPolicy;freshnessAuthority?:FreshnessAuthorityPort;browserExecutor?:BrowserExecutor;approvalProvider?:ApprovalProvider;usageRecorder?:UsageRecorder;now:Clock;dispatchOwnerId?:string;ownerId?:string;dispatchLeaseDurationMs?:number;leaseDurationMs?:number}>;
+export type BasisDocument=Readonly<{schemaVersion:"verification-basis/v1";requestId:string;snapshotId:string;basis:readonly VerificationBasisItem[];basisIds:readonly string[]}>; export type DiscoveryDocument=Readonly<{schemaVersion:"risk-discovery/v1";requestId:string;snapshotId:string;risks:readonly VerificationRisk[];conditions:readonly VerificationCondition[]}>; export type PlanDocument=VerificationPlan; export type UsageOutboxEntry=Readonly<{executionKey:string;obligationId:string;event:"execution"|"artifact";eventKey:string}>; export type ExecutionDocument=Readonly<{schemaVersion:"verification-execution/v1";requestId:string;snapshotId:string;observations:readonly Observation[];claims:readonly EvidenceClaim[];evidence:readonly VerificationEvidence[];authorities:readonly ExecutionAuthority[];usageOutbox:readonly UsageOutboxEntry[]}>; export type EvidenceDocument=Readonly<{schemaVersion:"verification-evidence-evaluation/v1";requestId:string;snapshotId:string;freshnessEvaluatedAt:string;freshnessAuthority:FreshnessAuthority;evaluations:readonly EvidenceEvaluation[];acceptedClaimIds:readonly string[];coverage:CoverageInput}>; export type ResidualRiskDocument=Readonly<{schemaVersion:"verification-residual-risk/v1";requestId:string;snapshotId:string;defects:readonly DefectSummary[]}>; export type VerdictDocument=VerdictResult; export type StageDocument=VerificationRequest|BasisDocument|DiscoveryDocument|PlanDocument|ExecutionDocument|EvidenceDocument|ResidualRiskDocument|VerdictDocument;
 export type VerificationRunDocuments={request?:VerificationRequest;basis?:BasisDocument;discovery?:DiscoveryDocument;plan?:PlanDocument;execution?:ExecutionDocument;evidence?:EvidenceDocument;"residual-risk"?:ResidualRiskDocument;verdict?:VerdictDocument};
-export type EstablishTestBasisInput=Readonly<{runId?:string;request:VerificationRequest;dependencies:VerificationRunDependencies}>; export type PerformRiskDiscoveryInput=Readonly<{request:VerificationRequest;basis:BasisDocument;dependencies:VerificationRunDependencies}>; export type BuildVerificationPlanInput=Readonly<{request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;dependencies:VerificationRunDependencies}>; type ExecuteObligationsInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;dependencies:VerificationRunDependencies;checkpoint?:ExecutionDocument}>; type EvaluateEvidenceInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;dependencies:VerificationRunDependencies;freshnessEvaluatedAt?:string}>; type EvaluateResidualRiskInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;evidence:EvidenceDocument;dependencies:VerificationRunDependencies}>; type ResolveVerdictInput=Readonly<{runId:string;request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;plan:VerificationPlan;execution:ExecutionDocument;evidence:EvidenceDocument;residualRisk:ResidualRiskDocument;dependencies:VerificationRunDependencies}>; export type RunVerificationInput=Readonly<{runId:string;request?:VerificationRequest;dependencies:VerificationRunDependencies}>; export type RunVerificationResult=Readonly<{run:CanonicalRunState;verdict:VerdictResult;documents:VerificationRunDocuments}>;
+export type EstablishTestBasisInput=Readonly<{runId?:string;request:VerificationRequest;dependencies:VerificationRunDependencies}>; export type PerformRiskDiscoveryInput=Readonly<{request:VerificationRequest;basis:BasisDocument;dependencies:VerificationRunDependencies}>; export type BuildVerificationPlanInput=Readonly<{request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;dependencies:VerificationRunDependencies}>; type ExecuteObligationsInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;dependencies:VerificationRunDependencies;checkpoint?:ExecutionDocument}>; type EvaluateEvidenceInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;dependencies:VerificationRunDependencies;freshnessEvaluatedAt?:string;freshnessAuthority?:FreshnessAuthority}>; type EvaluateResidualRiskInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;evidence:EvidenceDocument;dependencies:VerificationRunDependencies}>; type ResolveVerdictInput=Readonly<{runId:string;request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;plan:VerificationPlan;execution:ExecutionDocument;evidence:EvidenceDocument;residualRisk:ResidualRiskDocument;dependencies:VerificationRunDependencies}>; export type RunVerificationInput=Readonly<{runId:string;request?:VerificationRequest;dependencies:VerificationRunDependencies}>; export type RunVerificationResult=Readonly<{run:CanonicalRunState;verdict:VerdictResult;documents:VerificationRunDocuments}>;
 
 const DIGEST = /^[0-9a-fA-F]{64}$/;
 const REQUEST_DIGEST = /^[0-9a-f]{64}$/;
@@ -274,8 +278,8 @@ const DISPATCH_LEASE_DURATION_MS = 30_000;
 function dispatchFacilityConfigured(repository: RepositoryPort): boolean {
   const methods = [repository.claimExecutionDispatch, repository.completeExecutionDispatch, repository.releaseExecutionDispatch];
   const configured = methods.filter(method => typeof method === "function").length;
-  if (configured !== 0 && configured !== methods.length) throw Error("dispatch claim facility must provide claim, complete, and release");
-  return configured === methods.length;
+  if (configured !== methods.length) throw Error("durable dispatch claim facility must provide claim, complete, and release");
+  return true;
 }
 function dispatchOwnerFor(dependencies: VerificationRunDependencies): string {
   const owner = dependencies.dispatchOwnerId ?? dependencies.ownerId ?? "verification-runtime";
@@ -284,7 +288,7 @@ function dispatchOwnerFor(dependencies: VerificationRunDependencies): string {
 }
 function dispatchLeaseDurationFor(dependencies: VerificationRunDependencies): number {
   const duration = dependencies.dispatchLeaseDurationMs ?? dependencies.leaseDurationMs ?? DISPATCH_LEASE_DURATION_MS;
-  if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0) throw Error("dispatch lease duration must be positive");
+  if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0 || duration > DISPATCH_LEASE_DURATION_MS) throw Error("dispatch lease duration must be positive and no greater than 30 seconds");
   return duration;
 }
 function dispatchClaimKeyFor(request: VerificationExecutionRequest): string {
@@ -299,30 +303,30 @@ function validDispatchClaim(value: unknown): value is DispatchClaim {
 function stableDispatchClaimMatches(value: DispatchClaim, request: VerificationExecutionRequest): boolean {
   return value.claimKey === dispatchClaimKeyFor(request) && value.runId === request.runId && value.requestId === request.requestId && value.rootIdentity === request.rootIdentity && value.snapshotId === request.snapshotId && value.planDigest === request.planDigest && value.obligationId === request.obligation.id && value.idempotencyKey === request.idempotencyKey;
 }
-type DispatchLease=Readonly<{owned:boolean;outputStored:boolean;claim:DispatchClaim;output?:VerificationExecutionOutput}>;
+type DispatchLease=Readonly<{owned:boolean;outputStored:boolean;claim:DispatchClaim;completion?:VerificationExecutionCompletionEnvelope}>;
 async function claimExecutionDispatch(repository: RepositoryPort, request: VerificationExecutionRequest, dependencies: VerificationRunDependencies): Promise<DispatchLease> {
   const now = clockNow(dependencies.now);
   const claim = dispatchClaimFor(request, dispatchOwnerFor(dependencies), now, dispatchLeaseDurationFor(dependencies));
   const claimMethod = repository.claimExecutionDispatch;
   if (!claimMethod) throw Error("atomic dispatch claim facility is required");
   const result = await claimMethod.call(repository, claim, now);
-  if (!isRecord(result) || !exactOwnKeys(result, ["claimed", "status", "claim", "outputStored"], ["output"]) || typeof result.claimed !== "boolean" || (result.status !== "CLAIMED" && result.status !== "COMPLETED") || typeof result.outputStored !== "boolean" || !validDispatchClaim(result.claim) || (result.output !== undefined && !isRecord(result.output))) throw Error("invalid dispatch claim result");
+  if (!isRecord(result) || !exactOwnKeys(result, ["claimed", "status", "claim", "outputStored"], ["completion"]) || typeof result.claimed !== "boolean" || (result.status !== "CLAIMED" && result.status !== "COMPLETED") || typeof result.outputStored !== "boolean" || !validDispatchClaim(result.claim) || (result.completion !== undefined && !isRecord(result.completion))) throw Error("invalid dispatch claim result");
   if (!stableDispatchClaimMatches(result.claim, request)) throw Error("dispatch claim binding mismatch");
   if (result.claimed) {
-    if (result.status !== "CLAIMED" || result.outputStored || result.claim.ownerId !== claim.ownerId || Date.parse(result.claim.leaseExpiresAt) <= Date.parse(now)) throw Error("invalid dispatch claim result");
+    if (result.status !== "CLAIMED" || result.outputStored || result.completion !== undefined || result.claim.ownerId !== claim.ownerId || Date.parse(result.claim.leaseExpiresAt) <= Date.parse(now)) throw Error("invalid dispatch claim result");
     return { owned: true, outputStored: false, claim: result.claim };
   }
   if (result.status === "CLAIMED") throw Error("dispatch claim already exists");
-  if (!result.outputStored) throw Error("dispatch claim already exists");
-  return { owned: false, outputStored: true, claim: result.claim, output: result.output as VerificationExecutionOutput | undefined };
+  if (!result.outputStored || !result.completion || !validCompletionEnvelope(result.completion, request, result.claim)) throw Error("invalid persisted dispatch completion");
+  return { owned: false, outputStored: true, claim: result.claim, completion: result.completion };
 }
-async function completeExecutionDispatch(repository: RepositoryPort, claim: DispatchClaim, output: VerificationExecutionOutput | undefined, now: string): Promise<void> {
-  if (!repository.completeExecutionDispatch) return;
-  const completed = await repository.completeExecutionDispatch.call(repository, claim, output, now);
+async function completeExecutionDispatch(repository: RepositoryPort, claim: DispatchClaim, completion: VerificationExecutionCompletionEnvelope | undefined, now: string): Promise<void> {
+  if (!repository.completeExecutionDispatch) throw Error("durable dispatch completion facility is required");
+  const completed = await repository.completeExecutionDispatch.call(repository, claim, completion, now);
   if (completed !== true) throw Error("dispatch result persistence failed");
 }
 async function releaseExecutionDispatch(repository: RepositoryPort, claim: DispatchClaim, now: string): Promise<void> {
-  if (!repository.releaseExecutionDispatch) return;
+  if (!repository.releaseExecutionDispatch) throw Error("durable dispatch release facility is required");
   const released = await repository.releaseExecutionDispatch.call(repository, claim, now);
   if (released !== true) throw Error("dispatch claim release failed");
 }
@@ -354,15 +358,15 @@ function validVerificationEvidence(value: unknown): value is VerificationEvidenc
   return true;
 }
 function validAuthority(value: unknown): value is ExecutionAuthority {
-  if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "authorityId", "issuer", "binding"]) || value.schemaVersion !== "verification-execution-authority/v1" || typeof value.authorityId !== "string" || !value.authorityId || typeof value.issuer !== "string" || !value.issuer || !isRecord(value.binding) || !exactOwnKeys(value.binding, ["runId", "requestId", "requestDigest", "planDigest", "obligationDigest", "snapshotId", "obligationId", "idempotencyKey", "producer", "execution", "result", "observedAt", "artifacts"])) return false;
+  if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "authorityId", "issuer", "binding"]) || value.schemaVersion !== "verification-execution-authority/v1" || typeof value.authorityId !== "string" || !value.authorityId || typeof value.issuer !== "string" || !value.issuer || !isRecord(value.binding) || !exactOwnKeys(value.binding, ["runId", "requestId", "requestDigest", "planDigest", "obligationDigest", "rootIdentity", "snapshotId", "obligationId", "idempotencyKey", "producer", "execution", "result", "observedAt", "artifacts"])) return false;
   const binding = value.binding;
-  return typeof binding.runId === "string" && Boolean(binding.runId) && typeof binding.requestId === "string" && Boolean(binding.requestId) && typeof binding.requestDigest === "string" && REQUEST_DIGEST.test(binding.requestDigest) && typeof binding.planDigest === "string" && REQUEST_DIGEST.test(binding.planDigest) && typeof binding.obligationDigest === "string" && REQUEST_DIGEST.test(binding.obligationDigest) && typeof binding.snapshotId === "string" && Boolean(binding.snapshotId) && typeof binding.obligationId === "string" && Boolean(binding.obligationId) && validExecutionKey(binding.idempotencyKey) && validProducer(binding.producer) && validExecution(binding.execution) && validDate(binding.observedAt) && canonicalResult(binding.result) !== undefined && Array.isArray(binding.artifacts) && binding.artifacts.every(artifact => validArtifact(artifact) && (artifact as CanonicalVerificationResultArtifact).digest === (artifact as CanonicalVerificationResultArtifact).digest.toLowerCase());
+  return typeof binding.runId === "string" && Boolean(binding.runId) && typeof binding.requestId === "string" && Boolean(binding.requestId) && typeof binding.requestDigest === "string" && REQUEST_DIGEST.test(binding.requestDigest) && typeof binding.planDigest === "string" && REQUEST_DIGEST.test(binding.planDigest) && typeof binding.obligationDigest === "string" && REQUEST_DIGEST.test(binding.obligationDigest) && typeof binding.rootIdentity === "string" && Boolean(binding.rootIdentity) && typeof binding.snapshotId === "string" && Boolean(binding.snapshotId) && typeof binding.obligationId === "string" && Boolean(binding.obligationId) && validExecutionKey(binding.idempotencyKey) && validProducer(binding.producer) && validExecution(binding.execution) && validDate(binding.observedAt) && canonicalResult(binding.result) !== undefined && Array.isArray(binding.artifacts) && binding.artifacts.every(artifact => validArtifact(artifact)) && structurallyEqual(binding.artifacts, (binding.artifacts as unknown[]).map(artifact => canonicalArtifact(artifact)!));
 }
-function authorityBindingFor(runId: string, requestDigest: string, planDigest: string, obligationDigest: string, observation: Observation, item: VerificationEvidence): VerificationExecutionAuthorityBinding {
-  return { runId, requestId: observation.requestId, requestDigest, planDigest, obligationDigest, snapshotId: observation.snapshotId, obligationId: item.obligationId, idempotencyKey: idempotencyKeyFor(runId, requestDigest, planDigest, obligationDigest), producer: observation.producer, execution: observation.execution, result: item.result, observedAt: item.observedAt, artifacts: observation.artifacts.map(artifact => canonicalArtifact(artifact)!).map(artifact => ({ ...artifact })) };
+function authorityBindingFor(runId: string, requestDigest: string, planDigest: string, obligationDigest: string, rootIdentity: string, observation: Observation, item: VerificationEvidence): VerificationExecutionAuthorityBinding {
+  return { runId, requestId: observation.requestId, requestDigest, planDigest, obligationDigest, rootIdentity, snapshotId: observation.snapshotId, obligationId: item.obligationId, idempotencyKey: idempotencyKeyFor(runId, requestDigest, planDigest, obligationDigest), producer: observation.producer, execution: observation.execution, result: item.result, observedAt: item.observedAt, artifacts: observation.artifacts.map(artifact => canonicalArtifact(artifact)!).map(artifact => ({ ...artifact })) };
 }
 function authorityBindingMatchesRequest(runId: string, request: VerificationExecutionRequest, binding: VerificationExecutionAuthorityBinding): boolean {
-  return binding.runId === runId && binding.requestId === request.requestId && binding.requestDigest === request.requestDigest && binding.planDigest === request.planDigest && binding.obligationDigest === request.obligationDigest && binding.snapshotId === request.snapshotId && binding.obligationId === request.obligation.id && binding.idempotencyKey === request.idempotencyKey;
+  return binding.runId === runId && binding.requestId === request.requestId && binding.requestDigest === request.requestDigest && binding.planDigest === request.planDigest && binding.obligationDigest === request.obligationDigest && binding.rootIdentity === request.rootIdentity && binding.snapshotId === request.snapshotId && binding.obligationId === request.obligation.id && binding.idempotencyKey === request.idempotencyKey;
 }
 function canonicalEvidenceFromAuthority(binding: VerificationExecutionAuthorityBinding, artifacts: readonly CanonicalVerificationResultArtifact[]): { producer: Producer; execution: Execution; result: VerificationEvidence["result"]; observedAt: string; artifacts: CanonicalVerificationResultArtifact[] } | undefined {
   const producer = canonicalProducer(binding.producer);
@@ -427,7 +431,7 @@ function assertExecutionEvidenceBindings(execution: ExecutionDocument, request?:
     const expectedRequest = requestDigest ?? persistedAuthority?.binding.requestDigest;
     const expectedPlan = planDigest ?? persistedAuthority?.binding.planDigest;
     const expectedObligation = canonicalObligationDigest(obligation);
-    const expected = authorityBindingFor(runId ?? (persistedAuthority?.binding.runId ?? ""), expectedRequest ?? "", expectedPlan ?? "", expectedObligation, observation, item);
+    const expected = authorityBindingFor(runId ?? (persistedAuthority?.binding.runId ?? ""), expectedRequest ?? "", expectedPlan ?? "", expectedObligation, request?.project.rootIdentity ?? persistedAuthority?.binding.rootIdentity ?? "", observation, item);
     if (!persistedAuthority || !structurallyEqual(persistedAuthority.binding, expected) || item.observedAt !== observation.execution.finishedAt) throw Error("invalid execution authority binding");
   }
   for (const entry of execution.usageOutbox) {
@@ -459,7 +463,7 @@ async function verifyPersistedExecutionAuthorities(execution: ExecutionDocument,
     if (!observation || !obligation) throw Error("invalid persisted execution authority");
     const requestDigest = canonicalRequestDigest(request);
     const planDigest = canonicalPlanDigest(plan);
-    const binding = authorityBindingFor(runId, requestDigest, planDigest, canonicalObligationDigest(obligation), observation, item);
+    const binding = authorityBindingFor(runId, requestDigest, planDigest, canonicalObligationDigest(obligation), request.project.rootIdentity, observation, item);
     if (!await verifyExecutionAuthority(port, authority, binding)) throw Error("invalid persisted execution authority");
   }
 }
@@ -477,6 +481,38 @@ function canonicalArtifacts(values: readonly unknown[]): CanonicalVerificationRe
     if (!artifact) throw Error("invalid artifact descriptor");
     return artifact;
   });
+}
+function canonicalExecutionOutput(value: unknown): VerificationExecutionOutput | undefined {
+  if (!isRecord(value) || !exactOwnKeys(value, ["status", "runId", "requestId", "snapshotId", "idempotencyKey", "producer"], ["summary", "artifacts", "executionKind", "identity", "exitCode"]) || !["passed", "failed", "blocked", "incomplete", "PASS", "FAIL", "BLOCKED", "INCOMPLETE"].includes(value.status as string) || typeof value.runId !== "string" || !value.runId || typeof value.requestId !== "string" || !value.requestId || typeof value.snapshotId !== "string" || !value.snapshotId || !validExecutionKey(value.idempotencyKey) || !validProducer(value.producer) || (value.summary !== undefined && (typeof value.summary !== "string" || !value.summary)) || (value.executionKind !== undefined && !EXECUTION_KINDS.includes(value.executionKind as Execution["kind"])) || (value.identity !== undefined && (typeof value.identity !== "string" || !value.identity)) || (value.exitCode !== undefined && (typeof value.exitCode !== "number" || !Number.isInteger(value.exitCode)))) return undefined;
+  const artifacts = value.artifacts === undefined ? undefined : Array.isArray(value.artifacts) ? value.artifacts.map(item => canonicalArtifact(item)) : undefined;
+  if (artifacts?.some(item => !item)) return undefined;
+  return { status: value.status as VerificationExecutionOutput["status"], runId: value.runId, requestId: value.requestId, snapshotId: value.snapshotId, idempotencyKey: value.idempotencyKey, producer: canonicalProducer(value.producer)!, ...(value.summary === undefined ? {} : { summary: value.summary }), ...(artifacts === undefined ? {} : { artifacts: artifacts as CanonicalVerificationResultArtifact[] }), ...(value.executionKind === undefined ? {} : { executionKind: value.executionKind as Execution["kind"] }), ...(value.identity === undefined ? {} : { identity: value.identity }), ...(value.exitCode === undefined ? {} : { exitCode: value.exitCode }) };
+}
+function validCompletionEnvelope(value: unknown, request: VerificationExecutionRequest, claim: DispatchClaim): value is VerificationExecutionCompletionEnvelope {
+  if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "runId", "requestId", "rootIdentity", "snapshotId", "planDigest", "obligationId", "idempotencyKey", "output", "authority"]) || value.schemaVersion !== "verification-execution-completion/v1" || value.runId !== request.runId || value.requestId !== request.requestId || value.rootIdentity !== request.rootIdentity || value.snapshotId !== request.snapshotId || value.planDigest !== request.planDigest || value.obligationId !== request.obligation.id || value.idempotencyKey !== request.idempotencyKey || value.runId !== claim.runId || value.requestId !== claim.requestId || value.rootIdentity !== claim.rootIdentity || value.snapshotId !== claim.snapshotId || value.planDigest !== claim.planDigest || value.obligationId !== claim.obligationId || value.idempotencyKey !== claim.idempotencyKey || !validAuthority(value.authority)) return false;
+  const output = canonicalExecutionOutput(value.output);
+  if (!output || !structurallyEqual(output, value.output) || !outputReceiptMatches(output, request) || !authorityBindingMatchesRequest(request.runId, request, value.authority.binding)) return false;
+  const binding = value.authority.binding;
+  const artifacts = (output.artifacts ?? []) as CanonicalVerificationResultArtifact[];
+  const canonical = canonicalEvidenceFromAuthority(binding, artifacts);
+  if (!canonical || !structurallyEqual(canonical.producer, output.producer) || canonical.result.verdict !== normalizeStatus(output.status) || canonical.result.summary !== (output.summary ?? `Obligation ${request.obligation.id} completed.`) || !structurallyEqual(canonical.result.artifacts ?? [], uniq(artifacts.map(item => item.digest))) || canonical.execution.identity !== (output.identity ?? output.producer.identity) || canonical.execution.exitCode !== output.exitCode || canonical.execution.exitStatus !== (normalizeStatus(output.status) === "PASS" ? "passed" : normalizeStatus(output.status) === "FAIL" ? "failed" : normalizeStatus(output.status) === "BLOCKED" ? "blocked" : "cancelled") || canonical.execution.kind !== (output.executionKind ?? (request.obligation.evidenceType === "browser-result" ? "browser" : "command"))) return false;
+  return true;
+}
+async function createCompletionEnvelope(request: VerificationExecutionRequest, claim: DispatchClaim, output: VerificationExecutionOutput | undefined, startedAt: string, finishedAt: string, dependencies: VerificationRunDependencies): Promise<VerificationExecutionCompletionEnvelope | undefined> {
+  const canonicalOutput = canonicalExecutionOutput(output);
+  if (!canonicalOutput || !outputReceiptMatches(canonicalOutput, request)) return undefined;
+  const producer = canonicalOutput.producer;
+  const artifacts = (canonicalOutput.artifacts ?? []) as CanonicalVerificationResultArtifact[];
+  const verdict = normalizeStatus(canonicalOutput.status);
+  const execution = executionFor(request.obligation, verdict, startedAt, finishedAt, canonicalOutput, producer);
+  const result: VerificationEvidence["result"] = { verdict, summary: canonicalOutput.summary ?? `Obligation ${request.obligation.id} completed.`, ...(verdict === "PASS" ? { passed: 1 } : verdict === "FAIL" ? { failed: 1 } : {}), artifacts: uniq(artifacts.map(item => item.digest)) };
+  const observation: Observation = { schemaVersion: "observation/v1", observationId: `observation:${request.obligation.id}`, requestId: request.requestId, snapshotId: request.snapshotId, producer, execution, artifacts };
+  const item: VerificationEvidence = { schemaVersion: "verification-evidence/v1", evidenceId: `evidence:${request.obligation.id}`, requestId: request.requestId, snapshotId: request.snapshotId, obligationId: request.obligation.id, producer, execution, result, observedAt: finishedAt };
+  const binding = authorityBindingFor(request.runId, request.requestDigest, request.planDigest, request.obligationDigest, request.rootIdentity, observation, item);
+  const authority = await issueExecutionAuthority(dependencies.executionAuthority, binding);
+  if (!authority || !validAuthority(authority) || !structurallyEqual(authority.binding, binding) || !await verifyExecutionAuthority(dependencies.executionAuthority, authority, binding)) return undefined;
+  const envelope: VerificationExecutionCompletionEnvelope = { schemaVersion: "verification-execution-completion/v1", runId: request.runId, requestId: request.requestId, rootIdentity: request.rootIdentity, snapshotId: request.snapshotId, planDigest: request.planDigest, obligationId: request.obligation.id, idempotencyKey: request.idempotencyKey, output: canonicalOutput, authority };
+  return validCompletionEnvelope(envelope, request, claim) ? freeze(envelope) : undefined;
 }
 async function storeArtifact(store: ArtifactStore, artifact: CanonicalVerificationResultArtifact, input: VerificationExecutionRequest): Promise<CanonicalVerificationResultArtifact | undefined> {
   const saved = store.storeVerificationResultArtifact ? await store.storeVerificationResultArtifact(artifact, input) : store.storeArtifact ? await store.storeArtifact(artifact, input) : store.putArtifact ? await store.putArtifact(artifact, input) : store.store ? await store.store(artifact, input) : undefined;
@@ -561,26 +597,65 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     let startedAt: string;
     let finishedAt: string;
     let output: VerificationExecutionOutput | undefined;
+    let precheckedArtifacts: CanonicalVerificationResultArtifact[] | undefined;
+    let precheckArtifactFailure = false;
+    let precheckStoreException = false;
+    let precheckStoreError: unknown;
     let lease: DispatchLease | undefined;
     if (available) {
-      if (dispatchClaimsConfigured) {
-        lease = await claimExecutionDispatch(input.dependencies.repository, request, input.dependencies);
-      }
-      startedAt = clockNow(input.dependencies.now);
-      if (!lease || lease.owned) {
+      const executionPort = obligation.evidenceType === "browser-result" ? input.dependencies.browserExecutor : input.dependencies.executor;
+      if (!executionPort || executionPort.atomicSameKeyIdempotency !== true) throw Error("executor must declare atomic same-key idempotency");
+      lease = await claimExecutionDispatch(input.dependencies.repository, request, input.dependencies);
+      if (lease.owned) {
+        startedAt = clockNow(input.dependencies.now);
         try {
           output = obligation.evidenceType === "browser-result"
-            ? input.dependencies.browserExecutor ? await executeBrowser(input.dependencies.browserExecutor, request) : undefined
+            ? await executeBrowser(input.dependencies.browserExecutor!, request)
             : await executeExecutor(input.dependencies.executor, request);
         } catch (error) {
-          if (lease?.owned) await releaseExecutionDispatch(input.dependencies.repository, lease.claim, clockNow(input.dependencies.now));
+          await releaseExecutionDispatch(input.dependencies.repository, lease.claim, clockNow(input.dependencies.now));
           throw error;
         }
-        if (lease?.owned) await completeExecutionDispatch(input.dependencies.repository, lease.claim, output, clockNow(input.dependencies.now));
+        finishedAt = clockNow(input.dependencies.now);
+        if (output && ["PASS", "FAIL", "passed", "failed"].includes(output.status)) {
+          const supplied = Array.isArray(output.artifacts) ? output.artifacts : [];
+          if (output.artifacts !== undefined && supplied.length !== output.artifacts.length) {
+            precheckArtifactFailure = true;
+          } else if (supplied.some(item => !canonicalArtifact(item))) {
+            precheckArtifactFailure = true;
+          } else {
+            precheckedArtifacts = [];
+            for (const artifact of canonicalArtifacts(supplied)) {
+              try {
+                const stored = await storeArtifact(input.dependencies.artifactStore, artifact, request);
+                if (!stored) precheckArtifactFailure = true;
+                else precheckedArtifacts.push(stored);
+              } catch (error) {
+                precheckStoreException = true;
+                precheckStoreError = error;
+                precheckedArtifacts = undefined;
+                break;
+              }
+            }
+          }
+        }
+        const completionOutput = output && precheckedArtifacts ? { ...output, artifacts: precheckedArtifacts } : output;
+        const completion = precheckArtifactFailure || (!precheckStoreException && output && ["PASS", "FAIL", "passed", "failed"].includes(output.status) && (precheckedArtifacts === undefined || precheckedArtifacts.length === 0))
+          ? undefined
+          : await createCompletionEnvelope(request, lease.claim, completionOutput, startedAt, finishedAt, input.dependencies);
+        if (completion) {
+          await completeExecutionDispatch(input.dependencies.repository, lease.claim, completion, clockNow(input.dependencies.now));
+          if (precheckStoreException) throw precheckStoreError;
+        } else {
+          await releaseExecutionDispatch(input.dependencies.repository, lease.claim, clockNow(input.dependencies.now));
+          output = undefined;
+        }
       } else {
-        output = lease.output;
+        if (!lease.completion || !await verifyExecutionAuthority(input.dependencies.executionAuthority, lease.completion.authority, lease.completion.authority.binding)) throw Error("invalid persisted dispatch completion authority");
+        output = lease.completion.output;
+        startedAt = lease.completion.authority.binding.execution.startedAt;
+        finishedAt = lease.completion.authority.binding.execution.finishedAt;
       }
-      finishedAt = clockNow(input.dependencies.now);
     } else {
       startedAt = clockNow(input.dependencies.now);
       finishedAt = startedAt;
@@ -600,12 +675,16 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
       verdict = "INCOMPLETE";
       summary = "Executor output contained a malformed artifact.";
     } else if (verdict === "PASS" || verdict === "FAIL") {
-      const supplied = Array.isArray(suppliedArtifacts) ? suppliedArtifacts : [];
-      let malformedStoredArtifact = false;
-      for (const artifact of canonicalArtifacts(supplied)) {
-        const stored = await storeArtifact(input.dependencies.artifactStore, artifact, request);
-        if (stored) artifacts.push(stored);
-        else malformedStoredArtifact = true;
+      let malformedStoredArtifact = precheckArtifactFailure;
+      if (precheckedArtifacts) {
+        artifacts = [...precheckedArtifacts];
+      } else if (!precheckArtifactFailure) {
+        const supplied = Array.isArray(suppliedArtifacts) ? suppliedArtifacts : [];
+        for (const artifact of canonicalArtifacts(supplied)) {
+          const stored = await storeArtifact(input.dependencies.artifactStore, artifact, request);
+          if (stored) artifacts.push(stored);
+          else malformedStoredArtifact = true;
+        }
       }
       if (malformedStoredArtifact) {
         hostGenerated = true;
@@ -633,7 +712,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     let observation: Observation = { schemaVersion: "observation/v1", observationId, requestId: observationRequestId, snapshotId: observationSnapshotId, producer, execution, artifacts };
     let result: VerificationEvidence["result"] = { verdict, summary, ...(verdict === "PASS" ? { passed: 1 } : verdict === "FAIL" ? { failed: 1 } : {}), artifacts: uniq(artifacts.map(item => item.digest)) };
     let item: VerificationEvidence = { schemaVersion: "verification-evidence/v1", evidenceId: `evidence:${obligation.id}`, requestId: observationRequestId, snapshotId: observationSnapshotId, obligationId: obligation.id, producer, execution, result, observedAt: finishedAt };
-    const binding = authorityBindingFor(input.runId, requestDigest, planDigest, obligationDigest, observation, item);
+    const binding = authorityBindingFor(input.runId, requestDigest, planDigest, obligationDigest, input.request.project.rootIdentity, observation, item);
     const candidate = await issueExecutionAuthority(input.dependencies.executionAuthority, binding);
     if (!candidate || !validAuthority(candidate)) throw Error("execution authority issue failed");
     let verifiedBinding: VerificationExecutionAuthorityBinding;
@@ -646,7 +725,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
       if (!replayCanonical) throw Error("execution authority binding is not canonical");
       const replayObservation = { ...observation, producer: replayCanonical.producer, execution: replayCanonical.execution, artifacts: replayCanonical.artifacts };
       const replayItem = { ...item, producer: replayCanonical.producer, execution: replayCanonical.execution, result: replayCanonical.result, observedAt: replayCanonical.observedAt };
-      const expectedBinding = authorityBindingFor(input.runId, requestDigest, planDigest, obligationDigest, replayObservation, replayItem);
+      const expectedBinding = authorityBindingFor(input.runId, requestDigest, planDigest, obligationDigest, input.request.project.rootIdentity, replayObservation, replayItem);
       if (!structurallyEqual(candidate.binding, expectedBinding)) throw Error("execution authority replay binding is not canonical");
       verifiedBinding = candidate.binding;
     }
@@ -705,6 +784,24 @@ function canonicalEvaluatedAt(execution: ExecutionDocument): string {
   }
   return evaluatedAt;
 }
+function validFreshnessAuthority(value: unknown): value is FreshnessAuthority {
+  if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "authorityId", "issuer", "binding"]) || value.schemaVersion !== "verification-freshness-authority/v1" || typeof value.authorityId !== "string" || !value.authorityId || typeof value.issuer !== "string" || !value.issuer || !isRecord(value.binding) || !exactOwnKeys(value.binding, ["schemaVersion", "requestId", "snapshotId", "planDigest", "executionDigest", "freshnessEvaluatedAt", "evaluationIds", "acceptedClaimIds", "coverage"]) || value.binding.schemaVersion !== "verification-freshness-binding/v1" || typeof value.binding.requestId !== "string" || !value.binding.requestId || typeof value.binding.snapshotId !== "string" || !value.binding.snapshotId || typeof value.binding.planDigest !== "string" || !REQUEST_DIGEST.test(value.binding.planDigest) || typeof value.binding.executionDigest !== "string" || !REQUEST_DIGEST.test(value.binding.executionDigest) || !validDate(value.binding.freshnessEvaluatedAt) || !Array.isArray(value.binding.evaluationIds) || !Array.isArray(value.binding.acceptedClaimIds) || !isRecord(value.binding.coverage)) return false;
+  const sortedUnique = (values: unknown): boolean => Array.isArray(values) && values.every((item, index) => typeof item === "string" && Boolean(item) && (index === 0 || (values[index - 1] as string).localeCompare(item) < 0));
+  return sortedUnique(value.binding.evaluationIds) && sortedUnique(value.binding.acceptedClaimIds) && exactOwnKeys(value.binding.coverage, ["basisIds", "coveredBasisIds", "riskIds", "coveredRiskIds", "conditionIds", "coveredConditionIds"]) && Object.values(value.binding.coverage).every(items => sortedUnique(items));
+}
+function freshnessBindingFor(request: VerificationRequest, plan: VerificationPlan, execution: ExecutionDocument, freshnessEvaluatedAt: string, evaluations: readonly EvidenceEvaluation[], acceptedClaimIds: readonly string[], coverage: CoverageInput): FreshnessAuthorityBinding {
+  return { schemaVersion: "verification-freshness-binding/v1", requestId: request.requestId, snapshotId: request.project.snapshotId, planDigest: canonicalPlanDigest(plan), executionDigest: canonicalSha256(execution), freshnessEvaluatedAt, evaluationIds: evaluations.map(item => item.evaluationId).sort(), acceptedClaimIds: [...acceptedClaimIds].sort(), coverage: { basisIds: [...coverage.basisIds].sort(), coveredBasisIds: [...coverage.coveredBasisIds].sort(), riskIds: [...coverage.riskIds].sort(), coveredRiskIds: [...coverage.coveredRiskIds].sort(), conditionIds: [...coverage.conditionIds].sort(), coveredConditionIds: [...coverage.coveredConditionIds].sort() } };
+}
+async function issueFreshnessAuthority(port: FreshnessAuthorityPort | undefined, binding: FreshnessAuthorityBinding): Promise<FreshnessAuthority | undefined> {
+  if (!port) return undefined;
+  if (port.issueFreshnessAuthority) return port.issueFreshnessAuthority(binding);
+  return port.issue ? port.issue(binding) : undefined;
+}
+async function verifyFreshnessAuthority(port: FreshnessAuthorityPort | undefined, authority: FreshnessAuthority, binding: FreshnessAuthorityBinding): Promise<boolean> {
+  if (!port) return false;
+  const result = port.verifyFreshnessAuthority ? await port.verifyFreshnessAuthority(authority, binding) : port.verify ? await port.verify(authority, binding) : false;
+  return result === true || (validFreshnessAuthority(result) && structurallyEqual(result, authority) && structurallyEqual(result.binding, binding));
+}
 async function evaluateEvidence(input: EvaluateEvidenceInput): Promise<EvidenceDocument> {
   validRequest(input.request);
   assertExecutionEvidenceBindings(input.execution, input.request, input.plan, input.runId);
@@ -723,10 +820,17 @@ async function evaluateEvidence(input: EvaluateEvidenceInput): Promise<EvidenceD
     return makeEvaluation(observation, claim, obligation, evaluatedAt, input.request, freshness);
   }));
   const claimsById = new Map(input.execution.claims.map(claim => [claim.claimId, claim]));
-  const accepted = new Set(evaluations.filter(item=>item.status==="ACCEPTED").map(item=>claimsById.get(item.claimId)?.obligationId).filter((id):id is string=>Boolean(id)));
+  const acceptedClaimIds = evaluations.filter(item=>item.status==="ACCEPTED").map(item=>item.claimId).sort();
+  const accepted = new Set(acceptedClaimIds.map(claimId => claimsById.get(claimId)?.obligationId).filter((id):id is string=>Boolean(id)));
   const conditionById = new Map(input.plan.conditions.map(item => [item.id, item]));
   const coveredConditions = [...accepted].flatMap(obligationId => input.plan.obligations.find(item=>item.id===obligationId)?.conditionIds ?? []);
-  return freeze({ schemaVersion:"verification-evidence-evaluation/v1", requestId:input.request.requestId, snapshotId:input.request.project.snapshotId, freshnessEvaluatedAt, evaluations, acceptedClaimIds:evaluations.filter(item=>item.status==="ACCEPTED").map(item=>item.claimId).sort(), coverage:{basisIds:uniq(input.plan.conditions.flatMap(item=>item.basisIds)),coveredBasisIds:uniq(coveredConditions.flatMap(id=>conditionById.get(id)?.basisIds ?? [])),riskIds:uniq(input.plan.risks.map(item=>item.id)),coveredRiskIds:uniq(coveredConditions.flatMap(id=>conditionById.get(id)?.riskIds ?? [])),conditionIds:uniq(input.plan.conditions.map(item=>item.id)),coveredConditionIds:coveredConditions.sort()} });
+  const coverage = { basisIds: uniq(input.plan.conditions.flatMap(item=>item.basisIds)), coveredBasisIds: uniq(coveredConditions.flatMap(id=>conditionById.get(id)?.basisIds ?? [])), riskIds: uniq(input.plan.risks.map(item=>item.id)), coveredRiskIds: uniq(coveredConditions.flatMap(id=>conditionById.get(id)?.riskIds ?? [])), conditionIds: uniq(input.plan.conditions.map(item=>item.id)), coveredConditionIds: coveredConditions.sort() };
+  const binding = freshnessBindingFor(input.request, input.plan, input.execution, freshnessEvaluatedAt, evaluations, acceptedClaimIds, coverage);
+  const freshnessAuthority = input.freshnessAuthority
+    ? (validFreshnessAuthority(input.freshnessAuthority) && structurallyEqual(input.freshnessAuthority.binding, binding) && await verifyFreshnessAuthority(input.dependencies.freshnessAuthority, input.freshnessAuthority, binding) ? input.freshnessAuthority : undefined)
+    : await issueFreshnessAuthority(input.dependencies.freshnessAuthority, binding);
+  if (!freshnessAuthority || !validFreshnessAuthority(freshnessAuthority) || !structurallyEqual(freshnessAuthority.binding, binding) || !await verifyFreshnessAuthority(input.dependencies.freshnessAuthority, freshnessAuthority, binding)) throw Error("freshness authority verification failed");
+  return freeze({ schemaVersion:"verification-evidence-evaluation/v1", requestId:input.request.requestId, snapshotId:input.request.project.snapshotId, freshnessEvaluatedAt, freshnessAuthority, evaluations, acceptedClaimIds, coverage });
 }
 async function evaluateResidualRisk(input: EvaluateResidualRiskInput): Promise<ResidualRiskDocument> {
   return freeze({ schemaVersion: "verification-residual-risk/v1", requestId: input.request.requestId, snapshotId: input.request.project.snapshotId, defects: [] });
@@ -799,7 +903,7 @@ function validateStage(stage: StageName, value: unknown, request: VerificationRe
     if (!prior?.plan) throw Error("invalid persisted execution prerequisites");
     assertExecutionEvidenceBindings(value as unknown as ExecutionDocument, request, prior.plan, runId);
   } else if (stage === "evidence") {
-    if (!exactOwnKeys(value, ["schemaVersion", "requestId", "snapshotId", "freshnessEvaluatedAt", "evaluations", "acceptedClaimIds", "coverage"]) || !validDate(value.freshnessEvaluatedAt) || !Array.isArray(value.evaluations) || !Array.isArray(value.acceptedClaimIds) || !isRecord(value.coverage)) throw Error("invalid persisted evidence stage");
+    if (!exactOwnKeys(value, ["schemaVersion", "requestId", "snapshotId", "freshnessEvaluatedAt", "freshnessAuthority", "evaluations", "acceptedClaimIds", "coverage"]) || !validDate(value.freshnessEvaluatedAt) || !validFreshnessAuthority(value.freshnessAuthority) || !Array.isArray(value.evaluations) || !Array.isArray(value.acceptedClaimIds) || !isRecord(value.coverage)) throw Error("invalid persisted evidence stage");
     const evaluationIds = value.evaluations.map(evaluation => isRecord(evaluation) && typeof evaluation.evaluationId === "string" ? evaluation.evaluationId : "");
     if (evaluationIds.some(id => !id) || new Set(evaluationIds).size !== evaluationIds.length || JSON.stringify(evaluationIds) !== JSON.stringify([...evaluationIds].sort())) throw Error("invalid persisted evidence stage");
     if (value.evaluations.some(evaluation => !isRecord(evaluation) || evaluation.schemaVersion !== "evidence-evaluation/v1" || evaluation.requestId !== request.requestId || evaluation.snapshotId !== request.project.snapshotId || !validDate(evaluation.evaluatedAt))) throw Error("invalid persisted evidence reference");
@@ -828,7 +932,7 @@ async function loadCheckedStage<T>(repository: RepositoryPort, runId: string, st
     if (stage === "execution") await verifyPersistedExecutionAuthorities(value as unknown as ExecutionDocument, request, prior?.plan, runId, dependencies.executionAuthority);
     if (stage === "evidence") {
       if (!prior?.plan || !prior.execution) throw Error("invalid persisted evidence prerequisites");
-      const canonical = await evaluateEvidence({ runId, request, plan: prior.plan, execution: prior.execution, dependencies, freshnessEvaluatedAt: (value as EvidenceDocument).freshnessEvaluatedAt });
+      const canonical = await evaluateEvidence({ runId, request, plan: prior.plan, execution: prior.execution, dependencies, freshnessEvaluatedAt: (value as EvidenceDocument).freshnessEvaluatedAt, freshnessAuthority: (value as EvidenceDocument).freshnessAuthority });
       if (!structurallyEqual(value, canonical)) throw Error("invalid persisted evidence canonicalization");
     }
     if (stage === "residual-risk") {

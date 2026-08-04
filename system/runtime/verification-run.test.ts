@@ -19,6 +19,8 @@ import {
 
   type ExecutionAuthority,
   type DispatchClaim,
+  type FreshnessAuthority,
+  type VerificationExecutionCompletionEnvelope,
   type RepositoryPort,
   type UsageRecorder,
   type VerificationExecutor,
@@ -41,12 +43,12 @@ type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolea
 type FakeRepositoryStore = {
   runs: Map<string, CanonicalRunState>;
   stageDocuments: Map<string, unknown>;
-  dispatchClaims: Map<string, { claim: DispatchClaim; status: "CLAIMED" | "COMPLETED"; outputStored: boolean; output?: VerificationExecutionOutput }>;
+  dispatchClaims: Map<string, { claim: DispatchClaim; status: "CLAIMED" | "COMPLETED"; outputStored: boolean; completion?: VerificationExecutionCompletionEnvelope }>;
 };
 class FakeRepository {
   readonly runs: Map<string, CanonicalRunState>;
   readonly stageDocuments: Map<string, unknown>;
-  readonly dispatchClaims: Map<string, { claim: DispatchClaim; status: "CLAIMED" | "COMPLETED"; outputStored: boolean; output?: VerificationExecutionOutput }>;
+  readonly dispatchClaims: Map<string, { claim: DispatchClaim; status: "CLAIMED" | "COMPLETED"; outputStored: boolean; completion?: VerificationExecutionCompletionEnvelope }>;
   constructor(store?: FakeRepositoryStore) {
     const backing = store ?? { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
     this.runs = backing.runs;
@@ -59,7 +61,7 @@ class FakeRepository {
   readonly runWrites: CanonicalRunState[] = [];
   async loadRun(runId: string): Promise<CanonicalRunState | undefined> { return this.runs.get(runId); }
   async loadStageDocument(runId: string, stage: string): Promise<unknown | undefined> { return this.stageDocuments.get(`${runId}:${stage}`); }
-  async claimExecutionDispatch(claim: DispatchClaim, now = FIXED_NOW): Promise<{ claimed: boolean; status: "CLAIMED" | "COMPLETED"; claim: DispatchClaim; outputStored: boolean; output?: VerificationExecutionOutput }> {
+  async claimExecutionDispatch(claim: DispatchClaim, now = FIXED_NOW): Promise<{ claimed: boolean; status: "CLAIMED" | "COMPLETED"; claim: DispatchClaim; outputStored: boolean; completion?: VerificationExecutionCompletionEnvelope }> {
     const existing = this.dispatchClaims.get(claim.claimKey);
     if (existing?.status === "COMPLETED") return { claimed: false, ...structuredClone(existing) };
     if (existing) {
@@ -72,10 +74,10 @@ class FakeRepository {
     this.dispatchClaims.set(claim.claimKey, created);
     return { claimed: true, ...structuredClone(created) };
   }
-  async completeExecutionDispatch(claim: DispatchClaim, output: VerificationExecutionOutput | undefined, now = FIXED_NOW): Promise<boolean> {
+  async completeExecutionDispatch(claim: DispatchClaim, completion: VerificationExecutionCompletionEnvelope | undefined, now = FIXED_NOW): Promise<boolean> {
     const existing = this.dispatchClaims.get(claim.claimKey);
     if (!existing || existing.status !== "CLAIMED" || existing.claim.ownerId !== claim.ownerId || existing.claim.leaseGeneration !== claim.leaseGeneration || Date.parse(now) > Date.parse(existing.claim.leaseExpiresAt)) return false;
-    this.dispatchClaims.set(claim.claimKey, { ...existing, status: "COMPLETED", outputStored: true, ...(output === undefined ? {} : { output: structuredClone(output) }) });
+    this.dispatchClaims.set(claim.claimKey, { ...existing, status: "COMPLETED", outputStored: completion !== undefined, ...(completion === undefined ? {} : { completion: structuredClone(completion) }) });
     return true;
   }
   async releaseExecutionDispatch(claim: DispatchClaim, now = FIXED_NOW): Promise<boolean> {
@@ -130,6 +132,7 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
   let executorCalls = 0;
   let browserCalls = 0;
   const executor = {
+    atomicSameKeyIdempotency: true as const,
     executeObligation: async (request: VerificationExecutionRequest) => {
       executorCalls++;
       if (options.missingExecutorOutput) return undefined;
@@ -137,6 +140,7 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
     },
   } as unknown as VerificationExecutor;
   const browser = {
+    atomicSameKeyIdempotency: true as const,
     executeBrowser: async (request: VerificationExecutionRequest) => {
       browserCalls++;
       if (options.missingBrowserOutput) return undefined;
@@ -161,6 +165,21 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
       return Boolean(stored && JSON.stringify(stored) === JSON.stringify(authority) && JSON.stringify(stored.binding) === JSON.stringify(binding));
     },
   };
+  const freshnessAuthorities = new Map<string, FreshnessAuthority>();
+  const freshnessAuthority = {
+    issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]): Promise<FreshnessAuthority> => {
+      const key = JSON.stringify(binding);
+      const existing = freshnessAuthorities.get(key);
+      if (existing) return existing;
+      const authority: FreshnessAuthority = { schemaVersion: "verification-freshness-authority/v1", authorityId: `freshness:${binding.executionDigest}`, issuer: "fixture-freshness-authority", binding: structuredClone(binding) };
+      freshnessAuthorities.set(key, authority);
+      return authority;
+    },
+    verifyFreshnessAuthority: async (authority: FreshnessAuthority, binding: FreshnessAuthority["binding"]): Promise<boolean> => {
+      const stored = freshnessAuthorities.get(JSON.stringify(binding));
+      return Boolean(stored && JSON.stringify(stored) === JSON.stringify(authority) && JSON.stringify(stored.binding) === JSON.stringify(binding));
+    },
+  };
   const capabilityProvider = { has: () => !options.missingCapability } as unknown as CapabilityProvider;
   const artifactStore: ArtifactStore = {
     storeVerificationResultArtifact: async (artifact: Artifact) => options.missingArtifactStorage ? { type: "unexpected-artifact", digest: "c".repeat(64) } : artifact,
@@ -172,6 +191,7 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
   const usageRecorder = { recordUsage: async () => undefined, record: async () => undefined } as unknown as UsageRecorder;
   const dependencies = {
     executionAuthority,
+    freshnessAuthority,
     freshnessPolicy: { evaluateFreshness: async () => "fresh" as const },
     repository: repository as unknown as RepositoryPort,
     executor,
@@ -240,19 +260,17 @@ test.each(["uppercase", "reordered"] as const)("rejects a %s noncanonical author
     return { ...binding, execution, observedAt: execution.finishedAt, result, artifactDigests };
   };
   const replay = makeReplayAuthority(fakes, mutate);
-  const executor: VerificationExecutor = {
-    executeObligation: async executionRequest => ({
-      status: "PASS",
-      runId: executionRequest.runId,
-      requestId: executionRequest.requestId,
-      snapshotId: executionRequest.snapshotId,
-      idempotencyKey: executionRequest.idempotencyKey,
-      producer: { kind: "deterministic-verifier", identity: "replay-executor", independence: "independent-producer" },
-      artifacts: mode === "reordered"
-        ? [{ type: "verification-result", digest: "a".repeat(64) }, { type: "verification-result", digest: "b".repeat(64) }]
-        : [{ type: "verification-result", digest: "a".repeat(64) }],
-    }),
-  };
+  const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async executionRequest => ({
+    status: "PASS",
+    runId: executionRequest.runId,
+    requestId: executionRequest.requestId,
+    snapshotId: executionRequest.snapshotId,
+    idempotencyKey: executionRequest.idempotencyKey,
+    producer: { kind: "deterministic-verifier", identity: "replay-executor", independence: "independent-producer" },
+    artifacts: mode === "reordered"
+      ? [{ type: "verification-result", digest: "a".repeat(64) }, { type: "verification-result", digest: "b".repeat(64) }]
+      : [{ type: "verification-result", digest: "a".repeat(64) }],
+  }), }
   const dependencies = { ...replay.dependencies, executor };
   await expect(runVerification({ runId, request, dependencies })).rejects.toThrow(/execution authority/);
   expect(replay.issued).toHaveLength(1);
@@ -384,17 +402,15 @@ test.each([
 test("canonicalizes executor and artifact-store artifacts before authority and persistence", async () => {
   const fakes = makeDependencies();
   const digest = "A".repeat(64);
-  const executor: VerificationExecutor = {
-    executeObligation: async request => ({
-      status: "PASS",
-      runId: request.runId,
-      requestId: request.requestId,
-      snapshotId: request.snapshotId,
-      idempotencyKey: request.idempotencyKey,
-      producer: { kind: "deterministic-verifier", identity: "uppercase-executor", independence: "independent-producer" },
-      artifacts: [{ type: "verification-result", digest }, { type: "verification-result", digest: digest.toLowerCase(), path: "/tmp/result" }] as unknown as Artifact[],
-    }),
-  };
+  const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => ({
+    status: "PASS",
+    runId: request.runId,
+    requestId: request.requestId,
+    snapshotId: request.snapshotId,
+    idempotencyKey: request.idempotencyKey,
+    producer: { kind: "deterministic-verifier", identity: "uppercase-executor", independence: "independent-producer" },
+    artifacts: [{ type: "verification-result", digest }, { type: "verification-result", digest: digest.toLowerCase(), path: "/tmp/result" }] as unknown as Artifact[],
+  }), }
   const artifactStore: ArtifactStore = {
     storeVerificationResultArtifact: async artifact => ({ ...artifact, digest: artifact.digest.toUpperCase(), extra: "discard" } as unknown as Artifact),
   };
@@ -421,13 +437,11 @@ test("rejects empty and non-string artifact digests or paths without storing the
   ]) {
     const fakes = makeDependencies();
     let stores = 0;
-    const executor: VerificationExecutor = {
-      executeObligation: async request => ({
-        status: "PASS", runId: request.runId, requestId: request.requestId, snapshotId: request.snapshotId, idempotencyKey: request.idempotencyKey,
-        producer: { kind: "deterministic-verifier", identity: "malformed-artifact-executor", independence: "independent-producer" },
-        artifacts: [malformed] as unknown as Artifact[],
-      }),
-    };
+    const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => ({
+      status: "PASS", runId: request.runId, requestId: request.requestId, snapshotId: request.snapshotId, idempotencyKey: request.idempotencyKey,
+      producer: { kind: "deterministic-verifier", identity: "malformed-artifact-executor", independence: "independent-producer" },
+      artifacts: [malformed] as unknown as Artifact[],
+    }), }
     const artifactStore: ArtifactStore = { storeVerificationResultArtifact: async artifact => { stores++; return artifact; } };
     const result = await runOnce({ ...fakes.dependencies, executor, artifactStore }, `malformed-artifact-${stores}`);
     expect(result.verdict.qaVerdict).not.toBe("PASS");
@@ -437,13 +451,11 @@ test("rejects empty and non-string artifact digests or paths without storing the
 test("fails closed when a valid artifact is accompanied by a malformed artifact", async () => {
   const fakes = makeDependencies();
   let stores = 0;
-  const executor: VerificationExecutor = {
-    executeObligation: async request => ({
-      status: "PASS", runId: request.runId, requestId: request.requestId, snapshotId: request.snapshotId, idempotencyKey: request.idempotencyKey,
-      producer: { kind: "deterministic-verifier", identity: "mixed-artifact-executor", independence: "independent-producer" },
-      artifacts: [{ type: "verification-result", digest: "a".repeat(64) }, { type: "verification-result", digest: "", path: "" }] as unknown as Artifact[],
-    }),
-  };
+  const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => ({
+    status: "PASS", runId: request.runId, requestId: request.requestId, snapshotId: request.snapshotId, idempotencyKey: request.idempotencyKey,
+    producer: { kind: "deterministic-verifier", identity: "mixed-artifact-executor", independence: "independent-producer" },
+    artifacts: [{ type: "verification-result", digest: "a".repeat(64) }, { type: "verification-result", digest: "", path: "" }] as unknown as Artifact[],
+  }), }
   const artifactStore: ArtifactStore = { storeVerificationResultArtifact: async artifact => { stores++; return artifact; } };
   const result = await runOnce({ ...fakes.dependencies, executor, artifactStore }, "mixed-malformed-artifact");
   expect(result.verdict.qaVerdict).not.toBe("PASS");
@@ -457,20 +469,18 @@ test.each([
 ] as const)("fails closed when a valid artifact is accompanied by an artifact-store %s", async (_name, malformedResponse) => {
   const fakes = makeDependencies();
   const validDigest = "a".repeat(64);
-  const executor: VerificationExecutor = {
-    executeObligation: async request => ({
-      status: "PASS",
-      runId: request.runId,
-      requestId: request.requestId,
-      snapshotId: request.snapshotId,
-      idempotencyKey: request.idempotencyKey,
-      producer: { kind: "deterministic-verifier", identity: "mixed-store-executor", independence: "independent-producer" },
-      artifacts: [
-        { type: "verification-result", digest: validDigest },
-        { type: "verification-result", digest: "b".repeat(64) },
-      ],
-    }),
-  };
+  const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => ({
+    status: "PASS",
+    runId: request.runId,
+    requestId: request.requestId,
+    snapshotId: request.snapshotId,
+    idempotencyKey: request.idempotencyKey,
+    producer: { kind: "deterministic-verifier", identity: "mixed-store-executor", independence: "independent-producer" },
+    artifacts: [
+      { type: "verification-result", digest: validDigest },
+      { type: "verification-result", digest: "b".repeat(64) },
+    ],
+  }), }
   const artifactStore: ArtifactStore = {
     storeVerificationResultArtifact: async artifact => artifact.digest === validDigest ? artifact : malformedResponse as unknown as Artifact,
   };
@@ -579,17 +589,15 @@ describe("verification run orchestration", () => {
   });
   test("preserves FAILED for an explicit failed executor output", async () => {
     const fakes = makeDependencies();
-    const executor: VerificationExecutor = {
-      executeObligation: async request => ({
-        status: "FAIL",
-        runId: request.runId,
-        requestId: request.requestId,
-        snapshotId: request.snapshotId,
-        idempotencyKey: request.idempotencyKey,
-        producer: { kind: "deterministic-verifier", identity: "fixture-failing-executor", independence: "independent-producer" },
-        artifacts: [{ type: "verification-result", digest: "f".repeat(64) }],
-      }),
-    };
+    const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => ({
+      status: "FAIL",
+      runId: request.runId,
+      requestId: request.requestId,
+      snapshotId: request.snapshotId,
+      idempotencyKey: request.idempotencyKey,
+      producer: { kind: "deterministic-verifier", identity: "fixture-failing-executor", independence: "independent-producer" },
+      artifacts: [{ type: "verification-result", digest: "f".repeat(64) }],
+    }), }
     const result = await runVerification({ runId: "explicit-failure", request: makeRequest(), dependencies: { ...fakes.dependencies, executor } });
     expect(result.verdict.qaVerdict).toBe("FAIL");
     const failedEvidence = result.documents.execution?.evidence.filter(item => item.result.verdict === "FAIL") ?? [];
@@ -642,24 +650,22 @@ describe("verification run orchestration", () => {
   });
   test.each(["requestId", "snapshotId"] as const)("fails closed when executor omits output %s provenance", async field => {
     const fakes = makeDependencies();
-    const executor: VerificationExecutor = {
-      executeObligation: async (request: VerificationExecutionRequest) => {
-        const output: VerificationExecutionOutput = {
-          status: "PASS",
-          runId: request.runId,
-          requestId: request.requestId,
-          snapshotId: request.snapshotId,
-          idempotencyKey: request.idempotencyKey,
-          producer: { kind: "deterministic-verifier", identity: "fixture-executor", independence: "independent-producer" },
-          artifacts: [{ type: "verification-result", digest: "a".repeat(64) }],
-        };
-        const malformed = { ...output };
-        const mutable = malformed as { requestId?: string; snapshotId?: string };
-        if (field === "requestId") delete mutable.requestId;
-        else delete mutable.snapshotId;
-        return malformed;
-      },
-    };
+    const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async (request: VerificationExecutionRequest) => {
+      const output: VerificationExecutionOutput = {
+        status: "PASS",
+        runId: request.runId,
+        requestId: request.requestId,
+        snapshotId: request.snapshotId,
+        idempotencyKey: request.idempotencyKey,
+        producer: { kind: "deterministic-verifier", identity: "fixture-executor", independence: "independent-producer" },
+        artifacts: [{ type: "verification-result", digest: "a".repeat(64) }],
+      };
+      const malformed = { ...output };
+      const mutable = malformed as { requestId?: string; snapshotId?: string };
+      if (field === "requestId") delete mutable.requestId;
+      else delete mutable.snapshotId;
+      return malformed;
+    }, }
 
     const result = await runVerification({ runId: `missing-${field}`, request: makeRequest(), dependencies: { ...fakes.dependencies, executor } });
     expect(result.documents.execution?.observations.every(observation => field === "requestId" ? observation.requestId === REQUEST_ID : observation.snapshotId === SNAPSHOT_ID)).toBe(true);
@@ -678,17 +684,15 @@ describe("verification run orchestration", () => {
   });
   test.each(["missing", "mismatched"] as const)("does not accept executor PASS with %s idempotency key", async mode => {
     const fakes = makeDependencies();
-    const executor: VerificationExecutor = {
-      executeObligation: async (request: VerificationExecutionRequest) => ({
-        status: "PASS",
-        runId: request.runId,
-        requestId: request.requestId,
-        snapshotId: request.snapshotId,
-        idempotencyKey: mode === "missing" ? undefined : "wrong-idempotency-key",
-        producer: { kind: "deterministic-verifier", identity: "fixture-executor", independence: "independent-producer" },
-        artifacts: [{ type: "verification-result", digest: "a".repeat(64) }],
-      } as unknown as VerificationExecutionOutput),
-    };
+    const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async (request: VerificationExecutionRequest) => ({
+      status: "PASS",
+      runId: request.runId,
+      requestId: request.requestId,
+      snapshotId: request.snapshotId,
+      idempotencyKey: mode === "missing" ? undefined : "wrong-idempotency-key",
+      producer: { kind: "deterministic-verifier", identity: "fixture-executor", independence: "independent-producer" },
+      artifacts: [{ type: "verification-result", digest: "a".repeat(64) }],
+    } as unknown as VerificationExecutionOutput), }
     const result = await runVerification({ runId: `idempotency-${mode}`, request: makeRequest(), dependencies: { ...fakes.dependencies, executor } });
     expect(result.verdict.qaVerdict).not.toBe("PASS");
     expect(result.documents.execution?.evidence.every(item => item.result.verdict !== "PASS" || item.result.passed !== 1)).toBe(true);
@@ -698,12 +702,10 @@ describe("verification run orchestration", () => {
     const fakes = makeDependencies();
     const seen: VerificationExecutionRequest[] = [];
     const original = fakes.dependencies.executor.executeObligation;
-    const executor: VerificationExecutor = {
-      executeObligation: async request => {
-        seen.push(request);
-        return original ? original(request) : undefined;
-      },
-    };
+    const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => {
+      seen.push(request);
+      return original ? original(request) : undefined;
+    }, }
     const dependencies = { ...fakes.dependencies, executor };
     await runOnce(dependencies, "tenant:a", "req");
     await runOnce(dependencies, "tenant", "a:req");
@@ -721,12 +723,10 @@ describe("verification run orchestration", () => {
       const fakes = makeDependencies();
       let captured: VerificationExecutionRequest | undefined;
       const original = fakes.dependencies.executor.executeObligation;
-      const executor: VerificationExecutor = {
-        executeObligation: async request => {
-          captured ??= request;
-          return original ? original(request) : undefined;
-        },
-      };
+      const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => {
+        captured ??= request;
+        return original ? original(request) : undefined;
+      }, }
       await runOnce({ ...fakes.dependencies, executor }, "stable-run", "stable-request");
       if (!captured) throw new Error("expected executor request");
       return captured;
@@ -1124,22 +1124,20 @@ describe("verification run orchestration", () => {
   test("rejects PASS-A/FAIL-B swapped claim observations before resumed evaluation", async () => {
     const fakes = makeDependencies();
     let executorCalls = 0;
-    const executor: VerificationExecutor = {
-      executeObligation: async request => {
-        executorCalls++;
-        const pass = request.obligation.id === "obligation:condition:basis-001";
-        return {
-          status: pass ? "PASS" : "FAIL",
-          runId: request.runId,
-          requestId: request.requestId,
-          snapshotId: request.snapshotId,
-          idempotencyKey: request.idempotencyKey,
-          producer: { kind: "deterministic-verifier", identity: "fixture-executor", independence: "independent-producer" },
-          artifacts: [{ type: "verification-result", digest: `${pass ? "a" : "b"}`.repeat(64) }],
-          summary: pass ? "PASS A" : "FAIL B",
-        };
-      },
-    };
+    const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => {
+      executorCalls++;
+      const pass = request.obligation.id === "obligation:condition:basis-001";
+      return {
+        status: pass ? "PASS" : "FAIL",
+        runId: request.runId,
+        requestId: request.requestId,
+        snapshotId: request.snapshotId,
+        idempotencyKey: request.idempotencyKey,
+        producer: { kind: "deterministic-verifier", identity: "fixture-executor", independence: "independent-producer" },
+        artifacts: [{ type: "verification-result", digest: `${pass ? "a" : "b"}`.repeat(64) }],
+        summary: pass ? "PASS A" : "FAIL B",
+      };
+    }, }
     const dependencies = { ...fakes.dependencies, executor };
     const first = await runOnce(dependencies);
     expect(first.verdict.qaVerdict).toBe("FAIL");
@@ -1288,17 +1286,15 @@ describe("verification run orchestration", () => {
   });
   test("rejects persisted observation and evidence PASS mutation against fixed FAIL authority before executor recall", async () => {
     const fakes = makeDependencies();
-    const executor: VerificationExecutor = {
-      executeObligation: async request => ({
-        status: "FAIL",
-        runId: request.runId,
-        requestId: request.requestId,
-        snapshotId: request.snapshotId,
-        idempotencyKey: request.idempotencyKey,
-        producer: { kind: "deterministic-verifier", identity: "fixture-failing-executor", independence: "independent-producer" },
-        artifacts: [{ type: "verification-result", digest: "f".repeat(64) }],
-      }),
-    };
+    const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => ({
+      status: "FAIL",
+      runId: request.runId,
+      requestId: request.requestId,
+      snapshotId: request.snapshotId,
+      idempotencyKey: request.idempotencyKey,
+      producer: { kind: "deterministic-verifier", identity: "fixture-failing-executor", independence: "independent-producer" },
+      artifacts: [{ type: "verification-result", digest: "f".repeat(64) }],
+    }), }
     const dependencies = { ...fakes.dependencies, executor };
     const runId = "authority-observation-tamper";
     expect((await runOnce(dependencies, runId)).verdict.qaVerdict).toBe("FAIL");
@@ -1383,17 +1379,15 @@ describe("verification run orchestration", () => {
 
   test.each(["BLOCKED", "INCOMPLETE"] as const)("rejects authenticated FAIL tandem mutation to %s after authority removal", async status => {
     const fakes = makeDependencies();
-    const executor: VerificationExecutor = {
-      executeObligation: async request => ({
-        status: "FAIL",
-        runId: request.runId,
-        requestId: request.requestId,
-        snapshotId: request.snapshotId,
-        idempotencyKey: request.idempotencyKey,
-        producer: { kind: "deterministic-verifier", identity: "fixture-failing-executor", independence: "independent-producer" },
-        artifacts: [{ type: "verification-result", digest: "f".repeat(64) }],
-      }),
-    };
+    const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => ({
+      status: "FAIL",
+      runId: request.runId,
+      requestId: request.requestId,
+      snapshotId: request.snapshotId,
+      idempotencyKey: request.idempotencyKey,
+      producer: { kind: "deterministic-verifier", identity: "fixture-failing-executor", independence: "independent-producer" },
+      artifacts: [{ type: "verification-result", digest: "f".repeat(64) }],
+    }), }
     const dependencies = { ...fakes.dependencies, executor };
     const runId = `authority-tandem-${status.toLowerCase()}`;
     await expect(runVerification({ runId, request: makeRequest(), dependencies })).resolves.toMatchObject({ verdict: { qaVerdict: "FAIL" } });
@@ -1494,17 +1488,15 @@ describe("verification run orchestration", () => {
   });
   test("rejects a material residual defect inserted after failed verdict save", async () => {
     const fakes = makeDependencies();
-    const executor: VerificationExecutor = {
-      executeObligation: async request => ({
-        status: "FAIL",
-        runId: request.runId,
-        requestId: request.requestId,
-        snapshotId: request.snapshotId,
-        idempotencyKey: request.idempotencyKey,
-        producer: { kind: "deterministic-verifier", identity: "fixture-failing-executor", independence: "independent-producer" },
-        artifacts: [{ type: "verification-result", digest: "f".repeat(64) }],
-      }),
-    };
+    const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => ({
+      status: "FAIL",
+      runId: request.runId,
+      requestId: request.requestId,
+      snapshotId: request.snapshotId,
+      idempotencyKey: request.idempotencyKey,
+      producer: { kind: "deterministic-verifier", identity: "fixture-failing-executor", independence: "independent-producer" },
+      artifacts: [{ type: "verification-result", digest: "f".repeat(64) }],
+    }), }
     const dependencies = { ...fakes.dependencies, executor };
     const runId = "residual-risk-tamper";
     const first = await runOnce(dependencies, runId);
@@ -1554,13 +1546,11 @@ describe("verification run orchestration", () => {
     const seen: string[] = [];
     const original = fakes.dependencies.executor.executeObligation;
     let throwOnSecond = true;
-    const flakyExecutor: VerificationExecutor = {
-      executeObligation: async request => {
-        seen.push(request.obligation.id);
-        if (throwOnSecond && seen.length === 2) { throwOnSecond = false; throw new Error("second obligation failed"); }
-        return original ? original(request) : undefined;
-      },
-    };
+    const flakyExecutor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => {
+      seen.push(request.obligation.id);
+      if (throwOnSecond && seen.length === 2) { throwOnSecond = false; throw new Error("second obligation failed"); }
+      return original ? original(request) : undefined;
+    }, }
     const dependencies = { ...fakes.dependencies, executor: flakyExecutor };
     await expect(runOnce(dependencies)).rejects.toThrow("second obligation failed");
     const checkpoint = fakes.repository.stageDocuments.get(`${RUN_ID}:execution`) as { claims: readonly { obligationId: string }[] };
@@ -1691,13 +1681,11 @@ describe("verification run orchestration", () => {
     const fakes = makeDependencies();
     const requests: string[] = [];
     const sideEffects = new Map<string, number>();
-    const executor: VerificationExecutor = {
-      executeObligation: async request => {
-        requests.push(request.idempotencyKey);
-        if (!sideEffects.has(request.idempotencyKey)) sideEffects.set(request.idempotencyKey, 1);
-        return { status: "PASS", runId: request.runId, requestId: request.requestId, snapshotId: request.snapshotId, idempotencyKey: request.idempotencyKey, producer: { kind: "deterministic-verifier", identity: "deduplicating-executor", independence: "independent-producer" }, artifacts: [{ type: "verification-result", digest: "d".repeat(64) }] };
-      },
-    };
+    const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => {
+      requests.push(request.idempotencyKey);
+      if (!sideEffects.has(request.idempotencyKey)) sideEffects.set(request.idempotencyKey, 1);
+      return { status: "PASS", runId: request.runId, requestId: request.requestId, snapshotId: request.snapshotId, idempotencyKey: request.idempotencyKey, producer: { kind: "deterministic-verifier", identity: "deduplicating-executor", independence: "independent-producer" }, artifacts: [{ type: "verification-result", digest: "d".repeat(64) }] };
+    }, }
     let throwOnce = true;
     const artifactStore: ArtifactStore = {
       storeVerificationResultArtifact: async artifact => {
@@ -1722,14 +1710,12 @@ describe("verification run orchestration", () => {
     let executorCalls = 0;
     const requests: string[] = [];
     const sideEffects = new Map<string, number>();
-    const executor: VerificationExecutor = {
-      executeObligation: async executionRequest => {
-        executorCalls++;
-        requests.push(executionRequest.idempotencyKey);
-        if (!sideEffects.has(executionRequest.idempotencyKey)) sideEffects.set(executionRequest.idempotencyKey, 1);
-        return { status, runId: executionRequest.runId, requestId: executionRequest.requestId, snapshotId: executionRequest.snapshotId, idempotencyKey: executionRequest.idempotencyKey, producer: { kind: "deterministic-verifier", identity: "deduplicating-executor", independence: "independent-producer" }, artifacts: [{ type: "verification-result", digest: "e".repeat(64) }] };
-      },
-    };
+    const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async executionRequest => {
+      executorCalls++;
+      requests.push(executionRequest.idempotencyKey);
+      if (!sideEffects.has(executionRequest.idempotencyKey)) sideEffects.set(executionRequest.idempotencyKey, 1);
+      return { status, runId: executionRequest.runId, requestId: executionRequest.requestId, snapshotId: executionRequest.snapshotId, idempotencyKey: executionRequest.idempotencyKey, producer: { kind: "deterministic-verifier", identity: "deduplicating-executor", independence: "independent-producer" }, artifacts: [{ type: "verification-result", digest: "e".repeat(64) }] };
+    }, }
     const authorities = new Map<string, ExecutionAuthority>();
     const issuedBindings: ExecutionAuthority["binding"][] = [];
     const executionAuthority = {
@@ -1809,16 +1795,14 @@ describe("verification run orchestration", () => {
     const firstStarted = new Promise<void>(resolve => { markFirstStarted = resolve; });
     const firstGate = new Promise<void>(resolve => { releaseFirst = resolve; });
     let calls = 0;
-    const executor: VerificationExecutor = {
-      executeObligation: async request => {
-        calls++;
-        if (calls === 1) {
-          markFirstStarted();
-          await firstGate;
-        }
-        return fakes.dependencies.executor.executeObligation!(request);
-      },
-    };
+    const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => {
+      calls++;
+      if (calls === 1) {
+        markFirstStarted();
+        await firstGate;
+      }
+      return fakes.dependencies.executor.executeObligation!(request);
+    }, }
     const dependencies = { ...fakes.dependencies, executor };
     const first = runOnce(dependencies, runId);
     await firstStarted;
@@ -1877,20 +1861,18 @@ describe("verification run orchestration", () => {
     expect(second.executorCalls).toBe(0);
     now = new Date(Date.parse(persistedClaim.leaseExpiresAt) + 1).toISOString();
     const keys: string[] = [];
-    const takeoverExecutor: VerificationExecutor = {
-      executeObligation: async request => {
-        keys.push(request.idempotencyKey);
-        return {
-          status: "PASS",
-          runId: request.runId,
-          requestId: request.requestId,
-          snapshotId: request.snapshotId,
-          idempotencyKey: request.idempotencyKey,
-          producer: { kind: "deterministic-verifier", identity: "takeover-executor", independence: "independent-producer" },
-          artifacts: [{ type: "verification-result", digest: "c".repeat(64) }],
-        };
-      },
-    };
+    const takeoverExecutor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => {
+      keys.push(request.idempotencyKey);
+      return {
+        status: "PASS",
+        runId: request.runId,
+        requestId: request.requestId,
+        snapshotId: request.snapshotId,
+        idempotencyKey: request.idempotencyKey,
+        producer: { kind: "deterministic-verifier", identity: "takeover-executor", independence: "independent-producer" },
+        artifacts: [{ type: "verification-result", digest: "c".repeat(64) }],
+      };
+    }, }
     const resumed = await runVerification({ runId, dependencies: { ...second.dependencies, dispatchOwnerId: "owner-b", now: () => now, executor: takeoverExecutor } });
     expect(resumed.run.state).toBe("TERMINAL");
     expect(keys).toHaveLength(1);
@@ -1924,20 +1906,18 @@ describe("verification run orchestration", () => {
         artifacts: [{ type: "verification-result", digest: "d".repeat(64) }],
       };
     };
-    const firstExecutor: VerificationExecutor = {
-      executeObligation: async request => {
-        markStarted();
-        await firstGate;
-        return executeIdempotently(request);
-      },
-    };
+    const firstExecutor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => {
+      markStarted();
+      await firstGate;
+      return executeIdempotently(request);
+    }, }
     const firstRun = runVerification({ runId, request, dependencies: { ...first.dependencies, dispatchOwnerId: "owner-a", now: () => now, executor: firstExecutor } });
     await started;
     const staleClaim = structuredClone([...store.dispatchClaims.values()][0]?.claim);
     if (!staleClaim) throw new Error("missing first owner claim");
     now = new Date(Date.parse(staleClaim.leaseExpiresAt) + 1).toISOString();
     const second = makeDependencies({}, new FakeRepository(store));
-    const secondRun = runVerification({ runId, dependencies: { ...second.dependencies, dispatchOwnerId: "owner-b", now: () => now, executor: { executeObligation: executeIdempotently } } });
+    const secondRun = runVerification({ runId, dependencies: { ...second.dependencies, dispatchOwnerId: "owner-b", now: () => now, executor: { atomicSameKeyIdempotency: true, executeObligation: executeIdempotently } } });
     const winner = await secondRun;
     expect(winner.run.state).toBe("TERMINAL");
     expect([...store.dispatchClaims.values()][0]?.claim.ownerId).toBe("owner-b");
@@ -1957,8 +1937,8 @@ describe("verification run orchestration", () => {
     const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
     class CrashAfterCompleteRepository extends FakeRepository {
       crash = true;
-      override async completeExecutionDispatch(claim: DispatchClaim, output: VerificationExecutionOutput | undefined, now = FIXED_NOW) {
-        const completed = await super.completeExecutionDispatch(claim, output, now);
+      override async completeExecutionDispatch(claim: DispatchClaim, completion: VerificationExecutionCompletionEnvelope | undefined, now = FIXED_NOW) {
+        const completed = await super.completeExecutionDispatch(claim, completion, now);
         if (this.crash) {
           this.crash = false;
           throw new Error("simulated crash after execute before caller completion");
@@ -1970,12 +1950,10 @@ describe("verification run orchestration", () => {
     const repository = new CrashAfterCompleteRepository(store);
     const fakes = makeDependencies({}, repository);
     const requests: string[] = [];
-    const executor: VerificationExecutor = {
-      executeObligation: async requestInput => {
-        requests.push(requestInput.idempotencyKey);
-        return fakes.dependencies.executor.executeObligation!(requestInput);
-      },
-    };
+    const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async requestInput => {
+      requests.push(requestInput.idempotencyKey);
+      return fakes.dependencies.executor.executeObligation!(requestInput);
+    }, }
     const dependencies = { ...fakes.dependencies, executor, dispatchOwnerId: "owner-stable" };
     await expect(runVerification({ runId: "claim-complete-crash", request, dependencies })).rejects.toThrow("simulated crash after execute before caller completion");
     expect(requests).toHaveLength(1);
@@ -2007,14 +1985,12 @@ describe("verification run orchestration", () => {
     const started = new Promise<void>(resolve => { markStarted = resolve; });
     const gate = new Promise<void>(resolve => { release = resolve; });
     let dispatchesA = 0;
-    const executorA: VerificationExecutor = {
-      executeObligation: async requestInput => {
-        dispatchesA++;
-        markStarted();
-        await gate;
-        return adapterA.dependencies.executor.executeObligation!(requestInput);
-      },
-    };
+    const executorA: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async requestInput => {
+      dispatchesA++;
+      markStarted();
+      await gate;
+      return adapterA.dependencies.executor.executeObligation!(requestInput);
+    }, }
     const first = runVerification({ runId, request, dependencies: { ...adapterA.dependencies, executor: executorA } });
     await started;
     const second = runVerification({ runId, request, dependencies: adapterB.dependencies });
@@ -2033,17 +2009,15 @@ describe("verification run orchestration", () => {
     const request = { ...makeRequest("freshness-checkpoint-request"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
     let now = FIXED_NOW;
     const freshnessInputs: string[] = [];
-    const executor: VerificationExecutor = {
-      executeObligation: async executionRequest => ({
-        status: "FAIL",
-        runId: executionRequest.runId,
-        requestId: executionRequest.requestId,
-        snapshotId: executionRequest.snapshotId,
-        idempotencyKey: executionRequest.idempotencyKey,
-        producer: { kind: "deterministic-verifier", identity: "failing-executor", independence: "independent-producer" },
-        artifacts: [{ type: "verification-result", digest: "f".repeat(64) }],
-      }),
-    };
+    const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async executionRequest => ({
+      status: "FAIL",
+      runId: executionRequest.runId,
+      requestId: executionRequest.requestId,
+      snapshotId: executionRequest.snapshotId,
+      idempotencyKey: executionRequest.idempotencyKey,
+      producer: { kind: "deterministic-verifier", identity: "failing-executor", independence: "independent-producer" },
+      artifacts: [{ type: "verification-result", digest: "f".repeat(64) }],
+    }), }
     const dependencies = {
       ...fakes.dependencies,
       executor,

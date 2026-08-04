@@ -3,6 +3,29 @@
   "requestId": "request-1",
   "snapshotId": "snapshot-1",
   "freshnessEvaluatedAt": "2026-08-03T00:00:02.000Z",
+  "freshnessAuthority": {
+    "schemaVersion": "verification-freshness-authority/v1",
+    "authorityId": "freshness-authority-1",
+    "issuer": "fixture-authority",
+    "binding": {
+      "schemaVersion": "verification-freshness-binding/v1",
+      "requestId": "request-1",
+      "snapshotId": "snapshot-1",
+      "planDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "executionDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "freshnessEvaluatedAt": "2026-08-03T00:00:02.000Z",
+      "evaluationIds": ["evaluation-1"],
+      "acceptedClaimIds": ["claim-1"],
+      "coverage": {
+        "basisIds": ["basis-1"],
+        "coveredBasisIds": ["basis-1"],
+        "riskIds": ["risk-1"],
+        "coveredRiskIds": ["risk-1"],
+        "conditionIds": ["condition-1"],
+        "coveredConditionIds": ["condition-1"]
+      }
+    }
+  },
   "evaluations": [
     {
       "schemaVersion": "evidence-evaluation/v1",
