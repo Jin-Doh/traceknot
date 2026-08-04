@@ -127,13 +127,16 @@ export function checkReadmeSections(path: string, content: string): void {
 }
 
 function checkLanguageNavigation(record: ReadmeRecord): void {
+  const visibleTargets = new Set(localTargets(record.content).map((target) => target.split(/[?#]/, 1)[0]));
   for (const target of README_PATHS) {
-    const markdownLink = `(${target})`;
-    const htmlLink = `href="${target}"`;
-    if (!record.content.includes(markdownLink) && !record.content.includes(htmlLink)) {
+    if (!visibleTargets.has(target)) {
       throw new Error(`${record.path}: missing language link to ${target}`);
     }
   }
+}
+
+export function checkReadmeLanguageNavigation(path: string, content: string): void {
+  checkLanguageNavigation({ path, content, sections: new Map(), sharedCommands: new Map() });
 }
 
 function checkBoundaries(record: ReadmeRecord): void {
@@ -176,6 +179,15 @@ function isEscaped(content: string, index: number): boolean {
   return backslashes % 2 === 1;
 }
 
+function stripMarkdownContainerPrefix(value: string): string {
+  let remaining = value;
+  while (true) {
+    const marker = remaining.match(/^[\t ]{0,3}(?:>[	 ]?|(?:[-+*]|\d+[.)])[	 ]+)/u)?.[0];
+    if (!marker) return remaining;
+    remaining = remaining.slice(marker.length);
+  }
+}
+
 function maskMarkdownCode(content: string): string {
   const masked = content.split("");
   const lines = content.match(/.*(?:\r?\n|$)/g) ?? [];
@@ -189,16 +201,22 @@ function maskMarkdownCode(content: string): string {
   for (const line of lines) {
     if (!line) continue;
     const body = line.replace(/\r?\n$/, "");
+    const containerBody = stripMarkdownContainerPrefix(body);
     if (fence) {
       mask(offset, offset + body.length);
-      const close = body.match(/^[\t ]{0,3}(`+|~+)[\t ]*$/u)?.[1];
+      const close = containerBody.match(/^[\t ]{0,3}(`+|~+)[\t ]*$/u)?.[1];
       if (close?.[0] === fence.marker && close.length >= fence.length) fence = undefined;
       offset += line.length;
       continue;
     }
-    const opening = body.match(/^[\t ]{0,3}(`{3,}|~{3,})/u)?.[1];
+    const opening = containerBody.match(/^[\t ]{0,3}(`{3,}|~{3,})/u)?.[1];
     if (opening) {
       fence = { marker: opening[0], length: opening.length };
+      mask(offset, offset + body.length);
+      offset += line.length;
+      continue;
+    }
+    if (/^(?: {4}|\t)/u.test(containerBody)) {
       mask(offset, offset + body.length);
       offset += line.length;
       continue;
@@ -295,17 +313,30 @@ function localTargets(content: string): string[] {
   }
   for (const match of content.matchAll(/^[\t ]{0,3}\[[^\]\r\n]+\]:[\t ]*(?:<([^>\r\n]+)>|([^\s\r\n]+))/gm)) targets.push(match[1] ?? match[2]);
   for (const tag of visibleHtmlTags(content)) {
-    for (const match of tag.matchAll(/\s(?:href|src)\s*=\s*(?:(["'])(.*?)\1|([^\s"'=<>`]+))/gi)) {
-      targets.push(match[2] ?? match[3]);
+    for (const match of tag.matchAll(/\s(href|src|poster|action|formaction|cite|data|background|manifest|profile|longdesc|usemap|srcset|ping)\s*=\s*(?:(["'])(.*?)\2|([^\s"'=<>`]+))/gi)) {
+      const attribute = match[1].toLowerCase();
+      const value = match[3] ?? match[4];
+      if (attribute === "srcset") {
+        if (/^data:/i.test(value.trim())) targets.push(value.trim());
+        else targets.push(...value.split(",").map((candidate) => candidate.trim().split(/\s+/, 1)[0]).filter(Boolean));
+      } else if (attribute === "ping") {
+        targets.push(...value.trim().split(/\s+/).filter(Boolean));
+      } else {
+        targets.push(value);
+      }
     }
   }
   return targets;
 }
 
+function isExternalTarget(target: string): boolean {
+  return target.startsWith("#") || /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(target);
+}
+
 function normalizedDocumentationTargets(content: string): Set<string> {
   const targets = new Set<string>();
   for (const rawTarget of localTargets(content)) {
-    if (/^(?:https?:|mailto:|data:|#)/i.test(rawTarget)) continue;
+    if (isExternalTarget(rawTarget)) continue;
     const target = rawTarget.split("#", 1)[0].split("?", 1)[0].replace(/^<|>$/g, "");
     if (target.startsWith("docs/") || target.startsWith("skill/") || /^BRAND(?:\.[a-z-]+)?\.md$/i.test(target)) {
       targets.add(target);
@@ -339,7 +370,7 @@ function remainsInside(root: string, target: string): boolean {
 export function checkReadmeLocalLinks(record: Pick<ReadmeRecord, "path" | "content">): void {
   const canonicalRoot = realpathSync(ROOT);
   for (const rawTarget of localTargets(record.content)) {
-    if (/^(?:https?:|mailto:|data:|#)/i.test(rawTarget)) continue;
+    if (isExternalTarget(rawTarget)) continue;
     const withoutAnchor = rawTarget.split("#", 1)[0].split("?", 1)[0];
     if (!withoutAnchor) continue;
     const decoded = decodeURIComponent(withoutAnchor.replace(/^<|>$/g, ""));

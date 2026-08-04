@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { checkPublicationInventory, checkReadmeDocumentationLinks, checkReadmeLocalLinks, checkReadmeSections, checkReadmeSharedCommands } from "../scripts/check-readme-contract";
+import { checkPublicationInventory, checkReadmeDocumentationLinks, checkReadmeLanguageNavigation, checkReadmeLocalLinks, checkReadmeSections, checkReadmeSharedCommands } from "../scripts/check-readme-contract";
 
 const sections = [
   "hero",
@@ -82,6 +82,17 @@ describe("README localization section contract", () => {
     })).not.toThrow();
   });
 
+  test("accepts every syntactically valid external URI scheme", () => {
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content: "[archive](ftp://example.com/file)" })).not.toThrow();
+  });
+
+  test("requires rendered language-navigation links", () => {
+    const commented = "<!-- [English](README.md) [한국어](README.ko.md) [简体中文](README.zh.md) -->";
+    expect(() => checkReadmeLanguageNavigation("README.md", commented)).toThrow("missing language link");
+    const visible = "[English](README.md) [한국어](README.ko.md) [简体中文](README.zh.md)";
+    expect(() => checkReadmeLanguageNavigation("README.md", visible)).not.toThrow();
+  });
+
   test("extracts HTML URL attributes only from visible tags", () => {
     expect(() => checkReadmeLocalLinks({
       path: "README.md",
@@ -90,6 +101,18 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLocalLinks({ path: "README.md", content: "<img\n src=docs/not-here.md>" })).toThrow(
       "docs/not-here.md",
     );
+  });
+
+  test.each([
+    '<video poster="assets/not-here.png">',
+    '<img srcset="assets/not-here.png 1x, assets/also-missing.png 2x">',
+  ])("validates URL-bearing HTML attributes: %s", (content) => {
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content })).toThrow("local link does not exist");
+  });
+
+  test("ignores link-shaped text in nested and indented Markdown code", () => {
+    const content = "> ```md\n> [literal](docs/not-here.md)\n> ```\n\n    [indented](docs/not-here.md)";
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content })).not.toThrow();
   });
 
   test("requires a real balanced Markdown label before validating a destination", () => {

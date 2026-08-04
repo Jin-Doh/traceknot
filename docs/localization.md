@@ -31,7 +31,7 @@ Every README contains stable `readme-section` markers and `shared-command` marke
 - critical authority-boundary literals remain present;
 - local Markdown and HTML links resolve to repository files.
 
-Inline-link validation follows visible Markdown structure: it requires a balanced, unescaped label opener, ignores fenced code, inline code, and HTML comments, preserves balanced destination parentheses, and unwraps angle-bracket destinations before classifying external schemes case-insensitively. Reference definitions and URL attributes on actual visible HTML tags use the same repository-boundary checks.
+Inline-link validation follows visible Markdown structure: it requires a balanced, unescaped label opener; ignores top-level or container-nested fences, indented code, inline code, and HTML comments; preserves balanced destination parentheses; and classifies any syntactically valid URI scheme before local-path resolution. Reference definitions and URL-bearing attributes on actual visible HTML tags, including candidate lists such as `srcset`, use the same repository-boundary checks. Language navigation is checked against those visible parsed targets rather than raw source substrings.
 
 Run the check directly with:
 
