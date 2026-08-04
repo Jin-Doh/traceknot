@@ -60,6 +60,7 @@ describe("published prose extraction and locale selection", () => {
     expect(detectLocale("1234 -- []")).toBe("unknown");
     expect(detectLocale("简体中文必须通过显式路径映射选择规则。")).toBe("unknown");
     expect(detectLocale("这是以简体中文撰写的主要内容，其中包含 API、CLI、PASS 和 BLOCKED 等技术标识符，但不应被识别为英文文档。")).toBe("unknown");
+    expect(detectLocale("简体中文必须通过显式路径映射选择规则。")).toBe("unknown");
   });
 
   test("rejects incomplete standalone configuration instead of returning PASS", () => {
@@ -182,6 +183,189 @@ describe("language-specific prose rules", () => {
     expect(report.status).toBe("FAIL");
   });
 
+  test("applies zhlint only through an explicit zh-Hans override", () => {
+    const source = "自动在中文和English之间加入空格。";
+    const report = analyzeProse(source, ["ko", "en", "zh-Hans"], "zh-Hans");
+    expect(report.locale).toBe("zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      ruleId: expect.stringMatching(/^ZH-ZHLINT-/),
+      severity: "S2",
+      count: 2,
+    }));
+    expect(report.findings.some((finding) => finding.ruleId.startsWith("KO-") || finding.ruleId.startsWith("EN-"))).toBe(false);
+    expect(report.status).toBe("WARN");
+  });
+
+  test("aggregates zhlint diagnostics by stable message", () => {
+    const report = analyzeProse("甲,乙;丙:丁", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      ruleId: expect.stringMatching(/^ZH-ZHLINT-/),
+      description: "zhlint: 此处标点符号需要使用全角",
+      count: 3,
+    }));
+    expect(report.status).toBe("WARN");
+  });
+
+  test("does not apply zh-Hans rules to inferred Korean and English mixed prose", () => {
+    const source = "한국어 설명을 충분히 작성하고 문맥도 자연스럽게 이어갑니다. English context is also deliberately substantial here. 第一，记录事实。第二，评估证据。第三，给出判定。";
+    const report = analyzeProse(source, ["ko", "en", "zh-Hans"]);
+    expect(report.locale).toBe("mixed");
+    expect(report.findings.some((finding) => finding.ruleId.startsWith("ZH-"))).toBe(false);
+  });
+
+  test("skips inferred mixed prose when no applicable inferred locale is enabled", () => {
+    const root = mkdtempSync(join(tmpdir(), "traceknot-prose-mixed-disabled-"));
+    writeFileSync(join(root, "README.md"), "한국어 설명을 충분히 작성하고 문맥도 자연스럽게 이어갑니다. English context is also deliberately substantial here.");
+    const report = scanRepository(root, {
+      schemaVersion: "prose-quality-config/v1",
+      enabled: true,
+      mode: "blocking",
+      locales: ["zh-Hans"],
+      include: ["README.md"],
+      exclude: [],
+      minimumProseCharacters: 1,
+      maxChangeRate: 0.3,
+      rejectChangeRate: 0.5,
+    });
+    expect(report.summary).toEqual({ checked: 0, passed: 0, warned: 0, failed: 0, skipped: 1 });
+    expect(report.status).toBe("BLOCKED");
+  });
+
+  test("routes README.zh.md through its configured zh-Hans path override", () => {
+    const root = mkdtempSync(join(tmpdir(), "traceknot-prose-zh-hans-"));
+    writeFileSync(join(root, "README.zh.md"), "自动在中文和English之间加入空格。");
+    const config: Config = {
+      schemaVersion: "prose-quality-config/v1",
+      enabled: true,
+      mode: "blocking",
+      locales: ["zh-Hans"],
+      localeOverrides: { "README.zh.md": "zh-Hans" },
+      include: ["README.zh.md"],
+      exclude: [],
+      minimumProseCharacters: 1,
+      maxChangeRate: 0.3,
+      rejectChangeRate: 0.5,
+    };
+    const report = scanRepository(root, config);
+    expect(report.summary.checked).toBe(1);
+    expect(report.files[0]).toEqual(expect.objectContaining({ path: "README.zh.md", locale: "zh-Hans", status: "WARN" }));
+    expect(report.files[0]?.findings).toContainEqual(expect.objectContaining({
+      ruleId: expect.stringMatching(/^ZH-ZHLINT-/),
+      count: 2,
+    }));
+  });
+
+  test("does not infer zh-Hans rules from Chinese script without an override", () => {
+    const report = analyzeProse("此外，系统稳定。\n此外，证据完整。\n此外，判定明确。", ["zh-Hans"]);
+    expect(report.locale).toBe("unknown");
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe("PASS");
+  });
+
+  test("skips an explicitly mapped zh-Hans file when that locale is disabled", () => {
+    const root = mkdtempSync(join(tmpdir(), "traceknot-prose-zh-hans-disabled-"));
+    writeFileSync(join(root, "README.zh.md"), "此外，系统稳定。\n此外，证据完整。\n此外，判定明确。");
+    const report = scanRepository(root, {
+      schemaVersion: "prose-quality-config/v1",
+      enabled: true,
+      mode: "blocking",
+      locales: ["en"],
+      localeOverrides: { "README.zh.md": "zh-Hans" },
+      include: ["README.zh.md"],
+      exclude: [],
+      minimumProseCharacters: 1,
+      maxChangeRate: 0.3,
+      rejectChangeRate: 0.5,
+    });
+    expect(report.summary).toEqual(expect.objectContaining({ checked: 0, skipped: 1 }));
+    expect(report.files).toEqual([]);
+  });
+
+  test("does not flag ordinary Simplified Chinese technical prose", () => {
+    const report = analyzeProse("验证器会把每项结果绑定到目标快照。强制义务未满足时，最终判定为失败。审阅者可以检查记录的证据。", ["zh-Hans"], "zh-Hans");
+    expect(report.locale).toBe("zh-Hans");
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe("PASS");
+  });
+
+  test("delegates Markdown code exclusions to zhlint without using autofix", () => {
+    const report = analyzeProse("`中文English`\n\n```txt\n中文English\n```\n\n正文完整。", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe("PASS");
+  });
+
+  test("masks inline code before deriving direct quotation ranges", () => {
+    const report = analyzeProse('`"`中文English"', ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+    expect(report.status).toBe("WARN");
+  });
+
+  test.each([
+    "资料原文是“中文English”。正文完整。",
+    "资料原文是「中文English」。正文完整。",
+    "资料原文是『中文English』。正文完整。",
+    "> 中文English\n\n正文完整。",
+    "<blockquote>中文English</blockquote>\n\n正文完整。",
+  ])("keeps protected quotations outside the zhlint boundary: %s", (source) => {
+    const report = analyzeProse(source, ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe("PASS");
+  });
+
+  test("masks overlapping nested quotation ranges as one protected region", () => {
+    const before = "资料原文是『中文English「内部」内容』。";
+    const after = "资料原文是『中文English「修改」内容』。";
+    expect(analyzeProse(before, ["zh-Hans"], "zh-Hans").findings).toEqual([]);
+    expect(verifyPreservation(before, after).failures)
+      .toContainEqual(expect.objectContaining({ category: "quotation" }));
+  });
+
+  test("tracks protected whitespace independently from replacement text", () => {
+    const report = analyzeProse("资料原文是“甲, 乙”。", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe("PASS");
+  });
+
+  test("keeps visible zhlint findings outside protected quotations", () => {
+    const report = analyzeProse("中文English，资料原文是“中文English”。", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+    expect(report.status).toBe("WARN");
+  });
+
+  test("keeps adjacent punctuation findings outside protected quotations", () => {
+    const report = analyzeProse("资料原文是:“引用”。", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处标点符号需要使用全角",
+      count: 1,
+    }));
+    expect(report.status).toBe("WARN");
+  });
+
+  test("does not lint Markdown link destinations as Chinese prose", () => {
+    const report = analyzeProse("[证据](https://example.com/中文English)", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe("PASS");
+  });
+
+  test("accepts Chinese quotation punctuation under the repository preset", () => {
+    const report = analyzeProse("他说：“证据完整”。审阅者可以继续检查。", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe("PASS");
+  });
+
+  test("reports fullwidth punctuation and spacing diagnostics", () => {
+    const report = analyzeProse("甲, 乙; 丙: 丁", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({ description: "zhlint: 此处标点符号需要使用全角", count: 3 }));
+    expect(report.findings).toContainEqual(expect.objectContaining({ description: "zhlint: 此处标点符号后不需要空格", count: 3 }));
+    expect(report.status).toBe("WARN");
+  });
+
   test("does not flag ordinary technical prose", () => {
     const report = analyzeProse("The verifier binds each result to a snapshot. A failed mandatory obligation produces a failed verdict. Reviewers can inspect the recorded evidence.");
     expect(report.status).toBe("PASS");
@@ -214,10 +398,23 @@ describe("rewrite preservation gate", () => {
     expect(new Set(report.failures.map((failure) => failure.category))).toEqual(new Set(["code-block", "inline-code", "link-destination", "url", "number", "normative"]));
   });
 
+  test("does not claim semantic preservation for Simplified Chinese grammar", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n用户必须审核三项检查。`, `${context}\n用户可以审核四项检查。`);
+    expect(report.failures).toEqual([]);
+    expect(report.status).toBe("PASS");
+  });
+
   test("warns at the review threshold and rejects at the hard threshold", () => {
     const base = "one two three four five six seven eight nine ten";
     expect(verifyPreservation(base, "one two three four five six seven alpha beta ten", 0.2, 0.5).status).toBe("WARN");
     expect(verifyPreservation(base, "one two alpha beta gamma delta epsilon zeta eta theta", 0.2, 0.5).status).toBe("FAIL");
+  });
+
+  test("does not treat zh-Hans typography-only spacing as a rewrite", () => {
+    const report = verifyPreservation("自动在中文和English之间加入空格。", "自动在中文和 English 之间加入空格。");
+    expect(report.status).toBe("PASS");
+    expect(report.tokenChangeRate).toBe(0);
   });
 
   test("counts inserted prose and rejects unbounded scope expansion", () => {
@@ -239,6 +436,110 @@ describe("rewrite preservation gate", () => {
     const block = verifyPreservation("> Keep this block quote.\n\nCommentary.", "> Change this block quote.\n\nCommentary.");
     expect(direct.failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
     expect(block.failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
+  });
+
+  test("masks inline code before collecting protected corner-bracket quotations", () => {
+    const report = verifyPreservation("`「`普通文本」", "`「`修改文本」");
+    expect(report.failures.some((failure) => failure.category === "quotation")).toBe(false);
+  });
+
+  test("masks link destinations before deriving quotation ranges", () => {
+    const report = analyzeProse('[证据](<https://example.com/">)中文English"', ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+  });
+
+  test("masks autolink destinations before deriving quotation ranges", () => {
+    const source = '<https://example.com/">中文English"';
+    const report = analyzeProse(source, ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+    const preservation = verifyPreservation(source, '<https://example.com/">修改文本"');
+    expect(preservation.failures.some((failure) => failure.category === "quotation")).toBe(false);
+  });
+
+  test("masks Markdown destinations by source range rather than repeated value", () => {
+    const source = "> docs/中文English\n\n[证据](docs/中文English)";
+    const report = analyzeProse(source, ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe("PASS");
+  });
+
+  test("locates the real inline destination after escaped label delimiters", () => {
+    const report = analyzeProse("[前缀\\](中文English](dest)", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+  });
+
+  test("masks complete reference definitions before deriving quotation ranges", () => {
+    const report = analyzeProse('["ref]: /dest\n\n中文English"', ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+  });
+
+  test("masks raw HTML destinations by source range rather than repeated value", () => {
+    const report = analyzeProse('1" ... <a href=\'1"\'>证据</a>中文English"', ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+  });
+
+  test("masks cite destinations before deriving quotation ranges", () => {
+    const report = analyzeProse('<del cite=\'foo:"\'>证据</del>中文English"', ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+  });
+
+  test("masks non-rendered HTML attribute syntax before quotation scanning", () => {
+    const report = analyzeProse('<span title=\'foo"\'>证据</span>中文English"', ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+  });
+
+  test("parses HTML quotation boundaries independently of attribute text", () => {
+    const source = '<q><span title="</q>">中文English</span></q>';
+    expect(analyzeProse(source, ["zh-Hans"], "zh-Hans").findings).toEqual([]);
+  });
+
+  test("keeps escaped HTML quotation tags in visible prose", () => {
+    const report = analyzeProse("\\<q>中文English</q>", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+  });
+
+  test("masks reference identifiers while keeping rendered labels lintable", () => {
+    for (const reference of ['[证据]["ref]', '![替代文本]["ref]']) {
+      const report = analyzeProse(`${reference}中文English"\n\n["ref]: /dest`, ["zh-Hans"], "zh-Hans");
+      expect(report.findings).toContainEqual(expect.objectContaining({
+        description: "zhlint: 此处中英文内容之间需要一个空格",
+        count: 1,
+      }));
+    }
+  });
+
+  test("masks repeated Markdown blockquotes by source range", () => {
+    const source = "资料原文是“> 中文English\\n结束”。\n\n> 中文English\n";
+    expect(analyzeProse(source, ["zh-Hans"], "zh-Hans").findings).toEqual([]);
+  });
+
+  test("derives lazy blockquote ranges before masking syntax-only lines", () => {
+    const source = "> Quoted intro.\n> `code`\nFirstly ..., secondly ..., thirdly ...";
+    expect(analyzeProse(source, ["en"], "en").findings).toEqual([]);
   });
 
   test("protects four-space-indented Markdown code", () => {
@@ -1220,6 +1521,22 @@ describe("rewrite preservation gate", () => {
   test("preserves complete compound spelled-out quantities", () => {
     expect(verifyPreservation("The system allows one hundred retries.", "The system allows two hundred retries.").failures)
       .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("preserves spelled-out numeric bindings across soft line wraps", () => {
+    const context = Array(20).fill("The system records every result and retains complete evidence for reviewers.").join("\n");
+    const before = `${context}\nMinimum supports one\nhundred users. Maximum supports two\nhundred users.`;
+    const after = `${context}\nMinimum supports two\nhundred users. Maximum supports one\nhundred users.`;
+    expect(verifyPreservation(before, after).failures)
+      .toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
+
+  test.each([
+    ["资料原文是「保持原样」。", "资料原文是「改变内容」。"],
+    ["资料原文是『保持原样』。", "资料原文是『改变内容』。"],
+  ])("preserves Chinese corner-bracket quotations: %s", (before, after) => {
+    expect(verifyPreservation(before, after).failures)
+      .toContainEqual(expect.objectContaining({ category: "quotation" }));
   });
 
   test("skips articles when binding numeric subjects", () => {

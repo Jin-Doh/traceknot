@@ -235,7 +235,7 @@ bun install --frozen-lockfile --ignore-scripts
 bun run ci
 ```
 
-The gate validates installer lifecycle, schemas, capability records, prompt-injection risk, published prose, tests, strict TypeScript, and whitespace integrity. Run `bun run prose-quality` for the advisory Korean and English publication-prose report.
+The gate validates installer lifecycle, schemas, capability records, prompt-injection risk, published prose, tests, strict TypeScript, and whitespace integrity. Run `bun run prose-quality` for the advisory Korean, English, and explicitly mapped Simplified Chinese publication-prose report.
 
 Security-sensitive findings should include a concrete expected result, observed result, reproduction, affected snapshot, and residual risk. Do not report an agent's own completion claim as verification evidence.
 

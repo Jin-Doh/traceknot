@@ -70,7 +70,7 @@ The canonical repository gate checks:
 - installer and updater lifecycle;
 - JSON and JSON Schema contracts;
 - prompt-injection risk in instruction-bearing repository surfaces;
-- Korean and English publication-prose policy;
+- Korean, English, and explicitly mapped Simplified Chinese publication-prose policy;
 - tests and strict TypeScript;
 - capability manifests;
 - CodeQL policy and governed SARIF handling;
@@ -80,6 +80,6 @@ The prompt-risk scanner treats repository prose, fixtures, and downloaded conten
 
 Simplified Chinese prompt-risk rules cover action-first and 把/将 object-first exfiltration forms, including bounded modifiers before the protected object. Chinese and ASCII sentence punctuation bound those spans. For Markdown paragraphs, `remark-parse` and `mdast-util-to-string` expose soft-wrapped rendered prose to the same rules; the maintained remark/rehype pipeline also exposes visible text inside raw HTML blocks while pruning hidden and code-like subtrees. Blank paragraph boundaries remain separate. Direct privileged-role identity assignments are an advisory MEDIUM heuristic because distinguishing conditional reader descriptions from malicious assignments would require an open-ended Chinese semantic parser. HIGH blocking is limited to explicit `假装`/`冒充`-style impersonation verbs and `以…身份` cues using complete privileged-role nouns. Compound role nouns, ordinary elevated-permission instructions, and prose about simulated system behavior remain outside the explicit-impersonation category.
 
-The prose scanner reports observable style patterns. It never treats those patterns as proof that a person or AI authored the text. Chinese publication prose is not routed through the Korean or English rule sets.
+The prose scanner reports observable style patterns. It never treats those patterns as proof that a person or AI authored the text. `README.zh.md` is explicitly routed to `zh-Hans`; Chinese script alone does not select a locale, and Korean or English rules are not applied to it.
 
 For known security assumptions and residual risks, read the [security analysis](security-analysis.md).

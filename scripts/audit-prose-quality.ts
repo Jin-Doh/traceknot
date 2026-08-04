@@ -1,15 +1,26 @@
 import Ajv2020 from "ajv/dist/2020.js";
+import type { Element } from "hast";
+import type { Nodes } from "mdast";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
+import { parseFragment, type DefaultTreeAdapterMap } from "parse5";
+import rehypeRaw from "rehype-raw";
+import { run as runZhLint } from "zhlint";
+import remarkGfm from "remark-gfm";
+import remarkParse from "remark-parse";
+import remarkRehype from "remark-rehype";
+import { unified } from "unified";
+import { visit } from "unist-util-visit";
 
-export type Locale = "ko" | "en" | "mixed" | "unknown";
+export type ProseLocale = "ko" | "en" | "zh-Hans";
+export type Locale = ProseLocale | "mixed" | "unknown";
 export type Severity = "S1" | "S2" | "S3";
 export type GateStatus = "PASS" | "WARN" | "FAIL" | "BLOCKED";
 
 export interface ProseRule {
   id: string;
-  locale: "ko" | "en";
+  locale: ProseLocale;
   severity: Severity;
   description: string;
   pattern: RegExp;
@@ -61,7 +72,8 @@ export interface Config {
   schemaVersion: "prose-quality-config/v1";
   enabled: boolean;
   mode: "advisory" | "blocking";
-  locales: Array<"ko" | "en">;
+  locales: ProseLocale[];
+  localeOverrides?: Record<string, ProseLocale>;
   include: string[];
   exclude: string[];
   minimumProseCharacters: number;
@@ -81,6 +93,14 @@ export const RULES: readonly ProseRule[] = [
   { id: "EN-H-001", locale: "en", severity: "S2", description: "repetitive paragraph transition", pattern: /^(?:Furthermore|Moreover|Additionally)[,\s]/gim, threshold: 3 },
 ];
 
+const MARKDOWN_PROCESSOR = unified().use(remarkParse).use(remarkGfm);
+const RENDERED_HTML_PROCESSOR = unified()
+  .use(remarkParse)
+  .use(remarkGfm)
+  .use(remarkRehype, { allowDangerousHtml: true })
+  .use(rehypeRaw);
+const WORD_SEGMENTER = new Intl.Segmenter("zh-CN", { granularity: "word" });
+
 // `prose-quality.config.json` is the single publication-surface inventory.
 // The scanner default reads it instead of maintaining a second include list.
 const DEFAULT_CONFIG = JSON.parse(
@@ -91,12 +111,64 @@ function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function zhlintFindings(markdown: string, protectedMask: string): ProseFinding[] {
+  if (protectedMask.length !== markdown.length) throw new Error("zhlint protection mask is not source-aligned");
+  const result = runZhLint(markdown, {
+    rules: { preset: "default", adjustedFullwidthPunctuation: "" },
+  });
+  if (result.disabled || result.origin !== markdown) throw new Error("zhlint returned an invalid source binding");
+  const grouped = new Map<string, { count: number; index: number; length: number }>();
+  for (const validation of result.validations) {
+    if (
+      typeof validation.message !== "string" || validation.message.length === 0 ||
+      !Number.isInteger(validation.index) || validation.index < 0 ||
+      !Number.isInteger(validation.length) || validation.length < 0 ||
+      validation.index + validation.length > markdown.length
+    ) {
+      throw new Error("zhlint returned an invalid finding offset");
+    }
+    const knownTarget = validation.target === "value" || validation.target === "startValue" || validation.target === "endValue"
+      || validation.target === "spaceAfter" || validation.target === "innerSpaceBefore";
+    if (!knownTarget) throw new Error("zhlint returned an invalid finding target");
+    const influenceStart = validation.target === "value" || validation.target === "startValue"
+      ? validation.index
+      : validation.index + validation.length;
+    const influenceEnd = Math.min(markdown.length, influenceStart + (validation.target === "value" ? Math.max(validation.length, 1) : 1));
+    let touchesProtectedContent = false;
+    for (let index = influenceStart; index < influenceEnd; index += 1) {
+      if (markdown[index] !== protectedMask[index]) {
+        touchesProtectedContent = true;
+        break;
+      }
+    }
+    if (touchesProtectedContent) continue;
+    const current = grouped.get(validation.message);
+    grouped.set(validation.message, {
+      count: (current?.count ?? 0) + 1,
+      index: Math.min(current?.index ?? validation.index, validation.index),
+      length: current?.length ?? validation.length,
+    });
+  }
+  return [...grouped].sort((left, right) => left[1].index - right[1].index || left[0].localeCompare(right[0])).map(([message, finding]) => ({
+    ruleId: `ZH-ZHLINT-${hash(message).slice(0, 8).toUpperCase()}`,
+    severity: "S2",
+    description: `zhlint: ${message}`,
+    count: finding.count,
+    line: markdown.slice(0, finding.index).split(/\r?\n/u).length,
+    excerptHash: hash(markdown.slice(finding.index, finding.index + Math.max(finding.length, 1))),
+  }));
+}
+
 function clonePattern(pattern: RegExp): RegExp {
   return new RegExp(pattern.source, pattern.flags);
 }
 
 function maskContentPreservingLines(value: string): string {
-  return value.replace(/[^\n]/g, " ");
+  return maskValuePreservingLines(value, " ");
+}
+
+function maskValuePreservingLines(value: string, maskedCharacter: string): string {
+  return value.replace(/[^\n]/g, maskedCharacter);
 }
 
 function markdownFencedBlocks(text: string): string[] {
@@ -182,9 +254,14 @@ function isNumericUnitQuote(text: string, index: number): boolean {
   return /\d/.test(text[index - 1] ?? "");
 }
 
-function directQuotationSpans(text: string): string[] {
-  const spans: string[] = [];
-  for (const [opening, closing] of [["\"", "\""], ["'", "'"], ["“", "”"], ["‘", "’"]] as const) {
+interface TextRange {
+  start: number;
+  end: number;
+}
+
+function directQuotationRanges(text: string): TextRange[] {
+  const ranges: TextRange[] = [];
+  for (const [opening, closing] of [["\"", "\""], ["'", "'"], ["“", "”"], ["‘", "’"], ["「", "」"], ["『", "』"]] as const) {
     let cursor = 0;
     while (cursor < text.length) {
       let start = text.indexOf(opening, cursor);
@@ -193,11 +270,35 @@ function directQuotationSpans(text: string): string[] {
       let end = text.indexOf(closing, start + 1);
       while (end >= 0 && (isEscaped(text, end) || (closing === "'" && /[\p{L}\p{N}]/u.test(text[end + 1] ?? "")))) end = text.indexOf(closing, end + 1);
       if (end < 0) break;
-      spans.push(text.slice(start, end + 1));
+      ranges.push({ start, end: end + 1 });
       cursor = end + 1;
     }
   }
-  return spans;
+  return ranges;
+}
+
+function directQuotationSpans(text: string): string[] {
+  return directQuotationRanges(text).map((range) => text.slice(range.start, range.end));
+}
+
+function maskRangesPreservingLines(text: string, ranges: TextRange[], maskedCharacter = " "): string {
+  const merged: TextRange[] = [];
+  for (const range of ranges.sort((left, right) => left.start - right.start || right.end - left.end)) {
+    const previous = merged.at(-1);
+    if (previous && range.start <= previous.end) {
+      previous.end = Math.max(previous.end, range.end);
+    } else {
+      merged.push({ ...range });
+    }
+  }
+  let result = "";
+  let cursor = 0;
+  for (const range of merged) {
+    result += text.slice(cursor, range.start);
+    result += maskValuePreservingLines(text.slice(range.start, range.end), maskedCharacter);
+    cursor = range.end;
+  }
+  return result + text.slice(cursor);
 }
 
 function visualColumns(value: string): number {
@@ -281,9 +382,15 @@ function blockquoteContent(line: string): string | null {
   return line.slice(match[0].length);
 }
 
-function markdownBlockquotes(text: string): string[] {
+function markdownBlockquoteRanges(text: string): TextRange[] {
   const lines = text.match(/[^\n]*(?:\n|$)/g)?.filter((line) => line.length > 0) ?? [];
-  const blocks: string[] = [];
+  const offsets: number[] = [];
+  let offset = 0;
+  for (const line of lines) {
+    offsets.push(offset);
+    offset += line.length;
+  }
+  const ranges: TextRange[] = [];
   for (let index = 0; index < lines.length; index += 1) {
     const openingContent = blockquoteContent(lines[index]);
     const listMarker = lines[index].match(/^([ \t]*)((?:[-+*]|\d+[.)]))([ \t]+)>/);
@@ -319,30 +426,30 @@ function markdownBlockquotes(text: string): string[] {
       if (!allowsLazyContinuation || startsInterruptingMarkdownBlock(next.slice(containerIndent))) break;
       end += 1;
     }
-    blocks.push(lines.slice(index, end + 1).join(""));
+    ranges.push({ start: offsets[index], end: offsets[end] + lines[end].length });
     index = end;
   }
-  return blocks;
+  return ranges;
+}
+
+function markdownBlockquotes(text: string): string[] {
+  return markdownBlockquoteRanges(text).map((range) => text.slice(range.start, range.end));
+}
+
+function htmlBlockquoteRanges(text: string): TextRange[] {
+  const ranges: TextRange[] = [];
+  const tree = RENDERED_HTML_PROCESSOR.runSync(RENDERED_HTML_PROCESSOR.parse(text));
+  visit(tree, "element", (node: Element) => {
+    if (node.tagName !== "blockquote" && node.tagName !== "q") return;
+    const start = node.position?.start.offset;
+    const end = node.position?.end.offset;
+    if (start !== undefined && end !== undefined && text[start] === "<") ranges.push({ start, end });
+  });
+  return ranges;
 }
 
 function htmlBlockquotes(text: string): string[] {
-  const blocks: string[] = [];
-  let depth = 0;
-  let start = -1;
-  for (const match of text.matchAll(/<\/?(?:blockquote|q)\b[^>]*>/gi)) {
-    if (!match[0].startsWith("</")) {
-      if (depth === 0) start = match.index;
-      depth += 1;
-    } else if (depth > 0) {
-      depth -= 1;
-      if (depth === 0) {
-        blocks.push(text.slice(start, match.index + match[0].length));
-        start = -1;
-      }
-    }
-  }
-  if (depth > 0 && start >= 0) blocks.push(text.slice(start));
-  return blocks;
+  return htmlBlockquoteRanges(text).map((range) => text.slice(range.start, range.end));
 }
 
 function htmlCodeSpans(text: string): Array<{ category: "code-block" | "inline-code"; value: string }> {
@@ -358,16 +465,109 @@ function htmlCodeSpans(text: string): Array<{ category: "code-block" | "inline-c
   return spans;
 }
 
+function inlineDestinationBoundary(source: string): number {
+  for (let boundary = source.indexOf("]("); boundary >= 0; boundary = source.indexOf("](", boundary + 2)) {
+    if (isEscaped(source, boundary)) continue;
+    const opening = openingLinkBracketIndex(source, boundary);
+    if (opening === 0 || (opening === 1 && source[0] === "!")) return boundary;
+  }
+  return -1;
+}
+
+function htmlAttributeRanges(source: string, sourceOffset: number): TextRange[] {
+  const ranges: TextRange[] = [];
+  const fragment = parseFragment(source, { sourceCodeLocationInfo: true });
+  const collect = (node: DefaultTreeAdapterMap["node"]): void => {
+    if ("attrs" in node) {
+      for (const attribute of node.attrs) {
+        const location = node.sourceCodeLocation?.attrs?.[attribute.name];
+        if (location) ranges.push({ start: sourceOffset + location.startOffset, end: sourceOffset + location.endOffset });
+      }
+    }
+    if ("childNodes" in node) for (const child of node.childNodes) collect(child);
+    if ("content" in node) collect(node.content);
+  };
+  collect(fragment);
+  return ranges;
+}
+
+function visibleReferenceLabelRange(source: string): TextRange | null {
+  const opening = source.startsWith("![") ? 1 : source.startsWith("[") ? 0 : -1;
+  if (opening < 0) return null;
+  let depth = 1;
+  for (let index = opening + 1; index < source.length; index += 1) {
+    if (isEscaped(source, index)) continue;
+    if (source[index] === "[") depth += 1;
+    else if (source[index] === "]" && --depth === 0) return { start: opening + 1, end: index };
+  }
+  return null;
+}
+
+function markdownQuotationSyntaxRanges(text: string): TextRange[] {
+  const ranges: TextRange[] = [];
+  const tree = MARKDOWN_PROCESSOR.parse(text);
+  visit(tree, (node: Nodes) => {
+    const start = node.position?.start.offset;
+    const end = node.position?.end.offset;
+    if (start === undefined || end === undefined) return;
+    if (node.type === "code" || node.type === "inlineCode") {
+      ranges.push({ start, end });
+      return;
+    }
+    if (node.type === "link" || node.type === "image") {
+      const source = text.slice(start, end);
+      const destinationBoundary = inlineDestinationBoundary(source);
+      if (destinationBoundary >= 0 && source.endsWith(")")) {
+        ranges.push({ start: start + destinationBoundary + 2, end: end - 1 });
+      } else {
+        ranges.push({ start, end });
+      }
+      return;
+    }
+    if (node.type === "definition") {
+      ranges.push({ start, end });
+      return;
+    }
+    if (node.type === "linkReference" || node.type === "imageReference") {
+      const label = visibleReferenceLabelRange(text.slice(start, end));
+      if (!label) {
+        ranges.push({ start, end });
+      } else {
+        ranges.push({ start, end: start + label.start }, { start: start + label.end, end });
+      }
+      return;
+    }
+    if (node.type === "html") {
+      ranges.push(...htmlAttributeRanges(text.slice(start, end), start));
+    }
+  });
+  return ranges;
+}
+
+function maskQuotationSyntax(text: string, maskedCharacter = " "): string {
+  const mask = (value: string): string => maskValuePreservingLines(value, maskedCharacter);
+  let masked = maskRangesPreservingLines(text, markdownQuotationSyntaxRanges(text), maskedCharacter);
+  for (const block of markdownIndentedCodeBlocks(masked)) masked = masked.replace(block, mask);
+  for (const span of htmlCodeSpans(masked)) masked = masked.replace(span.value, mask);
+  return masked;
+}
+
+function maskProtectedProse(markdown: string, maskedCharacter = " "): string {
+  const mask = (value: string): string => maskValuePreservingLines(value, maskedCharacter);
+  let prose = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, mask);
+  prose = prose.replace(/<!--[\s\S]*?(?:-->|$)/g, mask);
+  const blockquoteRanges = [
+    ...markdownBlockquoteRanges(prose),
+    ...htmlBlockquoteRanges(prose),
+  ];
+  prose = maskQuotationSyntax(prose, maskedCharacter);
+  prose = maskRangesPreservingLines(prose, blockquoteRanges, maskedCharacter);
+  prose = maskRangesPreservingLines(prose, directQuotationRanges(prose), maskedCharacter);
+  return prose;
+}
+
 export function extractProse(markdown: string): string {
-  let prose = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, maskContentPreservingLines);
-  prose = prose.replace(/<!--[\s\S]*?(?:-->|$)/g, maskContentPreservingLines);
-  for (const block of markdownFencedBlocks(prose)) prose = prose.replace(block, maskContentPreservingLines);
-  for (const block of markdownIndentedCodeBlocks(prose)) prose = prose.replace(block, maskContentPreservingLines);
-  for (const span of htmlCodeSpans(prose)) prose = prose.replace(span.value, maskContentPreservingLines);
-  for (const quote of markdownBlockquotes(prose)) prose = prose.replace(quote, maskContentPreservingLines);
-  for (const quote of htmlBlockquotes(prose)) prose = prose.replace(quote, maskContentPreservingLines);
-  for (const quote of directQuotationSpans(prose)) prose = prose.replace(quote, maskContentPreservingLines);
-  for (const span of markdownInlineCodeSpans(prose)) prose = prose.replace(span, maskContentPreservingLines);
+  let prose = maskProtectedProse(markdown);
   prose = prose.replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1");
   prose = prose.replace(/<(?:(?:[A-Za-z][A-Za-z0-9+.-]*:[^>\s]+)|(?:[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}))>|https?:\/\/\S+/g, "");
   prose = prose.replace(/^\s*[-*+]\s*$/gm, "");
@@ -392,11 +592,13 @@ function firstMatchLine(text: string, rule: ProseRule): number {
   return match ? text.slice(0, match.index).split("\n").length : 1;
 }
 
-export function analyzeProse(markdown: string, allowedLocales: ReadonlyArray<"ko" | "en"> = ["ko", "en"]): Omit<FileReport, "path"> {
+export function analyzeProse(markdown: string, allowedLocales: ReadonlyArray<ProseLocale> = ["ko", "en", "zh-Hans"], localeOverride?: ProseLocale): Omit<FileReport, "path"> {
   const prose = extractProse(markdown);
-  const locale = detectLocale(prose);
-  const applicableLocales = locale === "mixed" ? allowedLocales : locale === "unknown" ? [] : allowedLocales.filter((entry) => entry === locale);
-  const findings = RULES.filter((rule) => applicableLocales.includes(rule.locale)).flatMap((rule) => {
+  const locale = localeOverride ?? detectLocale(prose);
+  const applicableLocales = locale === "mixed"
+    ? allowedLocales.filter((entry) => entry !== "zh-Hans")
+    : locale === "unknown" ? [] : allowedLocales.filter((entry) => entry === locale);
+  const findings: ProseFinding[] = RULES.filter((rule) => applicableLocales.includes(rule.locale)).flatMap((rule) => {
     const matches = [...prose.matchAll(clonePattern(rule.pattern))];
     if (matches.length < rule.threshold) return [];
     const excerpt = matches[0]?.[0] ?? rule.id;
@@ -409,6 +611,7 @@ export function analyzeProse(markdown: string, allowedLocales: ReadonlyArray<"ko
       excerptHash: hash(excerpt),
     }];
   });
+  if (applicableLocales.includes("zh-Hans")) findings.push(...zhlintFindings(markdown, maskProtectedProse(markdown, "\u0000")));
   const status: GateStatus = findings.some((finding) => finding.severity === "S1") ? "FAIL" : findings.length > 0 ? "WARN" : "PASS";
   return { locale, proseCharacters: prose.replace(/\s/g, "").length, findings, status };
 }
@@ -465,8 +668,10 @@ export function scanRepository(root: string, config: Config = DEFAULT_CONFIG): P
   let skipped = 0;
   const files = candidates.flatMap((file): FileReport[] => {
     const path = relative(root, file).replaceAll("\\", "/");
-    const analysis = analyzeProse(readFileSync(file, "utf8"), config.locales);
-    const localeDisabled = analysis.locale !== "mixed" && analysis.locale !== "unknown" && !config.locales.includes(analysis.locale);
+    const analysis = analyzeProse(readFileSync(file, "utf8"), config.locales, config.localeOverrides?.[path]);
+    const localeDisabled = analysis.locale === "mixed"
+      ? !config.locales.some((locale) => locale !== "zh-Hans")
+      : analysis.locale !== "unknown" && !config.locales.includes(analysis.locale);
     if (analysis.proseCharacters < config.minimumProseCharacters || analysis.locale === "unknown" || localeDisabled) {
       skipped += 1;
       return [];
@@ -510,8 +715,11 @@ function sequenceEditDistance(left: string[], right: string[], maximumDistance: 
 }
 
 function tokenChangeRate(before: string, after: string, rejectionThreshold: number): number {
-  const leftTokens = before.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [];
-  const rightTokens = after.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [];
+  const tokens = (value: string): string[] => [...WORD_SEGMENTER.segment(value.toLocaleLowerCase())]
+    .filter((segment) => segment.isWordLike)
+    .map((segment) => segment.segment);
+  const leftTokens = tokens(before);
+  const rightTokens = tokens(after);
   const combinedTotal = leftTokens.length + rightTokens.length;
   if (combinedTotal === 0) return 0;
   const maximumDistance = Math.ceil(rejectionThreshold * combinedTotal);
@@ -663,11 +871,22 @@ function standaloneUrls(text: string): string[] {
 
 function normativeClauses(text: string): string[] {
   const clauses: string[] = [];
+  const lines = text.split(/\r?\n/);
+  text = lines.map((line, index) => {
+    const next = lines[index + 1];
+    if (next === undefined || !line || !next) return `${line}\n`;
+    const beginsMarkdownBlock = /^(?:[ ]{4}|\t)|^[\t ]{0,3}(?:[-+*][\t ]+|\d+[.)][\t ]+|#{1,6}[\t ]+|>|`{3,}|~{3,}|(?:[-*_][\t ]*){3,}|={3,}[\t ]*$|\||<\/?[A-Za-z])/u.test(next);
+    return beginsMarkdownBlock ? `${line}\n` : `${line} `;
+  }).join("").replace(/\n$/, "");
   const pattern = /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|\b(?:is|are|was|were)(?:\s+not)?\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|\b(?:will(?:\s+not)?\s+be|has(?:\s+not)?\s+been|have(?:\s+not)?\s+been|had(?:\s+not)?\s+been)\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|(?:(?:(?:해서는|하여서는|하면|한다면)\s+안\s+(?:된다|됩니다))|(?:해야|하여야)\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))/gi;
-  for (const match of text.matchAll(pattern)) {
-    const left = Math.max(text.lastIndexOf(".", match.index), text.lastIndexOf(";", match.index), text.lastIndexOf(",", match.index)) + 1;
-    const candidates = [text.indexOf(".", match.index), text.indexOf(";", match.index), text.indexOf(",", match.index)].filter((index) => index >= 0);
-    const right = candidates.length > 0 ? Math.min(...candidates) : text.length;
+  const occurrences = [...text.matchAll(pattern)].map((match) => ({ index: match.index, value: match[0] }));
+  for (const match of occurrences) {
+    const leftText = text.slice(0, match.index);
+    const leftBoundary = [...leftText.matchAll(/[.,;!?。；，！？\n]/g)].at(-1)?.index ?? -1;
+    const rightText = text.slice(match.index + match.value.length);
+    const rightBoundary = rightText.match(/[.,;!?。；，！？\n]/)?.index;
+    const left = leftBoundary + 1;
+    const right = rightBoundary === undefined ? text.length : match.index + match.value.length + rightBoundary;
     const clause = text.slice(left, right).trim().replace(/\s+/g, " ");
     if (!/^(?:(?:and|or)\s+)?(?:at\s+(?:least|most)|minimum|maximum|before|after)\b/i.test(clause)) clauses.push(clause);
   }
@@ -714,7 +933,9 @@ function protectedValues(text: string): Map<string, { category: string; count: n
       values.set(key, { category, count: (current?.count ?? 0) + 1 });
     }
   }
-  for (const quote of directQuotationSpans(text)) {
+  const quotationSource = maskQuotationSyntax(text);
+  for (const range of directQuotationRanges(quotationSource)) {
+    const quote = text.slice(range.start, range.end);
     const key = `quotation\u0000${quote}`;
     const current = values.get(key);
     values.set(key, { category: "quotation", count: (current?.count ?? 0) + 1 });
@@ -797,7 +1018,7 @@ function normalizeClaimLabel(token: string): string {
 
 function lastClaimBoundary(text: string): number {
   let boundary = -1;
-  for (const match of text.matchAll(/[,;:\n]|[.!?](?=[*_~)\]}>'"]*(?:\s|$))/g)) boundary = match.index;
+  for (const match of text.matchAll(/[,;:，；。！？\n]|[.!?](?=[*_~)\]}>'"]*(?:\s|$))/g)) boundary = match.index;
   return boundary;
 }
 
@@ -805,7 +1026,7 @@ function claimLabel(text: string, index: number, valueLength: number, bindSubjec
   const leftText = text.slice(0, index);
   const leftBoundary = lastClaimBoundary(leftText);
   const rightText = text.slice(index + valueLength);
-  const rightBoundaryMatch = rightText.match(/[,;:\n]|[.!?](?=[*_~)\]}>'"]*(?:\s|$))/);
+  const rightBoundaryMatch = rightText.match(/[,;:，；。！？\n]|[.!?](?=[*_~)\]}>'"]*(?:\s|$))/);
   const leftClause = leftText.slice(leftBoundary + 1);
   const rightClause = rightText.slice(0, rightBoundaryMatch?.index ?? rightText.length);
   const leftLabels = claimLabels(leftClause);
