@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "verification-evidence-evaluation/v1",
+  "requestId": "request-1",
+  "snapshotId": "snapshot-1",
+  "freshnessEvaluatedAt": "2026-08-03T00:00:02.000Z",
+  "evaluations": [
+    {
+      "schemaVersion": "evidence-evaluation/v1",
+      "evaluationId": "evaluation-1",
+      "requestId": "request-1",
+      "snapshotId": "snapshot-1",
+      "claimId": "claim-1",
+      "status": "ACCEPTED",
+      "checks": {
+        "snapshotBound": true,
+        "fresh": true,
+        "scopeComplete": true,
+        "producerAllowed": true,
+        "independenceSatisfied": true,
+        "expectedResultDemonstrated": true,
+        "expectedResultViolated": false,
+        "integrityVerified": true,
+        "artifactRequirementsSatisfied": true
+      },
+      "rejectionReasons": [],
+      "evaluatedAt": "2026-08-03T00:00:02.000Z"
+    }
+  ],
+  "acceptedClaimIds": ["claim-1"],
+  "coverage": {
+    "basisIds": ["basis-1"],
+    "coveredBasisIds": ["basis-1"],
+    "riskIds": ["risk-1"],
+    "coveredRiskIds": ["risk-1"],
+    "conditionIds": ["condition-1"],
+    "coveredConditionIds": ["condition-1"]
+  }
+}

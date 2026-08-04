@@ -18,6 +18,7 @@ import {
   type CapabilityProvider,
 
   type ExecutionAuthority,
+  type DispatchClaim,
   type RepositoryPort,
   type UsageRecorder,
   type VerificationExecutor,
@@ -37,18 +38,51 @@ type RunInput = Parameters<typeof runVerification>[0];
 type RunStateValue = CanonicalRunState["state"];
 type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerKind?: "self" | "harness-managed" | "deterministic-verifier" | "ci" | "human" | "external-system"; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean; invalidProducer?: boolean };
 
+type FakeRepositoryStore = {
+  runs: Map<string, CanonicalRunState>;
+  stageDocuments: Map<string, unknown>;
+  dispatchClaims: Map<string, { claim: DispatchClaim; status: "CLAIMED" | "COMPLETED"; outputStored: boolean; output?: VerificationExecutionOutput }>;
+};
 class FakeRepository {
-  readonly runs = new Map<string, CanonicalRunState>();
-  readonly stageDocuments = new Map<string, unknown>();
+  readonly runs: Map<string, CanonicalRunState>;
+  readonly stageDocuments: Map<string, unknown>;
+  readonly dispatchClaims: Map<string, { claim: DispatchClaim; status: "CLAIMED" | "COMPLETED"; outputStored: boolean; output?: VerificationExecutionOutput }>;
+  constructor(store?: FakeRepositoryStore) {
+    const backing = store ?? { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
+    this.runs = backing.runs;
+    this.stageDocuments = backing.stageDocuments;
+    this.dispatchClaims = backing.dispatchClaims;
+  }
   failNextState?: RunStateValue;
   failNextStage?: string;
   readonly stageWrites: string[] = [];
   readonly runWrites: CanonicalRunState[] = [];
   async loadRun(runId: string): Promise<CanonicalRunState | undefined> { return this.runs.get(runId); }
   async loadStageDocument(runId: string, stage: string): Promise<unknown | undefined> { return this.stageDocuments.get(`${runId}:${stage}`); }
-  async commitTransition(transition: { runId: string; expectedUpdatedAt?: string; stage?: string; document?: unknown; run: CanonicalRunState }): Promise<boolean> {
+  async claimExecutionDispatch(claim: DispatchClaim): Promise<{ claimed: boolean; status: "CLAIMED" | "COMPLETED"; claim: DispatchClaim; outputStored: boolean; output?: VerificationExecutionOutput }> {
+    const existing = this.dispatchClaims.get(claim.claimKey);
+    if (existing) return { claimed: false, ...structuredClone(existing) };
+    const created = { claim: structuredClone(claim), status: "CLAIMED" as const, outputStored: false };
+    this.dispatchClaims.set(claim.claimKey, created);
+    return { claimed: true, ...structuredClone(created) };
+  }
+  async completeExecutionDispatch(claim: DispatchClaim, output: VerificationExecutionOutput | undefined): Promise<boolean> {
+    const existing = this.dispatchClaims.get(claim.claimKey);
+    if (!existing || existing.status !== "CLAIMED") return false;
+    this.dispatchClaims.set(claim.claimKey, { ...existing, status: "COMPLETED", outputStored: true, ...(output === undefined ? {} : { output: structuredClone(output) }) });
+    return true;
+  }
+  async releaseExecutionDispatch(claim: DispatchClaim): Promise<boolean> {
+    const existing = this.dispatchClaims.get(claim.claimKey);
+    if (!existing || existing.status !== "CLAIMED") return false;
+    this.dispatchClaims.delete(claim.claimKey);
+    return true;
+  }
+  async commitTransition(transition: { runId: string; expectedRevision?: number; stage?: string; document?: unknown; run: CanonicalRunState }): Promise<boolean> {
     const current = this.runs.get(transition.runId);
-    if (transition.expectedUpdatedAt === undefined ? current !== undefined : (!current || current.updatedAt !== transition.expectedUpdatedAt)) return false;
+    if (transition.expectedRevision === undefined
+      ? current !== undefined || transition.run.revision !== 0
+      : (!current || current.revision !== transition.expectedRevision || transition.run.revision !== current.revision + 1)) return false;
     if (this.failNextState === transition.run.state) {
       this.failNextState = undefined;
       throw new Error("simulated saveRun crash");
@@ -85,8 +119,8 @@ function makeRequest(requestId = REQUEST_ID): VerificationRequest {
   };
 }
 
-function makeDependencies(options: FakeOptions = {}): FakeDependencies {
-  const repository = new FakeRepository();
+function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRepository): FakeDependencies {
+  const repository = repositoryOverride ?? new FakeRepository();
   let executorCalls = 0;
   let browserCalls = 0;
   const executor = {
@@ -1509,8 +1543,7 @@ describe("verification run orchestration", () => {
     expect(fakes.executorCalls).toBe(executorCalls);
   });
 
-
-  test("persists one checkpoint per obligation and resumes only the unfinished obligation", async () => {
+  test("persists one checkpoint per obligation and retries after a failed executor claim", async () => {
     const fakes = makeDependencies();
     const seen: string[] = [];
     const original = fakes.dependencies.executor.executeObligation;
@@ -1669,7 +1702,7 @@ describe("verification run orchestration", () => {
     const dependencies = { ...fakes.dependencies, executor, artifactStore };
     await expect(runOnce(dependencies)).rejects.toThrow("artifact storage failed after external completion");
     await expect(runOnce(dependencies)).resolves.toMatchObject({ run: { state: "TERMINAL" } });
-    expect(requests[0]).toBe(requests[1]);
+    expect(requests).toHaveLength(2);
     expect(new Set(requests).size).toBe(2);
     expect([...sideEffects.values()].every(count => count === 1)).toBe(true);
   });
@@ -1715,9 +1748,8 @@ describe("verification run orchestration", () => {
     const resumed = await runVerification({ runId, dependencies });
     expect(resumed.run.state).toBe("TERMINAL");
     expect(resumed.verdict.qaVerdict).toBe(status);
-    expect(executorCalls).toBe(2);
-    expect(requests).toHaveLength(2);
-    expect(requests[0]).toBe(requests[1]);
+    expect(executorCalls).toBe(1);
+    expect(requests).toHaveLength(1);
     expect([...sideEffects.values()]).toEqual([1]);
     const persisted = resumed.documents.execution;
     const authority = persisted?.authorities?.[0];
@@ -1792,13 +1824,93 @@ describe("verification run orchestration", () => {
     expect(getVerificationRunLockCount(dependencies.repository)).toBe(0);
   });
 
+  test("fixed-clock adapters atomically claim and dispatch one shared obligation", async () => {
+    const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
+    const runId = "shared-adapter-run";
+    const request = { ...makeRequest("shared-adapter-request"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    const seed = makeDependencies({ missingCapability: true }, new FakeRepository(store));
+    await runVerification({ runId, request, dependencies: seed.dependencies });
+    const seededRun = store.runs.get(runId);
+    if (!seededRun) throw new Error("missing seeded run");
+    store.runs.set(runId, { ...seededRun, state: "PLANNED" });
+    store.stageDocuments.delete(`${runId}:execution`);
+    store.stageDocuments.delete(`${runId}:evidence`);
+    store.stageDocuments.delete(`${runId}:residual-risk`);
+    store.stageDocuments.delete(`${runId}:verdict`);
+    store.dispatchClaims.clear();
+    const adapterA = makeDependencies({}, new FakeRepository(store));
+    const adapterB = makeDependencies({}, new FakeRepository(store));
+    let markStarted!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>(resolve => { markStarted = resolve; });
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let dispatchesA = 0;
+    const executorA: VerificationExecutor = {
+      executeObligation: async requestInput => {
+        dispatchesA++;
+        markStarted();
+        await gate;
+        return adapterA.dependencies.executor.executeObligation!(requestInput);
+      },
+    };
+    const first = runVerification({ runId, request, dependencies: { ...adapterA.dependencies, executor: executorA } });
+    await started;
+    const second = runVerification({ runId, request, dependencies: adapterB.dependencies });
+    await expect(second).rejects.toThrow("dispatch claim already exists");
+    release();
+    const winner = await first;
+    expect(winner.run.state).toBe("TERMINAL");
+    expect(dispatchesA).toBe(1);
+    expect(store.dispatchClaims.size).toBe(1);
+    expect(adapterB.repository.runWrites).toHaveLength(0);
+  });
+
+  test("resumes a failed EVIDENCE_EVALUATED checkpoint with persisted freshness instant", async () => {
+    const fakes = makeDependencies();
+    const runId = "freshness-checkpoint-resume";
+    const request = { ...makeRequest("freshness-checkpoint-request"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    let now = FIXED_NOW;
+    const freshnessInputs: string[] = [];
+    const executor: VerificationExecutor = {
+      executeObligation: async executionRequest => ({
+        status: "FAIL",
+        runId: executionRequest.runId,
+        requestId: executionRequest.requestId,
+        snapshotId: executionRequest.snapshotId,
+        idempotencyKey: executionRequest.idempotencyKey,
+        producer: { kind: "deterministic-verifier", identity: "failing-executor", independence: "independent-producer" },
+        artifacts: [{ type: "verification-result", digest: "f".repeat(64) }],
+      }),
+    };
+    const dependencies = {
+      ...fakes.dependencies,
+      executor,
+      now: () => now,
+      freshnessPolicy: {
+        evaluateFreshness: async (input: { evaluatedAt: string }) => {
+          freshnessInputs.push(input.evaluatedAt);
+          return "fresh" as const;
+        },
+      },
+    } as unknown as VerificationRunDependencies;
+    fakes.repository.failNextStage = "residual-risk";
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("simulated saveStage crash");
+    const evidence = fakes.repository.stageDocuments.get(`${runId}:evidence`) as { freshnessEvaluatedAt: string };
+    expect(evidence.freshnessEvaluatedAt).toBe(FIXED_NOW);
+    now = "2026-08-03T00:01:00.000Z";
+    const resumed = await runVerification({ runId, request, dependencies });
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(resumed.verdict.qaVerdict).toBe("FAIL");
+    expect(freshnessInputs.at(-1)).toBe(FIXED_NOW);
+  });
+
   test("rejects a stale repository writer without overwriting the terminal pair", async () => {
     const fakes = makeDependencies();
     await runOnce(fakes.dependencies, "stale-writer");
     const beforeRun = structuredClone(fakes.repository.runs.get("stale-writer"));
     const beforeExecution = structuredClone(fakes.repository.stageDocuments.get("stale-writer:execution"));
     if (!beforeRun) throw new Error("missing terminal run");
-    const accepted = await fakes.repository.commitTransition({ runId: "stale-writer", expectedUpdatedAt: "2026-08-02T00:00:00.000Z", run: beforeRun });
+    const accepted = await fakes.repository.commitTransition({ runId: "stale-writer", expectedRevision: 0, run: beforeRun });
     expect(accepted).toBe(false);
     expect(fakes.repository.runs.get("stale-writer")).toEqual(beforeRun);
     expect(fakes.repository.stageDocuments.get("stale-writer:execution")).toEqual(beforeExecution);

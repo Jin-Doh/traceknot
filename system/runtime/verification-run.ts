@@ -1,7 +1,7 @@
 import { resolveProofCarryingQaVerdict, type Artifact, type CoverageInput, type DefectSummary, type EvidenceClaim, type EvidenceEvaluation, type Execution, type IndependenceLevel, type Observation, type ProofCarryingObligation, type Producer, type SuccessCriterion, type TraceabilityLink, type VerdictResult } from "../core/qa-core";
 export type MaybePromise<T> = T | PromiseLike<T>; export type Clock = () => string | Date;
 export const RUN_STATES=["CREATED","BASIS_ESTABLISHED","DISCOVERY_COMPLETED","PLANNED","EXECUTING","EVIDENCE_EVALUATED","VERDICT_RESOLVED","TERMINAL"] as const; export type RunState=(typeof RUN_STATES)[number];
-export type CanonicalRunState=Readonly<{schemaVersion:"verification-run/v1";runId:string;requestId:string;rootIdentity:string;snapshotId:string;state:RunState;observationIds:readonly string[];claimIds:readonly string[];evaluationIds:readonly string[];createdAt:string;updatedAt:string}>;
+export type CanonicalRunState=Readonly<{schemaVersion:"verification-run/v1";runId:string;requestId:string;rootIdentity:string;snapshotId:string;state:RunState;observationIds:readonly string[];claimIds:readonly string[];evaluationIds:readonly string[];revision:number;createdAt:string;updatedAt:string}>;
 export type BasisKind="request"|"requirement"|"acceptance-criterion"|"defect"|"contract"|"invariant"|"policy"; export type BasisOrigin="explicit"|"derived";
 export type VerificationBasisItem=Readonly<{id:string;kind:BasisKind;origin:BasisOrigin;text:string;source?:string}>;
 export type VerificationRequest=Readonly<{schemaVersion:"verification-request/v1";requestId:string;project:Readonly<{rootIdentity:string;snapshotId:string}>;change:Readonly<{summary:string;paths:readonly string[]}>;testBasis:readonly VerificationBasisItem[]}>;
@@ -29,12 +29,14 @@ export interface CapabilityProvider {readonly hasCapability?:(s:string)=>MaybePr
 export interface BrowserExecutor {readonly executeBrowser?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>;readonly execute?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>};
 export interface ApprovalProvider {readonly requestApproval?:(i:ApprovalRequest)=>MaybePromise<ApprovalResult|undefined>;readonly approve?:(i:ApprovalRequest)=>MaybePromise<ApprovalResult|undefined>};
 export interface UsageRecorder {readonly recordUsage?:(e:UsageEvent)=>MaybePromise<void>;readonly record?:(e:UsageEvent)=>MaybePromise<void>};
-export type RepositoryTransition=Readonly<{runId:string;expectedUpdatedAt?:string;stage?:StageName;document?:StageDocument;run:CanonicalRunState}>;
-export interface RepositoryPort {readonly loadRun:(id:string)=>MaybePromise<CanonicalRunState|undefined>;readonly loadStageDocument:(id:string,s:StageName)=>MaybePromise<unknown|undefined>;readonly commitTransition:(transition:RepositoryTransition)=>MaybePromise<boolean>};
+export type DispatchClaim=Readonly<{schemaVersion:"verification-dispatch-claim/v1";claimKey:string;runId:string;requestId:string;planDigest:string;obligationId:string;idempotencyKey:string}>;
+export type DispatchClaimResult=Readonly<{claimed:boolean;status:"CLAIMED"|"COMPLETED";claim:DispatchClaim;outputStored:boolean;output?:VerificationExecutionOutput}>;
+export type RepositoryTransition=Readonly<{runId:string;expectedRevision?:number;stage?:StageName;document?:StageDocument;run:CanonicalRunState}>;
+export interface RepositoryPort {readonly loadRun:(id:string)=>MaybePromise<CanonicalRunState|undefined>;readonly loadStageDocument:(id:string,s:StageName)=>MaybePromise<unknown|undefined>;readonly commitTransition:(transition:RepositoryTransition)=>MaybePromise<boolean>;readonly claimExecutionDispatch?:(claim:DispatchClaim)=>MaybePromise<DispatchClaimResult>;readonly completeExecutionDispatch?:(claim:DispatchClaim,output:VerificationExecutionOutput|undefined)=>MaybePromise<boolean>;readonly releaseExecutionDispatch?:(claim:DispatchClaim)=>MaybePromise<boolean>};
 export type VerificationRunDependencies=Readonly<{repository:RepositoryPort;executor:VerificationExecutor;artifactStore:ArtifactStore;capabilityProvider:CapabilityProvider;executionAuthority:ExecutionAuthorityPort;freshnessPolicy:FreshnessPolicy;browserExecutor?:BrowserExecutor;approvalProvider?:ApprovalProvider;usageRecorder?:UsageRecorder;now:Clock}>;
-export type BasisDocument=Readonly<{schemaVersion:"verification-basis/v1";requestId:string;snapshotId:string;basis:readonly VerificationBasisItem[];basisIds:readonly string[]}>; export type DiscoveryDocument=Readonly<{schemaVersion:"risk-discovery/v1";requestId:string;snapshotId:string;risks:readonly VerificationRisk[];conditions:readonly VerificationCondition[]}>; export type PlanDocument=VerificationPlan; export type UsageOutboxEntry=Readonly<{executionKey:string;obligationId:string;event:"execution"|"artifact";eventKey:string}>; export type ExecutionDocument=Readonly<{schemaVersion:"verification-execution/v1";requestId:string;snapshotId:string;observations:readonly Observation[];claims:readonly EvidenceClaim[];evidence:readonly VerificationEvidence[];authorities:readonly ExecutionAuthority[];usageOutbox:readonly UsageOutboxEntry[]}>; export type EvidenceDocument=Readonly<{schemaVersion:"verification-evidence-evaluation/v1";requestId:string;snapshotId:string;evaluations:readonly EvidenceEvaluation[];acceptedClaimIds:readonly string[];coverage:CoverageInput}>; export type ResidualRiskDocument=Readonly<{schemaVersion:"verification-residual-risk/v1";requestId:string;snapshotId:string;defects:readonly DefectSummary[]}>; export type VerdictDocument=VerdictResult; export type StageDocument=VerificationRequest|BasisDocument|DiscoveryDocument|PlanDocument|ExecutionDocument|EvidenceDocument|ResidualRiskDocument|VerdictDocument;
+export type BasisDocument=Readonly<{schemaVersion:"verification-basis/v1";requestId:string;snapshotId:string;basis:readonly VerificationBasisItem[];basisIds:readonly string[]}>; export type DiscoveryDocument=Readonly<{schemaVersion:"risk-discovery/v1";requestId:string;snapshotId:string;risks:readonly VerificationRisk[];conditions:readonly VerificationCondition[]}>; export type PlanDocument=VerificationPlan; export type UsageOutboxEntry=Readonly<{executionKey:string;obligationId:string;event:"execution"|"artifact";eventKey:string}>; export type ExecutionDocument=Readonly<{schemaVersion:"verification-execution/v1";requestId:string;snapshotId:string;observations:readonly Observation[];claims:readonly EvidenceClaim[];evidence:readonly VerificationEvidence[];authorities:readonly ExecutionAuthority[];usageOutbox:readonly UsageOutboxEntry[]}>; export type EvidenceDocument=Readonly<{schemaVersion:"verification-evidence-evaluation/v1";requestId:string;snapshotId:string;freshnessEvaluatedAt:string;evaluations:readonly EvidenceEvaluation[];acceptedClaimIds:readonly string[];coverage:CoverageInput}>; export type ResidualRiskDocument=Readonly<{schemaVersion:"verification-residual-risk/v1";requestId:string;snapshotId:string;defects:readonly DefectSummary[]}>; export type VerdictDocument=VerdictResult; export type StageDocument=VerificationRequest|BasisDocument|DiscoveryDocument|PlanDocument|ExecutionDocument|EvidenceDocument|ResidualRiskDocument|VerdictDocument;
 export type VerificationRunDocuments={request?:VerificationRequest;basis?:BasisDocument;discovery?:DiscoveryDocument;plan?:PlanDocument;execution?:ExecutionDocument;evidence?:EvidenceDocument;"residual-risk"?:ResidualRiskDocument;verdict?:VerdictDocument};
-export type EstablishTestBasisInput=Readonly<{runId?:string;request:VerificationRequest;dependencies:VerificationRunDependencies}>; export type PerformRiskDiscoveryInput=Readonly<{request:VerificationRequest;basis:BasisDocument;dependencies:VerificationRunDependencies}>; export type BuildVerificationPlanInput=Readonly<{request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;dependencies:VerificationRunDependencies}>; type ExecuteObligationsInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;dependencies:VerificationRunDependencies;checkpoint?:ExecutionDocument}>; type EvaluateEvidenceInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;dependencies:VerificationRunDependencies}>; type EvaluateResidualRiskInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;evidence:EvidenceDocument;dependencies:VerificationRunDependencies}>; type ResolveVerdictInput=Readonly<{runId:string;request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;plan:VerificationPlan;execution:ExecutionDocument;evidence:EvidenceDocument;residualRisk:ResidualRiskDocument;dependencies:VerificationRunDependencies}>; export type RunVerificationInput=Readonly<{runId:string;request?:VerificationRequest;dependencies:VerificationRunDependencies}>; export type RunVerificationResult=Readonly<{run:CanonicalRunState;verdict:VerdictResult;documents:VerificationRunDocuments}>;
+export type EstablishTestBasisInput=Readonly<{runId?:string;request:VerificationRequest;dependencies:VerificationRunDependencies}>; export type PerformRiskDiscoveryInput=Readonly<{request:VerificationRequest;basis:BasisDocument;dependencies:VerificationRunDependencies}>; export type BuildVerificationPlanInput=Readonly<{request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;dependencies:VerificationRunDependencies}>; type ExecuteObligationsInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;dependencies:VerificationRunDependencies;checkpoint?:ExecutionDocument}>; type EvaluateEvidenceInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;dependencies:VerificationRunDependencies;freshnessEvaluatedAt?:string}>; type EvaluateResidualRiskInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;evidence:EvidenceDocument;dependencies:VerificationRunDependencies}>; type ResolveVerdictInput=Readonly<{runId:string;request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;plan:VerificationPlan;execution:ExecutionDocument;evidence:EvidenceDocument;residualRisk:ResidualRiskDocument;dependencies:VerificationRunDependencies}>; export type RunVerificationInput=Readonly<{runId:string;request?:VerificationRequest;dependencies:VerificationRunDependencies}>; export type RunVerificationResult=Readonly<{run:CanonicalRunState;verdict:VerdictResult;documents:VerificationRunDocuments}>;
 
 const DIGEST = /^[0-9a-fA-F]{64}$/;
 const REQUEST_DIGEST = /^[0-9a-f]{64}$/;
@@ -159,11 +161,11 @@ function canonicalBasis(request: VerificationRequest): BasisDocument {
 export function createInitialRun(runId: string, request: VerificationRequest, now: string): CanonicalRunState {
   validRequest(request);
   if (!runId || !validDate(now)) throw Error("runId and now are required");
-  return freeze({ schemaVersion: "verification-run/v1", runId, requestId: request.requestId, rootIdentity: request.project.rootIdentity, snapshotId: request.project.snapshotId, state: "CREATED", observationIds: [], claimIds: [], evaluationIds: [], createdAt: now, updatedAt: now });
+  return freeze({ schemaVersion: "verification-run/v1", runId, requestId: request.requestId, rootIdentity: request.project.rootIdentity, snapshotId: request.project.snapshotId, state: "CREATED", observationIds: [], claimIds: [], evaluationIds: [], revision: 0, createdAt: now, updatedAt: now });
 }
 function assertCanonicalRun(value: unknown, expectedRunId?: string): asserts value is CanonicalRunState {
   const sortedUnique = (ids: readonly unknown[]): boolean => ids.every((id, index) => typeof id === "string" && Boolean(id) && (index === 0 || (typeof ids[index - 1] === "string" && (ids[index - 1] as string).localeCompare(id) < 0)));
-  if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "runId", "requestId", "rootIdentity", "snapshotId", "state", "observationIds", "claimIds", "evaluationIds", "createdAt", "updatedAt"]) || value.schemaVersion !== "verification-run/v1" || (expectedRunId !== undefined && value.runId !== expectedRunId) || typeof value.runId !== "string" || !value.runId || typeof value.requestId !== "string" || !value.requestId || typeof value.rootIdentity !== "string" || !value.rootIdentity || typeof value.snapshotId !== "string" || !value.snapshotId || !RUN_STATES.includes(value.state as RunState) || !validDate(value.createdAt) || !validDate(value.updatedAt) || Date.parse(value.updatedAt) < Date.parse(value.createdAt) || !Array.isArray(value.observationIds) || !Array.isArray(value.claimIds) || !Array.isArray(value.evaluationIds) || [value.observationIds, value.claimIds, value.evaluationIds].some(ids => !sortedUnique(ids))) throw new Error("invalid persisted run");
+  if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "runId", "requestId", "rootIdentity", "snapshotId", "state", "observationIds", "claimIds", "evaluationIds", "revision", "createdAt", "updatedAt"]) || value.schemaVersion !== "verification-run/v1" || (expectedRunId !== undefined && value.runId !== expectedRunId) || typeof value.runId !== "string" || !value.runId || typeof value.requestId !== "string" || !value.requestId || typeof value.rootIdentity !== "string" || !value.rootIdentity || typeof value.snapshotId !== "string" || !value.snapshotId || !RUN_STATES.includes(value.state as RunState) || typeof value.revision !== "number" || !Number.isSafeInteger(value.revision) || value.revision < 0 || !validDate(value.createdAt) || !validDate(value.updatedAt) || Date.parse(value.updatedAt) < Date.parse(value.createdAt) || !Array.isArray(value.observationIds) || !Array.isArray(value.claimIds) || !Array.isArray(value.evaluationIds) || [value.observationIds, value.claimIds, value.evaluationIds].some(ids => !sortedUnique(ids))) throw new Error("invalid persisted run");
 }
 export function transitionRunState(run: CanonicalRunState, nextState: RunState, updatedAt: string): CanonicalRunState {
   assertCanonicalRun(run);
@@ -171,7 +173,7 @@ export function transitionRunState(run: CanonicalRunState, nextState: RunState, 
   const next = RUN_STATES.indexOf(nextState);
   if (current < 0 || next !== current + 1) throw new Error(`invalid run transition ${run.state} -> ${nextState}`);
   if (!validDate(updatedAt) || Date.parse(updatedAt) < Date.parse(run.updatedAt)) throw new Error("updatedAt must be canonical and monotonic");
-  return freeze({ schemaVersion: "verification-run/v1", runId: run.runId, requestId: run.requestId, rootIdentity: run.rootIdentity, snapshotId: run.snapshotId, state: nextState, observationIds: [...run.observationIds], claimIds: [...run.claimIds], evaluationIds: [...run.evaluationIds], createdAt: run.createdAt, updatedAt });
+  return freeze({ schemaVersion: "verification-run/v1", runId: run.runId, requestId: run.requestId, rootIdentity: run.rootIdentity, snapshotId: run.snapshotId, state: nextState, observationIds: [...run.observationIds], claimIds: [...run.claimIds], evaluationIds: [...run.evaluationIds], revision: run.revision + 1, createdAt: run.createdAt, updatedAt });
 }
 export const transitionRun = transitionRunState;
 function criteriaFor(plan: VerificationPlan): readonly SuccessCriterion[] {
@@ -267,6 +269,38 @@ function validUsageOutboxEntry(value: unknown, request: VerificationRequest, pla
   if (!obligation) return false;
   const expectedKey = `verification:${canonicalSha256([runId, canonicalRequestDigest(request), canonicalPlanDigest(plan), canonicalObligationDigest(obligation)])}`;
   return value.executionKey === expectedKey && value.eventKey === usageEventKey(value.executionKey, value.event);
+}
+function dispatchClaimFor(request: VerificationExecutionRequest): DispatchClaim {
+  return { schemaVersion: "verification-dispatch-claim/v1", claimKey: `verification-dispatch:${canonicalSha256([request.runId, request.requestId, request.planDigest, request.obligation.id, request.idempotencyKey])}`, runId: request.runId, requestId: request.requestId, planDigest: request.planDigest, obligationId: request.obligation.id, idempotencyKey: request.idempotencyKey };
+}
+function validDispatchClaim(value: unknown): value is DispatchClaim {
+  return isRecord(value) && exactOwnKeys(value, ["schemaVersion", "claimKey", "runId", "requestId", "planDigest", "obligationId", "idempotencyKey"]) && value.schemaVersion === "verification-dispatch-claim/v1" && typeof value.claimKey === "string" && value.claimKey.startsWith("verification-dispatch:") && typeof value.runId === "string" && Boolean(value.runId) && typeof value.requestId === "string" && Boolean(value.requestId) && typeof value.planDigest === "string" && REQUEST_DIGEST.test(value.planDigest) && typeof value.obligationId === "string" && Boolean(value.obligationId) && validExecutionKey(value.idempotencyKey);
+}
+type DispatchLease=Readonly<{owned:boolean;outputStored:boolean;output?:VerificationExecutionOutput}>;
+async function claimExecutionDispatch(repository: RepositoryPort, request: VerificationExecutionRequest): Promise<DispatchLease> {
+  const claim = dispatchClaimFor(request);
+  const claimMethod = repository.claimExecutionDispatch;
+  if (!claimMethod) throw Error("atomic dispatch claim facility is required");
+  const result = await claimMethod.call(repository, claim);
+  if (!isRecord(result) || !exactOwnKeys(result, ["claimed", "status", "claim", "outputStored"], ["output"]) || typeof result.claimed !== "boolean" || (result.status !== "CLAIMED" && result.status !== "COMPLETED") || typeof result.outputStored !== "boolean" || !validDispatchClaim(result.claim) || (result.output !== undefined && !isRecord(result.output))) throw Error("invalid dispatch claim result");
+  if (!structurallyEqual(result.claim, claim)) throw Error("dispatch claim binding mismatch");
+  if (result.claimed) {
+    if (result.status !== "CLAIMED" || result.outputStored) throw Error("invalid dispatch claim result");
+    return { owned: true, outputStored: false };
+  }
+  if (result.status !== "COMPLETED" || !result.outputStored) throw Error("dispatch claim already exists");
+  return { owned: false, outputStored: true, output: result.output as VerificationExecutionOutput | undefined };
+}
+async function completeExecutionDispatch(repository: RepositoryPort, request: VerificationExecutionRequest, output: VerificationExecutionOutput | undefined): Promise<void> {
+  if (!repository.completeExecutionDispatch) return;
+  const claim = dispatchClaimFor(request);
+  const completed = await repository.completeExecutionDispatch.call(repository, claim, output);
+  if (completed !== true) throw Error("dispatch result persistence failed");
+}
+async function releaseExecutionDispatch(repository: RepositoryPort, request: VerificationExecutionRequest): Promise<void> {
+  if (!repository.releaseExecutionDispatch) return;
+  const released = await repository.releaseExecutionDispatch.call(repository, dispatchClaimFor(request));
+  if (released !== true) throw Error("dispatch claim release failed");
 }
 async function executeExecutor(port: VerificationExecutor, input: VerificationExecutionRequest): Promise<VerificationExecutionOutput | undefined> { if (port.executeObligation) return port.executeObligation(input); return port.execute ? port.execute(input) : undefined; }
 async function executeBrowser(port: BrowserExecutor, input: BrowserExecutionRequest): Promise<BrowserExecutionOutput | undefined> { if (port.executeBrowser) return port.executeBrowser(input); return port.execute ? port.execute(input) : undefined; }
@@ -438,11 +472,11 @@ async function assertCanonicalVerdict(input: ResolveVerdictInput, persisted: Ver
 function touchRun(run: CanonicalRunState, updatedAt: string): CanonicalRunState {
   assertCanonicalRun(run);
   if (!validDate(updatedAt) || Date.parse(updatedAt) < Date.parse(run.updatedAt)) throw Error("updatedAt must be canonical and monotonic");
-  return freeze({ schemaVersion: "verification-run/v1", runId: run.runId, requestId: run.requestId, rootIdentity: run.rootIdentity, snapshotId: run.snapshotId, state: run.state, observationIds: [...run.observationIds], claimIds: [...run.claimIds], evaluationIds: [...run.evaluationIds], createdAt: run.createdAt, updatedAt });
+  return freeze({ schemaVersion: "verification-run/v1", runId: run.runId, requestId: run.requestId, rootIdentity: run.rootIdentity, snapshotId: run.snapshotId, state: run.state, observationIds: [...run.observationIds], claimIds: [...run.claimIds], evaluationIds: [...run.evaluationIds], revision: run.revision + 1, createdAt: run.createdAt, updatedAt });
 }
-async function commitStageAndRun(repository: RepositoryPort, run: CanonicalRunState, stage: StageName | undefined, document: StageDocument | undefined, expectedUpdatedAt = run.updatedAt): Promise<CanonicalRunState> {
+async function commitStageAndRun(repository: RepositoryPort, run: CanonicalRunState, stage: StageName | undefined, document: StageDocument | undefined, expectedRevision = run.revision - 1): Promise<CanonicalRunState> {
   if ((stage === undefined) !== (document === undefined)) throw Error("stage and document must be committed together");
-  const committed = await repository.commitTransition({ runId: run.runId, expectedUpdatedAt: expectedUpdatedAt === "" ? undefined : expectedUpdatedAt, ...(stage === undefined ? {} : { stage, document }), run });
+  const committed = await repository.commitTransition({ runId: run.runId, expectedRevision: expectedRevision < 0 ? undefined : expectedRevision, ...(stage === undefined ? {} : { stage, document }), run });
   if (!committed) throw Error("stale repository revision");
   return run;
 }
@@ -450,7 +484,7 @@ async function checkpointRun(input: ExecuteObligationsInput, document: Execution
   const current = await loadRun(input.dependencies.repository, input.runId);
   if (!current) throw Error("execution checkpoint run is missing");
   const touched = touchRun(current, clockNow(input.dependencies.now));
-  await commitStageAndRun(input.dependencies.repository, touched, "execution", document, current.updatedAt);
+  await commitStageAndRun(input.dependencies.repository, touched, "execution", document, current.revision);
 }
 async function executeObligations(input: ExecuteObligationsInput): Promise<ExecutionDocument> {
   validRequest(input.request);
@@ -503,10 +537,21 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     let finishedAt: string;
     let output: VerificationExecutionOutput | undefined;
     if (available) {
+      const lease = await claimExecutionDispatch(input.dependencies.repository, request);
       startedAt = clockNow(input.dependencies.now);
-      output = obligation.evidenceType === "browser-result"
-        ? input.dependencies.browserExecutor ? await executeBrowser(input.dependencies.browserExecutor, request) : undefined
-        : await executeExecutor(input.dependencies.executor, request);
+      if (lease.owned) {
+        try {
+          output = obligation.evidenceType === "browser-result"
+            ? input.dependencies.browserExecutor ? await executeBrowser(input.dependencies.browserExecutor, request) : undefined
+            : await executeExecutor(input.dependencies.executor, request);
+        } catch (error) {
+          await releaseExecutionDispatch(input.dependencies.repository, request);
+          throw error;
+        }
+        await completeExecutionDispatch(input.dependencies.repository, request, output);
+      } else {
+        output = lease.output;
+      }
       finishedAt = clockNow(input.dependencies.now);
     } else {
       startedAt = clockNow(input.dependencies.now);
@@ -637,7 +682,8 @@ async function evaluateEvidence(input: EvaluateEvidenceInput): Promise<EvidenceD
   assertExecutionEvidenceBindings(input.execution, input.request, input.plan, input.runId);
   await verifyPersistedExecutionAuthorities(input.execution, input.request, input.plan, input.runId, input.dependencies.executionAuthority);
   const evaluatedAt = canonicalEvaluatedAt(input.execution);
-  const freshnessEvaluatedAt = clockNow(input.dependencies.now);
+  const freshnessEvaluatedAt = input.freshnessEvaluatedAt ?? clockNow(input.dependencies.now);
+  if (!validDate(freshnessEvaluatedAt)) throw Error("freshness evaluation timestamp must be canonical");
   const observations = new Map(input.execution.observations.map(item => [item.observationId, item]));
   const evidenceByObligation = new Map(input.execution.evidence.map(item => [item.obligationId, item]));
   const evaluations = await Promise.all([...input.execution.claims].sort((a,b)=>a.claimId.localeCompare(b.claimId)).map(async claim => {
@@ -652,7 +698,7 @@ async function evaluateEvidence(input: EvaluateEvidenceInput): Promise<EvidenceD
   const accepted = new Set(evaluations.filter(item=>item.status==="ACCEPTED").map(item=>claimsById.get(item.claimId)?.obligationId).filter((id):id is string=>Boolean(id)));
   const conditionById = new Map(input.plan.conditions.map(item => [item.id, item]));
   const coveredConditions = [...accepted].flatMap(obligationId => input.plan.obligations.find(item=>item.id===obligationId)?.conditionIds ?? []);
-  return freeze({ schemaVersion:"verification-evidence-evaluation/v1", requestId:input.request.requestId, snapshotId:input.request.project.snapshotId, evaluations, acceptedClaimIds:evaluations.filter(item=>item.status==="ACCEPTED").map(item=>item.claimId).sort(), coverage:{basisIds:uniq(input.plan.conditions.flatMap(item=>item.basisIds)),coveredBasisIds:uniq(coveredConditions.flatMap(id=>conditionById.get(id)?.basisIds ?? [])),riskIds:uniq(input.plan.risks.map(item=>item.id)),coveredRiskIds:uniq(coveredConditions.flatMap(id=>conditionById.get(id)?.riskIds ?? [])),conditionIds:uniq(input.plan.conditions.map(item=>item.id)),coveredConditionIds:coveredConditions.sort()} });
+  return freeze({ schemaVersion:"verification-evidence-evaluation/v1", requestId:input.request.requestId, snapshotId:input.request.project.snapshotId, freshnessEvaluatedAt, evaluations, acceptedClaimIds:evaluations.filter(item=>item.status==="ACCEPTED").map(item=>item.claimId).sort(), coverage:{basisIds:uniq(input.plan.conditions.flatMap(item=>item.basisIds)),coveredBasisIds:uniq(coveredConditions.flatMap(id=>conditionById.get(id)?.basisIds ?? [])),riskIds:uniq(input.plan.risks.map(item=>item.id)),coveredRiskIds:uniq(coveredConditions.flatMap(id=>conditionById.get(id)?.riskIds ?? [])),conditionIds:uniq(input.plan.conditions.map(item=>item.id)),coveredConditionIds:coveredConditions.sort()} });
 }
 async function evaluateResidualRisk(input: EvaluateResidualRiskInput): Promise<ResidualRiskDocument> {
   return freeze({ schemaVersion: "verification-residual-risk/v1", requestId: input.request.requestId, snapshotId: input.request.project.snapshotId, defects: [] });
@@ -725,7 +771,7 @@ function validateStage(stage: StageName, value: unknown, request: VerificationRe
     if (!prior?.plan) throw Error("invalid persisted execution prerequisites");
     assertExecutionEvidenceBindings(value as unknown as ExecutionDocument, request, prior.plan, runId);
   } else if (stage === "evidence") {
-    if (!Array.isArray(value.evaluations) || !Array.isArray(value.acceptedClaimIds) || !isRecord(value.coverage)) throw Error("invalid persisted evidence stage");
+    if (!exactOwnKeys(value, ["schemaVersion", "requestId", "snapshotId", "freshnessEvaluatedAt", "evaluations", "acceptedClaimIds", "coverage"]) || !validDate(value.freshnessEvaluatedAt) || !Array.isArray(value.evaluations) || !Array.isArray(value.acceptedClaimIds) || !isRecord(value.coverage)) throw Error("invalid persisted evidence stage");
     const evaluationIds = value.evaluations.map(evaluation => isRecord(evaluation) && typeof evaluation.evaluationId === "string" ? evaluation.evaluationId : "");
     if (evaluationIds.some(id => !id) || new Set(evaluationIds).size !== evaluationIds.length || JSON.stringify(evaluationIds) !== JSON.stringify([...evaluationIds].sort())) throw Error("invalid persisted evidence stage");
     if (value.evaluations.some(evaluation => !isRecord(evaluation) || evaluation.schemaVersion !== "evidence-evaluation/v1" || evaluation.requestId !== request.requestId || evaluation.snapshotId !== request.project.snapshotId || !validDate(evaluation.evaluatedAt))) throw Error("invalid persisted evidence reference");
@@ -754,7 +800,7 @@ async function loadCheckedStage<T>(repository: RepositoryPort, runId: string, st
     if (stage === "execution") await verifyPersistedExecutionAuthorities(value as unknown as ExecutionDocument, request, prior?.plan, runId, dependencies.executionAuthority);
     if (stage === "evidence") {
       if (!prior?.plan || !prior.execution) throw Error("invalid persisted evidence prerequisites");
-      const canonical = await evaluateEvidence({ runId, request, plan: prior.plan, execution: prior.execution, dependencies });
+      const canonical = await evaluateEvidence({ runId, request, plan: prior.plan, execution: prior.execution, dependencies, freshnessEvaluatedAt: (value as EvidenceDocument).freshnessEvaluatedAt });
       if (!structurallyEqual(value, canonical)) throw Error("invalid persisted evidence canonicalization");
     }
     if (stage === "residual-risk") {
@@ -803,7 +849,7 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
     if (run.state === "CREATED") {
       const doc = await establishTestBasis({ runId: input.runId, request: req, dependencies });
       const next = transitionRunState(run, "BASIS_ESTABLISHED", clockNow(dependencies.now));
-      await commitStageAndRun(repository, next, "basis", doc, run.updatedAt);
+      await commitStageAndRun(repository, next, "basis", doc, run.revision);
       run = next;
       documents.basis = doc;
       continue;
@@ -814,7 +860,7 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
       if (!basis) throw Error("basis document is missing");
       const doc = await performRiskDiscovery({ request: req, basis, dependencies });
       const next = transitionRunState(run, "DISCOVERY_COMPLETED", clockNow(dependencies.now));
-      await commitStageAndRun(repository, next, "discovery", doc, run.updatedAt);
+      await commitStageAndRun(repository, next, "discovery", doc, run.revision);
       run = next;
       documents.discovery = doc;
       continue;
@@ -825,7 +871,7 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
       if (!basis || !discovery) throw Error("basis or discovery document is missing");
       const doc = await buildVerificationPlan({ request: req, basis, discovery, dependencies });
       const next = transitionRunState(run, "PLANNED", clockNow(dependencies.now));
-      await commitStageAndRun(repository, next, "plan", doc, run.updatedAt);
+      await commitStageAndRun(repository, next, "plan", doc, run.revision);
       run = next;
       documents.plan = doc;
       continue;
@@ -839,8 +885,8 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
       const doc = await executeObligations({ runId: input.runId, request: req, plan, dependencies, checkpoint });
       const latest = await loadRun(repository, input.runId);
       if (!latest) throw Error("execution run is missing");
-      const next = transitionRunState({ schemaVersion: latest.schemaVersion, runId: latest.runId, requestId: latest.requestId, rootIdentity: latest.rootIdentity, snapshotId: latest.snapshotId, state: latest.state, observationIds: doc.observations.map(item=>item.observationId), claimIds: doc.claims.map(item=>item.claimId), evaluationIds: latest.evaluationIds, createdAt: latest.createdAt, updatedAt: latest.updatedAt }, "EXECUTING", clockNow(dependencies.now));
-      await commitStageAndRun(repository, next, "execution", doc, latest.updatedAt);
+      const next = transitionRunState({ schemaVersion: latest.schemaVersion, runId: latest.runId, requestId: latest.requestId, rootIdentity: latest.rootIdentity, snapshotId: latest.snapshotId, state: latest.state, observationIds: doc.observations.map(item=>item.observationId), claimIds: doc.claims.map(item=>item.claimId), evaluationIds: latest.evaluationIds, revision: latest.revision, createdAt: latest.createdAt, updatedAt: latest.updatedAt }, "EXECUTING", clockNow(dependencies.now));
+      await commitStageAndRun(repository, next, "execution", doc, latest.revision);
       run = next;
       documents.execution = doc;
       continue;
@@ -851,8 +897,8 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
       if (!plan || !execution) throw Error("plan or execution document is missing");
       validateExecutionCompleteness(execution, plan);
       const doc = await evaluateEvidence({ runId: input.runId, request: req, plan, execution, dependencies });
-      const next = transitionRunState({ schemaVersion: run.schemaVersion, runId: run.runId, requestId: run.requestId, rootIdentity: run.rootIdentity, snapshotId: run.snapshotId, state: run.state, observationIds: execution.observations.map(item=>item.observationId), claimIds: execution.claims.map(item=>item.claimId), evaluationIds: doc.evaluations.map(item=>item.evaluationId), createdAt: run.createdAt, updatedAt: run.updatedAt }, "EVIDENCE_EVALUATED", clockNow(dependencies.now));
-      await commitStageAndRun(repository, next, "evidence", doc, run.updatedAt);
+      const next = transitionRunState({ schemaVersion: run.schemaVersion, runId: run.runId, requestId: run.requestId, rootIdentity: run.rootIdentity, snapshotId: run.snapshotId, state: run.state, observationIds: execution.observations.map(item=>item.observationId), claimIds: execution.claims.map(item=>item.claimId), evaluationIds: doc.evaluations.map(item=>item.evaluationId), revision: run.revision, createdAt: run.createdAt, updatedAt: run.updatedAt }, "EVIDENCE_EVALUATED", clockNow(dependencies.now));
+      await commitStageAndRun(repository, next, "evidence", doc, run.revision);
       run = next;
       documents.evidence = doc;
       continue;
@@ -865,14 +911,15 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
       let residual = saved;
       if (!residual) {
         residual = await evaluateResidualRisk({ runId: input.runId, request: req, plan, execution, evidence, dependencies });
-        const previousUpdatedAt = run.updatedAt;
-        run = touchRun(run, clockNow(dependencies.now));
-        await commitStageAndRun(repository, run, "residual-risk", residual, previousUpdatedAt);
+        const previousRevision = run.revision;
+        const touched = touchRun(run, clockNow(dependencies.now));
+        await commitStageAndRun(repository, touched, "residual-risk", residual, previousRevision);
+        run = touched;
       }
       documents["residual-risk"] = residual;
       const verdict = await resolveVerdict({ runId: input.runId, request: req, basis, discovery, plan, execution, evidence, residualRisk: residual, dependencies });
       const next = transitionRunState(run, "VERDICT_RESOLVED", clockNow(dependencies.now));
-      await commitStageAndRun(repository, next, "verdict", verdict, run.updatedAt);
+      await commitStageAndRun(repository, next, "verdict", verdict, run.revision);
       run = next;
       documents.verdict = verdict;
       continue;
@@ -884,7 +931,7 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
     await assertCanonicalVerdict({ runId: input.runId, request: req, basis, discovery, plan, execution, evidence, residualRisk: residual, dependencies }, verdict);
     assertCanonicalRunIndexes(run, execution, evidence);
     const next = transitionRunState(run, "TERMINAL", clockNow(dependencies.now));
-    await commitStageAndRun(repository, next, undefined, undefined, run.updatedAt);
+    await commitStageAndRun(repository, next, undefined, undefined, run.revision);
     run = next;
     documents.verdict = verdict;
   }

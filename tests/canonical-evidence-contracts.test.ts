@@ -72,6 +72,12 @@ const contractCases: readonly ContractCase[] = [
     ],
   },
   {
+    name: "EvidenceEvaluationDocument",
+    schema: "evidence-evaluation-document.schema.json",
+    positive: "canonical-evidence-evaluation-document.valid.json",
+    negatives: [],
+  },
+  {
     name: "Rejected EvidenceEvaluation",
     schema: "evidence-evaluation.schema.json",
     positive: "canonical-evidence-evaluation.valid-rejected-stale.json",
@@ -94,6 +100,7 @@ function loadJson(path: string): unknown {
 
 function loadValidator(schemaFile: string) {
   const ajv = new Ajv2020({ allErrors: true, strict: true });
+  if (schemaFile === "evidence-evaluation-document.schema.json") ajv.addSchema(loadJson(join(contractRoot, "evidence-evaluation.schema.json")) as object);
   return ajv.compile(loadJson(join(contractRoot, schemaFile)) as object);
 }
 
