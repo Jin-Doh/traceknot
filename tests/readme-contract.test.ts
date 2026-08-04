@@ -93,6 +93,13 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLocalLinks({ path: "README.md", content: "[archive](ftp://example.com/file)" })).not.toThrow();
   });
 
+  test("accepts scheme-relative network targets", () => {
+    expect(() => checkReadmeLocalLinks({
+      path: "README.md",
+      content: "[site](//example.com/path) <img src=//cdn.example.com/image.png>",
+    })).not.toThrow();
+  });
+
   test("requires rendered language-navigation links", () => {
     const commented = "<!-- [English](README.md) [한국어](README.ko.md) [简体中文](README.zh.md) -->";
     expect(() => checkReadmeLanguageNavigation("README.md", commented)).toThrow("missing language link");
@@ -122,9 +129,22 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLocalLinks({ path: "README.md", content })).not.toThrow();
   });
 
+  test("stops a nested fence when its blockquote container ends", () => {
+    const content = "> ```md\n[guide](docs/not-here.md)\n> ```";
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content })).toThrow("docs/not-here.md");
+  });
+
   test("keeps indented paragraph-continuation links visible", () => {
     const content = "Paragraph text\n    [guide](docs/not-here.md)";
     expect(() => checkReadmeLocalLinks({ path: "README.md", content })).toThrow("docs/not-here.md");
+  });
+
+  test.each([
+    "# Example\n    [literal](docs/not-here.md)",
+    "---\n    [literal](docs/not-here.md)",
+    "<section>\n    [literal](docs/not-here.md)",
+  ])("recognizes indented code after a non-paragraph block: %s", (content) => {
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content })).not.toThrow();
   });
 
   test("masks multiline Markdown code spans before link validation", () => {
@@ -170,6 +190,13 @@ describe("README localization section contract", () => {
 
   test("requires a line-anchored matching shared-command closing fence", () => {
     const malformed = "<!-- shared-command:ci -->\n\n```sh\necho ok\n```not-a-closing-fence";
+    expect(() => checkReadmeSharedCommands([{ path: "README.md", content: malformed }])).toThrow(
+      "must be followed by a fenced block",
+    );
+  });
+
+  test("rejects backticks in backtick-fence info strings", () => {
+    const malformed = "<!-- shared-command:ci -->\n\n```sh`bad`\necho ok\n```";
     expect(() => checkReadmeSharedCommands([{ path: "README.md", content: malformed }])).toThrow(
       "must be followed by a fenced block",
     );

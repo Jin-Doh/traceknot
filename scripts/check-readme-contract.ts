@@ -82,9 +82,10 @@ function collectSharedCommands(content: string, path: string): Map<string, strin
   for (const match of content.matchAll(markerPattern)) {
     const name = match[1];
     const afterMarker = content.slice((match.index ?? 0) + match[0].length);
-    const opening = afterMarker.match(/^[\t ]*(?:\r?\n[\t ]*)+(`{3,}|~{3,})[^\r\n]*\r?\n/u);
+    const opening = afterMarker.match(/^[\t ]*(?:\r?\n[\t ]*)+(`{3,}|~{3,})([^\r\n]*)\r?\n/u);
     if (!opening) continue;
     const fence = opening[1];
+    if (fence[0] === "`" && opening[2].includes("`")) continue;
     const commandStart = (match.index ?? 0) + match[0].length + opening[0].length;
     const closingPattern = new RegExp(`^[\\t ]{0,3}${fence[0] === "`" ? "`" : "~"}{${fence.length},}[\\t ]*$`, "gmu");
     closingPattern.lastIndex = commandStart;
@@ -196,13 +197,18 @@ function stripMarkdownContainerPrefix(value: string): string {
   }
 }
 
+function markdownBlockquoteDepth(value: string): number {
+  const content = stripMarkdownContainerPrefix(value);
+  return (value.slice(0, value.length - content.length).match(/>/g) ?? []).length;
+}
+
 function maskMarkdownCode(content: string): string {
   const masked = content.split("");
   const lines = content.match(/.*(?:\r?\n|$)/g) ?? [];
   let offset = 0;
-  let fence: { marker: string; length: number } | undefined;
+  let fence: { marker: string; length: number; blockquoteDepth: number } | undefined;
   let indentedCode = false;
-  let previousBlank = true;
+  let canStartIndentedCode = true;
   const mask = (start: number, end: number) => {
     for (let index = start; index < end; index += 1) {
       if (masked[index] !== "\n" && masked[index] !== "\r") masked[index] = " ";
@@ -212,34 +218,37 @@ function maskMarkdownCode(content: string): string {
     if (!line) continue;
     const body = line.replace(/\r?\n$/, "");
     const containerBody = stripMarkdownContainerPrefix(body);
+    const blockquoteDepth = markdownBlockquoteDepth(body);
     const blank = /^[\t ]*$/u.test(containerBody);
+    if (fence && blockquoteDepth < fence.blockquoteDepth) fence = undefined;
     if (fence) {
       mask(offset, offset + body.length);
       const close = containerBody.match(/^[\t ]{0,3}(`+|~+)[\t ]*$/u)?.[1];
-      if (close?.[0] === fence.marker && close.length >= fence.length) fence = undefined;
+      const closed = close?.[0] === fence.marker && close.length >= fence.length;
+      if (closed) fence = undefined;
       offset += line.length;
-      previousBlank = blank;
+      canStartIndentedCode = Boolean(closed);
       continue;
     }
     const opening = containerBody.match(/^[\t ]{0,3}(`{3,}|~{3,})/u)?.[1];
     if (opening) {
-      fence = { marker: opening[0], length: opening.length };
+      fence = { marker: opening[0], length: opening.length, blockquoteDepth };
       mask(offset, offset + body.length);
       offset += line.length;
       indentedCode = false;
-      previousBlank = false;
+      canStartIndentedCode = false;
       continue;
     }
-    if (/^(?: {4}|\t)/u.test(containerBody) && (indentedCode || previousBlank)) {
+    if (/^(?: {4}|\t)/u.test(containerBody) && (indentedCode || canStartIndentedCode)) {
       mask(offset, offset + body.length);
       offset += line.length;
       indentedCode = true;
-      previousBlank = false;
+      canStartIndentedCode = true;
       continue;
     }
     if (!blank) indentedCode = false;
     offset += line.length;
-    previousBlank = blank;
+    canStartIndentedCode = blank || /^(?:#{1,6}(?:[\t ]|$)|(?:[-*_][\t ]*){3,}$|<\/?[A-Za-z][^>]*>[\t ]*$)/u.test(containerBody);
   }
   let visible = masked.join("");
   for (let cursor = 0; cursor < visible.length;) {
@@ -366,7 +375,7 @@ function localTargets(content: string): string[] {
 }
 
 function isExternalTarget(target: string): boolean {
-  return target.startsWith("#") || /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(target);
+  return target.startsWith("#") || target.startsWith("//") || /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(target);
 }
 
 function normalizedDocumentationTargets(content: string): Set<string> {

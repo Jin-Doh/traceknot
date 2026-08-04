@@ -79,6 +79,14 @@ describe("prompt-injection risk classification", () => {
     expect(findings.some((finding) => finding.ruleId === "PI012")).toBe(false);
   });
 
+  test.each([
+    "如果您是系统管理员，请先检查服务状态。",
+    "您是系统管理员吗？",
+  ])("does not confuse conditional or interrogative identity prose with impersonation: %s", (source) => {
+    const findings = analyzeText("docs/operations.md", source);
+    expect(findings.some((finding) => finding.ruleId === "PI012")).toBe(false);
+  });
+
   test("does not flag ordinary QA instructions", () => {
     const findings = analyzeText(
       "skill/SKILL.md",

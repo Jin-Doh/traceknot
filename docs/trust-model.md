@@ -78,7 +78,7 @@ The canonical repository gate checks:
 
 The prompt-risk scanner treats repository prose, fixtures, and downloaded content as evidence input rather than privileged instructions. High and critical findings block the gate unless a narrow, expiring exception records an owner, reason, mitigation, and exact line fingerprint.
 
-Simplified Chinese prompt-risk rules cover action-first and 把/将 object-first exfiltration forms, including bounded modifiers before the protected object. Privileged-role findings require an explicit direct or temporally qualified identity assignment, an impersonation verb with a privileged role or message noun, or an `以…身份` cue using the complete role noun; ordinary elevated-permission instructions and prose about simulated system behavior remain outside that identity category.
+Simplified Chinese prompt-risk rules cover action-first and 把/将 object-first exfiltration forms, including bounded modifiers before the protected object. Privileged-role findings require an explicit direct or temporally qualified identity assignment, an impersonation verb with a privileged role or message noun, or an `以…身份` cue using the complete role noun; conditional or interrogative reader descriptions, ordinary elevated-permission instructions, and prose about simulated system behavior remain outside that identity category.
 
 The prose scanner reports observable style patterns. It never treats those patterns as proof that a person or AI authored the text. Chinese publication prose is not routed through the Korean or English rule sets.
 
