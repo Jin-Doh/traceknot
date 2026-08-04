@@ -483,7 +483,7 @@ test("fails closed when a valid artifact is accompanied by a malformed artifact"
 });
 test.each(["BLOCKED", "INCOMPLETE"] as const)("rejects sparse diagnostic artifacts before storage for %s output", async status => {
   const fakes = makeDependencies();
-  const digest = "s".repeat(64);
+  const digest = "a".repeat(64);
   const sparseArtifacts: Artifact[] = [];
   sparseArtifacts[1] = { type: "verification-result", digest };
   let stores = 0;
