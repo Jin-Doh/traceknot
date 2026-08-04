@@ -2073,6 +2073,22 @@ describe("verification run orchestration", () => {
     expect(resumed.verdict.qaVerdict).toBe("FAIL");
     expect(freshnessInputs.at(-1)).toBe(FIXED_NOW);
   });
+  test("fails closed when the freshness policy revokes an accepted checkpoint on resume", async () => {
+    const fakes = makeDependencies();
+    const runId = "freshness-policy-revoked";
+    const request = { ...makeRequest("freshness-policy-revoked-request"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    let evaluations = 0;
+    const dependencies = {
+      ...fakes.dependencies,
+      freshnessPolicy: {
+        evaluateFreshness: async () => evaluations++ === 0 ? "fresh" as const : "stale" as const,
+      },
+    } as unknown as VerificationRunDependencies;
+    fakes.repository.failNextStage = "residual-risk";
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("simulated saveStage crash");
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow();
+    expect(evaluations).toBeGreaterThan(1);
+  });
   test("rejects a persisted freshness timestamp mutation before resume", async () => {
     const fakes = makeDependencies();
     const runId = "freshness-timestamp-tamper";
@@ -2084,6 +2100,7 @@ describe("verification run orchestration", () => {
     fakes.repository.runs.set(runId, { ...run, state: "EXECUTING", updatedAt: FIXED_NOW });
     const executorCalls = fakes.executorCalls;
     await expect(runOnce(fakes.dependencies, runId)).rejects.toThrow();
+    expect(fakes.executorCalls).toBe(executorCalls);
   });
 
   test("rejects a stale repository writer without overwriting the terminal pair", async () => {

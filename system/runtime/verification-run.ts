@@ -932,18 +932,7 @@ async function loadCheckedStage<T>(repository: RepositoryPort, runId: string, st
     if (stage === "execution") await verifyPersistedExecutionAuthorities(value as unknown as ExecutionDocument, request, prior?.plan, runId, dependencies.executionAuthority);
     if (stage === "evidence") {
       if (!prior?.plan || !prior.execution) throw Error("invalid persisted evidence prerequisites");
-      const persistedEvidence = value as EvidenceDocument;
-      const persistedFreshnessByObligation = new Map(prior.execution.claims.map(claim => {
-        const evaluation = persistedEvidence.evaluations.find(item => item.claimId === claim.claimId);
-        return [claim.obligationId, evaluation?.checks.fresh ? "fresh" as const : "stale" as const];
-      }));
-      const canonicalDependencies: VerificationRunDependencies = {
-        ...dependencies,
-        freshnessPolicy: {
-          evaluateFreshness: async (input: { evidence: VerificationEvidence }) => persistedFreshnessByObligation.get(input.evidence.obligationId) ?? "unknown",
-        },
-      };
-      const canonical = await evaluateEvidence({ runId, request, plan: prior.plan, execution: prior.execution, dependencies: canonicalDependencies, freshnessEvaluatedAt: persistedEvidence.freshnessEvaluatedAt, freshnessAuthority: persistedEvidence.freshnessAuthority });
+      const canonical = await evaluateEvidence({ runId, request, plan: prior.plan, execution: prior.execution, dependencies, freshnessEvaluatedAt: (value as EvidenceDocument).freshnessEvaluatedAt, freshnessAuthority: (value as EvidenceDocument).freshnessAuthority });
       if (!structurallyEqual(value, canonical)) throw Error("invalid persisted evidence canonicalization");
     }
     if (stage === "residual-risk") {
@@ -1043,7 +1032,17 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
       if (persistedEvidence) {
         validateStage("evidence", persistedEvidence, req, input.runId, documents);
         if (persistedEvidence.freshnessAuthority.binding.executionDigest === canonicalSha256(execution)) {
-          const checkedEvidence = await loadCheckedStage<EvidenceDocument>(repository, input.runId, "evidence", req, dependencies, documents);
+          const persistedFreshnessByObligation = new Map(execution.claims.map(claim => {
+            const evaluation = persistedEvidence.evaluations.find(item => item.claimId === claim.claimId);
+            return [claim.obligationId, evaluation?.checks.fresh ? "fresh" as const : "stale" as const];
+          }));
+          const persistedValidationDependencies: VerificationRunDependencies = {
+            ...dependencies,
+            freshnessPolicy: {
+              evaluateFreshness: async (input: { evidence: VerificationEvidence }) => persistedFreshnessByObligation.get(input.evidence.obligationId) ?? "unknown",
+            },
+          };
+          const checkedEvidence = await loadCheckedStage<EvidenceDocument>(repository, input.runId, "evidence", req, persistedValidationDependencies, documents);
           if (checkedEvidence) documents.evidence = checkedEvidence;
         }
       }
