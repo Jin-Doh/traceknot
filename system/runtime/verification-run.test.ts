@@ -1105,7 +1105,7 @@ describe("verification run orchestration", () => {
     }
   });
   test.each(["EXECUTING", "TERMINAL"] as const)("rejects persisted observation envelope tampering before writes or redispatch on %s resume", async state => {
-    for (const mutation of ["extra key", "empty actualValues", "null actual value", "nested actual value"] as const) {
+    for (const mutation of ["extra key", "empty actualValues", "nested actual value"] as const) {
       const fakes = makeDependencies();
       const runId = `observation-envelope-${state.toLowerCase()}-${mutation.replaceAll(" ", "-")}`;
       await runOnce(fakes.dependencies, runId);
@@ -1117,9 +1117,7 @@ describe("verification run orchestration", () => {
         ? { ...target, unexpected: true }
         : mutation === "empty actualValues"
           ? { ...target, actualValues: {} }
-          : mutation === "null actual value"
-            ? { ...target, actualValues: { result: null } }
-            : { ...target, actualValues: { result: { value: true } } };
+          : { ...target, actualValues: { result: { value: true } } };
       fakes.repository.stageDocuments.set(`${runId}:execution`, { ...saved, observations: [tamperedObservation, ...saved.observations.slice(1)] });
       fakes.repository.runs.set(runId, { ...run, state, updatedAt: FIXED_NOW });
       const executorCalls = fakes.executorCalls;
@@ -1130,6 +1128,41 @@ describe("verification run orchestration", () => {
       expect(fakes.repository.stageWrites.length).toBe(stageWrites);
       expect(fakes.repository.runWrites.length).toBe(runWrites);
     }
+  });
+  test.each(["EXECUTING", "TERMINAL"] as const)("resumes persisted observation with valid null actualValues on %s without executor redispatch", async state => {
+    const fakes = makeDependencies();
+    const runId = `observation-null-${state.toLowerCase()}`;
+    await runOnce(fakes.dependencies, runId);
+    const run = fakes.repository.runs.get(runId);
+    const saved = fakes.repository.stageDocuments.get(`${runId}:execution`) as ExecutionDocument;
+    if (!run || !saved || !saved.observations[0]) throw new Error("missing complete execution");
+    const target = saved.observations[0];
+    const persistedObservation = { ...target, actualValues: { result: null } };
+    fakes.repository.stageDocuments.set(`${runId}:execution`, { ...saved, observations: [persistedObservation, ...saved.observations.slice(1)] });
+    fakes.repository.runs.set(runId, { ...run, state, updatedAt: FIXED_NOW });
+    const executorCalls = fakes.executorCalls;
+    const resumed = await runVerification({ runId, request: makeRequest(), dependencies: fakes.dependencies });
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(fakes.executorCalls).toBe(executorCalls);
+  });
+  test.each(["EXECUTING", "TERMINAL"] as const)("rejects persisted observation array actualValues before writes or executor redispatch on %s resume", async state => {
+    const fakes = makeDependencies();
+    const runId = `observation-array-${state.toLowerCase()}`;
+    await runOnce(fakes.dependencies, runId);
+    const run = fakes.repository.runs.get(runId);
+    const saved = fakes.repository.stageDocuments.get(`${runId}:execution`) as ExecutionDocument;
+    if (!run || !saved || !saved.observations[0]) throw new Error("missing complete execution");
+    const target = saved.observations[0];
+    const persistedObservation = { ...target, actualValues: ["array-value"] } as unknown as typeof target;
+    fakes.repository.stageDocuments.set(`${runId}:execution`, { ...saved, observations: [persistedObservation, ...saved.observations.slice(1)] });
+    fakes.repository.runs.set(runId, { ...run, state, updatedAt: FIXED_NOW });
+    const executorCalls = fakes.executorCalls;
+    const stageWrites = fakes.repository.stageWrites.length;
+    const runWrites = fakes.repository.runWrites.length;
+    await expect(runVerification({ runId, request: makeRequest(), dependencies: fakes.dependencies })).rejects.toThrow("invalid persisted execution reference");
+    expect(fakes.executorCalls).toBe(executorCalls);
+    expect(fakes.repository.stageWrites.length).toBe(stageWrites);
+    expect(fakes.repository.runWrites.length).toBe(runWrites);
   });
   test("rejects persisted observation and evidence PASS mutation against fixed FAIL authority before executor recall", async () => {
     const fakes = makeDependencies();

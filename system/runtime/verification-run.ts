@@ -97,11 +97,11 @@ function validObservation(value: unknown): value is Observation {
   if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "observationId", "requestId", "snapshotId", "producer", "execution", "artifacts"], ["actualValues"]) || value.schemaVersion !== "observation/v1" || typeof value.observationId !== "string" || !value.observationId || typeof value.requestId !== "string" || !value.requestId || typeof value.snapshotId !== "string" || !value.snapshotId || !validProducer(value.producer) || !validExecution(value.execution) || !Array.isArray(value.artifacts) || value.artifacts.some(artifact => !validArtifact(artifact))) return false;
   const actualValues = value.actualValues;
   if (actualValues === undefined) return true;
-  if (!isRecord(actualValues)) return false;
+  if (!isRecord(actualValues) || Array.isArray(actualValues)) return false;
   const keys = Object.keys(actualValues);
   return keys.length > 0 && keys.every(key => {
     const actualValue = actualValues[key];
-    return Boolean(key) && (typeof actualValue === "string" || typeof actualValue === "boolean" || (typeof actualValue === "number" && Number.isFinite(actualValue)));
+    return Boolean(key) && (actualValue === null || typeof actualValue === "string" || typeof actualValue === "boolean" || (typeof actualValue === "number" && Number.isFinite(actualValue)));
   });
 }
 function validBasisItem(value: unknown): value is VerificationBasisItem {
