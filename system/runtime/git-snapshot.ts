@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { constants, existsSync } from "node:fs";
-import { lstat, open, readlink, realpath } from "node:fs/promises";
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 
 const utf8 = new TextDecoder("utf-8", { fatal: false });
 const encoder = new TextEncoder();
@@ -103,7 +104,7 @@ function parseAsciiFields(value: Uint8Array): string[] {
 const SAFE_GIT_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
 const SAFE_GIT_EXECUTABLE = ["/usr/bin/git", "/bin/git", "/usr/local/bin/git", "/opt/homebrew/bin/git"].find(path => existsSync(path)) ?? "git";
 
-async function runGit(repositoryRoot: string, args: readonly string[], allowFailure = false): Promise<Buffer> {
+async function runGit(repositoryRoot: string, args: readonly string[], allowFailure = false, extraEnv: Readonly<Record<string, string>> = {}): Promise<Buffer> {
   const process = Bun.spawn([SAFE_GIT_EXECUTABLE, "-C", repositoryRoot, ...args], {
     stdout: "pipe",
     stderr: "pipe",
@@ -116,6 +117,7 @@ async function runGit(repositoryRoot: string, args: readonly string[], allowFail
       GIT_CONFIG_SYSTEM: "/dev/null",
       GIT_OPTIONAL_LOCKS: "0",
       GIT_TERMINAL_PROMPT: "0",
+      ...extraEnv,
     },
   });
   const [stdout, stderr, exitCode] = await Promise.all([
@@ -141,50 +143,42 @@ function assertSafeGitPath(path: GitPath): void {
   }
 }
 
-function pathParts(path: GitPath): Buffer[] {
-  assertSafeGitPath(path);
-  return path.toString("binary").split("/").map(part => Buffer.from(part, "binary"));
+type WorktreeCapture = Readonly<{
+  tree: string;
+  entries: Map<string, { path: GitPath; entries: IndexEntry[] }>;
+}>;
+
+function gitMode(mode: string): number {
+  const value = Number.parseInt(mode, 8);
+  if (!Number.isSafeInteger(value)) throw new Error("malformed Git mode");
+  return value;
 }
 
-const NO_FOLLOW = constants.O_NOFOLLOW ?? 0;
-
-async function readWorktreeEntry(repositoryRoot: string, path: GitPath): Promise<GitWorktreeEntry> {
-  const parts = pathParts(path);
-  let current = Buffer.from(repositoryRoot);
-  let stat: Awaited<ReturnType<typeof lstat>> | undefined;
+async function captureWorktreeIndex(repositoryRoot: string, head: string): Promise<WorktreeCapture> {
+  const temporaryDirectory = await mkdtemp(join(tmpdir(), "traceknot-git-index-"));
+  const indexPath = join(temporaryDirectory, "index");
+  const env = { GIT_INDEX_FILE: indexPath };
   try {
-    for (let index = 0; index < parts.length; index += 1) {
-      current = Buffer.concat([current, Buffer.from("/"), parts[index]!]);
-      stat = await lstat(current);
-      if (index < parts.length - 1 && stat.isSymbolicLink()) throw new Error("Git path traverses a symlink");
-    }
-  } catch (error) {
-    if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { path: bytesToKey(path), kind: "missing", mode: null, size: null, digest: null };
-    }
-    throw error;
+    await runGit(repositoryRoot, ["read-tree", head === "UNBORN" ? "--empty" : head], false, env);
+    await runGit(repositoryRoot, ["add", "-A", "--", "."], false, env);
+    const tree = decode(removeOneTerminalNewline(await runGit(repositoryRoot, ["write-tree"], false, env)));
+    const entries = parseIndex(await runGit(repositoryRoot, ["ls-files", "--stage", "-z"], false, env));
+    return { tree, entries };
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
   }
-  if (!stat) return { path: bytesToKey(path), kind: "missing", mode: null, size: null, digest: null };
-  const mode = Number(stat.mode) & 0o7777;
-  if (stat.isSymbolicLink()) {
-    const target = await readlink(current, { encoding: "buffer" });
-    const targetBytes = Buffer.from(target as Uint8Array);
-    return { path: bytesToKey(path), kind: "symlink", mode, size: targetBytes.byteLength, digest: digestBytes(targetBytes), linkTarget: bytesToKey(targetBytes) };
-  }
-  if (stat.isFile()) {
-    let handle: Awaited<ReturnType<typeof open>> | undefined;
-    try {
-      handle = await open(current, constants.O_RDONLY | NO_FOLLOW);
-      const opened = await handle.stat();
-      if (!opened.isFile() || opened.isSymbolicLink()) throw new Error("Git path is not a regular file");
-      const content = await handle.readFile();
-      return { path: bytesToKey(path), kind: "file", mode: Number(opened.mode) & 0o7777, size: content.byteLength, digest: digestBytes(content) };
-    } finally {
-      if (handle) await handle.close();
-    }
-  }
-  if (stat.isDirectory()) return { path: bytesToKey(path), kind: "directory", mode, size: null, digest: null };
-  return { path: bytesToKey(path), kind: "special", mode, size: null, digest: null };
+}
+
+async function worktreeEntry(repositoryRoot: string, item: { path: GitPath; entries: IndexEntry[] } | undefined, path: GitPath): Promise<GitWorktreeEntry> {
+  const entry = item?.entries.find(candidate => candidate.stage === 0);
+  if (!entry) return { path: bytesToKey(path), kind: "missing", mode: null, size: null, digest: null };
+  const mode = gitMode(entry.mode);
+  const type = mode & 0o170000;
+  if (type === 0o160000) return { path: bytesToKey(path), kind: "directory", mode, size: null, digest: null };
+  if (type !== 0o100000 && type !== 0o120000) return { path: bytesToKey(path), kind: "special", mode, size: null, digest: null };
+  const content = await runGit(repositoryRoot, ["cat-file", "blob", entry.objectId]);
+  if (type === 0o120000) return { path: bytesToKey(path), kind: "symlink", mode, size: content.byteLength, digest: digestBytes(content), linkTarget: bytesToKey(content) };
+  return { path: bytesToKey(path), kind: "file", mode, size: content.byteLength, digest: digestBytes(content) };
 }
 
 function parseIndex(value: Uint8Array): Map<string, { path: GitPath; entries: IndexEntry[] }> {
@@ -270,6 +264,7 @@ type GitSnapshotAttempt = Readonly<{
   index: readonly GitSnapshotIndexEntry[];
   worktree: readonly GitWorktreeEntry[];
   status: readonly StatusEntry[];
+  worktreeTree: string;
   canonicalState: string;
 }>;
 
@@ -283,14 +278,16 @@ async function captureGitSnapshotAttempt(requestedRoot: string): Promise<GitSnap
   const head = trimmedHead.byteLength > 0 ? decode(trimmedHead) : "UNBORN";
   const indexMap = parseIndex(await runGit(repositoryRoot, ["ls-files", "--stage", "-z"]));
   const statusResult = parseStatus(await runGit(repositoryRoot, ["status", "--porcelain=v2", "--untracked-files=all", "-z"]));
+  const worktreeCapture = await captureWorktreeIndex(repositoryRoot, head);
   const allPaths = new Map<string, GitPath>();
   for (const [key, item] of indexMap) allPaths.set(key, item.path);
   for (const [key, path] of statusResult.paths) allPaths.set(key, path);
+  for (const [key, item] of worktreeCapture.entries) allPaths.set(key, item.path);
 
   const index = [...indexMap.values()]
     .sort((left, right) => compareBytes(left.path, right.path))
     .map(item => ({ path: bytesToKey(item.path), entries: item.entries.map(entry => ({ ...entry })) }));
-  const worktree = (await Promise.all([...allPaths.values()].sort(compareBytes).map(path => readWorktreeEntry(repositoryRoot, path))))
+  const worktree = (await Promise.all([...allPaths.values()].sort(compareBytes).map(path => worktreeEntry(repositoryRoot, worktreeCapture.entries.get(bytesToKey(path)), path))))
     .sort((left, right) => compareText(left.path, right.path));
   const status = statusResult.statuses.map(item => ({ ...item }));
   const canonicalState = canonicalize({
@@ -298,10 +295,11 @@ async function captureGitSnapshotAttempt(requestedRoot: string): Promise<GitSnap
     rootIdentity: repositoryRoot,
     head,
     index,
+    worktreeTree: worktreeCapture.tree,
     worktree,
     status,
   });
-  return { repositoryRoot, head, index, worktree, status, canonicalState };
+  return { repositoryRoot, head, index, worktree, status, worktreeTree: worktreeCapture.tree, canonicalState };
 }
 
 /** Capture a deterministic Git worktree identity using machine-readable Git output. */

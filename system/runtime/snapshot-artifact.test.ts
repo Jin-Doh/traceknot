@@ -223,7 +223,7 @@ test("local artifact store fails closed on mismatch, collision, and symlink targ
   }
 });
 
-test("local artifact store fails closed when its configured root is replaced", async () => {
+test("local artifact store stays pinned when its configured root is renamed and replaced", async () => {
   const root = await temporaryDirectory();
   const source = join(root, "source.bin");
   const artifactRoot = join(root, "artifacts");
@@ -240,14 +240,35 @@ test("local artifact store fails closed when its configured root is replaced", a
     await rename(artifactRoot, preservedRoot);
     await mkdir(artifactRoot);
     const newBytes = Buffer.from("new bytes");
-    await expect(store.storeArtifact({ type: "result", digest: digest(newBytes), bytes: newBytes } as never, request)).rejects.toBeInstanceOf(ArtifactPathError);
+    const newDigest = digest(newBytes);
+    await store.storeArtifact({ type: "result", digest: newDigest, bytes: newBytes } as never, request);
+    expect(await store.readArtifact(newDigest)).toEqual(newBytes);
     expect(await readdir(artifactRoot)).toEqual([]);
+    expect(await readdir(preservedRoot)).toContain(".objects");
 
     await rm(artifactRoot, { recursive: true, force: true });
     await symlink(outside, artifactRoot, "dir");
-    await expect(store.readArtifact(artifactDigest)).rejects.toBeInstanceOf(ArtifactPathError);
-    await expect(store.storeArtifact({ type: "result", digest: artifactDigest, path: source }, request)).rejects.toBeInstanceOf(ArtifactPathError);
+    expect(await store.readArtifact(artifactDigest)).toEqual(bytes);
+    expect(await store.hasArtifact(artifactDigest)).toBe(true);
     expect(await readdir(outside)).toEqual([]);
+  } finally {
+    await cleanup(root);
+  }
+});
+
+test("local artifact store recovers content from its append-only log", async () => {
+  const root = await temporaryDirectory();
+  const artifactRoot = join(root, "artifacts");
+  const bytes = Buffer.from([0, 9, 255, 10]);
+  const artifactDigest = digest(bytes);
+  try {
+    const first = new LocalArtifactStore(artifactRoot);
+    await first.store({ type: "binary", digest: artifactDigest, bytes } as never, request);
+    await first.close();
+    const reopened = new LocalArtifactStore(artifactRoot);
+    expect(await reopened.readArtifact(artifactDigest)).toEqual(bytes);
+    expect(await reopened.hasArtifact(artifactDigest)).toBe(true);
+    await reopened.close();
   } finally {
     await cleanup(root);
   }
