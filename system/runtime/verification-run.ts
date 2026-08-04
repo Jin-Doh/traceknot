@@ -42,7 +42,8 @@ export interface RepositoryPort {readonly commitEvidenceAndVerdict?:(transition:
 export type VerificationRunDependencies=Readonly<{repository:RepositoryPort;executor:VerificationExecutor;artifactStore:ArtifactStore;capabilityProvider:CapabilityProvider;executionAuthority:ExecutionAuthorityPort;freshnessPolicy:FreshnessPolicy;freshnessAuthority:FreshnessAuthorityPort;browserExecutor?:BrowserExecutor;approvalProvider?:ApprovalProvider;usageRecorder?:UsageRecorder;now:Clock;dispatchOwnerId?:string;ownerId?:string;dispatchLeaseDurationMs?:number;leaseDurationMs?:number}>;
 export type BasisDocument=Readonly<{schemaVersion:"verification-basis/v1";requestId:string;snapshotId:string;basis:readonly VerificationBasisItem[];basisIds:readonly string[]}>; export type DiscoveryDocument=Readonly<{schemaVersion:"risk-discovery/v1";requestId:string;snapshotId:string;risks:readonly VerificationRisk[];conditions:readonly VerificationCondition[]}>; export type PlanDocument=VerificationPlan; export type UsageOutboxEntry=Readonly<{executionKey:string;obligationId:string;event:"execution"|"artifact";eventKey:string}>; export type ExecutionDocument=Readonly<{schemaVersion:"verification-execution/v1";requestId:string;snapshotId:string;observations:readonly Observation[];claims:readonly EvidenceClaim[];evidence:readonly VerificationEvidence[];authorities:readonly ExecutionAuthority[];usageOutbox:readonly UsageOutboxEntry[]}>; export type EvidenceDocument=Readonly<{schemaVersion:"verification-evidence-evaluation/v1";requestId:string;snapshotId:string;freshnessEvaluatedAt:string;freshnessAuthority:FreshnessAuthority;evaluations:readonly EvidenceEvaluation[];acceptedClaimIds:readonly string[];coverage:CoverageInput}>; export type ResidualRiskDocument=Readonly<{schemaVersion:"verification-residual-risk/v1";requestId:string;snapshotId:string;defects:readonly DefectSummary[]}>; export type VerdictDocument=VerdictResult; export type StageDocument=VerificationRequest|BasisDocument|DiscoveryDocument|PlanDocument|ExecutionDocument|EvidenceDocument|ResidualRiskDocument|VerdictDocument;
 export type VerificationRunDocuments={request?:VerificationRequest;basis?:BasisDocument;discovery?:DiscoveryDocument;plan?:PlanDocument;execution?:ExecutionDocument;evidence?:EvidenceDocument;"residual-risk"?:ResidualRiskDocument;verdict?:VerdictDocument};
-export type EstablishTestBasisInput=Readonly<{runId?:string;request:VerificationRequest;dependencies:VerificationRunDependencies}>; export type PerformRiskDiscoveryInput=Readonly<{request:VerificationRequest;basis:BasisDocument;dependencies:VerificationRunDependencies}>; export type BuildVerificationPlanInput=Readonly<{request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;dependencies:VerificationRunDependencies}>; type ExecuteObligationsInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;dependencies:VerificationRunDependencies;checkpoint?:ExecutionDocument}>; type EvaluateEvidenceInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;dependencies:VerificationRunDependencies;freshnessEvaluatedAt?:string;freshnessAuthority?:FreshnessAuthority}>; type EvaluateResidualRiskInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;evidence:EvidenceDocument;dependencies:VerificationRunDependencies}>; type ResolveVerdictInput=Readonly<{runId:string;request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;plan:VerificationPlan;execution:ExecutionDocument;evidence:EvidenceDocument;residualRisk:ResidualRiskDocument;dependencies:VerificationRunDependencies}>; export type RunVerificationInput=Readonly<{runId:string;request?:VerificationRequest;dependencies:VerificationRunDependencies}>; export type RunVerificationResult=Readonly<{run:CanonicalRunState;verdict:VerdictResult;documents:VerificationRunDocuments}>;
+export type EstablishTestBasisInput=Readonly<{runId?:string;request:VerificationRequest;dependencies:VerificationRunDependencies}>; export type PerformRiskDiscoveryInput=Readonly<{request:VerificationRequest;basis:BasisDocument;dependencies:VerificationRunDependencies}>; export type BuildVerificationPlanInput=Readonly<{request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;dependencies:VerificationRunDependencies}>; type ExecuteObligationsInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;dependencies:VerificationRunDependencies;checkpoint?:ExecutionDocument;checkpointRunState:RunState;checkpointRevision:number}>; type EvaluateEvidenceInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;dependencies:VerificationRunDependencies;freshnessEvaluatedAt?:string;freshnessAuthority?:FreshnessAuthority}>; type EvaluateResidualRiskInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;evidence:EvidenceDocument;dependencies:VerificationRunDependencies}>; type ResolveVerdictInput=Readonly<{runId:string;request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;plan:PlanDocument;execution:ExecutionDocument;evidence:EvidenceDocument;residualRisk:ResidualRiskDocument;dependencies:VerificationRunDependencies}>; export type RunVerificationInput=Readonly<{runId:string;request?:VerificationRequest;dependencies:VerificationRunDependencies}>; export type RunVerificationResult=Readonly<{run:CanonicalRunState;verdict:VerdictResult;documents:VerificationRunDocuments}>;
+type ExecuteObligationsResult=Readonly<{document:ExecutionDocument;checkpointRevision:number}>;
 
 const DIGEST = /^[0-9a-fA-F]{64}$/;
 const REQUEST_DIGEST = /^[0-9a-f]{64}$/;
@@ -559,13 +560,16 @@ async function commitTerminalEvidenceAndVerdict(repository: RepositoryPort, run:
   const committed = await repository.commitEvidenceAndVerdict.call(repository, { runId: run.runId, expectedRevision: expectedRevision < 0 ? undefined : expectedRevision, evidence, verdict, run });
   if (committed !== true) throw Error("terminal evidence/verdict persistence failed");
 }
-async function checkpointRun(input: ExecuteObligationsInput, document: ExecutionDocument): Promise<void> {
+async function checkpointRun(input: ExecuteObligationsInput, document: ExecutionDocument): Promise<number> {
   const current = await loadRun(input.dependencies.repository, input.runId);
   if (!current) throw Error("execution checkpoint run is missing");
+  if (current.state !== input.checkpointRunState || current.revision !== input.checkpointRevision) throw Error("stale execution checkpoint state/revision");
   const touched = touchRun(current, clockNow(input.dependencies.now));
-  await commitStageAndRun(input.dependencies.repository, touched, "execution", document, current.revision);
+  const committed = await input.dependencies.repository.commitTransition({ runId: input.runId, expectedRevision: input.checkpointRevision, stage: "execution", document, run: touched });
+  if (!committed) throw Error("stale execution checkpoint state/revision");
+  return touched.revision;
 }
-async function executeObligations(input: ExecuteObligationsInput): Promise<ExecutionDocument> {
+async function executeObligations(input: ExecuteObligationsInput): Promise<ExecuteObligationsResult> {
   validRequest(input.request);
   const dispatchClaimsConfigured = dispatchFacilityConfigured(input.dependencies.repository);
   if (input.checkpoint) {
@@ -581,6 +585,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
   if (usageOutbox.length > 0 && !usageEnabled) throw Error("usage recorder is required to flush pending usage outbox");
   if (usageEnabled && input.dependencies.usageRecorder?.atomicSameKeyIdempotency !== true) throw Error("usage recorder must declare atomic same-key idempotency");
   const completed = new Set(claims.map(item => item.obligationId));
+  let checkpointRevision = input.checkpointRevision;
   const persistCheckpoint = async (): Promise<void> => {
     const checkpoint: ExecutionDocument = {
       schemaVersion: "verification-execution/v1",
@@ -593,7 +598,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
       usageOutbox: [...usageOutbox].sort((a, b) => a.eventKey.localeCompare(b.eventKey)),
     };
     assertExecutionEvidenceBindings(checkpoint, input.request, input.plan, input.runId);
-    await checkpointRun(input, freeze(checkpoint));
+    checkpointRevision = await checkpointRun({ ...input, checkpointRevision }, freeze(checkpoint));
   };
   const flushPendingUsage = async (): Promise<void> => {
     if (!usageEnabled) return;
@@ -740,7 +745,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
   }
   const finalDocument: ExecutionDocument = { schemaVersion: "verification-execution/v1", requestId: input.request.requestId, snapshotId: input.request.project.snapshotId, observations: observations.sort((a, b) => a.observationId.localeCompare(b.observationId)), claims: claims.sort((a, b) => a.claimId.localeCompare(b.claimId)), evidence: evidence.sort((a, b) => a.evidenceId.localeCompare(b.evidenceId)), authorities: authorities.sort((a, b) => a.binding.obligationId.localeCompare(b.binding.obligationId)), usageOutbox: usageOutbox.sort((a, b) => a.eventKey.localeCompare(b.eventKey)) };
   assertExecutionEvidenceBindings(finalDocument, input.request, input.plan, input.runId);
-  return freeze(finalDocument);
+  return freeze({ document: freeze(finalDocument), checkpointRevision });
 }
 const independenceRank: Readonly<Record<IndependenceLevel, number>> = {"self-check":0,"separate-verification-context":1,"independent-producer":2,"external-approval":3};
 function rejectionReasons(checks: EvidenceEvaluation["checks"]): EvidenceEvaluation["rejectionReasons"][number][] { const reasons: EvidenceEvaluation["rejectionReasons"][number][]=[]; if (!checks.snapshotBound) reasons.push("SNAPSHOT_MISMATCH"); if (!checks.fresh) reasons.push("STALE_EVIDENCE"); if (!checks.artifactRequirementsSatisfied) reasons.push("MISSING_ARTIFACT"); if (!checks.scopeComplete) reasons.push("INSUFFICIENT_SCOPE"); if (!checks.producerAllowed) reasons.push("UNTRUSTED_PRODUCER"); if (!checks.independenceSatisfied) reasons.push("INDEPENDENCE_NOT_MET"); if (!checks.expectedResultDemonstrated || checks.expectedResultViolated) reasons.push("EXPECTED_RESULT_NOT_DEMONSTRATED"); if (!checks.integrityVerified) reasons.push("INTEGRITY_FAILURE"); return uniq(reasons) as EvidenceEvaluation["rejectionReasons"][number][]; }
@@ -1023,9 +1028,11 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
     if (run.state === "PLANNED") {
       if (!plan) throw Error("plan document is missing");
       const checkpoint = documents.execution ?? await loadCheckedStage<ExecutionDocument>(repository, input.runId, "execution", req, dependencies, documents);
-      const doc = await executeObligations({ runId: input.runId, request: req, plan, dependencies, checkpoint });
+      const executionResult = await executeObligations({ runId: input.runId, request: req, plan, dependencies, checkpoint, checkpointRunState: run.state, checkpointRevision: run.revision });
+      const doc = executionResult.document;
       const latest = await loadRun(repository, input.runId);
       if (!latest) throw Error("execution run is missing");
+      if (latest.state !== run.state || latest.revision !== executionResult.checkpointRevision) throw Error("stale execution checkpoint state/revision");
       const next = transitionRunState({ schemaVersion: latest.schemaVersion, runId: latest.runId, requestId: latest.requestId, rootIdentity: latest.rootIdentity, snapshotId: latest.snapshotId, state: latest.state, observationIds: doc.observations.map(item=>item.observationId), claimIds: doc.claims.map(item=>item.claimId), evaluationIds: latest.evaluationIds, revision: latest.revision, createdAt: latest.createdAt, updatedAt: latest.updatedAt }, "EXECUTING", clockNow(dependencies.now));
       await commitStageAndRun(repository, next, "execution", doc, latest.revision);
       run = next;

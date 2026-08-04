@@ -2735,6 +2735,48 @@ describe("verification run orchestration", () => {
     expect(issueCalls).toBe(1);
   });
 
+  test("fences a stale PLANNED execution checkpoint across an EXECUTING takeover", async () => {
+    const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
+    const runId = "checkpoint-stale-takeover";
+    const request = { ...makeRequest("checkpoint-stale-takeover-request"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    const first = makeDependencies({}, new FakeRepository(store));
+    let markCompletion!: () => void;
+    let releaseCheckpoint!: () => void;
+    const completionReached = new Promise<void>(resolve => { markCompletion = resolve; });
+    const checkpointGate = new Promise<void>(resolve => { releaseCheckpoint = resolve; });
+    const completeExecutionDispatch = first.repository.completeExecutionDispatch.bind(first.repository);
+    first.repository.completeExecutionDispatch = async (claim, completion, now) => {
+      const accepted = await completeExecutionDispatch(claim, completion, now);
+      markCompletion();
+      await checkpointGate;
+      return accepted;
+    };
+    const staleRun = runVerification({ runId, request, dependencies: first.dependencies });
+    await completionReached;
+    const second = makeDependencies({}, new FakeRepository(store));
+    const takeover = runVerification({
+      runId,
+      request,
+      dependencies: { ...second.dependencies, executionAuthority: first.dependencies.executionAuthority },
+    });
+    const winner = await takeover;
+    expect(winner.run.state).toBe("TERMINAL");
+    const terminalSnapshot = JSON.stringify({
+      run: store.runs.get(runId),
+      execution: store.stageDocuments.get(`${runId}:execution`),
+      evidence: store.stageDocuments.get(`${runId}:evidence`),
+      verdict: store.stageDocuments.get(`${runId}:verdict`),
+    });
+    releaseCheckpoint();
+    await expect(staleRun).rejects.toThrow("stale execution checkpoint state/revision");
+    expect(JSON.stringify({
+      run: store.runs.get(runId),
+      execution: store.stageDocuments.get(`${runId}:execution`),
+      evidence: store.stageDocuments.get(`${runId}:evidence`),
+      verdict: store.stageDocuments.get(`${runId}:verdict`),
+    })).toBe(terminalSnapshot);
+  });
+
   test("rejects a stale repository writer without overwriting the terminal pair", async () => {
     const fakes = makeDependencies();
     await runOnce(fakes.dependencies, "stale-writer");
