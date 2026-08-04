@@ -432,6 +432,19 @@ describe("rewrite preservation gate", () => {
     expect(block.failures).toContainEqual(expect.objectContaining({ category: "quotation" }));
   });
 
+  test("masks inline code before collecting protected corner-bracket quotations", () => {
+    const report = verifyPreservation("`「`普通文本」", "`「`修改文本」");
+    expect(report.failures.some((failure) => failure.category === "quotation")).toBe(false);
+  });
+
+  test("masks link destinations before deriving quotation ranges", () => {
+    const report = analyzeProse('[证据](<https://example.com/">)中文English"', ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+  });
+
   test("protects four-space-indented Markdown code", () => {
     const before = "Run this command:\n\n    traceknot verify\n\nDone.";
     const after = "Run this command:\n\n    traceknot delete\n\nDone.";

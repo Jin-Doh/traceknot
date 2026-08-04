@@ -442,16 +442,30 @@ function htmlCodeSpans(text: string): Array<{ category: "code-block" | "inline-c
   return spans;
 }
 
+function isSyntheticDestination(value: string): boolean {
+  return /^(?:inline|html|attr|ref):/u.test(value);
+}
+
+function maskQuotationSyntax(text: string, maskedCharacter = " "): string {
+  const mask = (value: string): string => maskValuePreservingLines(value, maskedCharacter);
+  let masked = text;
+  for (const block of markdownFencedBlocks(masked)) masked = masked.replace(block, mask);
+  for (const block of markdownIndentedCodeBlocks(masked)) masked = masked.replace(block, mask);
+  for (const span of htmlCodeSpans(masked)) masked = masked.replace(span.value, mask);
+  for (const span of markdownInlineCodeSpans(masked)) masked = masked.replace(span, mask);
+  for (const destination of markdownLinkDestinations(masked)) {
+    if (destination && !isSyntheticDestination(destination)) masked = masked.replace(destination, mask);
+  }
+  return masked;
+}
+
 function maskProtectedProse(markdown: string, maskedCharacter = " "): string {
   const mask = (value: string): string => maskValuePreservingLines(value, maskedCharacter);
   let prose = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, mask);
   prose = prose.replace(/<!--[\s\S]*?(?:-->|$)/g, mask);
-  for (const block of markdownFencedBlocks(prose)) prose = prose.replace(block, mask);
-  for (const block of markdownIndentedCodeBlocks(prose)) prose = prose.replace(block, mask);
-  for (const span of htmlCodeSpans(prose)) prose = prose.replace(span.value, mask);
+  prose = maskQuotationSyntax(prose, maskedCharacter);
   for (const quote of markdownBlockquotes(prose)) prose = prose.replace(quote, mask);
   for (const quote of htmlBlockquotes(prose)) prose = prose.replace(quote, mask);
-  for (const span of markdownInlineCodeSpans(prose)) prose = prose.replace(span, mask);
   prose = maskRangesPreservingLines(prose, directQuotationRanges(prose), maskedCharacter);
   return prose;
 }
@@ -820,7 +834,9 @@ function protectedValues(text: string): Map<string, { category: string; count: n
       values.set(key, { category, count: (current?.count ?? 0) + 1 });
     }
   }
-  for (const quote of directQuotationSpans(text)) {
+  const quotationSource = maskQuotationSyntax(text);
+  for (const range of directQuotationRanges(quotationSource)) {
+    const quote = text.slice(range.start, range.end);
     const key = `quotation\u0000${quote}`;
     const current = values.get(key);
     values.set(key, { category: "quotation", count: (current?.count ?? 0) + 1 });
