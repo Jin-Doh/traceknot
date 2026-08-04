@@ -233,8 +233,13 @@ function isNumericUnitQuote(text: string, index: number): boolean {
   return /\d/.test(text[index - 1] ?? "");
 }
 
-function directQuotationSpans(text: string): string[] {
-  const spans: string[] = [];
+interface TextRange {
+  start: number;
+  end: number;
+}
+
+function directQuotationRanges(text: string): TextRange[] {
+  const ranges: TextRange[] = [];
   for (const [opening, closing] of [["\"", "\""], ["'", "'"], ["“", "”"], ["‘", "’"], ["「", "」"], ["『", "』"]] as const) {
     let cursor = 0;
     while (cursor < text.length) {
@@ -244,11 +249,35 @@ function directQuotationSpans(text: string): string[] {
       let end = text.indexOf(closing, start + 1);
       while (end >= 0 && (isEscaped(text, end) || (closing === "'" && /[\p{L}\p{N}]/u.test(text[end + 1] ?? "")))) end = text.indexOf(closing, end + 1);
       if (end < 0) break;
-      spans.push(text.slice(start, end + 1));
+      ranges.push({ start, end: end + 1 });
       cursor = end + 1;
     }
   }
-  return spans;
+  return ranges;
+}
+
+function directQuotationSpans(text: string): string[] {
+  return directQuotationRanges(text).map((range) => text.slice(range.start, range.end));
+}
+
+function maskRangesPreservingLines(text: string, ranges: TextRange[]): string {
+  const merged: TextRange[] = [];
+  for (const range of ranges.sort((left, right) => left.start - right.start || right.end - left.end)) {
+    const previous = merged.at(-1);
+    if (previous && range.start <= previous.end) {
+      previous.end = Math.max(previous.end, range.end);
+    } else {
+      merged.push({ ...range });
+    }
+  }
+  let result = "";
+  let cursor = 0;
+  for (const range of merged) {
+    result += text.slice(cursor, range.start);
+    result += maskContentPreservingLines(text.slice(range.start, range.end));
+    cursor = range.end;
+  }
+  return result + text.slice(cursor);
 }
 
 function visualColumns(value: string): number {
@@ -417,7 +446,7 @@ function maskProtectedProse(markdown: string): string {
   for (const span of htmlCodeSpans(prose)) prose = prose.replace(span.value, maskContentPreservingLines);
   for (const quote of markdownBlockquotes(prose)) prose = prose.replace(quote, maskContentPreservingLines);
   for (const quote of htmlBlockquotes(prose)) prose = prose.replace(quote, maskContentPreservingLines);
-  for (const quote of directQuotationSpans(prose)) prose = prose.replace(quote, maskContentPreservingLines);
+  prose = maskRangesPreservingLines(prose, directQuotationRanges(prose));
   for (const span of markdownInlineCodeSpans(prose)) prose = prose.replace(span, maskContentPreservingLines);
   return prose;
 }

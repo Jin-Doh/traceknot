@@ -306,6 +306,14 @@ describe("language-specific prose rules", () => {
     expect(report.status).toBe("PASS");
   });
 
+  test("masks overlapping nested quotation ranges as one protected region", () => {
+    const before = "资料原文是『中文English「内部」内容』。";
+    const after = "资料原文是『中文English「修改」内容』。";
+    expect(analyzeProse(before, ["zh-Hans"], "zh-Hans").findings).toEqual([]);
+    expect(verifyPreservation(before, after).failures)
+      .toContainEqual(expect.objectContaining({ category: "quotation" }));
+  });
+
   test("keeps visible zhlint findings outside protected quotations", () => {
     const report = analyzeProse("中文English，资料原文是“中文English”。", ["zh-Hans"], "zh-Hans");
     expect(report.findings).toContainEqual(expect.objectContaining({
