@@ -1763,6 +1763,34 @@ describe("verification run orchestration", () => {
     await runOnce(fakes.dependencies, "concurrent-run");
     expect(getVerificationRunLockCount(fakes.dependencies.repository)).toBe(0);
   });
+  test("keeps concurrent same-run calls serialized while the first call is in flight", async () => {
+    const fakes = makeDependencies();
+    const runId = "concurrent-in-flight-run";
+    let releaseFirst!: () => void;
+    let markFirstStarted!: () => void;
+    const firstStarted = new Promise<void>(resolve => { markFirstStarted = resolve; });
+    const firstGate = new Promise<void>(resolve => { releaseFirst = resolve; });
+    let calls = 0;
+    const executor: VerificationExecutor = {
+      executeObligation: async request => {
+        calls++;
+        if (calls === 1) {
+          markFirstStarted();
+          await firstGate;
+        }
+        return fakes.dependencies.executor.executeObligation!(request);
+      },
+    };
+    const dependencies = { ...fakes.dependencies, executor };
+    const first = runOnce(dependencies, runId);
+    await firstStarted;
+    const second = runOnce(dependencies, runId);
+    expect(getVerificationRunLockCount(dependencies.repository)).toBe(1);
+    releaseFirst();
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+    expect(firstResult.verdict).toEqual(secondResult.verdict);
+    expect(getVerificationRunLockCount(dependencies.repository)).toBe(0);
+  });
 
   test("rejects a stale repository writer without overwriting the terminal pair", async () => {
     const fakes = makeDependencies();
