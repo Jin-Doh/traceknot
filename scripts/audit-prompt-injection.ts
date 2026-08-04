@@ -1,6 +1,16 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { relative, resolve } from "node:path";
+import { toText } from "hast-util-to-text";
+import type { Element, Root as HastRoot } from "hast";
+import type { Html, Paragraph } from "mdast";
+import { toString } from "mdast-util-to-string";
+import rehypeRaw from "rehype-raw";
+import remarkGfm from "remark-gfm";
+import remarkParse from "remark-parse";
+import remarkRehype from "remark-rehype";
+import { unified } from "unified";
+import { visit } from "unist-util-visit";
 
 export type RiskLevel = "none" | "low" | "medium" | "high" | "critical";
 
@@ -87,6 +97,36 @@ export const RULES: readonly Rule[] = [
     score: 10,
     pattern: /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]/,
   },
+  {
+    id: "PI009",
+    description: "Simplified Chinese instruction hierarchy override",
+    score: 5,
+    pattern: /(?:忽略|无视|覆盖|绕过)[^。；，！？：.,;!?:\n]{0,24}(?:之前|先前|系统|开发者|安全|指令|规则|策略|防护)/,
+  },
+  {
+    id: "PI010",
+    description: "Simplified Chinese credential or hidden-context exfiltration request",
+    score: 7,
+    pattern: /(?:(?:显示|打印|泄露|发送|上传|导出)[^。；，！？：.,;!?:\n]{0,32}(?:秘密|令牌|凭据|私钥|API\s*密钥|系统提示|开发者消息|环境变量|\.env)|(?:把|将)[^。；，！？：.,;!?:\n]{0,12}(?:秘密|令牌|凭据|私钥|API\s*密钥|系统提示|开发者消息|环境变量|\.env)[^。；，！？：.,;!?:\n]{0,32}(?:显示|打印|泄露|发送|上传|导出))/i,
+  },
+  {
+    id: "PI011",
+    description: "Simplified Chinese safety control suppression",
+    score: 6,
+    pattern: /(?:禁用|关闭|移除|绕过|规避)[^。；，！？：.,;!?:\n]{0,24}(?:安全|验证|校验|扫描器|过滤器|沙箱|权限|审批|审计|日志)/,
+  },
+  {
+    id: "PI012",
+    description: "Simplified Chinese privileged-role identity assignment (advisory)",
+    score: 5,
+    pattern: /(?:现在|从现在起)?(?:你|您)(?:现在|从现在起|将)?是(?:一(?:名|个|位))?(?:系统(?:管理员|开发者)?|开发者|管理员|超级用户|root)(?=$|[\s，。；！？,. ;!?、]|并(?:且)?|而|然后|随后|就|将|会|要|已(?:经)?|了|着|过|请)/iu,
+  },
+  {
+    id: "PI013",
+    description: "Simplified Chinese explicit privileged-role impersonation",
+    score: 6,
+    pattern: /(?:(?:假装|扮演|伪装|冒充)[^。；，！？：.,;!?:\n]*?(?:系统(?:管理员|开发者|身份|消息|指令|角色)|开发者|管理员|超级用户|root)|以(?:系统(?:管理员|开发者)?|开发者|管理员|超级用户|root)(?:的)?身份)/iu,
+  },
 ];
 
 const LEVEL_RANK: Record<RiskLevel, number> = {
@@ -100,8 +140,11 @@ const LEVEL_RANK: Record<RiskLevel, number> = {
 const DEFAULT_TARGETS = [
   "README.md",
   "README.ko.md",
+  "README.zh.md",
   "BRAND.md",
   "BRAND.ko.md",
+  "assets/readme",
+  "docs",
   "skill",
   "contracts",
   "adapters",
@@ -109,6 +152,11 @@ const DEFAULT_TARGETS = [
 ];
 
 const TEXT_EXTENSIONS = new Set([".md", ".json", ".txt", ".yaml", ".yml"]);
+const HTML_PROCESSOR = unified()
+  .use(remarkParse)
+  .use(remarkGfm)
+  .use(remarkRehype, { allowDangerousHtml: true })
+  .use(rehypeRaw);
 
 export function levelForScore(score: number): RiskLevel {
   if (score >= 10) return "critical";
@@ -122,27 +170,109 @@ function hashLine(line: string): string {
   return createHash("sha256").update(line.trim()).digest("hex");
 }
 
+function createFinding(path: string, line: number, source: string, rule: Rule): Finding {
+  return {
+    ruleId: rule.id,
+    path,
+    line,
+    score: rule.score,
+    level: levelForScore(rule.score),
+    description: rule.description,
+    excerpt: source.trim().slice(0, 200),
+    lineHash: hashLine(source),
+    suppressed: false,
+  };
+}
+
+function acceptedMatches(rule: Rule, source: string): RegExpExecArray[] {
+  const flags = rule.pattern.flags.includes("g") ? rule.pattern.flags : `${rule.pattern.flags}g`;
+  return [...source.matchAll(new RegExp(rule.pattern.source, flags))];
+}
+
+function normalizedSoftWrap(value: string): { text: string; sourceOffsets: number[] } {
+  let text = "";
+  const sourceOffsets: number[] = [];
+  for (let index = 0; index < value.length;) {
+    if (value[index] === "\r" && value[index + 1] === "\n" || value[index] === "\n") {
+      const newline = index;
+      index += value[index] === "\r" ? 2 : 1;
+      while (value[index] === " " || value[index] === "\t") index += 1;
+      text += " ";
+      sourceOffsets.push(newline);
+      continue;
+    }
+    text += value[index];
+    sourceOffsets.push(index);
+    index += 1;
+  }
+  return { text, sourceOffsets };
+}
+
+function visibleHtmlTree(content: string): HastRoot {
+  const tree = HTML_PROCESSOR.runSync(HTML_PROCESSOR.parse(content)) as HastRoot;
+  const prune = (node: HastRoot | Element): void => {
+    node.children = node.children.filter((child) => child.type !== "element"
+      || (child.tagName !== "pre" && child.properties.hidden == null));
+    for (const child of node.children) {
+      if (child.type === "element") prune(child);
+    }
+  };
+  prune(tree);
+  return tree;
+}
+
+function softWrappedSourceFindings(path: string, source: string, startLine: number): Finding[] {
+  if (!source.includes("\n")) return [];
+  const findings: Finding[] = [];
+  const normalized = normalizedSoftWrap(source);
+  for (const rule of RULES) {
+    for (const match of acceptedMatches(rule, normalized.text)) {
+      const matchStart = match.index;
+      const matchEnd = matchStart + match[0].length;
+      const originalStart = normalized.sourceOffsets[matchStart];
+      const originalEnd = normalized.sourceOffsets[Math.max(matchEnd - 1, matchStart)];
+      if (originalStart === undefined || originalEnd === undefined || !source.slice(originalStart, originalEnd + 1).includes("\n")) continue;
+      const line = startLine + source.slice(0, originalStart).split("\n").length - 1;
+      findings.push(createFinding(path, line, source, rule));
+    }
+  }
+  return findings;
+}
+
+function softWrappedMarkdownFindings(path: string, text: string): Finding[] {
+  if (!/\.md$/iu.test(path)) return [];
+  const findings: Finding[] = [];
+  const tree = unified().use(remarkParse).parse(text);
+  visit(tree, "paragraph", (node: Paragraph) => {
+    findings.push(...softWrappedSourceFindings(path, toString(node), node.position?.start.line ?? 1));
+  });
+  visit(tree, "html", (node: Html) => {
+    for (const child of visibleHtmlTree(node.value).children) {
+      const rendered = toText(child);
+      const startLine = (node.position?.start.line ?? 1) + (child.position?.start.line ?? 1) - 1;
+      for (const rule of RULES) {
+        if (acceptedMatches(rule, rendered).length > 0) findings.push(createFinding(path, startLine, rendered, rule));
+      }
+    }
+  });
+  return findings;
+}
+
 export function analyzeText(path: string, text: string): Finding[] {
   const findings: Finding[] = [];
   const lines = text.split(/\r?\n/);
   lines.forEach((line, index) => {
     for (const rule of RULES) {
-      rule.pattern.lastIndex = 0;
-      if (!rule.pattern.test(line)) continue;
-      findings.push({
-        ruleId: rule.id,
-        path,
-        line: index + 1,
-        score: rule.score,
-        level: levelForScore(rule.score),
-        description: rule.description,
-        excerpt: line.trim().slice(0, 200),
-        lineHash: hashLine(line),
-        suppressed: false,
-      });
+      if (acceptedMatches(rule, line).length === 0) continue;
+      findings.push(createFinding(path, index + 1, line, rule));
     }
   });
-  return findings;
+  const unique = new Map<string, Finding>();
+  for (const finding of [...findings, ...softWrappedMarkdownFindings(path, text)]) {
+    const key = `${finding.ruleId}\u0000${finding.path}\u0000${finding.line}`;
+    if (!unique.has(key)) unique.set(key, finding);
+  }
+  return [...unique.values()];
 }
 
 function collectFiles(root: string): string[] {

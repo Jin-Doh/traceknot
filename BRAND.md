@@ -1,6 +1,6 @@
 # Traceknot brand system
 
-> **Evidence-bound QA for coding agents.**
+> **Auditable QA for coding agents.**
 
 Traceknot is an ISTQB-aligned QA framework for coding-agent harnesses. It turns a completion claim into a deterministic, evidence-bound verdict by tying together test basis, product risk, test conditions, mandatory obligations, snapshot-bound evidence, defects, and residual risk.
 
@@ -42,12 +42,13 @@ The naming review compared Traceknot with Sigstore and in-toto to check whether 
 
 ## Message hierarchy
 
-1. **Headline:** Evidence-bound QA for coding agents.
-2. **Proof structure:** Basis → risk → condition → obligation → evidence → defect → verdict.
-3. **Brand story:** Every verdict is linked to its declared evidence.
-4. **Differentiator:** Lifecycle events are observations, not proof.
-5. **Trust statement:** Deterministic, host-neutral, and non-authoritative by default.
-6. **Extension statement:** Harness completion authority requires an explicit, separately authorized integration.
+1. **Headline:** Auditable QA for coding agents.
+2. **Mechanism:** Evidence-bound from basis through verdict.
+3. **Proof structure:** Basis → risk → condition → obligation → evidence → defect → verdict.
+4. **Brand story:** Every verdict is linked to its declared evidence.
+5. **Differentiator:** Lifecycle events are observations, not proof.
+6. **Trust statement:** Deterministic, host-neutral, and non-authoritative by default.
+7. **Extension statement:** Harness completion authority requires an explicit, separately authorized integration.
 
 ## Product architecture
 
@@ -75,6 +76,8 @@ Use `traceknot` for CLI and package surfaces. Spell out **Traceknot** in headlin
 ![Traceknot mark](assets/traceknot-mark.svg)
 
 The mark tightens two continuous traces into a knot around a vermillion verdict point. Six visible nodes represent basis, risk, condition, obligation, evidence, and defect. The central verdict is a result of the chain, not a claim of global authority.
+
+The shared README Hero extends those traces into language-neutral record flows before and after the knot. Keep copy in accessible Markdown rather than embedding translated text in artwork. Generation details and the canonical asset are documented in [`assets/readme/`](assets/readme/).
 
 ### Palette
 
@@ -104,6 +107,7 @@ Use flat color, strong contrast, geometric paths, and generous whitespace. Avoid
 - `Traceknot Core`
 - `Traceknot Adapter — Codex`
 - `traceknot verdict`
+- `Auditable QA for coding agents`
 - `Evidence-bound QA for coding agents`
 - `QA PASS does not mean harness completion`
 

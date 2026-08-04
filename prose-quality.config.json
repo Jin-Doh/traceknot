@@ -3,7 +3,7 @@
   "enabled": true,
   "mode": "advisory",
   "locales": ["ko", "en"],
-  "include": ["README.md", "README.ko.md", "BRAND.md", "BRAND.ko.md"],
+  "include": ["**/*.md"],
   "exclude": [],
   "minimumProseCharacters": 200,
   "maxChangeRate": 0.3,

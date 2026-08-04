@@ -1,94 +1,159 @@
 # Traceknot
 
-<p align="center"><img src="assets/traceknot-mark.svg" alt="Traceknot mark" width="144"></p>
+<!-- readme-section:hero -->
 
-**Evidence-bound QA for coding agents.**
+<p align="center">
+  <img src="assets/readme/traceknot-hero.webp" alt="Evidence records converging into the Traceknot verdict knot" width="100%">
+</p>
 
-[Website](https://traceknot.kyungho.info) · [한국어 문서](README.ko.md) · [Brand system](BRAND.md)
+<p align="center"><strong>Auditable QA for coding agents.</strong></p>
 
-Traceknot is an ISTQB-aligned, evidence-bound QA framework for coding-agent harnesses such as OMP, Codex, Claude Code, OpenCode, and GajaeCode. It separates portable test-process guidance from deterministic QA decisions and optional harness-level completion authority.
+<p align="center">
+  Turn test basis, product risk, and runtime evidence into traceable, deterministic QA verdicts.
+</p>
 
-The framework does **not** manage subagents. Each harness owns its agents, models, task graph, concurrency, retries, worktrees, lifecycle, and final task completion. Traceknot defines what must be verified, what evidence is acceptable, how defects and residual risk are handled, and how the QA verdict is resolved.
+<p align="center">
+  <a href="README.md">English</a> ·
+  <a href="README.ko.md">한국어</a> ·
+  <a href="README.zh.md">简体中文</a>
+</p>
 
-> `QA PASS` means the declared test basis and mandatory verification obligations passed. It does not mean every harness task, agent, job, or delivery has completed.
+<p align="center">
+  <a href="https://github.com/Jin-Doh/traceknot/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Jin-Doh/traceknot/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/Jin-Doh/traceknot/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/Jin-Doh/traceknot"></a>
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/github/license/Jin-Doh/traceknot"></a>
+</p>
 
-## Why Traceknot
+<p align="center">
+  <a href="https://traceknot.kyungho.info">Website</a> ·
+  <a href="BRAND.md">Brand system</a>
+</p>
 
-Coding-agent harnesses already orchestrate agents, tools, jobs, retries, and lifecycle events. Those signals establish that activity occurred; they do not establish that the declared change was sufficiently verified.
+Traceknot is an ISTQB-aligned QA framework for coding-agent harnesses such as OMP, Codex, Claude Code, OpenCode, and GajaeCode. Its portable Skill defines the test process; its optional host-neutral core validates canonical records and resolves verdicts.
 
-| Native signal | Missing QA guarantee |
-|---|---|
-| Turn, task, or subagent ended | Mandatory verification passed |
-| Command exited successfully | Test basis and risk coverage are sufficient |
-| Agent reported completion | Evidence is independent, current, and snapshot-bound |
-| Observed jobs became idle | Global quiescence or absence of unobserved work |
-| Hook or app-server event fired | Deterministic QA verdict or completion authority |
+Traceknot does not orchestrate agents. The host still owns models, task graphs, concurrency, retries, worktrees, lifecycle, and final delivery. Traceknot owns the QA question: what must be verified, which evidence is acceptable, what remains at risk, and which verdict follows.
 
-Traceknot supplies the missing test-process layer: traceability from basis through verdict, explicit evidence and independence requirements, defect and residual-risk handling, and deterministic verdict precedence. Each verdict remains linked to its declared evidence; lifecycle events are observations, not proof of verification.
+Proof-carrying success keeps four layers distinct: an Observation records facts, an Evidence Claim interprets those facts for an obligation, an Evidence Evaluation accepts or rejects the claim, and an Obligation Outcome records the result. Only accepted positive evidence bound to the target snapshot may satisfy a mandatory criterion.
 
-## Declared-risk blind spot and bounded discovery
+> `QA PASS` means the declared test basis and mandatory verification obligations passed. It does not mean every agent, task, job, or delivery completed.
 
-Risk classification is a hypothesis, not proof that the risk universe is complete. A change can appear `R0` or `R1` while a changed contract, boundary, or synthetic test fixture hides a material partition. The portable Skill therefore performs a cheap **universal trigger scan on every R0–R3 run**, after the test basis is assembled and before final product-risk classification. An initial low-risk label never exempts a change.
+<!-- readme-section:quick-start -->
 
-The scan records only triggered profiles and whether material scope remains unknown. It escalates to a bounded adversarial challenge only when the surface is `R2`/`R3`, a material security, persistence, concurrency, irreversible-write, public-contract, compatibility, or deployment trigger is found, scope is unknown, evidence bypasses the changed contract through mocks or synthetic fixtures, or a recurring defect cluster is involved. A trigger-free `R0`/`R1` run may stop after recording the scan. This is a portable-process requirement, not exhaustive testing or an instruction to create agents.
+## Quick start
 
-Findings retain distinct meanings: `COVERAGE_GAP` is missing evidence, not a defect; `SOURCE_CANDIDATE` is a source-level failure mechanism awaiting runtime confirmation; `CONFIRMED_DEFECT` is an observed deviation; `POLICY_QUESTION`, `NOT_APPLICABLE`, `CAPABILITY_LIMITED`, and `DUPLICATE_CLUSTER` record other dispositions. Material source candidates become confirmation obligations rather than being relabeled as defects.
+Install the portable Skill with Node.js 22.20 or later:
 
-## Status
-
-| Surface | Status |
-|---|---|
-| Portable ISTQB-aligned Skill | Implemented |
-| Canonical QA record schemas | Implemented and schema-validated |
-| Host-neutral deterministic verdict core | Implemented and tested |
-| Harness capability manifests | Implemented; static adapter records use `quality-capability/v2` |
-| Completion-authority contracts and models | Preserved as an optional extension |
-| Native OMP/Codex/Claude/OpenCode integration | Not implemented |
-| Phase B completion enforcement | Not authorized; `phase1Authorized: false` |
-| User-local installer and uninstaller | Implemented; registry release and public CLI are not implemented |
-| Portable bounded adversarial discovery | Implemented in Skill; universal scan required, bounded challenge only on escalation triggers |
-| Snapshot-bound discovery report (`risk-discovery-report/v1`) | Optional; schema-validated when produced |
-
-The portable Skill and host-neutral core are usable now. Authoritative harness completion remains an explicitly separate integration project.
-
-## Published prose quality gate
-
-The canonical gate audits configured Korean and English publication prose for repeated formulaic structures, inflated stock phrases, excessive transitions, and related readability risks. It evaluates prose quality, not whether a human or an AI authored the text. Markdown frontmatter, code, direct quotes, inline code, links, and URLs are excluded from style analysis.
-
-```sh
-bun run prose-quality
-```
-
-`prose-quality.config.json` selects publication paths, languages, minimum prose length, and advisory or blocking behavior. The repository starts in `advisory` mode: findings are reported without turning style heuristics into an authorship claim. A separate before/after mode verifies that rewrites preserve code, links, URLs, numbers, and normative terms; protected-content changes or a token change rate of 50% or more fail that check. A rewriting skill is remediation, not verification: its output must be checked again against a new snapshot.
-
-The Korean rule categories and preservation model were informed by [epoko77-ai/im-not-ai](https://github.com/epoko77-ai/im-not-ai). Traceknot implements its own deterministic, bilingual audit boundary and does not treat an external skill's self-report as QA evidence by itself.
-
-## Install
-
-### Install the Skill — recommended
-
-Use the Skills CLI with Node.js 22.20 or later to install Traceknot globally:
+<!-- shared-command:skill-install -->
 
 ```sh
 npx skills add Jin-Doh/traceknot --skill traceknot --global
 ```
 
-The CLI detects supported coding agents and installs the self-contained portable Skill from `skill/`. To install only for Codex, select the agent explicitly:
+Then ask your coding agent to apply it to a concrete change:
 
-```sh
-npx skills add Jin-Doh/traceknot \
-  --skill traceknot \
-  --agent codex \
-  --global
+```text
+Apply Traceknot to verify this change. Report the test basis, risks,
+mandatory obligations, observed evidence, defects, residual risk,
+and final QA verdict separately from task completion.
 ```
 
-Omit `--global` to keep Traceknot inside the current project:
+The Skill is self-contained. It can run the complete evidence-only workflow without the optional TypeScript core.
 
-```sh
-npx skills add Jin-Doh/traceknot --skill traceknot
+<!-- readme-section:why -->
+
+## Why Traceknot
+
+Coding-agent harnesses already report activity. Activity is useful, but it is not a QA verdict.
+
+| Native signal | What it does not establish |
+|---|---|
+| A task or agent stopped | Mandatory verification passed |
+| A command exited successfully | Test basis and risk coverage are sufficient |
+| An agent reported completion | Evidence is current, independent, and snapshot-bound |
+| Observed jobs became idle | No unobserved work remains |
+| A lifecycle hook fired | A deterministic QA verdict or completion authority |
+
+Traceknot adds the missing test-process layer. It links the declared basis, risks, conditions, obligations, evidence, defects, and residual risk to a repeatable verdict.
+
+<!-- readme-section:outputs -->
+
+## What you get
+
+- A test basis derived from requirements, contracts, repository policy, and acceptance criteria.
+- Product-risk classification with a universal trigger scan and bounded challenge when risk warrants it.
+- Observable test conditions and mandatory verification obligations.
+- Evidence bound to the target snapshot, producer, and obligation.
+- Proof-carrying observations, claims, evaluations, and outcomes that remain independently inspectable.
+- Defect and residual-risk handling that never converts missing evidence into a pass.
+- A deterministic verdict with explicit precedence.
+
+An illustrative completion report looks like this:
+
+```text
+Verdict             PASS_WITH_ACCEPTED_RISK
+Snapshot            8f3c2a1
+Mandatory checks    7 / 7 passed
+Evidence            snapshot-bound
+Residual risk       1 accepted, with owner and expiry
+Harness authority   false
 ```
 
-Inspect, update, or remove the global installation through the same CLI:
+This is an example for orientation, not a substitute for the canonical JSON records or an observed run.
+
+<!-- readme-section:process -->
+
+## How it works
+
+```mermaid
+flowchart LR
+    B[Test basis] --> R[Product risk]
+    R --> C[Test conditions]
+    C --> O[Obligations]
+    O --> E[Observations]
+    E --> Q[Evidence claims]
+    Q --> A[Evidence evaluations]
+    A --> X[Obligation outcomes]
+    X --> D[Defects and residual risk]
+    D --> V[QA verdict]
+```
+
+Every run performs a cheap trigger scan before final risk classification. A bounded adversarial challenge runs only when the change is materially risky, scope remains unknown, evidence bypasses the changed contract, or a recurring defect cluster is involved.
+
+The final verdict follows this precedence:
+
+```text
+FAIL → BLOCKED → INCOMPLETE → PASS_WITH_ACCEPTED_RISK → PASS
+```
+
+Use Traceknot for implementation verification, bug-fix confirmation, release checks, repository audits, evidence reviews, and residual-risk decisions. Read the [full QA process](docs/qa-process.md) for the test techniques, discovery rules, traceability model, and completion-report contract.
+
+<!-- readme-section:status -->
+
+## Available today
+
+| Surface | Status and boundary |
+|---|---|
+| Portable ISTQB-aligned Skill | **Available.** Evidence-only workflow; no core dependency |
+| Canonical QA record schemas | **Available.** Closed JSON Schema Draft 2020-12 contracts |
+| Proof-carrying evidence records | **Available.** Observation, claim, evaluation, success-criterion, traceability, and verification-run contracts |
+| Host-neutral verdict core | **Available.** Emits `authoritative: false` |
+| Capability manifests | **Available.** Static manifests are conservative and grant no runtime capability |
+| User-local full-toolkit installer and updater | **Available.** GitHub release artifacts, digest, and provenance verification |
+| Native OMP, Codex, Claude Code, OpenCode, or GajaeCode adapters | **Not implemented.** A host name alone grants no capability |
+| Harness completion authority | **Disabled by default.** Optional extension; `phase1Authorized: false` |
+| npm package or dedicated Skill-registry listing | **Not available.** Direct GitHub installation through the Skills CLI is available |
+
+The portable Skill and host-neutral core are usable now. Authoritative harness completion remains a separate integration project.
+
+<!-- readme-section:install -->
+
+## Installation choices
+
+### Portable Skill — recommended
+
+The Quick Start command installs `skill/SKILL.md` and its references through the Skills CLI. Add `--agent codex` to target Codex only, or omit `--global` to install into the current project.
+
+Manage the installation with the same CLI:
 
 ```sh
 npx skills list --global
@@ -96,19 +161,21 @@ npx skills update traceknot --global --yes
 npx skills remove traceknot --global --yes
 ```
 
-This path installs `SKILL.md` and its references. The Skill runs the complete evidence-only workflow without the optional deterministic core.
+### Full toolkit — advanced
 
-### Install the full toolkit — advanced
+Install the Skill together with the schemas, capability manifests, host-neutral core, and verified release updater:
 
-Use the repository installer when you also need the record schemas, capability manifests, host-neutral core, release updater, and MIT license:
+<!-- shared-command:full-toolkit-install -->
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh
 ```
 
-The installer downloads the matching `main` source archive over HTTPS and installs without `sudo`. The default destination is `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`; it registers the Skill at `$HOME/.agents/skills/traceknot`. It does not install the optional completion-authority extension.
+Inspect the script or use a fixed tag before running it in a controlled environment. The installer works without `sudo`, supports `--dry-run`, and defaults to `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`.
 
-To install a fixed tag or commit, use the same revision in the script URL and `TRACEKNOT_REF`:
+Pin both the bootstrap script and downloaded payload to the same tag or commit:
+
+<!-- shared-command:full-toolkit-pinned-install -->
 
 ```sh
 TRACEKNOT_REF=<tag-or-commit>
@@ -116,340 +183,61 @@ curl -fsSL "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/i
   | TRACEKNOT_REF="$TRACEKNOT_REF" sh
 ```
 
-Use `--prefix`, `--dry-run`, or `TRACEKNOT_SKILLS_ROOT` for advanced destination control. To inspect the script first, download it or install from a clone:
+The Skills CLI and full-toolkit installer manage the same user-local Skill registration. Remove one installation before switching methods. See [automatic updates](docs/automatic-updates.md) for eligibility, verification, rollback, and opt-out behavior.
 
-```sh
-git clone https://github.com/Jin-Doh/traceknot.git
-cd traceknot
-./install.sh
-```
+Remove the default full-toolkit installation with:
 
-### Switch installation methods
-
-The Skills CLI and the full-toolkit installer both manage `$HOME/.agents/skills/traceknot`; do not use them together. Remove the current installation before switching.
-
-From the Skills CLI to the full toolkit:
-
-```sh
-npx skills remove traceknot --global --yes
-curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh
-```
-
-From the full toolkit to the Skills CLI:
+<!-- shared-command:full-toolkit-uninstall -->
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh | sh
-npx skills add Jin-Doh/traceknot --skill traceknot --global
 ```
 
-The full-toolkit uninstaller removes only manifest-owned files and removes the shared Skill registration only when it still points to that installation. Pass `--dry-run` to preview removals. Use the same custom prefix or `TRACEKNOT_SKILLS_ROOT` supplied during installation.
+For a custom installation prefix, append `-s -- --prefix /absolute/path` after `sh`.
 
-## Full-toolkit automatic updates
+If the installation also used a custom Skills root, pass the same value to the uninstaller:
 
-These controls apply only to the full-toolkit installation. Automatic update checks are enabled by default. The updater considers only immutable GitHub releases whose signed provenance and SHA-256 digest verify, and delays eligibility until the exact artifact has been observed for more than seven complete days.
+<!-- shared-command:full-toolkit-custom-uninstall -->
 
 ```sh
-TRACEKNOT_PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/traceknot"
-if [ -x "$TRACEKNOT_PREFIX/current/bin/traceknot-update" ]; then
-  TRACEKNOT_UPDATE="$TRACEKNOT_PREFIX/current/bin/traceknot-update"
-else
-  TRACEKNOT_UPDATE="$TRACEKNOT_PREFIX/bin/traceknot-update"
-fi
-
-# Show policy, schedule, and installed release state
-"$TRACEKNOT_UPDATE" status
-
-# Check for an eligible release without changing files
-"$TRACEKNOT_UPDATE" check
-
-# Apply the newest eligible verified release
-"$TRACEKNOT_UPDATE" apply
-
-# Disable or re-enable the daily automatic check
-"$TRACEKNOT_UPDATE" disable
-"$TRACEKNOT_UPDATE" enable
-# Restore the immediately previous managed release
-"$TRACEKNOT_UPDATE" rollback
+curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh \
+  | TRACEKNOT_SKILLS_ROOT=/absolute/skills sh -s -- --prefix /absolute/path
 ```
 
-Pass `--prefix DIR`, set `TRACEKNOT_PREFIX="$DIR"`, and repeat the active-updater selection above when Traceknot is not installed at the default prefix. Installation schedules checks but never applies an update immediately. Use `install.sh --disable-auto-update` to opt out during installation, or `"$TRACEKNOT_UPDATE" disable` afterward. Full policy, recovery behavior, release contract, and verification evidence are documented in [`docs/automatic-updates.md`](docs/automatic-updates.md).
+Runnable updater commands, including active-layout and legacy-layout path selection, are documented in [automatic updates](docs/automatic-updates.md).
 
-## Architecture
+<!-- readme-section:documentation -->
 
-```mermaid
-flowchart LR
-    U[User request and repository change] --> H[Harness]
-    H --> S[Portable Skill]
-    S --> B[Test basis and initial risk hypothesis]
-    B --> D[Universal trigger scan and bounded discovery]
-    D --> R[Final product-risk classification]
-    R --> P[Test conditions and verification plan]
-    P --> X{Core available?}
-    X -->|No| E[Evidence-only execution and report]
-    X -->|Yes| C[Host-neutral QA core]
-    C --> V[Deterministic QA verdict]
-    V --> H
+## Documentation
 
-    H -. runtime handshake .-> A[Host capability adapter]
-    A -. canonical records .-> C
-
-    H -. optional native integration .-> Q[Completion-authority extension]
-    Q -. lifecycle, quiescence, lease, receipt .-> H
-```
-
-### Responsibility boundary
-
-```mermaid
-flowchart TB
-    subgraph Harness[Owned by each harness]
-      HA[Agents and models]
-      HT[Task graph and concurrency]
-      HR[Retry and cancellation]
-      HW[Worktrees, jobs, and deliveries]
-      HC[Harness completion]
-    end
-
-    subgraph TK[Owned by Traceknot]
-      QB[Test basis and risks]
-      QX[Adversarial discovery process]
-      QP[Test conditions and obligations]
-      QE[Evidence requirements]
-      QD[Defects and accepted risk]
-      QV[QA verdict and report]
-    end
-
-    Harness -->|produces evidence using its own policy| TK
-    TK -->|returns QA verdict, never agent instructions| Harness
-```
-
-Traceknot specifies the discovery process, evidence requirements, and minimum independence. The portable Skill requires the scan, any triggered challenge, and completion-report disclosure, but the host-neutral v1 core does not enforce that process or spawn reviewers. Native `verification-plan/v1` and `qa-verdict/v1` callers may omit discovery; that is outside portable Skill compliance and must not be represented as completed discovery.
-
-Execution uses one portable workflow with a runtime-selected profile. Single-context is the fallback when no independent capability is advertised and cannot satisfy an `independent-producer` obligation by itself. OMP may use at most three scoped read-only reviewers only after a capability handshake proves isolation, snapshot binding, persistence, and structured output; Codex may use independently bounded slices only when those capabilities are advertised. Reviewer outputs are structured, snapshot-bound, and preserved; lifecycle events and timeouts are observations, not evidence. Host/model/lifecycle names do not grant capability, and Traceknot never requires automatic subagent orchestration or a fixed reviewer count.
-
-## QA process
-
-```mermaid
-flowchart LR
-    A[Test basis] --> B[Initial risk hypothesis]
-    B --> C[Universal trigger scan]
-    C --> D[Bounded challenge when triggered]
-    D --> E[Final risk classification]
-    E --> F[Test conditions]
-    F --> G[Test techniques]
-    G --> H[Mandatory obligations]
-    H --> I[Entry criteria]
-    I --> J[Execution and evidence]
-    J --> K[Defects and regression]
-    K --> L[Exit criteria]
-    L --> M[Residual risk]
-    M --> N[QA verdict]
-```
-
-The Skill applies seven foundational testing principles:
-
-1. Testing shows the presence of defects, not their absence.
-2. Exhaustive testing is impossible.
-3. Early testing reduces cost and delay.
-4. Defects cluster in specific surfaces.
-5. Repeated tests lose defect-finding power.
-6. Testing is context dependent.
-7. A green technical suite is insufficient when user or business needs are unmet.
-
-Traceability is bidirectional:
-
-```text
-test basis ↔ risk ↔ test condition ↔ obligation ↔ evidence ↔ defect
-```
-
-## Verdict model
-
-| Verdict | Meaning |
+| Topic | Document |
 |---|---|
-| `PASS` | Every mandatory obligation and required coverage passed; no unaccepted material risk remains. |
-| `PASS_WITH_ACCEPTED_RISK` | Mandatory obligations passed and every remaining material risk has valid, unexpired acceptance. |
-| `FAIL` | A mandatory obligation failed or an unaccepted material defect remains. |
-| `BLOCKED` | A mandatory prerequisite or required capability was unavailable. |
-| `INCOMPLETE` | Mandatory evidence or required coverage has no terminal result. |
+| Test process, risk discovery, verdicts, and traceability | [QA process](docs/qa-process.md) |
+| Normative Observation → Claim → Evaluation → Outcome semantics | [Proof-carrying success](skill/references/proof-carrying-success.md) |
+| Components, responsibilities, adapters, and repository layout | [Architecture](docs/architecture.md) |
+| Evidence, capability, authority, and security boundaries | [Trust model](docs/trust-model.md) |
+| Translation ownership and synchronization | [Localization](docs/localization.md) |
+| Full-toolkit updater policy and recovery | [Automatic updates](docs/automatic-updates.md) |
+| Security analysis and residual risks | [Security analysis](docs/security-analysis.md) |
+| Portable executable workflow | [Skill specification](skill/SKILL.md) |
+| Naming, voice, palette, and artwork | [Brand system](BRAND.md) |
 
-Precedence is deterministic:
+<!-- readme-section:development -->
 
-```text
-FAIL → BLOCKED → INCOMPLETE → PASS_WITH_ACCEPTED_RISK → PASS
-```
+## Development
 
-The host-neutral core always emits `authoritative: false`. Only a separately integrated completion-authority extension could make a harness-level authority claim.
-Discovery changes the disposition of risk, not the deterministic precedence: deferred nonmaterial scope may remain reported; a material deferred risk without valid acceptance prevents `PASS` and remains `INCOMPLETE` or `BLOCKED`; valid, unexpired acceptance can yield `PASS_WITH_ACCEPTED_RISK` only after mandatory obligations pass; an open confirmed material defect yields `FAIL`; and a source candidate awaiting confirmation keeps its obligation incomplete.
+Core development requires Bun 1.3.14. Install the reviewed dependency graph without lifecycle scripts, then run the same canonical gate used in GitHub Actions:
 
-## Repository layout
+<!-- shared-command:ci -->
 
-```text
-.
-├── README.md
-├── README.ko.md
-├── install.sh
-├── uninstall.sh
-├── skill/
-│   ├── SKILL.md
-│   └── references/
-│       └── adversarial-risk-discovery.md
-├── contracts/
-│   ├── capability.schema.json
-│   ├── capability-v2.schema.json
-│   ├── verification-request.schema.json
-│   ├── verification-plan.schema.json
-│   ├── evidence.schema.json
-│   ├── defect.schema.json
-│   ├── verdict.schema.json
-│   ├── risk-discovery-report.schema.json
-│   └── fixtures/
-│       └── risk-discovery-report.*.json
-├── adapters/
-│   ├── omp/
-│   ├── codex/
-│   ├── claude-code/
-│   ├── opencode/
-│   └── gajae-code/
-├── tests/
-│   └── risk-discovery-report.test.ts
-└── system/
-    ├── core/
-    │   ├── qa-core.ts
-    │   └── qa-core.test.ts
-    └── extensions/
-        └── harness-completion-authority/
-            └── quality-contract/
-```
-
-### `skill/`
-
-The portable, host-neutral workflow. It covers test basis, initial and final risk classification, universal trigger scanning, bounded adversarial discovery, test design, entry and exit criteria, evidence, defect lifecycle, traceability, residual risk, and completion reporting.
-
-Start with [skill/SKILL.md](skill/SKILL.md). Detailed guidance, including the discovery profiles, is in [skill/references](skill/references/).
-
-### `contracts/`
-
-Closed JSON Schema Draft 2020-12 records shared by a Skill, harness adapter, core validator, or external implementation:
-
-- host capability v1 (legacy) and v2 (adapter);
-- verification request;
-- verification plan;
-- evidence;
-- defect;
-- QA verdict;
-- optional snapshot-bound risk-discovery report (`risk-discovery-report/v1`), validated when produced.
-
-Host names grant no capability. A runtime handshake must advertise and prove each capability.
-`contracts/capability.schema.json` preserves the closed `quality-capability/v1` shape for existing records. `contracts/capability-v2.schema.json` is the adapter contract: it requires all nine host-neutral capability booleans, including `isolatedReadOnlyReview` and `enforcedStructuredOutput`. Static adapter manifests use v2 and explicitly set those fields to `false`; old v1 records remain valid without them.
-
-### `adapters/`
-
-Conservative v2 capability manifests for supported harness names. All default capabilities are `false`; this prevents accidental trust escalation. A real adapter must provide current runtime capabilities and evidence without taking over the harness's agent policy.
-
-### `system/core/`
-
-A host-neutral TypeScript verdict resolver. It rejects duplicate obligation results, cross-snapshot evidence, insufficient producer independence, missing evidence identifiers, incomplete traceability coverage, open material defects, and expired risk acceptance. It does not enforce the portable discovery scan, require a discovery record, or orchestrate reviewers.
-
-### Completion-authority extension
-
-[system/extensions/harness-completion-authority](system/extensions/harness-completion-authority/) preserves the existing lifecycle, quiescence, lease, receipt, terminal-pair, SQLite, schema, and generated-evidence contracts.
-
-This extension is optional and disabled by policy. Lifecycle events such as task completion, subagent stop, turn completion, or agent end remain observations and cannot independently seal or verify completion.
-
-## Using the portable Skill
-
-Install with the Skills CLI, which registers the self-contained `skill/` directory with the selected harness. Use `install.sh` only when the optional schemas, adapters, core, and updater are also required. The Skill itself has no runtime dependency on `system/`.
-
-The expected workflow is:
-
-1. identify the target snapshot and change scope;
-2. collect explicit and derived test-basis items;
-3. record an initial risk hypothesis;
-4. perform the universal trigger scan;
-5. run a bounded challenge only when escalation criteria are met;
-6. finalize product-risk classification and promote material candidates into confirmation obligations;
-7. derive observable test conditions and expected results;
-8. select test techniques and mandatory obligations;
-9. verify entry criteria;
-10. let the harness execute checks under its own orchestration policy;
-11. capture evidence and defects;
-12. evaluate coverage, exit criteria, residual risk, and deferred scope;
-13. issue a QA verdict separately from harness completion.
-
-Existing `verification-plan/v1` and `qa-verdict/v1` users gain this portable workflow without migrating existing records. The standalone structured discovery report is optional; when emitted, it must validate against `contracts/risk-discovery-report.schema.json`. This compatibility does not add native v1 enforcement: callers may omit discovery, and omission must be disclosed rather than represented as completed.
-
-## Developing the core
-
-Requirements:
-
-- Bun 1.3.14
-
-Install the exact reviewed toolchain without lifecycle scripts, then run the same blocking gate used by GitHub Actions:
-
-```bash
+```sh
 bun install --frozen-lockfile --ignore-scripts
 bun run ci
 ```
 
-The gate runs the portable installer lifecycle, JSON and Draft 2020-12 schema validation (including both capability schema versions), v2 capability-record validation, prompt-injection risk classification, core tests, strict type checking, and whitespace checks. `high` and `critical` prompt-risk findings block the gate. Narrow, expiring exceptions require an owner, reason, mitigation, and exact line fingerprint in `security/prompt-injection-exceptions.json`.
+The gate validates installer lifecycle, schemas, capability records, prompt-injection risk, published prose, tests, strict TypeScript, and whitespace integrity. Run `bun run prose-quality` for the advisory Korean and English publication-prose report.
 
-Run an individual core check while developing:
-
-```bash
-bun run test
-bun run typecheck
-```
-
-## Verifying the completion-authority extension
-
-Run from the extension root:
-
-```bash
-cd system/extensions/harness-completion-authority
-bun quality-contract/scripts/verify-models.ts
-bun quality-contract/scripts/verify-sqlite.ts
-bun quality-contract/scripts/run-phase-b-verification.ts --intent
-```
-
-Strictly type-check the preserved models:
-
-```bash
-bun x tsc --ignoreConfig --noEmit --strict \
-  --target ES2022 --module ESNext --moduleResolution Bundler \
-  quality-contract/models/lifecycle-model.ts \
-  quality-contract/models/storage-model.ts \
-  quality-contract/models/quiescence-budget-model.ts
-```
-
-Current preserved verification evidence:
-
-- model verifier: 570 passed, 0 failed;
-- explored model states: 6,304;
-- explored transitions: 27,152;
-- SQLite verifier: 138 passed, 0 failed;
-- Phase B intent: valid and `phase1Authorized: false`.
-
-## Security and trust model
-
-- Missing, cancelled, timed-out, or incomplete mandatory evidence is never PASS.
-- Evidence must bind to the target snapshot and obligation.
-- Required producer independence cannot be silently downgraded.
-- Material risk acceptance requires an owner, reason, mitigation, and expiry.
-- A host lifecycle notification is not QA evidence by itself.
-- The core does not claim global quiescence or harness completion.
-- The completion-authority extension must not be activated without an explicit native integration and approval process.
-
-## Readiness assessment
-
-**Ready with follow-ups** for portable Skill evaluation and host-neutral QA-core development.
-
-Not yet ready for:
-
-- package-manager or Skill-registry distribution;
-- native OMP, Codex, Claude Code, OpenCode, or GajaeCode adapters;
-- authoritative harness completion;
-- production signing or receipt authority.
-
-The next delivery milestone should add distribution metadata and one runtime adapter without weakening the evidence-only default.
+Security-sensitive findings should include a concrete expected result, observed result, reproduction, affected snapshot, and residual risk. Do not report an agent's own completion claim as verification evidence.
 
 ## License
 

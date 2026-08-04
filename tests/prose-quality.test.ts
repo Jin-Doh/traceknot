@@ -58,6 +58,8 @@ describe("published prose extraction and locale selection", () => {
     expect(detectLocale("This is a natural English paragraph with enough letters to classify.")).toBe("en");
     expect(detectLocale("한국어 설명을 충분히 작성하고 문맥도 자연스럽게 이어갑니다. English context is also deliberately substantial here.")).toBe("mixed");
     expect(detectLocale("1234 -- []")).toBe("unknown");
+    expect(detectLocale("简体中文必须通过显式路径映射选择规则。")).toBe("unknown");
+    expect(detectLocale("这是以简体中文撰写的主要内容，其中包含 API、CLI、PASS 和 BLOCKED 等技术标识符，但不应被识别为英文文档。")).toBe("unknown");
   });
 
   test("rejects incomplete standalone configuration instead of returning PASS", () => {

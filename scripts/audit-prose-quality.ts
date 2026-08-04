@@ -81,17 +81,11 @@ export const RULES: readonly ProseRule[] = [
   { id: "EN-H-001", locale: "en", severity: "S2", description: "repetitive paragraph transition", pattern: /^(?:Furthermore|Moreover|Additionally)[,\s]/gim, threshold: 3 },
 ];
 
-const DEFAULT_CONFIG: Config = {
-  schemaVersion: "prose-quality-config/v1",
-  enabled: true,
-  mode: "advisory",
-  locales: ["ko", "en"],
-  include: ["README.md", "README.ko.md", "BRAND.md", "BRAND.ko.md"],
-  exclude: [],
-  minimumProseCharacters: 200,
-  maxChangeRate: 0.3,
-  rejectChangeRate: 0.5,
-};
+// `prose-quality.config.json` is the single publication-surface inventory.
+// The scanner default reads it instead of maintaining a second include list.
+const DEFAULT_CONFIG = JSON.parse(
+  readFileSync(resolve(import.meta.dir, "../prose-quality.config.json"), "utf8"),
+) as Config;
 
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -383,8 +377,10 @@ export function extractProse(markdown: string): string {
 export function detectLocale(text: string): Locale {
   const korean = (text.match(/[가-힣]/g) ?? []).length;
   const english = (text.match(/[A-Za-z]/g) ?? []).length;
-  const total = korean + english;
+  const han = (text.match(/[\p{Script=Han}]/gu) ?? []).length;
+  const total = korean + english + han;
   if (total === 0) return "unknown";
+  if (han > 0 && han / total >= 0.4) return "unknown";
   if (korean >= 20 && english >= 20) return "mixed";
   if (korean / total >= 0.6) return "ko";
   if (english / total >= 0.8) return "en";
