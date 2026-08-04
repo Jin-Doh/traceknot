@@ -72,6 +72,7 @@ function exactOwnKeys(value: Record<string, unknown>, required: readonly string[
 }
 function canonicalProducer(value: unknown): Producer | undefined {
   if (!isRecord(value) || !PRODUCER_KINDS.includes(value.kind as Producer["kind"]) || typeof value.identity !== "string" || !value.identity || !INDEPENDENCE_LEVELS.includes(value.independence as IndependenceLevel)) return undefined;
+  if (value.kind === "self" && value.independence !== "self-check") return undefined;
   return { kind: value.kind as Producer["kind"], identity: value.identity, independence: value.independence as IndependenceLevel };
 }
 function validProducer(value: unknown): value is Producer {
@@ -168,13 +169,29 @@ function riskLevel(item: VerificationBasisItem, request: VerificationRequest): R
       /\b(runtime|concurr\w*|parallel\w*|race|retry|retries|recover\w*|browser|web|ui|visual|flow|frontend|front-end|orchestrat\w*|resume|checkpoint|snapshot|executor|capability|crash|timeout|cancel|idempot\w*)\b/.test(text)) return "R2";
   return "R1";
 }
-function browserBasis(item: VerificationBasisItem, request: VerificationRequest): boolean { return /\b(browser|web|ui|visual|flow|frontend|front-end)\b/.test(`${material(item)} ${requestMaterial(request)}`); }
+function browserMaterial(value: string): boolean { return /\b(browser|web|ui|visual|flow|frontend|front-end)\b/.test(value); }
+
 function canonicalDiscovery(request: VerificationRequest, basis: BasisDocument): DiscoveryDocument {
   validRequest(request);
   const canonical = canonicalBasis(request);
   if (!structurallyEqual(basis, canonical)) throw Error("invalid discovery basis canonicalization");
   const risks = canonical.basis.map(item => { const level = riskLevel(item, request); const score = level === "R3" ? 3 : level === "R2" ? 2 : 1; return { id: `risk:${item.id}`, level, impact: score, likelihood: score, basisIds: [item.id], rationale: `Verification risk derived from ${level} basis ${item.id}.` }; }).sort((a, b) => a.id.localeCompare(b.id));
-  const conditions = canonical.basis.map(item => { const techniques = browserBasis(item, request) ? ["browser-verification", "canonical-verification"] : ["canonical-verification"]; if (riskLevel(item, request) === "R3") techniques.push("independent-producer"); return { id: `condition:${item.id}`, basisIds: [item.id], riskIds: [`risk:${item.id}`], techniques: uniq(techniques), expectedResult: `Evidence demonstrates ${item.id}.` }; }).sort((a, b) => a.id.localeCompare(b.id));
+  const conditions = canonical.basis.map(item => { const techniques = browserMaterial(material(item)) ? ["browser-verification", "canonical-verification"] : ["canonical-verification"]; if (riskLevel(item, request) === "R3") techniques.push("independent-producer"); return { id: `condition:${item.id}`, basisIds: [item.id], riskIds: [`risk:${item.id}`], techniques: uniq(techniques), expectedResult: `Evidence demonstrates ${item.id}.` }; });
+  if (!canonical.basis.some(item => browserMaterial(material(item))) && browserMaterial(requestMaterial(request))) {
+    const basisIds = canonical.basis.map(item => item.id).sort((a, b) => a.localeCompare(b));
+    const riskIds = risks.map(item => item.id).sort((a, b) => a.localeCompare(b));
+    const baseId = "condition:request-browser";
+    const requestConditionId = (() => {
+      if (!conditions.some(item => item.id === baseId)) return baseId;
+      const digest = canonicalRequestDigest(request);
+      let suffix = 0;
+      let candidate = `${baseId}:${digest}`;
+      while (conditions.some(item => item.id === candidate)) candidate = `${baseId}:${digest}:${++suffix}`;
+      return candidate;
+    })();
+    conditions.push({ id: requestConditionId, basisIds, riskIds, techniques: ["browser-verification", "canonical-verification"], expectedResult: "Evidence demonstrates the request-level browser change." });
+  }
+  conditions.sort((a, b) => a.id.localeCompare(b.id));
   return freeze({ schemaVersion: "risk-discovery/v1", requestId: request.requestId, snapshotId: request.project.snapshotId, risks, conditions });
 }
 

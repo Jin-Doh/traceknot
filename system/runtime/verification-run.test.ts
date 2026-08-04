@@ -34,7 +34,7 @@ const SNAPSHOT_ID = "snapshot-001";
 
 type RunInput = Parameters<typeof runVerification>[0];
 type RunStateValue = CanonicalRunState["state"];
-type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean; invalidProducer?: boolean };
+type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerKind?: "self" | "harness-managed" | "deterministic-verifier" | "ci" | "human" | "external-system"; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean; invalidProducer?: boolean };
 
 class FakeRepository {
   readonly runs = new Map<string, CanonicalRunState>();
@@ -77,14 +77,14 @@ function makeDependencies(options: FakeOptions = {}): FakeDependencies {
     executeObligation: async (request: VerificationExecutionRequest) => {
       executorCalls++;
       if (options.missingExecutorOutput) return undefined;
-      return { status: "PASS" as const, runId: request.runId, requestId: request.requestId, snapshotId: options.mismatchedProvenance ? "wrong-snapshot" : request.snapshotId, idempotencyKey: request.idempotencyKey, producer: options.invalidProducer ? undefined : { kind: "deterministic-verifier" as const, identity: "fixture-executor", independence: options.producerIndependence ?? "independent-producer" }, artifacts: [{ type: "verification-result", digest: options.invalidArtifact ? "not-a-digest" : "a".repeat(64) }] };
+      return { status: "PASS" as const, runId: request.runId, requestId: request.requestId, snapshotId: options.mismatchedProvenance ? "wrong-snapshot" : request.snapshotId, idempotencyKey: request.idempotencyKey, producer: options.invalidProducer ? undefined : { kind: options.producerKind ?? "deterministic-verifier", identity: "fixture-executor", independence: options.producerIndependence ?? "independent-producer" }, artifacts: [{ type: "verification-result", digest: options.invalidArtifact ? "not-a-digest" : "a".repeat(64) }] };
     },
   } as unknown as VerificationExecutor;
   const browser = {
     executeBrowser: async (request: VerificationExecutionRequest) => {
       browserCalls++;
       if (options.missingBrowserOutput) return undefined;
-      return { status: "PASS" as const, runId: request.runId, requestId: request.requestId, snapshotId: request.snapshotId, idempotencyKey: request.idempotencyKey, producer: { kind: "deterministic-verifier" as const, identity: "fixture-browser", independence: options.producerIndependence ?? "independent-producer" }, artifacts: [{ type: "verification-result", digest: "b".repeat(64) }] };
+      return { status: "PASS" as const, runId: request.runId, requestId: request.requestId, snapshotId: request.snapshotId, idempotencyKey: request.idempotencyKey, producer: { kind: options.producerKind ?? "deterministic-verifier", identity: "fixture-browser", independence: options.producerIndependence ?? "independent-producer" }, artifacts: [{ type: "verification-result", digest: "b".repeat(64) }] };
     },
   } as unknown as BrowserExecutor;
   let authorityCalls = 0;
@@ -203,6 +203,13 @@ test.each(["uppercase", "reordered"] as const)("rejects a %s noncanonical author
   expect(replay.issued[0]?.binding.artifactDigests).toEqual(mode === "uppercase" ? ["A".repeat(64)] : ["b".repeat(64), "a".repeat(64)]);
   expect(fakes.repository.stageWrites).not.toContain("execution");
   expect(fakes.repository.runs.get(runId)?.state).toBe("PLANNED");
+});
+test("rejects self producer with independent independence in an authority replay", async () => {
+  const fakes = makeDependencies();
+  const request = { ...makeRequest("authority-self-independent"), testBasis: [makeRequest().testBasis[0]!] };
+  const replay = makeReplayAuthority(fakes, binding => ({ ...binding, producer: { kind: "self", identity: "replayed-self", independence: "independent-producer" } }));
+  await expect(runVerification({ runId: "authority-self-independent", request, dependencies: replay.dependencies })).rejects.toThrow("execution authority issue failed");
+  expect(fakes.repository.stageWrites).not.toContain("execution");
 });
 test("canonical request digest is key-order stable and value/array-order sensitive", () => {
   const request = makeRequest();
@@ -517,6 +524,33 @@ describe("verification run orchestration", () => {
     const result = await runOnce(makeDependencies(options).dependencies);
     expect(result.verdict.qaVerdict).not.toBe("PASS");
   });
+  test("rejects self producer with independent independence and resumes without redispatch", async () => {
+    const fakes = makeDependencies({ producerKind: "self", producerIndependence: "independent-producer" });
+    const runId = "self-independent-fresh";
+    const first = await runVerification({ runId, request: makeRequest(), dependencies: fakes.dependencies });
+    expect(first.documents.execution?.evidence.every(item => item.result.verdict === "INCOMPLETE")).toBe(true);
+    expect(first.documents.execution?.observations.every(item => item.producer.kind === "self" && item.producer.independence === "self-check")).toBe(true);
+    expect(first.verdict.qaVerdict).not.toBe("PASS");
+    const executorCalls = fakes.executorCalls;
+    const browserCalls = fakes.browserCalls;
+    const resumed = await runVerification({ runId, dependencies: fakes.dependencies });
+    expect(resumed.verdict).toEqual(first.verdict);
+    expect(fakes.executorCalls).toBe(executorCalls);
+    expect(fakes.browserCalls).toBe(browserCalls);
+  });
+
+  test("rejects self producer with independent independence in persisted execution", async () => {
+    const fakes = makeDependencies();
+    const runId = "self-independent-persisted";
+    const first = await runVerification({ runId, request: makeRequest(), dependencies: fakes.dependencies });
+    const execution = structuredClone(first.documents.execution) as ExecutionDocument;
+    const invalidProducer = { kind: "self" as const, identity: "persisted-self", independence: "independent-producer" as const };
+    const observations = execution.observations.map(item => ({ ...item, producer: invalidProducer }));
+    const evidence = execution.evidence.map(item => ({ ...item, producer: invalidProducer }));
+    const authorities = execution.authorities.map(item => ({ ...item, binding: { ...item.binding, producer: invalidProducer } }));
+    fakes.repository.stageDocuments.set(`${runId}:execution`, { ...execution, observations, evidence, authorities });
+    await expect(runVerification({ runId, dependencies: fakes.dependencies })).rejects.toThrow("invalid persisted execution");
+  });
   test.each([
     ["invalid artifact", { invalidArtifact: true }],
     ["missing artifact storage", { missingArtifactStorage: true }],
@@ -676,12 +710,70 @@ describe("verification run orchestration", () => {
     const discovery = await performRiskDiscovery({ request, basis, dependencies: fakes.dependencies });
     const plan = await buildVerificationPlan({ request, basis, discovery, dependencies: fakes.dependencies });
     expect(discovery.risks[0]?.level).toBe("R2");
-    expect(discovery.conditions[0]?.techniques).toContain("browser-verification");
-    expect(plan.obligations[0]?.evidenceType).toBe("browser-result");
+    expect(discovery.conditions).toHaveLength(2);
+    expect(discovery.conditions.filter(item => item.techniques.includes("browser-verification"))).toHaveLength(1);
+    expect(discovery.conditions.find(item => item.id === "condition:request-browser")?.basisIds).toEqual(["neutral"]);
+    expect(discovery.conditions.find(item => item.id === "condition:request-browser")?.riskIds).toEqual(["risk:neutral"]);
+    expect(plan.obligations).toHaveLength(2);
+    expect(plan.obligations.filter(item => item.evidenceType === "browser-result")).toHaveLength(1);
     const execution = await executeObligations({ runId: "neutral-browser", request, plan, dependencies: fakes.dependencies });
-    expect(execution.observations[0]?.execution.kind).toBe("browser");
+    expect(execution.observations.filter(item => item.execution.kind === "browser")).toHaveLength(1);
     expect(fakes.browserCalls).toBe(1);
-    expect(fakes.executorCalls).toBe(0);
+    expect(fakes.executorCalls).toBe(1);
+  });
+  test("keeps explicit UI and backend basis conditions as one browser and one generic obligation", async () => {
+    const request = { ...makeRequest("mixed-explicit-ui-backend"), change: { summary: "Verify the backend endpoint.", paths: ["server/api.ts"] }, testBasis: [
+      { id: "backend", kind: "requirement" as const, origin: "explicit" as const, text: "The backend API accepts valid requests." },
+      { id: "ui", kind: "acceptance-criterion" as const, origin: "explicit" as const, text: "The UI browser flow renders correctly." },
+    ] } satisfies VerificationRequest;
+    const fakes = makeDependencies();
+    const basis = await establishTestBasis({ request, dependencies: fakes.dependencies });
+    const discovery = await performRiskDiscovery({ request, basis, dependencies: fakes.dependencies });
+    const plan = await buildVerificationPlan({ request, basis, discovery, dependencies: fakes.dependencies });
+    expect(discovery.conditions).toHaveLength(2);
+    expect(discovery.conditions.find(item => item.id === "condition:ui")?.techniques).toContain("browser-verification");
+    expect(discovery.conditions.find(item => item.id === "condition:backend")?.techniques).not.toContain("browser-verification");
+    expect(plan.obligations.filter(item => item.evidenceType === "browser-result")).toHaveLength(1);
+    expect(plan.obligations.filter(item => item.evidenceType === "test-result")).toHaveLength(1);
+    const execution = await executeObligations({ runId: "mixed-explicit-ui-backend", request, plan, dependencies: fakes.dependencies });
+    expect(execution.observations.filter(item => item.execution.kind === "browser")).toHaveLength(1);
+    expect(execution.observations.filter(item => item.execution.kind === "command")).toHaveLength(1);
+    expect(fakes.browserCalls).toBe(1);
+    expect(fakes.executorCalls).toBe(1);
+  });
+
+  test("adds one request browser condition over complete universes for neutral UI material and preserves it on resume", async () => {
+    const request = { ...makeRequest("mixed-neutral-request-browser"), change: { summary: "Refresh the frontend UI browser flow.", paths: ["frontend/app.tsx"] }, testBasis: [
+      { id: "neutral-a", kind: "request" as const, origin: "explicit" as const, text: "The requested check is recorded." },
+      { id: "neutral-b", kind: "request" as const, origin: "explicit" as const, text: "The result is summarized." },
+    ] } satisfies VerificationRequest;
+    const fakes = makeDependencies();
+    const basis = await establishTestBasis({ request, dependencies: fakes.dependencies });
+    const discovery = await performRiskDiscovery({ request, basis, dependencies: fakes.dependencies });
+    const plan = await buildVerificationPlan({ request, basis, discovery, dependencies: fakes.dependencies });
+    const requestBrowser = discovery.conditions.filter(item => item.techniques.includes("browser-verification"));
+    expect(requestBrowser).toHaveLength(1);
+    expect(requestBrowser[0]?.id).toBe("condition:request-browser");
+    expect(requestBrowser[0]?.basisIds).toEqual(["neutral-a", "neutral-b"]);
+    expect(requestBrowser[0]?.riskIds).toEqual(["risk:neutral-a", "risk:neutral-b"]);
+    expect(new Set(discovery.conditions.map(item => item.id)).size).toBe(discovery.conditions.length);
+    expect(plan.obligations).toHaveLength(3);
+    expect(plan.obligations.filter(item => item.evidenceType === "browser-result")).toHaveLength(1);
+    const rerenderedDiscovery = await performRiskDiscovery({ request, basis, dependencies: fakes.dependencies });
+    const rerenderedPlan = await buildVerificationPlan({ request, basis, discovery: rerenderedDiscovery, dependencies: fakes.dependencies });
+    expect(rerenderedDiscovery).toEqual(discovery);
+    expect(rerenderedPlan).toEqual(plan);
+    const runFakes = makeDependencies();
+    const first = await runVerification({ runId: "mixed-neutral-request-browser", request, dependencies: runFakes.dependencies });
+    const executorCalls = runFakes.executorCalls;
+    const browserCalls = runFakes.browserCalls;
+    expect(executorCalls).toBe(2);
+    expect(browserCalls).toBe(1);
+    const resumed = await runVerification({ runId: "mixed-neutral-request-browser", dependencies: runFakes.dependencies });
+    expect(resumed.documents.discovery).toEqual(first.documents.discovery);
+    expect(resumed.documents.plan).toEqual(first.documents.plan);
+    expect(runFakes.executorCalls).toBe(executorCalls);
+    expect(runFakes.browserCalls).toBe(browserCalls);
   });
   test("validates runtime-emitted evidence with the canonical AJV schema", async () => {
     const fakes = makeDependencies();
