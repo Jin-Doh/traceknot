@@ -608,14 +608,20 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     const obligationDigest = canonicalObligationDigest(obligation);
     const request = { runId: input.runId, requestId: input.request.requestId, requestDigest, planDigest, obligationDigest, rootIdentity: input.request.project.rootIdentity, snapshotId: input.request.project.snapshotId, obligation, conditionIds: uniq(obligation.conditionIds), idempotencyKey: idempotencyKeyFor(input.runId, requestDigest, planDigest, obligationDigest) };
     const lease = await claimExecutionDispatch(input.dependencies.repository, request, input.dependencies);
-    const available = !lease.owned || await hasCapability(input.dependencies.capabilityProvider, capabilityFor(obligation));
+    const executionPort = obligation.evidenceType === "browser-result" ? input.dependencies.browserExecutor : input.dependencies.executor;
+    let available: boolean;
+    try {
+      available = !lease.owned || await hasCapability(input.dependencies.capabilityProvider, capabilityFor(obligation));
+      if (lease.owned && available && (!executionPort || executionPort.atomicSameKeyIdempotency !== true)) throw Error("executor must declare atomic same-key idempotency");
+    } catch (error) {
+      if (lease.owned) await releaseExecutionDispatch(input.dependencies.repository, lease.claim, clockNow(input.dependencies.now));
+      throw error;
+    }
     let startedAt: string;
     let finishedAt: string;
     let output: VerificationExecutionOutput | undefined;
     let outputStorageError: unknown;
     if (available) {
-      const executionPort = obligation.evidenceType === "browser-result" ? input.dependencies.browserExecutor : input.dependencies.executor;
-      if (lease.owned && (!executionPort || executionPort.atomicSameKeyIdempotency !== true)) throw Error("executor must declare atomic same-key idempotency");
       if (lease.owned) {
         startedAt = clockNow(input.dependencies.now);
         try {
@@ -803,8 +809,8 @@ async function evaluateEvidence(input: EvaluateEvidenceInput): Promise<EvidenceD
   const coveredConditions = [...accepted].flatMap(obligationId => input.plan.obligations.find(item=>item.id===obligationId)?.conditionIds ?? []);
   const coverage = { basisIds: uniq(input.plan.conditions.flatMap(item=>item.basisIds)), coveredBasisIds: uniq(coveredConditions.flatMap(id=>conditionById.get(id)?.basisIds ?? [])), riskIds: uniq(input.plan.risks.map(item=>item.id)), coveredRiskIds: uniq(coveredConditions.flatMap(id=>conditionById.get(id)?.riskIds ?? [])), conditionIds: uniq(input.plan.conditions.map(item=>item.id)), coveredConditionIds: coveredConditions.sort() };
   const binding = freshnessBindingFor(input.request, input.plan, input.execution, freshnessEvaluatedAt, evaluations, acceptedClaimIds, coverage);
-  const freshnessAuthority = input.freshnessAuthority
-    ? (validFreshnessAuthority(input.freshnessAuthority) && structurallyEqual(input.freshnessAuthority.binding, binding) && await verifyFreshnessAuthority(input.dependencies.freshnessAuthority, input.freshnessAuthority, binding) ? input.freshnessAuthority : undefined)
+  const freshnessAuthority = input.freshnessAuthority && validFreshnessAuthority(input.freshnessAuthority) && structurallyEqual(input.freshnessAuthority.binding, binding) && await verifyFreshnessAuthority(input.dependencies.freshnessAuthority, input.freshnessAuthority, binding)
+    ? input.freshnessAuthority
     : await issueFreshnessAuthority(input.dependencies.freshnessAuthority, binding);
   if (!freshnessAuthority || !validFreshnessAuthority(freshnessAuthority) || !structurallyEqual(freshnessAuthority.binding, binding) || !await verifyFreshnessAuthority(input.dependencies.freshnessAuthority, freshnessAuthority, binding)) throw Error("freshness authority verification failed");
   return freeze({ schemaVersion:"verification-evidence-evaluation/v1", requestId:input.request.requestId, snapshotId:input.request.project.snapshotId, freshnessEvaluatedAt, freshnessAuthority, evaluations, acceptedClaimIds, coverage });
@@ -1037,7 +1043,7 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
     if (run.state === "EVIDENCE_EVALUATED") {
       if (!basis || !discovery || !plan || !execution || !evidence) throw Error("proof documents are missing");
       const resumedFreshnessAt = clockNow(dependencies.now);
-      const resumedEvidence = await evaluateEvidence({ runId: input.runId, request: req, plan, execution, dependencies, freshnessEvaluatedAt: resumedFreshnessAt });
+      const resumedEvidence = await evaluateEvidence({ runId: input.runId, request: req, plan, execution, dependencies, freshnessEvaluatedAt: resumedFreshnessAt, freshnessAuthority: evidence.freshnessEvaluatedAt === resumedFreshnessAt ? evidence.freshnessAuthority : undefined });
       if (!structurallyEqual(resumedEvidence, evidence)) {
         const touched = touchRun(run, resumedFreshnessAt);
         await commitStageAndRun(repository, touched, "evidence", resumedEvidence, run.revision);
@@ -1090,29 +1096,31 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
   let finalEvidence = documents.evidence ?? await loadHistoricallyCheckedEvidence(repository, input.runId, req, dependencies, documents);
   if (!finalEvidence) throw Error("evidence document is missing");
   documents.evidence = finalEvidence;
+  const historicalEvidence = finalEvidence;
+  const executionFinishedAt = Math.max(...finalExecution.observations.map(item => Date.parse(item.execution.finishedAt)));
+  const finalResidual = documents["residual-risk"] ?? await loadCheckedStage<ResidualRiskDocument>(repository, input.runId, "residual-risk", req, dependencies, documents);
+  if (!finalResidual) throw Error("residual-risk document is missing");
+  documents["residual-risk"] = finalResidual;
+  let finalVerdict = documents.verdict ?? await loadCheckedStage<VerdictDocument>(repository, input.runId, "verdict", req, dependencies, documents);
+  if (!finalVerdict) throw Error("terminal run has no verdict document");
+  if (Date.parse(historicalEvidence.freshnessEvaluatedAt) <= executionFinishedAt) {
+    await assertCanonicalVerdict({ runId: input.runId, request: req, basis: finalBasis, discovery: finalDiscovery, plan: finalPlan, execution: finalExecution, evidence: historicalEvidence, residualRisk: finalResidual, dependencies }, finalVerdict);
+  }
   const resumedFreshnessAt = clockNow(dependencies.now);
-  const resumedEvidence = await evaluateEvidence({ runId: input.runId, request: req, plan: finalPlan, execution: finalExecution, dependencies, freshnessEvaluatedAt: resumedFreshnessAt });
-  const refreshedEvidence = !structurallyEqual(resumedEvidence, finalEvidence);
-  if (refreshedEvidence) {
+  const resumedEvidence = await evaluateEvidence({ runId: input.runId, request: req, plan: finalPlan, execution: finalExecution, dependencies, freshnessEvaluatedAt: resumedFreshnessAt, freshnessAuthority: finalEvidence.freshnessEvaluatedAt === resumedFreshnessAt ? finalEvidence.freshnessAuthority : undefined });
+  if (!structurallyEqual(resumedEvidence, finalEvidence)) {
     const touched = touchRun(run, resumedFreshnessAt);
     await commitStageAndRun(repository, touched, "evidence", resumedEvidence, run.revision);
     run = touched;
     finalEvidence = resumedEvidence;
     documents.evidence = finalEvidence;
   }
-  const finalResidual = documents["residual-risk"] ?? await loadCheckedStage<ResidualRiskDocument>(repository, input.runId, "residual-risk", req, dependencies, documents);
-  if (!finalResidual) throw Error("residual-risk document is missing");
-  documents["residual-risk"] = finalResidual;
-  let finalVerdict = documents.verdict ?? await loadCheckedStage<VerdictDocument>(repository, input.runId, "verdict", req, dependencies, documents);
-  if (!finalVerdict) throw Error("terminal run has no verdict document");
   const canonicalVerdict = await resolveVerdict({ runId: input.runId, request: req, basis: finalBasis, discovery: finalDiscovery, plan: finalPlan, execution: finalExecution, evidence: finalEvidence, residualRisk: finalResidual, dependencies });
-  if (refreshedEvidence) {
+  if (!structurallyEqual(canonicalVerdict, finalVerdict)) {
     const touched = touchRun(run, clockNow(dependencies.now));
     await commitStageAndRun(repository, touched, "verdict", canonicalVerdict, run.revision);
     run = touched;
     finalVerdict = canonicalVerdict;
-  } else {
-    await assertCanonicalVerdict({ runId: input.runId, request: req, basis: finalBasis, discovery: finalDiscovery, plan: finalPlan, execution: finalExecution, evidence: finalEvidence, residualRisk: finalResidual, dependencies }, finalVerdict);
   }
   documents.verdict = finalVerdict;
   assertCanonicalRunIndexes(run, finalExecution, finalEvidence);

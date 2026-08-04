@@ -2046,6 +2046,55 @@ describe("verification run orchestration", () => {
     expect(claimCalls).toBe(0);
     expect(fakes.executorCalls).toBe(0);
   });
+  test("releases an owned claim when capability lookup rejects and permits an immediate retry", async () => {
+    const fakes = makeDependencies();
+    const runId = "preflight-capability-retry";
+    const request = { ...makeRequest(), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    let rejecting = true;
+    let capabilityCalls = 0;
+    const dependencies = {
+      ...fakes.dependencies,
+      capabilityProvider: {
+        hasCapability: async () => {
+          capabilityCalls++;
+          if (rejecting) throw new Error("capability lookup failed");
+          return true;
+        },
+      },
+    } as unknown as VerificationRunDependencies;
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("capability lookup failed");
+    expect(fakes.repository.dispatchClaims.size).toBe(0);
+    expect(fakes.executorCalls).toBe(0);
+    rejecting = false;
+    const resumed = await runVerification({ runId, dependencies });
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(resumed.verdict.qaVerdict).toBe("PASS");
+    expect(capabilityCalls).toBe(2);
+    expect(fakes.executorCalls).toBe(1);
+  });
+  test.each(["missing", "non-atomic"] as const)("releases an owned claim on %s executor preflight failure and permits an immediate retry", async mode => {
+    const fakes = makeDependencies();
+    const runId = `preflight-executor-${mode}-retry`;
+    const request = { ...makeRequest(), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    let invalidExecutorCalls = 0;
+    const invalidExecutor = (mode === "missing"
+      ? {}
+      : {
+        atomicSameKeyIdempotency: false,
+        executeObligation: async () => {
+          invalidExecutorCalls++;
+          return undefined;
+        },
+      }) as unknown as VerificationExecutor;
+    const dependencies = { ...fakes.dependencies, executor: invalidExecutor };
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("executor must declare atomic same-key idempotency");
+    expect(fakes.repository.dispatchClaims.size).toBe(0);
+    expect(invalidExecutorCalls).toBe(0);
+    const resumed = await runVerification({ runId, dependencies: { ...dependencies, executor: fakes.dependencies.executor } });
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(resumed.verdict.qaVerdict).toBe("PASS");
+    expect(fakes.executorCalls).toBe(1);
+  });
 
   test("retakes a crashed claim only after strict expiry with one stable idempotency key", async () => {
     const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
@@ -2368,6 +2417,56 @@ describe("verification run orchestration", () => {
     expect(resumed.run.state).toBe("TERMINAL");
     expect(resumed.verdict.qaVerdict).not.toBe("PASS");
     expect(evaluations).toBeGreaterThan(1);
+  });
+  test("repairs a stale terminal verdict when same-clock retry follows an evidence transition crash", async () => {
+    const fakes = makeDependencies();
+    const runId = "terminal-verdict-repair";
+    const request = { ...makeRequest("terminal-verdict-repair-request"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    let now = FIXED_NOW;
+    const dependencies = {
+      ...fakes.dependencies,
+      now: () => now,
+      freshnessPolicy: {
+        evaluateFreshness: async (input: { evaluatedAt: string }) => input.evaluatedAt === FIXED_NOW ? "fresh" as const : "stale" as const,
+      },
+    } as unknown as VerificationRunDependencies;
+    const first = await runVerification({ runId, request, dependencies });
+    expect(first.verdict.qaVerdict).toBe("PASS");
+    const persistedVerdict = structuredClone(first.documents.verdict);
+    now = "2026-08-03T00:01:00.000Z";
+    fakes.repository.failNextStage = "verdict";
+    await expect(runVerification({ runId, dependencies })).rejects.toThrow("simulated saveStage crash");
+    const persistedEvidence = fakes.repository.stageDocuments.get(`${runId}:evidence`) as { freshnessEvaluatedAt: string };
+    expect(persistedEvidence.freshnessEvaluatedAt).toBe(now);
+    expect(fakes.repository.stageDocuments.get(`${runId}:verdict`)).toEqual(persistedVerdict);
+    const repaired = await runVerification({ runId, dependencies });
+    expect(repaired.run.state).toBe("TERMINAL");
+    expect(repaired.verdict.qaVerdict).not.toBe("PASS");
+    expect(fakes.repository.stageDocuments.get(`${runId}:verdict`)).toEqual(repaired.verdict);
+  });
+  test("reuses a persisted freshness authority across same-clock evidence and terminal resumes", async () => {
+    const fakes = makeDependencies();
+    const runId = "freshness-authority-one-shot";
+    const request = { ...makeRequest("freshness-authority-one-shot-request"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    let issueCalls = 0;
+    const issueFreshnessAuthority = fakes.dependencies.freshnessAuthority.issueFreshnessAuthority!;
+    const verifyFreshnessAuthority = fakes.dependencies.freshnessAuthority.verifyFreshnessAuthority!;
+    const dependencies = {
+      ...fakes.dependencies,
+      freshnessAuthority: {
+        issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
+          issueCalls++;
+          if (issueCalls > 1) throw new Error("freshness authority issuer called twice");
+          return issueFreshnessAuthority(binding);
+        },
+        verifyFreshnessAuthority: (authority: FreshnessAuthority, binding: FreshnessAuthority["binding"]) => verifyFreshnessAuthority(authority, binding),
+      },
+    } as unknown as VerificationRunDependencies;
+    const first = await runVerification({ runId, request, dependencies });
+    const resumed = await runVerification({ runId, dependencies });
+    expect(first.run.state).toBe("TERMINAL");
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(issueCalls).toBe(1);
   });
   test.each(["EVIDENCE_EVALUATED", "TERMINAL"] as const)("re-evaluates a historical freshness checkpoint at the resumed instant on %s resume", async state => {
     const fakes = makeDependencies();
