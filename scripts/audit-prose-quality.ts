@@ -230,7 +230,7 @@ function isNumericUnitQuote(text: string, index: number): boolean {
 
 function directQuotationSpans(text: string): string[] {
   const spans: string[] = [];
-  for (const [opening, closing] of [["\"", "\""], ["'", "'"], ["“", "”"], ["‘", "’"]] as const) {
+  for (const [opening, closing] of [["\"", "\""], ["'", "'"], ["“", "”"], ["‘", "’"], ["「", "」"], ["『", "』"]] as const) {
     let cursor = 0;
     while (cursor < text.length) {
       let start = text.indexOf(opening, cursor);
@@ -926,7 +926,7 @@ function protectedValueBindings(text: string, values: Map<string, { category: st
   for (const [key, item] of values) {
     const separator = key.indexOf("\u0000");
     const category = key.slice(0, separator);
-    const searchText = category === "number" ? normalizeNumericText(text) : normalizedText;
+    const searchText = category === "number" ? normalizeNumericText(normalizedText) : normalizedText;
     const value = key.slice(separator + 1).replace(/\s+/g, " ");
     let cursor = 0;
     for (let count = 0; count < item.count; count += 1) {

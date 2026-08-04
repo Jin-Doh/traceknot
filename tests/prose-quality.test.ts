@@ -296,6 +296,8 @@ describe("language-specific prose rules", () => {
 
   test.each([
     "资料原文是“中文English”。正文完整。",
+    "资料原文是「中文English」。正文完整。",
+    "资料原文是『中文English』。正文完整。",
     "> 中文English\n\n正文完整。",
     "<blockquote>中文English</blockquote>\n\n正文完整。",
   ])("keeps protected quotations outside the zhlint boundary: %s", (source) => {
@@ -1377,6 +1379,22 @@ describe("rewrite preservation gate", () => {
   test("preserves complete compound spelled-out quantities", () => {
     expect(verifyPreservation("The system allows one hundred retries.", "The system allows two hundred retries.").failures)
       .toContainEqual(expect.objectContaining({ category: "number" }));
+  });
+
+  test("preserves spelled-out numeric bindings across soft line wraps", () => {
+    const context = Array(20).fill("The system records every result and retains complete evidence for reviewers.").join("\n");
+    const before = `${context}\nMinimum supports one\nhundred users. Maximum supports two\nhundred users.`;
+    const after = `${context}\nMinimum supports two\nhundred users. Maximum supports one\nhundred users.`;
+    expect(verifyPreservation(before, after).failures)
+      .toContainEqual(expect.objectContaining({ category: "protected-context" }));
+  });
+
+  test.each([
+    ["资料原文是「保持原样」。", "资料原文是「改变内容」。"],
+    ["资料原文是『保持原样』。", "资料原文是『改变内容』。"],
+  ])("preserves Chinese corner-bracket quotations: %s", (before, after) => {
+    expect(verifyPreservation(before, after).failures)
+      .toContainEqual(expect.objectContaining({ category: "quotation" }));
   });
 
   test("skips articles when binding numeric subjects", () => {
