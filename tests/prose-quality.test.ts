@@ -192,6 +192,13 @@ describe("language-specific prose rules", () => {
     expect(report.status).toBe("FAIL");
   });
 
+  test("counts separate Simplified Chinese stock phrases in the same sentence", () => {
+    const source = "在当今快速发展的环境中，这充分体现了流程的价值。";
+    const report = analyzeProse(source, ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({ ruleId: "ZH-D-001", count: 2 }));
+    expect(report.status).toBe("FAIL");
+  });
+
   test("does not apply zh-Hans rules to inferred Korean and English mixed prose", () => {
     const source = "한국어 설명을 충분히 작성하고 문맥도 자연스럽게 이어갑니다. English context is also deliberately substantial here. 第一，记录事实。第二，评估证据。第三，给出判定。";
     const report = analyzeProse(source, ["ko", "en", "zh-Hans"]);
@@ -305,6 +312,27 @@ describe("rewrite preservation gate", () => {
     const report = verifyPreservation(before, after);
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+    expect(report.status).toBe("FAIL");
+  });
+
+  test.each([
+    ["用户需要审核发布。", "用户无需审核发布。"],
+    ["用户应该审核发布。", "用户不应该审核发布。"],
+    ["系统允许自动发布。", "系统不允许自动发布。"],
+    ["用户须审核发布。", "用户无需审核发布。"],
+  ])("preserves common Simplified Chinese normative forms: %s", (source, rewrite) => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+    expect(report.status).toBe("FAIL");
+  });
+
+  test("preserves Simplified Chinese written quantities", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n系统运行三次。`, `${context}\n系统运行四次。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
     expect(report.status).toBe("FAIL");
   });
 
