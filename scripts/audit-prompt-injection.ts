@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { relative, resolve } from "node:path";
-import type { Element, Root as HastRoot, Text } from "hast";
+import { toText } from "hast-util-to-text";
+import type { Element, Root as HastRoot } from "hast";
 import type { Html, Paragraph } from "mdast";
 import { toString } from "mdast-util-to-string";
 import rehypeRaw from "rehype-raw";
@@ -124,7 +125,7 @@ export const RULES: readonly Rule[] = [
     id: "PI013",
     description: "Simplified Chinese explicit privileged-role impersonation",
     score: 6,
-    pattern: /(?:(?:假装|扮演|伪装|冒充)(?:(?:你|您|自己)(?:现在|将)?是|(?:成|为|是)?)(?:一?(?:名|个|位))?(?:系统(?:管理员|开发者|身份|消息|指令|角色)|开发者|管理员|超级用户|root)|以(?:系统(?:管理员|开发者)?|开发者|管理员|超级用户|root)(?:的)?身份)/iu,
+    pattern: /(?:(?:假装|扮演|伪装|冒充)[^。；，！？.,;!?\n]{0,12}(?:系统(?:管理员|开发者|身份|消息|指令|角色)|开发者|管理员|超级用户|root)|以(?:系统(?:管理员|开发者)?|开发者|管理员|超级用户|root)(?:的)?身份)/iu,
   },
 ];
 
@@ -246,10 +247,13 @@ function softWrappedMarkdownFindings(path: string, text: string): Finding[] {
     findings.push(...softWrappedSourceFindings(path, toString(node), node.position?.start.line ?? 1));
   });
   visit(tree, "html", (node: Html) => {
-    visit(visibleHtmlTree(node.value), "text", (textNode: Text) => {
-      const startLine = (node.position?.start.line ?? 1) + (textNode.position?.start.line ?? 1) - 1;
-      findings.push(...softWrappedSourceFindings(path, textNode.value, startLine));
-    });
+    for (const child of visibleHtmlTree(node.value).children) {
+      const rendered = toText(child);
+      const startLine = (node.position?.start.line ?? 1) + (child.position?.start.line ?? 1) - 1;
+      for (const rule of RULES) {
+        if (acceptedMatches(rule, rendered).length > 0) findings.push(createFinding(path, startLine, rendered, rule));
+      }
+    }
   });
   return findings;
 }
@@ -263,7 +267,12 @@ export function analyzeText(path: string, text: string): Finding[] {
       findings.push(createFinding(path, index + 1, line, rule));
     }
   });
-  return [...findings, ...softWrappedMarkdownFindings(path, text)];
+  const unique = new Map<string, Finding>();
+  for (const finding of [...findings, ...softWrappedMarkdownFindings(path, text)]) {
+    const key = `${finding.ruleId}\u0000${finding.path}\u0000${finding.line}`;
+    if (!unique.has(key)) unique.set(key, finding);
+  }
+  return [...unique.values()];
 }
 
 function collectFiles(root: string): string[] {
