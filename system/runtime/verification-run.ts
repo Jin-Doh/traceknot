@@ -1015,7 +1015,7 @@ async function loadHistoricallyCheckedEvidence(repository: RepositoryPort, runId
   if (value === undefined) return undefined;
   validateStage("evidence", value, request, runId, prior);
   if (!prior.plan || !prior.execution) throw Error("invalid persisted evidence prerequisites");
-  if (value.freshnessAuthority.binding.executionDigest !== canonicalSha256(prior.execution)) return undefined;
+  if (value.freshnessAuthority.binding.executionDigest !== canonicalSha256(prior.execution)) throw Error("invalid persisted freshness execution digest");
   if (value.freshnessAuthority.binding.evaluationsDigest !== canonicalEvaluationsDigest(value.evaluations)) throw Error("invalid persisted evidence evaluation digest");
   const persistedFreshnessByObligation = new Map(prior.execution.claims.map(claim => {
     const evaluation = value.evaluations.find(item => item.claimId === claim.claimId);

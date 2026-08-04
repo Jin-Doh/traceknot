@@ -2889,6 +2889,37 @@ describe("verification run orchestration", () => {
     await expect(runOnce(dependencies, runId)).rejects.toThrow("freshness authority verification failed");
     expect(issueCalls).toBe(1);
   });
+  test("rejects a persisted freshness execution digest mutation before replacement authority side effects", async () => {
+    const fakes = makeDependencies();
+    const runId = "freshness-execution-digest-tamper";
+    let issueCalls = 0;
+    const issueFreshnessAuthority = fakes.dependencies.freshnessAuthority.issueFreshnessAuthority!;
+    const dependencies = {
+      ...fakes.dependencies,
+      freshnessAuthority: {
+        ...fakes.dependencies.freshnessAuthority,
+        issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
+          issueCalls++;
+          return issueFreshnessAuthority(binding);
+        },
+      },
+    } as unknown as VerificationRunDependencies;
+    await runOnce(dependencies, runId);
+    expect(issueCalls).toBe(1);
+    const run = fakes.repository.runs.get(runId);
+    const saved = fakes.repository.stageDocuments.get(`${runId}:evidence`) as { freshnessAuthority: FreshnessAuthority };
+    if (!run || !saved) throw new Error("missing persisted freshness evidence");
+    fakes.repository.stageDocuments.set(`${runId}:evidence`, {
+      ...saved,
+      freshnessAuthority: {
+        ...saved.freshnessAuthority,
+        binding: { ...saved.freshnessAuthority.binding, executionDigest: "f".repeat(64) },
+      },
+    });
+    fakes.repository.runs.set(runId, { ...run, state: "EXECUTING", updatedAt: FIXED_NOW });
+    await expect(runOnce(dependencies, runId)).rejects.toThrow("invalid persisted freshness execution digest");
+    expect(issueCalls).toBe(1);
+  });
 
   test("fences a stale PLANNED execution checkpoint across an EXECUTING takeover", async () => {
     const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
