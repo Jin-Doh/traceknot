@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { checkReadmeDocumentationLinks, checkReadmeSections } from "../scripts/check-readme-contract";
+import { checkReadmeDocumentationLinks, checkReadmeLocalLinks, checkReadmeSections } from "../scripts/check-readme-contract";
 
 const sections = [
   "hero",
@@ -39,5 +39,14 @@ describe("README localization section contract", () => {
     expect(() =>
       checkReadmeDocumentationLinks("README.md", "[Brand](BRAND.md)", "README.ko.md", "[브랜드](BRAND.ko.md)"),
     ).not.toThrow();
+  });
+
+  test("rejects absolute and parent-relative links that escape the repository", () => {
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content: "[host file](/etc/passwd)" })).toThrow(
+      "local link escapes repository",
+    );
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content: "[parent](../../../../etc/passwd)" })).toThrow(
+      "local link escapes repository",
+    );
   });
 });

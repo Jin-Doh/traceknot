@@ -175,6 +175,16 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh |
 
 Skills CLI와 전체 Toolkit installer는 같은 사용자 영역 Skill 등록을 관리합니다. 설치 방식을 바꾸기 전에 기존 설치를 먼저 제거해야 합니다. 적용 조건, 검증, rollback, opt-out 정책은 [자동 업데이트 문서](docs/automatic-updates.md)를 참고하세요.
 
+기본 경로의 전체 Toolkit은 다음 명령으로 제거합니다.
+
+<!-- shared-command:full-toolkit-uninstall -->
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh | sh
+```
+
+사용자 지정 설치 경로라면 `sh` 뒤에 `-s -- --prefix /absolute/path`를 붙입니다.
+
 <!-- readme-section:documentation -->
 
 ## 문서

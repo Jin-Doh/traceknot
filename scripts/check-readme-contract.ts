@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 const README_PATHS = ["README.md", "README.ko.md", "README.zh.md"] as const;
@@ -26,7 +26,7 @@ const REQUIRED_SECTIONS = [
   "documentation",
   "development",
 ] as const;
-const REQUIRED_SHARED_COMMANDS = ["skill-install", "full-toolkit-install", "ci"] as const;
+const REQUIRED_SHARED_COMMANDS = ["skill-install", "full-toolkit-install", "full-toolkit-uninstall", "ci"] as const;
 const REQUIRED_BOUNDARIES = [
   "npx skills add Jin-Doh/traceknot --skill traceknot --global",
   "authoritative: false",
@@ -164,14 +164,22 @@ export function checkReadmeDocumentationLinks(
   }
 }
 
-function checkLocalLinks(record: Pick<ReadmeRecord, "path" | "content">): void {
+function remainsInside(root: string, target: string): boolean {
+  const path = relative(root, target);
+  return path === "" || (!isAbsolute(path) && path !== ".." && !path.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`));
+}
+
+export function checkReadmeLocalLinks(record: Pick<ReadmeRecord, "path" | "content">): void {
+  const canonicalRoot = realpathSync(ROOT);
   for (const rawTarget of localTargets(record.content)) {
     if (/^(?:https?:|mailto:|data:|#)/.test(rawTarget)) continue;
     const withoutAnchor = rawTarget.split("#", 1)[0].split("?", 1)[0];
     if (!withoutAnchor) continue;
     const decoded = decodeURIComponent(withoutAnchor.replace(/^<|>$/g, ""));
     const target = resolve(ROOT, dirname(record.path), decoded);
+    if (!remainsInside(ROOT, target)) throw new Error(`${record.path}: local link escapes repository: ${rawTarget}`);
     if (!existsSync(target)) throw new Error(`${record.path}: local link does not exist: ${rawTarget}`);
+    if (!remainsInside(canonicalRoot, realpathSync(target))) throw new Error(`${record.path}: local link escapes repository: ${rawTarget}`);
     const stat = statSync(target);
     if (!stat.isFile() && !stat.isDirectory()) throw new Error(`${record.path}: local link is not a file or directory: ${rawTarget}`);
   }
@@ -190,7 +198,7 @@ export function checkReadmeContract(): void {
   }
   for (const path of LINKED_DOCUMENT_PATHS) {
     const content = readFileSync(resolve(ROOT, path), "utf8");
-    checkLocalLinks({ path, content });
+    checkReadmeLocalLinks({ path, content });
   }
 }
 

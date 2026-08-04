@@ -175,6 +175,16 @@ Inspect the script or use a fixed tag before running it in a controlled environm
 
 The Skills CLI and full-toolkit installer manage the same user-local Skill registration. Remove one installation before switching methods. See [automatic updates](docs/automatic-updates.md) for eligibility, verification, rollback, and opt-out behavior.
 
+Remove the default full-toolkit installation with:
+
+<!-- shared-command:full-toolkit-uninstall -->
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh | sh
+```
+
+For a custom installation prefix, append `-s -- --prefix /absolute/path` after `sh`.
+
 <!-- readme-section:documentation -->
 
 ## Documentation
