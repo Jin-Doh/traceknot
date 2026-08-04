@@ -22,6 +22,7 @@ The installer and updater now:
 
 Select the active-layout executable with the legacy-layout fallback, then run the required operation:
 
+<!-- operational-command:updater -->
 ```sh
 TRACEKNOT_PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/traceknot"
 if [ -x "$TRACEKNOT_PREFIX/current/bin/traceknot-update" ]; then

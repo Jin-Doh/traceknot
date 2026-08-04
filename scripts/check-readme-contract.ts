@@ -41,25 +41,29 @@ const REQUIRED_RENDERED_BOUNDARIES = [
   "phase1Authorized: false",
 ] as const;
 const REQUIRED_SKILL_INSTALL_COMMAND = "npx skills add Jin-Doh/traceknot --skill traceknot --global";
-const REQUIRED_OPERATIONAL_LITERALS: Readonly<Record<string, readonly string[]>> = {
-  "README.md": [
-    "curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh",
-    "curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh | sh",
-    "TRACEKNOT_REF=<tag-or-commit>",
-    "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/install.sh",
-    'TRACEKNOT_REF="$TRACEKNOT_REF" sh',
-    "TRACEKNOT_SKILLS_ROOT=/absolute/skills sh -s -- --prefix /absolute/path",
-  ],
-  "docs/automatic-updates.md": [
-    "$TRACEKNOT_PREFIX/current/bin/traceknot-update",
-    "$TRACEKNOT_PREFIX/bin/traceknot-update",
-    '"$TRACEKNOT_UPDATE" status --prefix "$TRACEKNOT_PREFIX"',
-    '"$TRACEKNOT_UPDATE" check --prefix "$TRACEKNOT_PREFIX"',
-    '"$TRACEKNOT_UPDATE" apply --prefix "$TRACEKNOT_PREFIX"',
-    '"$TRACEKNOT_UPDATE" disable --prefix "$TRACEKNOT_PREFIX"',
-    '"$TRACEKNOT_UPDATE" enable --prefix "$TRACEKNOT_PREFIX"',
-    '"$TRACEKNOT_UPDATE" rollback --prefix "$TRACEKNOT_PREFIX"',
-  ],
+const REQUIRED_OPERATIONAL_BLOCK_LITERALS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
+  "README.md": {
+    "full-toolkit-install": ["curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh"],
+    "full-toolkit-pinned-install": [
+      "TRACEKNOT_REF=<tag-or-commit>",
+      "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/install.sh",
+      'TRACEKNOT_REF="$TRACEKNOT_REF" sh',
+    ],
+    "full-toolkit-uninstall": ["curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh | sh"],
+    "full-toolkit-custom-uninstall": ["TRACEKNOT_SKILLS_ROOT=/absolute/skills sh -s -- --prefix /absolute/path"],
+  },
+  "docs/automatic-updates.md": {
+    updater: [
+      "$TRACEKNOT_PREFIX/current/bin/traceknot-update",
+      "$TRACEKNOT_PREFIX/bin/traceknot-update",
+      '"$TRACEKNOT_UPDATE" status --prefix "$TRACEKNOT_PREFIX"',
+      '"$TRACEKNOT_UPDATE" check --prefix "$TRACEKNOT_PREFIX"',
+      '"$TRACEKNOT_UPDATE" apply --prefix "$TRACEKNOT_PREFIX"',
+      '"$TRACEKNOT_UPDATE" disable --prefix "$TRACEKNOT_PREFIX"',
+      '"$TRACEKNOT_UPDATE" enable --prefix "$TRACEKNOT_PREFIX"',
+      '"$TRACEKNOT_UPDATE" rollback --prefix "$TRACEKNOT_PREFIX"',
+    ],
+  },
 };
 const LOCALIZED_DOCUMENT_ALTERNATIVES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   "README.ko.md": { "BRAND.md": "BRAND.ko.md" },
@@ -137,11 +141,13 @@ function isClosedFencedCode(content: string, block: Code): boolean {
   return Boolean(closing && closing[0] === opening[0] && closing.length >= opening.length);
 }
 
-function collectSharedCommands(content: string, path: string): Map<string, string> {
+function collectMarkedCommands(content: string, path: string, markerKind: "shared-command" | "operational-command"): Map<string, string> {
   const tree = markdownTree(content);
   const markers = new Map<string, Array<{ parent: Parents; index: number }>>();
   visit(tree, "html", (node: Html, index, parent) => {
-    const match = node.value.match(/^\s*<!-- shared-command:([a-z0-9-]+) -->\s*$/u);
+    const match = markerKind === "shared-command"
+      ? node.value.match(/^\s*<!-- shared-command:([a-z0-9-]+) -->\s*$/u)
+      : node.value.match(/^\s*<!-- operational-command:([a-z0-9-]+) -->\s*$/u);
     if (!match || index === undefined || !parent) return;
     const occurrences = markers.get(match[1]) ?? [];
     occurrences.push({ parent, index });
@@ -150,16 +156,24 @@ function collectSharedCommands(content: string, path: string): Map<string, strin
   const commands = new Map<string, string>();
   for (const [name, occurrences] of markers) {
     if (occurrences.length !== 1) {
-      throw new Error(`${path}: shared-command marker ${name} must appear exactly once, found ${occurrences.length}`);
+      throw new Error(`${path}: ${markerKind} marker ${name} must appear exactly once, found ${occurrences.length}`);
     }
     const occurrence = occurrences[0];
     const block = occurrence.parent.children[occurrence.index + 1] as Code | undefined;
     if (block?.type !== "code" || !isClosedFencedCode(content, block)) {
-      throw new Error(`${path}: shared-command marker ${name} must be followed by a fenced block`);
+      throw new Error(`${path}: ${markerKind} marker ${name} must be followed by a fenced block`);
     }
     commands.set(name, block.value);
   }
   return commands;
+}
+
+function collectSharedCommands(content: string, path: string): Map<string, string> {
+  return collectMarkedCommands(content, path, "shared-command");
+}
+
+function collectOperationalCommands(content: string, path: string): Map<string, string> {
+  return collectMarkedCommands(content, path, "operational-command");
 }
 
 function loadReadmes(): ReadmeRecord[] {
@@ -297,7 +311,7 @@ function isExternalTarget(target: string): boolean {
 
 function normalizedDocumentationTargets(content: string): Set<string> {
   const targets = new Set<string>();
-  for (const rawTarget of localTargets(content)) {
+  for (const rawTarget of visibleAnchorTargets(content)) {
     if (isExternalTarget(rawTarget)) continue;
     const target = rawTarget.split("#", 1)[0].split("?", 1)[0].replace(/^<|>$/g, "");
     if (target.startsWith("docs/") || target.startsWith("skill/") || /^BRAND(?:\.[a-z-]+)?\.md$/i.test(target)) {
@@ -354,13 +368,21 @@ export function checkPublicationInventory(config: { include?: unknown; exclude?:
   }
 }
 
+export function checkOperationalCommandBlocks(path: string, content: string, requirements: Readonly<Record<string, readonly string[]>>): void {
+  const blocks = path === "README.md" ? collectSharedCommands(content, path) : collectOperationalCommands(content, path);
+  for (const [name, literals] of Object.entries(requirements)) {
+    const block = blocks.get(name);
+    const missing = literals.filter((literal) => !block?.includes(literal));
+    if (missing.length > 0) throw new Error(`${path}: operational command block ${name} is missing: ${missing.join(", ")}`);
+  }
+}
+
 function checkPublicationContracts(): void {
   const config = JSON.parse(readFileSync(resolve(ROOT, "prose-quality.config.json"), "utf8")) as { include?: unknown; exclude?: unknown };
   checkPublicationInventory(config);
-  for (const [path, literals] of Object.entries(REQUIRED_OPERATIONAL_LITERALS)) {
+  for (const [path, requirements] of Object.entries(REQUIRED_OPERATIONAL_BLOCK_LITERALS)) {
     const content = readFileSync(resolve(ROOT, path), "utf8");
-    const missing = literals.filter((literal) => !content.includes(literal));
-    if (missing.length > 0) throw new Error(`${path}: missing operational contract literals: ${missing.join(", ")}`);
+    checkOperationalCommandBlocks(path, content, requirements);
   }
 }
 

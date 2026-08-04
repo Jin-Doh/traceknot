@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { checkPublicationInventory, checkReadmeBoundaries, checkReadmeDocumentationLinks, checkReadmeLanguageNavigation, checkReadmeLocalLinks, checkReadmeSections, checkReadmeSharedCommands } from "../scripts/check-readme-contract";
+import { checkOperationalCommandBlocks, checkPublicationInventory, checkReadmeBoundaries, checkReadmeDocumentationLinks, checkReadmeLanguageNavigation, checkReadmeLocalLinks, checkReadmeSections, checkReadmeSharedCommands } from "../scripts/check-readme-contract";
 
 const sections = [
   "hero",
@@ -150,6 +150,19 @@ describe("README localization section contract", () => {
   test("does not accept hidden raw-HTML language navigation", () => {
     const content = "[English](README.md) [한국어](README.ko.md) <a hidden href=\"README.zh.md\">简体中文</a>";
     expect(() => checkReadmeLanguageNavigation("README.md", content)).toThrow("missing language link to README.zh.md");
+  });
+
+  test("does not accept hidden documentation links for translation parity", () => {
+    const canonical = "[Architecture](docs/architecture.md)";
+    const translated = '<a hidden href="docs/architecture.md">Architecture</a>';
+    expect(() => checkReadmeDocumentationLinks("README.md", canonical, "README.zh.md", translated))
+      .toThrow("missing documentation links");
+  });
+
+  test("requires operational literals in their marked parsed command block", () => {
+    const content = "<!-- required --><!-- operational-command:updater -->\n```sh\necho unrelated\n```";
+    expect(() => checkOperationalCommandBlocks("docs/automatic-updates.md", content, { updater: ["required"] }))
+      .toThrow("operational command block updater is missing");
   });
 
   test("extracts HTML URL attributes only from visible tags", () => {

@@ -28,11 +28,13 @@ Every README contains stable `readme-section` markers and `shared-command` marke
 - required sections are present exactly once;
 - shared command blocks are byte-identical;
 - every README exposes rendered links to all three languages; anchors in standard HTML `hidden` subtrees do not satisfy navigation parity;
+- translated documentation parity uses the same visible-anchor tree, so hidden anchors cannot preserve a removed reader-facing link;
 - critical authority-boundary literals remain present in text derived by `hast-util-to-text`, with fenced examples removed first;
 - the public Skill install literal remains in the parsed `skill-install` shared command block rather than arbitrary source text;
+- installer, uninstaller, and updater literals remain in their marked parsed command blocks rather than comments or unrelated examples;
 - local Markdown and HTML links resolve to repository files.
 
-Inline-link validation delegates Markdown grammar to the maintained unified stack: `remark-parse` and `remark-gfm` produce the CommonMark/GFM syntax tree, while `remark-rehype` and `rehype-raw` parse rendered HTML nodes and their URL-bearing attributes. Traceknot traverses that tree to enforce only repository policy: shared commands must be closed fenced-code nodes, local targets must exist without escaping the repository, translated documentation links must remain present, and complete `srcset` and `ping` target lists use the same boundary checks. Code spans, nested containers, Setext headings, reference links, comments, and raw HTML are therefore classified by the external parsers rather than a repository-owned Markdown state machine.
+Inline-link validation delegates Markdown grammar to the maintained unified stack: `remark-parse` and `remark-gfm` produce the CommonMark/GFM syntax tree, while `remark-rehype` and `rehype-raw` parse rendered HTML nodes and their URL-bearing attributes. Traceknot traverses that tree to enforce only repository policy: shared and operational commands must be closed fenced-code nodes, local targets must exist without escaping the repository, translated documentation links must remain visibly present, and complete `srcset` and `ping` target lists use the same boundary checks. Code spans, nested containers, Setext headings, reference links, comments, and raw HTML are therefore classified by the external parsers rather than a repository-owned Markdown state machine.
 
 Run the check directly with:
 

@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { relative, resolve } from "node:path";
+import type { Paragraph } from "mdast";
+import { toString } from "mdast-util-to-string";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
+import { visit } from "unist-util-visit";
 
 export type RiskLevel = "none" | "low" | "medium" | "high" | "critical";
 
@@ -149,6 +154,63 @@ function hashLine(line: string): string {
   return createHash("sha256").update(line.trim()).digest("hex");
 }
 
+function createFinding(path: string, line: number, source: string, rule: Rule): Finding {
+  return {
+    ruleId: rule.id,
+    path,
+    line,
+    score: rule.score,
+    level: levelForScore(rule.score),
+    description: rule.description,
+    excerpt: source.trim().slice(0, 200),
+    lineHash: hashLine(source),
+    suppressed: false,
+  };
+}
+
+function normalizedSoftWrap(value: string): { text: string; sourceOffsets: number[] } {
+  let text = "";
+  const sourceOffsets: number[] = [];
+  for (let index = 0; index < value.length;) {
+    if (value[index] === "\r" && value[index + 1] === "\n" || value[index] === "\n") {
+      const newline = index;
+      index += value[index] === "\r" ? 2 : 1;
+      while (value[index] === " " || value[index] === "\t") index += 1;
+      text += " ";
+      sourceOffsets.push(newline);
+      continue;
+    }
+    text += value[index];
+    sourceOffsets.push(index);
+    index += 1;
+  }
+  return { text, sourceOffsets };
+}
+
+function softWrappedMarkdownFindings(path: string, text: string): Finding[] {
+  if (!/\.md$/iu.test(path)) return [];
+  const findings: Finding[] = [];
+  const tree = unified().use(remarkParse).parse(text);
+  visit(tree, "paragraph", (node: Paragraph) => {
+    const source = toString(node);
+    if (!source.includes("\n")) return;
+    const normalized = normalizedSoftWrap(source);
+    for (const rule of RULES) {
+      const pattern = new RegExp(rule.pattern.source, rule.pattern.flags.includes("g") ? rule.pattern.flags : `${rule.pattern.flags}g`);
+      for (const match of normalized.text.matchAll(pattern)) {
+        const matchStart = match.index;
+        const matchEnd = matchStart + match[0].length;
+        const originalStart = normalized.sourceOffsets[matchStart];
+        const originalEnd = normalized.sourceOffsets[Math.max(matchEnd - 1, matchStart)];
+        if (originalStart === undefined || originalEnd === undefined || !source.slice(originalStart, originalEnd + 1).includes("\n")) continue;
+        const line = (node.position?.start.line ?? 1) + source.slice(0, originalStart).split("\n").length - 1;
+        findings.push(createFinding(path, line, source, rule));
+      }
+    }
+  });
+  return findings;
+}
+
 export function analyzeText(path: string, text: string): Finding[] {
   const findings: Finding[] = [];
   const lines = text.split(/\r?\n/);
@@ -156,20 +218,10 @@ export function analyzeText(path: string, text: string): Finding[] {
     for (const rule of RULES) {
       rule.pattern.lastIndex = 0;
       if (!rule.pattern.test(line)) continue;
-      findings.push({
-        ruleId: rule.id,
-        path,
-        line: index + 1,
-        score: rule.score,
-        level: levelForScore(rule.score),
-        description: rule.description,
-        excerpt: line.trim().slice(0, 200),
-        lineHash: hashLine(line),
-        suppressed: false,
-      });
+      findings.push(createFinding(path, index + 1, line, rule));
     }
   });
-  return findings;
+  return [...findings, ...softWrappedMarkdownFindings(path, text)];
 }
 
 function collectFiles(root: string): string[] {
