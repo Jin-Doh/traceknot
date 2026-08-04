@@ -3,7 +3,6 @@ import { mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, symlink, unlin
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "bun:test";
-import { Database } from "bun:sqlite";
 import { ArtifactCollisionError, ArtifactIntegrityError, ArtifactPathError, LocalArtifactStore } from "./local-artifact-store";
 import { captureGitSnapshotIdentity } from "./git-snapshot";
 import type { VerificationExecutionRequest } from "./verification-run";
@@ -190,13 +189,13 @@ test("local artifact store verifies bytes, preserves the caller path, and is ide
     expect(first).toEqual({ type: "verification-result", digest: artifactDigest, path: source });
     expect(second).toEqual(first);
     expect(await store.readArtifact(artifactDigest)).toEqual(bytes);
-    expect(await readdir(join(root, "artifacts"))).toEqual(expect.arrayContaining([".traceknot.sqlite", ".traceknot.sqlite-shm", ".traceknot.sqlite-wal"]));
+    expect(await readdir(join(root, "artifacts"))).toEqual(expect.arrayContaining([".objects", ".artifact.lock"]));
   } finally {
     await cleanup(root);
   }
 });
 
-test("independent SQLite stores serialize same and different digest writes with immediate cross-instance reads", async () => {
+test("independent descriptor stores serialize same and different digest writes with immediate cross-instance reads", async () => {
   const root = await temporaryDirectory();
   const artifactRoot = join(root, "artifacts");
   const firstBytes = Buffer.from("first independent payload");
@@ -225,33 +224,28 @@ test("independent SQLite stores serialize same and different digest writes with 
   }
 });
 
-test("local artifact store fails closed on mismatch, SQLite corruption, and symlink sources", async () => {
+test("local artifact store fails closed on mismatch, torn frames, corruption, and symlink sources", async () => {
   const root = await temporaryDirectory();
   const source = join(root, "source.bin");
-  const outside = join(root, "outside.bin");
   const artifactRoot = join(root, "artifacts");
-  const databasePath = join(artifactRoot, ".traceknot.sqlite");
   const bytes = Buffer.from("correct bytes");
   const wrong = Buffer.from("wrong bytes");
   const artifactDigest = digest(bytes);
+  const objectPath = join(artifactRoot, ".objects", artifactDigest);
   try {
     await writeFile(source, bytes);
-    await writeFile(outside, Buffer.from("outside"));
     const store = new LocalArtifactStore(artifactRoot);
     await expect(store.storeArtifact({ type: "result", digest: digest(wrong), path: source }, request)).rejects.toBeInstanceOf(ArtifactIntegrityError);
     await store.storeArtifact({ type: "result", digest: artifactDigest, path: source }, request);
-
-    const corruptor = new Database(databasePath);
-    corruptor.query("UPDATE artifacts SET bytes = ? WHERE digest = ?").run(wrong, artifactDigest);
-    corruptor.close();
+    const frame = await readFile(objectPath);
+    await writeFile(objectPath, frame.subarray(0, 10));
     await expect(store.readArtifact(artifactDigest)).rejects.toBeInstanceOf(ArtifactCollisionError);
     await expect(store.storeArtifact({ type: "result", digest: artifactDigest, path: source }, request)).rejects.toBeInstanceOf(ArtifactCollisionError);
-
-    const recovery = new Database(databasePath);
-    recovery.query("UPDATE artifacts SET bytes = ? WHERE digest = ?").run(bytes, artifactDigest);
-    recovery.close();
+    await writeFile(objectPath, frame);
     expect(await store.readArtifact(artifactDigest)).toEqual(bytes);
-
+    await writeFile(objectPath, Buffer.concat([frame.subarray(0, -1), Buffer.from([frame.at(-1)! ^ 0xff])]));
+    await expect(store.hasArtifact(artifactDigest)).rejects.toBeInstanceOf(ArtifactCollisionError);
+    await writeFile(objectPath, frame);
     const sourceLink = join(root, "source-link");
     await symlink(source, sourceLink);
     await expect(store.storeArtifact({ type: "result", digest: artifactDigest, path: sourceLink }, request)).rejects.toBeInstanceOf(ArtifactPathError);
@@ -260,14 +254,13 @@ test("local artifact store fails closed on mismatch, SQLite corruption, and syml
     await cleanup(root);
   }
 });
-
-test("legacy digest paths, including FIFOs, are never opened", async () => {
+test("descriptor object paths reject FIFOs without blocking and never use legacy digest paths", async () => {
   const root = await temporaryDirectory();
   const artifactRoot = join(root, "artifacts");
-  const bytes = Buffer.from("SQLite only");
+  const bytes = Buffer.from("descriptor only");
   const artifactDigest = digest(bytes);
   const missingDigest = "b".repeat(64);
-  const fifo = join(artifactRoot, missingDigest);
+  const fifo = join(artifactRoot, ".objects", missingDigest);
   try {
     const store = new LocalArtifactStore(artifactRoot);
     await store.store({ type: "binary", digest: artifactDigest, bytes } as never, request);
@@ -281,6 +274,60 @@ test("legacy digest paths, including FIFOs, are never opened", async () => {
     await cleanup(root);
   }
 });
+
+test("descriptor root, objects, lock, and digest symlinks fail closed", async () => {
+  const root = await temporaryDirectory();
+  const outside = await temporaryDirectory();
+  const artifactRoot = join(root, "artifacts");
+  const digestBytes = Buffer.from("symlink digest");
+  const artifactDigest = digest(digestBytes);
+  try {
+    await mkdir(artifactRoot);
+    await symlink(join(outside, "root-target"), join(root, "root-link"), "dir");
+    await expect(() => new LocalArtifactStore(join(root, "root-link"))).toThrow(ArtifactPathError);
+
+    await symlink(outside, join(artifactRoot, ".objects"), "dir");
+    await expect(() => new LocalArtifactStore(artifactRoot)).toThrow(ArtifactPathError);
+    await unlink(join(artifactRoot, ".objects"));
+    await mkdir(join(artifactRoot, ".objects"));
+
+    await symlink(join(outside, "lock-target"), join(artifactRoot, ".artifact.lock"));
+    await expect(() => new LocalArtifactStore(artifactRoot)).toThrow(ArtifactPathError);
+    await unlink(join(artifactRoot, ".artifact.lock"));
+
+    const store = new LocalArtifactStore(artifactRoot);
+    await store.store({ type: "binary", digest: artifactDigest, bytes: digestBytes } as never, request);
+    await store.close();
+    await unlink(join(artifactRoot, ".objects", artifactDigest));
+    await symlink(join(outside, "digest-target"), join(artifactRoot, ".objects", artifactDigest));
+    const reopened = new LocalArtifactStore(artifactRoot);
+    await expect(reopened.readArtifact(artifactDigest)).rejects.toBeInstanceOf(ArtifactPathError);
+    await expect(reopened.hasArtifact(artifactDigest)).rejects.toBeInstanceOf(ArtifactPathError);
+    await reopened.close();
+  } finally {
+    await cleanup(root);
+    await cleanup(outside);
+  }
+});
+test("portable native dispatch covers Darwin actual bindings and Linux static bindings", async () => {
+  const source = (await readFile(join(import.meta.dir, "local-artifact-store.ts"))).toString("utf8");
+  expect(source).toContain('platform === "darwin"');
+  expect(source).toContain('"/usr/lib/libSystem.B.dylib"');
+  expect(source).toContain('platform === "linux"');
+  expect(source).toContain('"libc.so.6"');
+  expect(source).toContain('"__error"');
+  expect(source).toContain('"__errno_location"');
+  if (process.platform === "darwin") {
+    const root = await temporaryDirectory();
+    try {
+      const store = new LocalArtifactStore(join(root, "actual-darwin"));
+      await store.close();
+    } finally {
+      await cleanup(root);
+    }
+  }
+});
+
 
 test("local artifact store stays pinned when its configured root is renamed and replaced", async () => {
   const root = await temporaryDirectory();
@@ -303,7 +350,7 @@ test("local artifact store stays pinned when its configured root is renamed and 
     await store.storeArtifact({ type: "result", digest: newDigest, bytes: newBytes } as never, request);
     expect(await store.readArtifact(newDigest)).toEqual(newBytes);
     expect(await readdir(artifactRoot)).toEqual([]);
-    expect(await readdir(preservedRoot)).toContain(".traceknot.sqlite");
+    expect(await readdir(preservedRoot)).toEqual(expect.arrayContaining([".objects", ".artifact.lock"]));
 
     await rm(artifactRoot, { recursive: true, force: true });
     await symlink(outside, artifactRoot, "dir");
