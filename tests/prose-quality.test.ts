@@ -192,6 +192,13 @@ describe("language-specific prose rules", () => {
     expect(report.status).toBe("FAIL");
   });
 
+  test("does not apply zh-Hans rules to inferred Korean and English mixed prose", () => {
+    const source = "한국어 설명을 충분히 작성하고 문맥도 자연스럽게 이어갑니다. English context is also deliberately substantial here. 第一，记录事实。第二，评估证据。第三，给出判定。";
+    const report = analyzeProse(source, ["ko", "en", "zh-Hans"]);
+    expect(report.locale).toBe("mixed");
+    expect(report.findings.some((finding) => finding.ruleId.startsWith("ZH-"))).toBe(false);
+  });
+
   test("routes README.zh.md through its configured zh-Hans path override", () => {
     const root = mkdtempSync(join(tmpdir(), "traceknot-prose-zh-hans-"));
     writeFileSync(join(root, "README.zh.md"), "此外，系统稳定。\n此外，证据完整。\n此外，判定明确。");
@@ -289,6 +296,16 @@ describe("rewrite preservation gate", () => {
   test("preserves Simplified Chinese normative terms", () => {
     const report = verifyPreservation("发布前必须验证，且不得跳过审计。", "发布前可以验证，也可以跳过审计。");
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+  });
+
+  test("binds Simplified Chinese normative terms to their clauses", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const before = `${context}\n管理员必须批准发布，访客可以查看状态。`;
+    const after = `${context}\n访客必须查看状态，管理员可以批准发布。`;
+    const report = verifyPreservation(before, after);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+    expect(report.status).toBe("FAIL");
   });
 
   test("warns at the review threshold and rejects at the hard threshold", () => {

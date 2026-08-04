@@ -402,7 +402,9 @@ function firstMatchLine(text: string, rule: ProseRule): number {
 export function analyzeProse(markdown: string, allowedLocales: ReadonlyArray<ProseLocale> = ["ko", "en", "zh-Hans"], localeOverride?: ProseLocale): Omit<FileReport, "path"> {
   const prose = extractProse(markdown);
   const locale = localeOverride ?? detectLocale(prose);
-  const applicableLocales = locale === "mixed" ? allowedLocales : locale === "unknown" ? [] : allowedLocales.filter((entry) => entry === locale);
+  const applicableLocales = locale === "mixed"
+    ? allowedLocales.filter((entry) => entry !== "zh-Hans")
+    : locale === "unknown" ? [] : allowedLocales.filter((entry) => entry === locale);
   const findings = RULES.filter((rule) => applicableLocales.includes(rule.locale)).flatMap((rule) => {
     const matches = [...prose.matchAll(clonePattern(rule.pattern))];
     if (matches.length < rule.threshold) return [];
@@ -670,11 +672,14 @@ function standaloneUrls(text: string): string[] {
 
 function normativeClauses(text: string): string[] {
   const clauses: string[] = [];
-  const pattern = /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|\b(?:is|are|was|were)(?:\s+not)?\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|\b(?:will(?:\s+not)?\s+be|has(?:\s+not)?\s+been|have(?:\s+not)?\s+been|had(?:\s+not)?\s+been)\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|(?:(?:(?:해서는|하여서는|하면|한다면)\s+안\s+(?:된다|됩니다))|(?:해야|하여야)\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))/gi;
+  const pattern = /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|\b(?:is|are|was|were)(?:\s+not)?\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|\b(?:will(?:\s+not)?\s+be|has(?:\s+not)?\s+been|have(?:\s+not)?\s+been|had(?:\s+not)?\s+been)\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|(?:(?:(?:해서는|하여서는|하면|한다면)\s+안\s+(?:된다|됩니다))|(?:해야|하여야)\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))|(?:必须|不得|禁止|应当|不应|可以|可选)/gi;
   for (const match of text.matchAll(pattern)) {
-    const left = Math.max(text.lastIndexOf(".", match.index), text.lastIndexOf(";", match.index), text.lastIndexOf(",", match.index)) + 1;
-    const candidates = [text.indexOf(".", match.index), text.indexOf(";", match.index), text.indexOf(",", match.index)].filter((index) => index >= 0);
-    const right = candidates.length > 0 ? Math.min(...candidates) : text.length;
+    const leftText = text.slice(0, match.index);
+    const leftBoundary = [...leftText.matchAll(/[.,;。；，！？\n]/g)].at(-1)?.index ?? -1;
+    const rightText = text.slice(match.index + match[0].length);
+    const rightBoundary = rightText.match(/[.,;。；，！？\n]/)?.index;
+    const left = leftBoundary + 1;
+    const right = rightBoundary === undefined ? text.length : match.index + match[0].length + rightBoundary;
     const clause = text.slice(left, right).trim().replace(/\s+/g, " ");
     if (!/^(?:(?:and|or)\s+)?(?:at\s+(?:least|most)|minimum|maximum|before|after)\b/i.test(clause)) clauses.push(clause);
   }
