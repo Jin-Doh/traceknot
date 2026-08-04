@@ -1,0 +1,9 @@
+#!/usr/bin/env bun
+import { main } from "../system/cli/verify.ts";
+
+const command = process.argv[2];
+if (command !== "verify") {
+  process.stderr.write("Usage: traceknot verify [options]\n");
+  process.exit(64);
+}
+process.exit(await main(process.argv.slice(3)));
