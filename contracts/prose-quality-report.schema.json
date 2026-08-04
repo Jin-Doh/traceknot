@@ -17,7 +17,7 @@
         "required": ["path", "locale", "proseCharacters", "findings", "status"],
         "properties": {
           "path": { "type": "string", "minLength": 1 },
-          "locale": { "enum": ["ko", "en", "mixed", "unknown"] },
+          "locale": { "enum": ["ko", "en", "zh-Hans", "mixed", "unknown"] },
           "proseCharacters": { "type": "integer", "minimum": 0 },
           "status": { "enum": ["PASS", "WARN", "FAIL", "BLOCKED"] },
           "findings": {

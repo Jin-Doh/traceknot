@@ -103,7 +103,7 @@ Before execution confirm the target snapshot, environment, dependencies, test da
 - Feature or API: execute tests covering the observable contract; add a test only for a new contract not already covered.
 - Persistence or concurrency: test transaction boundaries, rollback, recovery, races, and stale operations as applicable.
 - Release or infrastructure: run the repository's canonical release or deployment gate.
-- Published Korean or English prose: apply the configured language-specific audit, and if remediation occurred, independently verify protected content and change boundaries. See `references/prose-quality.md`.
+- Published Korean, English, or explicitly mapped Simplified Chinese prose: apply the configured language-specific audit, and if remediation occurred, independently verify protected content and change boundaries. See `references/prose-quality.md`.
 
 Start with the direct changed path, then broaden to package or repository gates when shared contracts, public APIs, persistence, concurrency, security, build, or release behavior changed.
 

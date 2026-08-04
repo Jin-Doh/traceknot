@@ -48,7 +48,9 @@ The canonical CI gate runs the same contract check.
 
 ## Language-specific quality
 
-The repository's deterministic prose scanner supports Korean and English. It does not apply either rule set to Simplified Chinese. Chinese prose requires semantic review plus the shared command, link, and boundary checks above until a dedicated Chinese rule set exists.
+The repository's deterministic prose scanner supports Korean, English, and explicitly mapped Simplified Chinese. `README.zh.md` is mapped to `zh-Hans`; the scanner does not infer a Chinese locale from Han characters and does not define a Traditional Chinese publication target.
+
+The `zh-Hans` rules check repeated formulaic structures, inflated stock phrases, repetitive paragraph transitions, and repeated ASCII punctuation between Chinese characters. They are readability heuristics, not authorship evidence. Semantic review remains necessary for translation accuracy, while the shared command, link, and boundary checks preserve technical facts.
 
 The common Hero artwork contains no language. Translate its alternative text and surrounding caption in Markdown instead of creating language-specific image variants.
 

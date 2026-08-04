@@ -60,6 +60,7 @@ describe("published prose extraction and locale selection", () => {
     expect(detectLocale("1234 -- []")).toBe("unknown");
     expect(detectLocale("简体中文必须通过显式路径映射选择规则。")).toBe("unknown");
     expect(detectLocale("这是以简体中文撰写的主要内容，其中包含 API、CLI、PASS 和 BLOCKED 等技术标识符，但不应被识别为英文文档。")).toBe("unknown");
+    expect(detectLocale("简体中文必须通过显式路径映射选择规则。")).toBe("unknown");
   });
 
   test("rejects incomplete standalone configuration instead of returning PASS", () => {
@@ -182,6 +183,69 @@ describe("language-specific prose rules", () => {
     expect(report.status).toBe("FAIL");
   });
 
+  test("applies Simplified Chinese rules only through an explicit zh-Hans override", () => {
+    const source = "在当今快速发展的技术环境中，工具不断变化。这充分体现了流程的价值。第一，记录事实。第二，评估证据。第三，给出判定。";
+    const report = analyzeProse(source, ["ko", "en", "zh-Hans"], "zh-Hans");
+    expect(report.locale).toBe("zh-Hans");
+    expect(report.findings.map((finding) => finding.ruleId)).toEqual(expect.arrayContaining(["ZH-C-001", "ZH-D-001"]));
+    expect(report.findings.some((finding) => finding.ruleId.startsWith("KO-") || finding.ruleId.startsWith("EN-"))).toBe(false);
+    expect(report.status).toBe("FAIL");
+  });
+
+  test("routes README.zh.md through its configured zh-Hans path override", () => {
+    const root = mkdtempSync(join(tmpdir(), "traceknot-prose-zh-hans-"));
+    writeFileSync(join(root, "README.zh.md"), "此外，系统稳定。\n此外，证据完整。\n此外，判定明确。");
+    const config: Config = {
+      schemaVersion: "prose-quality-config/v1",
+      enabled: true,
+      mode: "blocking",
+      locales: ["zh-Hans"],
+      localeOverrides: { "README.zh.md": "zh-Hans" },
+      include: ["README.zh.md"],
+      exclude: [],
+      minimumProseCharacters: 1,
+      maxChangeRate: 0.3,
+      rejectChangeRate: 0.5,
+    };
+    const report = scanRepository(root, config);
+    expect(report.summary.checked).toBe(1);
+    expect(report.files[0]).toEqual(expect.objectContaining({ path: "README.zh.md", locale: "zh-Hans", status: "WARN" }));
+    expect(report.files[0]?.findings).toContainEqual(expect.objectContaining({ ruleId: "ZH-H-001", count: 3 }));
+  });
+
+  test("does not infer zh-Hans rules from Chinese script without an override", () => {
+    const report = analyzeProse("此外，系统稳定。\n此外，证据完整。\n此外，判定明确。", ["zh-Hans"]);
+    expect(report.locale).toBe("unknown");
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe("PASS");
+  });
+
+  test("skips an explicitly mapped zh-Hans file when that locale is disabled", () => {
+    const root = mkdtempSync(join(tmpdir(), "traceknot-prose-zh-hans-disabled-"));
+    writeFileSync(join(root, "README.zh.md"), "此外，系统稳定。\n此外，证据完整。\n此外，判定明确。");
+    const report = scanRepository(root, {
+      schemaVersion: "prose-quality-config/v1",
+      enabled: true,
+      mode: "blocking",
+      locales: ["en"],
+      localeOverrides: { "README.zh.md": "zh-Hans" },
+      include: ["README.zh.md"],
+      exclude: [],
+      minimumProseCharacters: 1,
+      maxChangeRate: 0.3,
+      rejectChangeRate: 0.5,
+    });
+    expect(report.summary).toEqual(expect.objectContaining({ checked: 0, skipped: 1 }));
+    expect(report.files).toEqual([]);
+  });
+
+  test("does not flag ordinary Simplified Chinese technical prose", () => {
+    const report = analyzeProse("验证器会把每项结果绑定到目标快照。强制义务未满足时，最终判定为失败。审阅者可以检查记录的证据。", ["zh-Hans"], "zh-Hans");
+    expect(report.locale).toBe("zh-Hans");
+    expect(report.findings).toEqual([]);
+    expect(report.status).toBe("PASS");
+  });
+
   test("does not flag ordinary technical prose", () => {
     const report = analyzeProse("The verifier binds each result to a snapshot. A failed mandatory obligation produces a failed verdict. Reviewers can inspect the recorded evidence.");
     expect(report.status).toBe("PASS");
@@ -212,6 +276,11 @@ describe("rewrite preservation gate", () => {
     const report = verifyPreservation(original, rewritten);
     expect(report.status).toBe("FAIL");
     expect(new Set(report.failures.map((failure) => failure.category))).toEqual(new Set(["code-block", "inline-code", "link-destination", "url", "number", "normative"]));
+  });
+
+  test("preserves Simplified Chinese normative terms", () => {
+    const report = verifyPreservation("发布前必须验证，且不得跳过审计。", "发布前可以验证，也可以跳过审计。");
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
   });
 
   test("warns at the review threshold and rejects at the hard threshold", () => {

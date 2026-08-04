@@ -235,7 +235,7 @@ bun install --frozen-lockfile --ignore-scripts
 bun run ci
 ```
 
-이 gate는 installer lifecycle, schema, capability record, prompt-injection 위험, 게시 산문, 테스트, strict TypeScript, whitespace를 검증합니다. 한국어와 영어 게시 산문의 advisory report는 `bun run prose-quality`로 확인할 수 있습니다.
+이 gate는 installer lifecycle, schema, capability record, prompt-injection 위험, 게시 산문, 테스트, strict TypeScript, whitespace를 검증합니다. 한국어, 영어, 명시적으로 매핑한 간체 중국어 게시 산문의 advisory report는 `bun run prose-quality`로 확인할 수 있습니다.
 
 보안 관련 finding에는 구체적인 예상 결과와 관찰 결과, 재현 방법, 대상 snapshot, 잔여 위험을 포함해야 합니다. 에이전트가 스스로 완료했다고 보고한 내용은 검증 증거로 취급하지 않습니다.
 

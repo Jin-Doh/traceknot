@@ -2,7 +2,10 @@
   "schemaVersion": "prose-quality-config/v1",
   "enabled": true,
   "mode": "advisory",
-  "locales": ["ko", "en"],
+  "locales": ["ko", "en", "zh-Hans"],
+  "localeOverrides": {
+    "README.zh.md": "zh-Hans"
+  },
   "include": ["**/*.md"],
   "exclude": [],
   "minimumProseCharacters": 200,

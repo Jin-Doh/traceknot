@@ -3,13 +3,14 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
 
-export type Locale = "ko" | "en" | "mixed" | "unknown";
+export type ProseLocale = "ko" | "en" | "zh-Hans";
+export type Locale = ProseLocale | "mixed" | "unknown";
 export type Severity = "S1" | "S2" | "S3";
 export type GateStatus = "PASS" | "WARN" | "FAIL" | "BLOCKED";
 
 export interface ProseRule {
   id: string;
-  locale: "ko" | "en";
+  locale: ProseLocale;
   severity: Severity;
   description: string;
   pattern: RegExp;
@@ -61,7 +62,8 @@ export interface Config {
   schemaVersion: "prose-quality-config/v1";
   enabled: boolean;
   mode: "advisory" | "blocking";
-  locales: Array<"ko" | "en">;
+  locales: ProseLocale[];
+  localeOverrides?: Record<string, ProseLocale>;
   include: string[];
   exclude: string[];
   minimumProseCharacters: number;
@@ -79,6 +81,11 @@ export const RULES: readonly ProseRule[] = [
   { id: "EN-D-001", locale: "en", severity: "S1", description: "formulaic or inflated prose", pattern: /\b(?:in today's rapidly evolving landscape|this underscores the importance of|transformative potential)\b/gi, threshold: 2 },
   { id: "EN-G-001", locale: "en", severity: "S2", description: "generic meta-claim", pattern: /\b(?:it is important to note that|it is worth noting that)\b/gi, threshold: 2 },
   { id: "EN-H-001", locale: "en", severity: "S2", description: "repetitive paragraph transition", pattern: /^(?:Furthermore|Moreover|Additionally)[,\s]/gim, threshold: 3 },
+  { id: "ZH-C-001", locale: "zh-Hans", severity: "S1", description: "机械式三段并列结构", pattern: /第一(?:，|,)[\s\S]{0,800}第二(?:，|,)[\s\S]{0,800}第三(?:，|,)/g, threshold: 1 },
+  { id: "ZH-D-001", locale: "zh-Hans", severity: "S1", description: "套话或夸张表达重复", pattern: /在当今(?:快速|迅速)发展的[^。！？\n]{0,80}|这充分体现了|具有划时代意义|不容忽视/g, threshold: 2 },
+  { id: "ZH-G-001", locale: "zh-Hans", severity: "S2", description: "空泛提示语重复", pattern: /值得注意的是|需要指出的是|毋庸置疑/g, threshold: 2 },
+  { id: "ZH-H-001", locale: "zh-Hans", severity: "S2", description: "段首连接词重复", pattern: /^(?:此外|同时|因此|总而言之)[，,\s]/gm, threshold: 3 },
+  { id: "ZH-P-001", locale: "zh-Hans", severity: "S2", description: "中文之间重复使用 ASCII 标点", pattern: /[\p{Script=Han}][,;:][\p{Script=Han}]/gu, threshold: 3 },
 ];
 
 // `prose-quality.config.json` is the single publication-surface inventory.
@@ -392,9 +399,9 @@ function firstMatchLine(text: string, rule: ProseRule): number {
   return match ? text.slice(0, match.index).split("\n").length : 1;
 }
 
-export function analyzeProse(markdown: string, allowedLocales: ReadonlyArray<"ko" | "en"> = ["ko", "en"]): Omit<FileReport, "path"> {
+export function analyzeProse(markdown: string, allowedLocales: ReadonlyArray<ProseLocale> = ["ko", "en", "zh-Hans"], localeOverride?: ProseLocale): Omit<FileReport, "path"> {
   const prose = extractProse(markdown);
-  const locale = detectLocale(prose);
+  const locale = localeOverride ?? detectLocale(prose);
   const applicableLocales = locale === "mixed" ? allowedLocales : locale === "unknown" ? [] : allowedLocales.filter((entry) => entry === locale);
   const findings = RULES.filter((rule) => applicableLocales.includes(rule.locale)).flatMap((rule) => {
     const matches = [...prose.matchAll(clonePattern(rule.pattern))];
@@ -465,7 +472,7 @@ export function scanRepository(root: string, config: Config = DEFAULT_CONFIG): P
   let skipped = 0;
   const files = candidates.flatMap((file): FileReport[] => {
     const path = relative(root, file).replaceAll("\\", "/");
-    const analysis = analyzeProse(readFileSync(file, "utf8"), config.locales);
+    const analysis = analyzeProse(readFileSync(file, "utf8"), config.locales, config.localeOverrides?.[path]);
     const localeDisabled = analysis.locale !== "mixed" && analysis.locale !== "unknown" && !config.locales.includes(analysis.locale);
     if (analysis.proseCharacters < config.minimumProseCharacters || analysis.locale === "unknown" || localeDisabled) {
       skipped += 1;
@@ -703,7 +710,7 @@ function protectedValues(text: string): Map<string, { category: string; count: n
     ["number", /(?:영|공|일|이|삼|사|오|육|칠|팔|구|십|백|천|만)(?:\s*(?:영|공|일|이|삼|사|오|육|칠|팔|구|십|백|천|만))*(?=\s*(?:개|명|건|회|번|원|년|월|일|시간|분|초|대|권|장|마리|곳|배))/g],
     ["number", /(?<![\w.])(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s*(?:%|°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|[KMGTPE]i?B|[KMGTPE]?bps|bytes?|bits?|thousand|million|billion|trillion|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))?\s*[-–—/:]\s*(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s*(?:%|°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|[KMGTPE]i?B|[KMGTPE]?bps|bytes?|bits?|thousand|million|billion|trillion|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))?(?!\w|\.\d)/gi],
     ["number", /\b\d{4}-\d{2}-\d{2}\b|(?<![\w.])(?:(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?\s*[-–—/:]\s*(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?)\b|\bv?\d+(?:\.\d+)+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?\b|(?<![\w.])(?:(?:[<>]=?|[≤≥=≠])\s*)?(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|thousand|million|billion|trillion)\b|(?:%|°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
-    ["normative", /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|\b(?:is|are|was|were)(?:\s+not)?\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|\b(?:will(?:\s+not)?\s+be|has(?:\s+not)?\s+been|have(?:\s+not)?\s+been|had(?:\s+not)?\s+been)\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|(?:(?:(?:해서는|하여서는|하면|한다면)\s+안\s+(?:된다|됩니다))|(?:해야|하여야)\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))/gi],
+    ["normative", /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|\b(?:is|are|was|were)(?:\s+not)?\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|\b(?:will(?:\s+not)?\s+be|has(?:\s+not)?\s+been|have(?:\s+not)?\s+been|had(?:\s+not)?\s+been)\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|(?:(?:(?:해서는|하여서는|하면|한다면)\s+안\s+(?:된다|됩니다))|(?:해야|하여야)\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))|(?:必须|不得|禁止|应当|不应|可以|可选)/gi],
   ];
   const values = new Map<string, { category: string; count: number }>();
   for (const [category, pattern] of categories) {
