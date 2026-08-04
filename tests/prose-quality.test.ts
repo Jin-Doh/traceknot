@@ -487,6 +487,16 @@ describe("rewrite preservation gate", () => {
     }));
   });
 
+  test("masks reference identifiers while keeping rendered labels lintable", () => {
+    for (const reference of ['[证据]["ref]', '![替代文本]["ref]']) {
+      const report = analyzeProse(`${reference}中文English"\n\n["ref]: /dest`, ["zh-Hans"], "zh-Hans");
+      expect(report.findings).toContainEqual(expect.objectContaining({
+        description: "zhlint: 此处中英文内容之间需要一个空格",
+        count: 1,
+      }));
+    }
+  });
+
   test("masks repeated Markdown blockquotes by source range", () => {
     const source = "资料原文是“> 中文English\\n结束”。\n\n> 中文English\n";
     expect(analyzeProse(source, ["zh-Hans"], "zh-Hans").findings).toEqual([]);

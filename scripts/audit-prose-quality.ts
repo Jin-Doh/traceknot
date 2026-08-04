@@ -464,10 +464,6 @@ function htmlCodeSpans(text: string): Array<{ category: "code-block" | "inline-c
   return spans;
 }
 
-function isSyntheticDestination(value: string): boolean {
-  return /^(?:inline|html|attr|ref):/u.test(value);
-}
-
 function inlineDestinationBoundary(source: string): number {
   for (let boundary = source.indexOf("]("); boundary >= 0; boundary = source.indexOf("](", boundary + 2)) {
     if (isEscaped(source, boundary)) continue;
@@ -497,6 +493,18 @@ function htmlDestinationAttributeRanges(source: string, sourceOffset: number): T
   return ranges;
 }
 
+function visibleReferenceLabelRange(source: string): TextRange | null {
+  const opening = source.startsWith("![") ? 1 : source.startsWith("[") ? 0 : -1;
+  if (opening < 0) return null;
+  let depth = 1;
+  for (let index = opening + 1; index < source.length; index += 1) {
+    if (isEscaped(source, index)) continue;
+    if (source[index] === "[") depth += 1;
+    else if (source[index] === "]" && --depth === 0) return { start: opening + 1, end: index };
+  }
+  return null;
+}
+
 function markdownQuotationSyntaxRanges(text: string): TextRange[] {
   const ranges: TextRange[] = [];
   const tree = MARKDOWN_PROCESSOR.parse(text);
@@ -522,6 +530,15 @@ function markdownQuotationSyntaxRanges(text: string): TextRange[] {
       ranges.push({ start, end });
       return;
     }
+    if (node.type === "linkReference" || node.type === "imageReference") {
+      const label = visibleReferenceLabelRange(text.slice(start, end));
+      if (!label) {
+        ranges.push({ start, end });
+      } else {
+        ranges.push({ start, end: start + label.start }, { start: start + label.end, end });
+      }
+      return;
+    }
     if (node.type === "html") {
       ranges.push(...htmlDestinationAttributeRanges(text.slice(start, end), start));
     }
@@ -534,9 +551,6 @@ function maskQuotationSyntax(text: string, maskedCharacter = " "): string {
   let masked = maskRangesPreservingLines(text, markdownQuotationSyntaxRanges(text), maskedCharacter);
   for (const block of markdownIndentedCodeBlocks(masked)) masked = masked.replace(block, mask);
   for (const span of htmlCodeSpans(masked)) masked = masked.replace(span.value, mask);
-  for (const destination of markdownLinkDestinations(masked)) {
-    if (destination && !isSyntheticDestination(destination)) masked = masked.replace(destination, mask);
-  }
   return masked;
 }
 
