@@ -537,6 +537,11 @@ describe("rewrite preservation gate", () => {
     expect(analyzeProse(source, ["zh-Hans"], "zh-Hans").findings).toEqual([]);
   });
 
+  test("derives lazy blockquote ranges before masking syntax-only lines", () => {
+    const source = "> Quoted intro.\n> `code`\nFirstly ..., secondly ..., thirdly ...";
+    expect(analyzeProse(source, ["en"], "en").findings).toEqual([]);
+  });
+
   test("protects four-space-indented Markdown code", () => {
     const before = "Run this command:\n\n    traceknot verify\n\nDone.";
     const after = "Run this command:\n\n    traceknot delete\n\nDone.";

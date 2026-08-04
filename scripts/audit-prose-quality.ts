@@ -556,11 +556,12 @@ function maskProtectedProse(markdown: string, maskedCharacter = " "): string {
   const mask = (value: string): string => maskValuePreservingLines(value, maskedCharacter);
   let prose = markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, mask);
   prose = prose.replace(/<!--[\s\S]*?(?:-->|$)/g, mask);
-  prose = maskQuotationSyntax(prose, maskedCharacter);
-  prose = maskRangesPreservingLines(prose, [
+  const blockquoteRanges = [
     ...markdownBlockquoteRanges(prose),
     ...htmlBlockquoteRanges(prose),
-  ], maskedCharacter);
+  ];
+  prose = maskQuotationSyntax(prose, maskedCharacter);
+  prose = maskRangesPreservingLines(prose, blockquoteRanges, maskedCharacter);
   prose = maskRangesPreservingLines(prose, directQuotationRanges(prose), maskedCharacter);
   return prose;
 }
