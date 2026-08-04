@@ -816,9 +816,13 @@ async function evaluateEvidence(input: EvaluateEvidenceInput): Promise<EvidenceD
   const coveredConditions = [...accepted].flatMap(obligationId => input.plan.obligations.find(item=>item.id===obligationId)?.conditionIds ?? []);
   const coverage = { basisIds: uniq(input.plan.conditions.flatMap(item=>item.basisIds)), coveredBasisIds: uniq(coveredConditions.flatMap(id=>conditionById.get(id)?.basisIds ?? [])), riskIds: uniq(input.plan.risks.map(item=>item.id)), coveredRiskIds: uniq(coveredConditions.flatMap(id=>conditionById.get(id)?.riskIds ?? [])), conditionIds: uniq(input.plan.conditions.map(item=>item.id)), coveredConditionIds: coveredConditions.sort() };
   const binding = freshnessBindingFor(input.request, input.plan, input.execution, freshnessEvaluatedAt, evaluations, acceptedClaimIds, coverage);
-  const freshnessAuthority = input.freshnessAuthority && validFreshnessAuthority(input.freshnessAuthority) && structurallyEqual(input.freshnessAuthority.binding, binding) && await verifyFreshnessAuthority(input.dependencies.freshnessAuthority, input.freshnessAuthority, binding)
-    ? input.freshnessAuthority
-    : await issueFreshnessAuthority(input.dependencies.freshnessAuthority, binding);
+  let freshnessAuthority: FreshnessAuthority | undefined;
+  if (input.freshnessAuthority !== undefined) {
+    if (!validFreshnessAuthority(input.freshnessAuthority) || !structurallyEqual(input.freshnessAuthority.binding, binding) || !await verifyFreshnessAuthority(input.dependencies.freshnessAuthority, input.freshnessAuthority, binding)) throw Error("freshness authority verification failed");
+    freshnessAuthority = input.freshnessAuthority;
+  } else {
+    freshnessAuthority = await issueFreshnessAuthority(input.dependencies.freshnessAuthority, binding);
+  }
   if (!freshnessAuthority || !validFreshnessAuthority(freshnessAuthority) || !structurallyEqual(freshnessAuthority.binding, binding) || !await verifyFreshnessAuthority(input.dependencies.freshnessAuthority, freshnessAuthority, binding)) throw Error("freshness authority verification failed");
   return freeze({ schemaVersion:"verification-evidence-evaluation/v1", requestId:input.request.requestId, snapshotId:input.request.project.snapshotId, freshnessEvaluatedAt, freshnessAuthority, evaluations, acceptedClaimIds, coverage });
 }

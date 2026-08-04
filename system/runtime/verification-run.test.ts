@@ -2426,19 +2426,22 @@ describe("verification run orchestration", () => {
     const fakes = makeDependencies();
     const runId = "freshness-policy-revoked";
     const request = { ...makeRequest("freshness-policy-revoked-request"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
-    let evaluations = 0;
+    let now = FIXED_NOW;
+    let revoked = false;
     const dependencies = {
       ...fakes.dependencies,
+      now: () => now,
       freshnessPolicy: {
-        evaluateFreshness: async () => evaluations++ === 0 ? "fresh" as const : "stale" as const,
+        evaluateFreshness: async () => revoked ? "stale" as const : "fresh" as const,
       },
     } as unknown as VerificationRunDependencies;
     fakes.repository.failNextStage = "residual-risk";
     await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("simulated saveStage crash");
-    const resumed = await runVerification({ runId, dependencies });
+    revoked = true;
+    now = "2026-08-03T00:01:00.000Z";
+    const resumed = await runVerification({ runId, request, dependencies });
     expect(resumed.run.state).toBe("TERMINAL");
     expect(resumed.verdict.qaVerdict).not.toBe("PASS");
-    expect(evaluations).toBeGreaterThan(1);
   });
   test("repairs a stale terminal verdict when atomic evidence/verdict persistence crashes and retry replays the same clock", async () => {
     const fakes = makeDependencies();
@@ -2565,6 +2568,32 @@ describe("verification run orchestration", () => {
     const executorCalls = fakes.executorCalls;
     await expect(runOnce(fakes.dependencies, runId)).rejects.toThrow();
     expect(fakes.executorCalls).toBe(executorCalls);
+  });
+  test("rejects a mutated persisted freshness authority without issuing a replacement", async () => {
+    const fakes = makeDependencies();
+    const runId = "freshness-authority-tamper";
+    let issueCalls = 0;
+    const issueFreshnessAuthority = fakes.dependencies.freshnessAuthority.issueFreshnessAuthority!;
+    const dependencies = {
+      ...fakes.dependencies,
+      freshnessAuthority: {
+        ...fakes.dependencies.freshnessAuthority,
+        issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
+          issueCalls++;
+          return issueFreshnessAuthority(binding);
+        },
+      },
+    } as unknown as VerificationRunDependencies;
+    await runOnce(dependencies, runId);
+    expect(issueCalls).toBe(1);
+    const saved = fakes.repository.stageDocuments.get(`${runId}:evidence`) as { freshnessAuthority: FreshnessAuthority };
+    if (!saved) throw new Error("missing persisted freshness evidence");
+    fakes.repository.stageDocuments.set(`${runId}:evidence`, {
+      ...saved,
+      freshnessAuthority: { ...saved.freshnessAuthority, authorityId: `${saved.freshnessAuthority.authorityId}:mutated` },
+    });
+    await expect(runOnce(dependencies, runId)).rejects.toThrow("freshness authority verification failed");
+    expect(issueCalls).toBe(1);
   });
 
   test("rejects a stale repository writer without overwriting the terminal pair", async () => {
