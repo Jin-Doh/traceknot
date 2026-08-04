@@ -423,6 +423,16 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("FAIL");
   });
 
+  test("binds Simplified Chinese quantity subjects inside task-list containers", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const before = `${context}\n- [ ] 甲组有三项检查。\n- [x] 乙组有四项检查。`;
+    const after = `${context}\n- [ ] 乙组有三项检查。\n- [x] 甲组有四项检查。`;
+    const report = verifyPreservation(before, after);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+    expect(report.status).toBe("FAIL");
+  });
+
   test("derives Simplified Chinese quantity subjects without a predicate allowlist", () => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const before = `${context}\n甲组有三项检查，乙组有四项检查。`;
@@ -458,6 +468,14 @@ describe("rewrite preservation gate", () => {
   test("preserves complete multi-character Simplified Chinese units", () => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n路线长度为三公里。`, `${context}\n路线长度为三公斤。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(report.status).toBe("FAIL");
+  });
+
+  test("assembles written Chinese numerals split across word segments", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n路线长度为二十三公里。`, `${context}\n路线长度为二十三公斤。`);
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
     expect(report.status).toBe("FAIL");

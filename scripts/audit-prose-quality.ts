@@ -138,15 +138,24 @@ function chineseNumberSegment(
   const word = segments[index];
   if (!word) return undefined;
   const exactNumber = new RegExp(`^(?:${ZH_SIGNED_NUMBER}|${ZH_ARABIC_NUMBER})$`, "u");
+  const exactChineseNumber = new RegExp(`^${ZH_NUMBER_CORE}$`, "u");
   let numericIndex = index;
   let numericWord = word;
   if (/^(?:正|负)$/u.test(word.segment)) {
     numericIndex += 1;
     numericWord = segments[numericIndex];
-    if (!numericWord || !new RegExp(`^${ZH_NUMBER_CORE}$`, "u").test(numericWord.segment)) return undefined;
+    if (!numericWord || !exactChineseNumber.test(numericWord.segment)) return undefined;
     if (!/^\s*$/u.test(text.slice(word.end, numericWord.index))) return undefined;
   } else if (!exactNumber.test(word.segment)) return undefined;
   if (segments[numericIndex - 1]?.segment === "之" && segments[numericIndex - 2]?.segment === "百分") return undefined;
+  if (exactChineseNumber.test(numericWord.segment)) {
+    while (numericIndex + 1 < segments.length) {
+      const nextWord = segments[numericIndex + 1];
+      if (!exactChineseNumber.test(nextWord.segment) || !/^\s*$/u.test(text.slice(numericWord.end, nextWord.index))) break;
+      numericIndex += 1;
+      numericWord = nextWord;
+    }
+  }
   const asciiSignIndex = word.index - 1;
   const start = asciiSignIndex >= 0 && /[+−±-]/u.test(text[asciiSignIndex]) ? asciiSignIndex : word.index;
   return { start, end: numericWord.end, next: numericIndex + 1 };
@@ -976,6 +985,13 @@ function lastClaimBoundary(text: string): number {
   return boundary;
 }
 
+function stripMarkdownContainerPrefix(value: string): string {
+  return value.replace(
+    /^[\t ]{0,3}(?:(?:(?:[-+*]|\d+[.)])\s+(?:\[[ xX]\]\s+)?|>\s*))+/u,
+    "",
+  );
+}
+
 function claimLabel(text: string, index: number, valueLength: number, bindSubject = false): string {
   const leftText = text.slice(0, index);
   const leftBoundary = lastClaimBoundary(leftText);
@@ -988,8 +1004,9 @@ function claimLabel(text: string, index: number, valueLength: number, bindSubjec
   const left = leftLabels.at(-1);
   const right = rightLabels[0];
   if (!left && !right && bindSubject) {
-    const localClause = (leftClause.split(/\b(?:while|whereas|and|but)\b/i).at(-1) ?? leftClause)
-      .replace(/^[\t ]{0,3}(?:(?:[-+*]|\d+[.)])\s+|>\s*)+/, "");
+    const localClause = stripMarkdownContainerPrefix(
+      leftClause.split(/\b(?:while|whereas|and|but)\b/i).at(-1) ?? leftClause,
+    );
     const chineseClause = localClause.trim();
     if (/^[\p{Script=Han}\s]{1,48}$/u.test(chineseClause)) {
       const segments = chineseWordSegments(chineseClause);
