@@ -429,21 +429,16 @@ function markdownBlockquotes(text: string): string[] {
 
 function htmlBlockquoteRanges(text: string): TextRange[] {
   const ranges: TextRange[] = [];
-  let depth = 0;
-  let start = -1;
-  for (const match of text.matchAll(/<\/?(?:blockquote|q)\b[^>]*>/gi)) {
-    if (!match[0].startsWith("</")) {
-      if (depth === 0) start = match.index;
-      depth += 1;
-    } else if (depth > 0) {
-      depth -= 1;
-      if (depth === 0) {
-        ranges.push({ start, end: match.index + match[0].length });
-        start = -1;
-      }
+  const fragment = parseFragment(text, { sourceCodeLocationInfo: true });
+  const collect = (node: DefaultTreeAdapterMap["node"]): void => {
+    if ("tagName" in node && (node.tagName === "blockquote" || node.tagName === "q")) {
+      const location = node.sourceCodeLocation;
+      if (location) ranges.push({ start: location.startOffset, end: location.endOffset });
     }
-  }
-  if (depth > 0 && start >= 0) ranges.push({ start, end: text.length });
+    if ("childNodes" in node) for (const child of node.childNodes) collect(child);
+    if ("content" in node) collect(node.content);
+  };
+  collect(fragment);
   return ranges;
 }
 
@@ -473,7 +468,9 @@ function inlineDestinationBoundary(source: string): number {
   return -1;
 }
 
-const URL_HTML_ATTRIBUTES = new Set(["href", "src", "srcset", "action", "formaction", "poster", "data"]);
+const URL_HTML_ATTRIBUTES = new Set([
+  "action", "background", "cite", "data", "formaction", "href", "itemid", "longdesc", "manifest", "ping", "poster", "profile", "src", "srcset", "usemap",
+]);
 
 function htmlDestinationAttributeRanges(source: string, sourceOffset: number): TextRange[] {
   const ranges: TextRange[] = [];

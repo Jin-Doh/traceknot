@@ -487,6 +487,19 @@ describe("rewrite preservation gate", () => {
     }));
   });
 
+  test("masks cite destinations before deriving quotation ranges", () => {
+    const report = analyzeProse('<del cite=\'foo:"\'>证据</del>中文English"', ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+  });
+
+  test("parses HTML quotation boundaries independently of attribute text", () => {
+    const source = '<q><span title="</q>">中文English</span></q>';
+    expect(analyzeProse(source, ["zh-Hans"], "zh-Hans").findings).toEqual([]);
+  });
+
   test("masks reference identifiers while keeping rendered labels lintable", () => {
     for (const reference of ['[证据]["ref]', '![替代文本]["ref]']) {
       const report = analyzeProse(`${reference}中文English"\n\n["ref]: /dest`, ["zh-Hans"], "zh-Hans");
