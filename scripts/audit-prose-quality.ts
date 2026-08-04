@@ -1,12 +1,15 @@
 import Ajv2020 from "ajv/dist/2020.js";
+import type { Element } from "hast";
 import type { Nodes } from "mdast";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
 import { parseFragment, type DefaultTreeAdapterMap } from "parse5";
+import rehypeRaw from "rehype-raw";
 import { run as runZhLint } from "zhlint";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
+import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 import { visit } from "unist-util-visit";
 
@@ -91,6 +94,11 @@ export const RULES: readonly ProseRule[] = [
 ];
 
 const MARKDOWN_PROCESSOR = unified().use(remarkParse).use(remarkGfm);
+const RENDERED_HTML_PROCESSOR = unified()
+  .use(remarkParse)
+  .use(remarkGfm)
+  .use(remarkRehype, { allowDangerousHtml: true })
+  .use(rehypeRaw);
 
 // `prose-quality.config.json` is the single publication-surface inventory.
 // The scanner default reads it instead of maintaining a second include list.
@@ -429,16 +437,13 @@ function markdownBlockquotes(text: string): string[] {
 
 function htmlBlockquoteRanges(text: string): TextRange[] {
   const ranges: TextRange[] = [];
-  const fragment = parseFragment(text, { sourceCodeLocationInfo: true });
-  const collect = (node: DefaultTreeAdapterMap["node"]): void => {
-    if ("tagName" in node && (node.tagName === "blockquote" || node.tagName === "q")) {
-      const location = node.sourceCodeLocation;
-      if (location) ranges.push({ start: location.startOffset, end: location.endOffset });
-    }
-    if ("childNodes" in node) for (const child of node.childNodes) collect(child);
-    if ("content" in node) collect(node.content);
-  };
-  collect(fragment);
+  const tree = RENDERED_HTML_PROCESSOR.runSync(RENDERED_HTML_PROCESSOR.parse(text));
+  visit(tree, "element", (node: Element) => {
+    if (node.tagName !== "blockquote" && node.tagName !== "q") return;
+    const start = node.position?.start.offset;
+    const end = node.position?.end.offset;
+    if (start !== undefined && end !== undefined && text[start] === "<") ranges.push({ start, end });
+  });
   return ranges;
 }
 

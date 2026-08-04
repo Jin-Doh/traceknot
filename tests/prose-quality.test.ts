@@ -508,6 +508,14 @@ describe("rewrite preservation gate", () => {
     expect(analyzeProse(source, ["zh-Hans"], "zh-Hans").findings).toEqual([]);
   });
 
+  test("keeps escaped HTML quotation tags in visible prose", () => {
+    const report = analyzeProse("\\<q>中文English</q>", ["zh-Hans"], "zh-Hans");
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      description: "zhlint: 此处中英文内容之间需要一个空格",
+      count: 1,
+    }));
+  });
+
   test("masks reference identifiers while keeping rendered labels lintable", () => {
     for (const reference of ['[证据]["ref]', '![替代文本]["ref]']) {
       const report = analyzeProse(`${reference}中文English"\n\n["ref]: /dest`, ["zh-Hans"], "zh-Hans");
