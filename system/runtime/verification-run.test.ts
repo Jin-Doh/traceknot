@@ -29,6 +29,7 @@ import {
   type VerificationRequest,
   type VerificationRunDependencies,
   type ExecutionDocument,
+  type TerminalEvidenceVerdictTransition,
 } from "./verification-run";
 
 const FIXED_NOW = "2026-08-03T00:00:00.000Z";
@@ -107,6 +108,27 @@ class FakeRepository {
       this.stageWrites.push(transition.stage);
       this.stageDocuments.set(`${transition.runId}:${transition.stage}`, clonedDocument);
     }
+    return true;
+  }
+  async commitEvidenceAndVerdict(transition: TerminalEvidenceVerdictTransition): Promise<boolean> {
+    const current = this.runs.get(transition.runId);
+    if (transition.expectedRevision === undefined
+      ? current !== undefined || transition.run.revision !== 0
+      : (!current || current.revision !== transition.expectedRevision || transition.run.revision !== current.revision + 1)) return false;
+    if (this.failNextState === transition.run.state) {
+      this.failNextState = undefined;
+      throw new Error("simulated saveRun crash");
+    }
+    if (this.failNextStage === "evidence" || this.failNextStage === "verdict") {
+      this.failNextStage = undefined;
+      throw new Error("simulated saveStage crash");
+    }
+    const clonedRun = structuredClone(transition.run);
+    this.runWrites.push(clonedRun);
+    this.runs.set(transition.runId, clonedRun);
+    this.stageWrites.push("evidence", "verdict");
+    this.stageDocuments.set(`${transition.runId}:evidence`, structuredClone(transition.evidence));
+    this.stageDocuments.set(`${transition.runId}:verdict`, structuredClone(transition.verdict));
     return true;
   }
 }
@@ -2418,7 +2440,7 @@ describe("verification run orchestration", () => {
     expect(resumed.verdict.qaVerdict).not.toBe("PASS");
     expect(evaluations).toBeGreaterThan(1);
   });
-  test("repairs a stale terminal verdict when same-clock retry follows an evidence transition crash", async () => {
+  test("repairs a stale terminal verdict when atomic evidence/verdict persistence crashes and retry replays the same clock", async () => {
     const fakes = makeDependencies();
     const runId = "terminal-verdict-repair";
     const request = { ...makeRequest("terminal-verdict-repair-request"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
@@ -2432,16 +2454,23 @@ describe("verification run orchestration", () => {
     } as unknown as VerificationRunDependencies;
     const first = await runVerification({ runId, request, dependencies });
     expect(first.verdict.qaVerdict).toBe("PASS");
+    const persistedEvidence = structuredClone(first.documents.evidence);
     const persistedVerdict = structuredClone(first.documents.verdict);
+    const stageWrites = fakes.repository.stageWrites.length;
+    const runWrites = fakes.repository.runWrites.length;
     now = "2026-08-03T00:01:00.000Z";
     fakes.repository.failNextStage = "verdict";
     await expect(runVerification({ runId, dependencies })).rejects.toThrow("simulated saveStage crash");
-    const persistedEvidence = fakes.repository.stageDocuments.get(`${runId}:evidence`) as { freshnessEvaluatedAt: string };
-    expect(persistedEvidence.freshnessEvaluatedAt).toBe(now);
+    expect(fakes.repository.stageDocuments.get(`${runId}:evidence`)).toEqual(persistedEvidence);
     expect(fakes.repository.stageDocuments.get(`${runId}:verdict`)).toEqual(persistedVerdict);
+    expect(fakes.repository.stageWrites.length).toBe(stageWrites);
+    expect(fakes.repository.runWrites.length).toBe(runWrites);
     const repaired = await runVerification({ runId, dependencies });
     expect(repaired.run.state).toBe("TERMINAL");
     expect(repaired.verdict.qaVerdict).not.toBe("PASS");
+    const repairedEvidence = fakes.repository.stageDocuments.get(`${runId}:evidence`);
+    if (!repairedEvidence || typeof repairedEvidence !== "object" || !("freshnessEvaluatedAt" in repairedEvidence) || typeof repairedEvidence.freshnessEvaluatedAt !== "string") throw new Error("missing repaired evidence");
+    expect(repairedEvidence.freshnessEvaluatedAt).toBe(now);
     expect(fakes.repository.stageDocuments.get(`${runId}:verdict`)).toEqual(repaired.verdict);
   });
   test("reuses a persisted freshness authority across same-clock evidence and terminal resumes", async () => {

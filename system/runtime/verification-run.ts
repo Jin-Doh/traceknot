@@ -37,6 +37,8 @@ export type DispatchClaim=Readonly<{schemaVersion:"verification-dispatch-claim/v
 export type DispatchClaimResult=Readonly<{claimed:boolean;status:"CLAIMED"|"COMPLETED";claim:DispatchClaim;outputStored:boolean;completion?:VerificationExecutionCompletionEnvelope}>;
 export type RepositoryTransition=Readonly<{runId:string;expectedRevision?:number;stage?:StageName;document?:StageDocument;run:CanonicalRunState}>;
 export interface RepositoryPort {readonly loadRun:(id:string)=>MaybePromise<CanonicalRunState|undefined>;readonly loadStageDocument:(id:string,s:StageName)=>MaybePromise<unknown|undefined>;readonly commitTransition:(transition:RepositoryTransition)=>MaybePromise<boolean>;readonly claimExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<DispatchClaimResult>;readonly completeExecutionDispatch?:(claim:DispatchClaim,completion:VerificationExecutionCompletionEnvelope|undefined,now?:string)=>MaybePromise<boolean>;readonly releaseExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<boolean>};
+export type TerminalEvidenceVerdictTransition=Readonly<{runId:string;expectedRevision?:number;evidence:EvidenceDocument;verdict:VerdictDocument;run:CanonicalRunState}>;
+export interface RepositoryPort {readonly commitEvidenceAndVerdict?:(transition:TerminalEvidenceVerdictTransition)=>MaybePromise<boolean>};
 export type VerificationRunDependencies=Readonly<{repository:RepositoryPort;executor:VerificationExecutor;artifactStore:ArtifactStore;capabilityProvider:CapabilityProvider;executionAuthority:ExecutionAuthorityPort;freshnessPolicy:FreshnessPolicy;freshnessAuthority:FreshnessAuthorityPort;browserExecutor?:BrowserExecutor;approvalProvider?:ApprovalProvider;usageRecorder?:UsageRecorder;now:Clock;dispatchOwnerId?:string;ownerId?:string;dispatchLeaseDurationMs?:number;leaseDurationMs?:number}>;
 export type BasisDocument=Readonly<{schemaVersion:"verification-basis/v1";requestId:string;snapshotId:string;basis:readonly VerificationBasisItem[];basisIds:readonly string[]}>; export type DiscoveryDocument=Readonly<{schemaVersion:"risk-discovery/v1";requestId:string;snapshotId:string;risks:readonly VerificationRisk[];conditions:readonly VerificationCondition[]}>; export type PlanDocument=VerificationPlan; export type UsageOutboxEntry=Readonly<{executionKey:string;obligationId:string;event:"execution"|"artifact";eventKey:string}>; export type ExecutionDocument=Readonly<{schemaVersion:"verification-execution/v1";requestId:string;snapshotId:string;observations:readonly Observation[];claims:readonly EvidenceClaim[];evidence:readonly VerificationEvidence[];authorities:readonly ExecutionAuthority[];usageOutbox:readonly UsageOutboxEntry[]}>; export type EvidenceDocument=Readonly<{schemaVersion:"verification-evidence-evaluation/v1";requestId:string;snapshotId:string;freshnessEvaluatedAt:string;freshnessAuthority:FreshnessAuthority;evaluations:readonly EvidenceEvaluation[];acceptedClaimIds:readonly string[];coverage:CoverageInput}>; export type ResidualRiskDocument=Readonly<{schemaVersion:"verification-residual-risk/v1";requestId:string;snapshotId:string;defects:readonly DefectSummary[]}>; export type VerdictDocument=VerdictResult; export type StageDocument=VerificationRequest|BasisDocument|DiscoveryDocument|PlanDocument|ExecutionDocument|EvidenceDocument|ResidualRiskDocument|VerdictDocument;
 export type VerificationRunDocuments={request?:VerificationRequest;basis?:BasisDocument;discovery?:DiscoveryDocument;plan?:PlanDocument;execution?:ExecutionDocument;evidence?:EvidenceDocument;"residual-risk"?:ResidualRiskDocument;verdict?:VerdictDocument};
@@ -551,6 +553,11 @@ async function commitStageAndRun(repository: RepositoryPort, run: CanonicalRunSt
   const committed = await repository.commitTransition({ runId: run.runId, expectedRevision: expectedRevision < 0 ? undefined : expectedRevision, ...(stage === undefined ? {} : { stage, document }), run });
   if (!committed) throw Error("stale repository revision");
   return run;
+}
+async function commitTerminalEvidenceAndVerdict(repository: RepositoryPort, run: CanonicalRunState, evidence: EvidenceDocument, verdict: VerdictDocument, expectedRevision: number): Promise<void> {
+  if (!repository.commitEvidenceAndVerdict) throw Error("atomic terminal evidence/verdict persistence facility is required");
+  const committed = await repository.commitEvidenceAndVerdict.call(repository, { runId: run.runId, expectedRevision: expectedRevision < 0 ? undefined : expectedRevision, evidence, verdict, run });
+  if (committed !== true) throw Error("terminal evidence/verdict persistence failed");
 }
 async function checkpointRun(input: ExecuteObligationsInput, document: ExecutionDocument): Promise<void> {
   const current = await loadRun(input.dependencies.repository, input.runId);
@@ -1097,26 +1104,24 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
   if (!finalEvidence) throw Error("evidence document is missing");
   documents.evidence = finalEvidence;
   const historicalEvidence = finalEvidence;
-  const executionFinishedAt = Math.max(...finalExecution.observations.map(item => Date.parse(item.execution.finishedAt)));
   const finalResidual = documents["residual-risk"] ?? await loadCheckedStage<ResidualRiskDocument>(repository, input.runId, "residual-risk", req, dependencies, documents);
   if (!finalResidual) throw Error("residual-risk document is missing");
   documents["residual-risk"] = finalResidual;
   let finalVerdict = documents.verdict ?? await loadCheckedStage<VerdictDocument>(repository, input.runId, "verdict", req, dependencies, documents);
   if (!finalVerdict) throw Error("terminal run has no verdict document");
-  if (Date.parse(historicalEvidence.freshnessEvaluatedAt) <= executionFinishedAt) {
-    await assertCanonicalVerdict({ runId: input.runId, request: req, basis: finalBasis, discovery: finalDiscovery, plan: finalPlan, execution: finalExecution, evidence: historicalEvidence, residualRisk: finalResidual, dependencies }, finalVerdict);
-  }
+  await assertCanonicalVerdict({ runId: input.runId, request: req, basis: finalBasis, discovery: finalDiscovery, plan: finalPlan, execution: finalExecution, evidence: historicalEvidence, residualRisk: finalResidual, dependencies }, finalVerdict);
   const resumedFreshnessAt = clockNow(dependencies.now);
   const resumedEvidence = await evaluateEvidence({ runId: input.runId, request: req, plan: finalPlan, execution: finalExecution, dependencies, freshnessEvaluatedAt: resumedFreshnessAt, freshnessAuthority: finalEvidence.freshnessEvaluatedAt === resumedFreshnessAt ? finalEvidence.freshnessAuthority : undefined });
-  if (!structurallyEqual(resumedEvidence, finalEvidence)) {
+  const refreshedEvidence = !structurallyEqual(resumedEvidence, finalEvidence);
+  const canonicalVerdict = await resolveVerdict({ runId: input.runId, request: req, basis: finalBasis, discovery: finalDiscovery, plan: finalPlan, execution: finalExecution, evidence: resumedEvidence, residualRisk: finalResidual, dependencies });
+  if (refreshedEvidence) {
     const touched = touchRun(run, resumedFreshnessAt);
-    await commitStageAndRun(repository, touched, "evidence", resumedEvidence, run.revision);
+    await commitTerminalEvidenceAndVerdict(repository, touched, resumedEvidence, canonicalVerdict, run.revision);
     run = touched;
     finalEvidence = resumedEvidence;
+    finalVerdict = canonicalVerdict;
     documents.evidence = finalEvidence;
-  }
-  const canonicalVerdict = await resolveVerdict({ runId: input.runId, request: req, basis: finalBasis, discovery: finalDiscovery, plan: finalPlan, execution: finalExecution, evidence: finalEvidence, residualRisk: finalResidual, dependencies });
-  if (!structurallyEqual(canonicalVerdict, finalVerdict)) {
+  } else if (!structurallyEqual(canonicalVerdict, finalVerdict)) {
     const touched = touchRun(run, clockNow(dependencies.now));
     await commitStageAndRun(repository, touched, "verdict", canonicalVerdict, run.revision);
     run = touched;
