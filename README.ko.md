@@ -139,11 +139,24 @@ FAIL → BLOCKED → INCOMPLETE → PASS_WITH_ACCEPTED_RISK → PASS
 | 호스트 중립 verdict core | **사용 가능.** 항상 `authoritative: false` 출력 |
 | Capability manifest | **사용 가능.** 정적 manifest는 보수적이며 runtime capability를 부여하지 않음 |
 | 사용자 영역 전체 Toolkit installer와 updater | **사용 가능.** GitHub release artifact, digest, provenance 검증 |
+| End-to-end `traceknot verify` CLI | **사용 가능.** 검증된 명시적 명령 manifest, snapshot-bound evidence, 내구성 있는 resume/report, JSON 또는 Markdown 출력 |
 | OMP, Codex, Claude Code, OpenCode, GajaeCode native adapter | **미구현.** 호스트 이름만으로 capability가 생기지 않음 |
 | 하네스 완료 권한 | **기본 비활성.** 선택적 extension이며 `phase1Authorized: false` |
 | npm package 또는 전용 Skill registry 등록 | **제공하지 않음.** Skills CLI의 GitHub 직접 설치는 사용 가능 |
 
 Portable Skill과 호스트 중립 코어는 지금 사용할 수 있습니다. 하네스 완료를 확정할 권한은 별도 통합 과제로 남아 있습니다.
+
+## Verify CLI
+
+`traceknot verify`는 검증된 명시적 명령 manifest를 로컬 collector로 실행하고 VerificationRun checkpoint를 원자적으로 저장합니다. 실행 상태와 content-addressed artifact는 기본적으로 저장소 밖의 사용자 cache에 저장되므로 검증 중인 Git snapshot을 바꾸지 않습니다.
+
+```sh
+traceknot verify --request request.json --manifest manifest.json --root .
+```
+
+요청은 현재 Git의 `rootIdentity`와 `snapshotId`를 지정해야 하며, 두 필드 모두 리터럴 `auto`를 사용할 수 있습니다. `verification-manifest/v1` manifest는 생성된 각 obligation에 절대 경로 executable 하나와 argument 배열을 연결합니다. Shell 문자열 보간은 거부됩니다.
+
+기본 출력은 기계 판독용 JSON입니다. 사람이 읽는 보고서는 `--format markdown`, 명령을 다시 실행하지 않고 terminal run을 읽으려면 `--report-only --run-id ID`를 사용합니다. Exit code는 `PASS` 또는 `PASS_WITH_ACCEPTED_RISK`일 때 `0`, `FAIL`은 `1`, `BLOCKED`는 `2`, `INCOMPLETE`는 `3`, 잘못된 입력은 `64`, 내부 오류는 `70`입니다.
 
 <!-- readme-section:install -->
 
