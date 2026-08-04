@@ -288,6 +288,7 @@ function resultMatchesExecution(result: VerificationEvidence["result"], executio
 function canonicalResult(value: unknown): VerificationEvidence["result"] | undefined {
   if (!isRecord(value) || !exactOwnKeys(value, ["verdict", "summary"], ["passed", "failed", "artifacts"]) || !["PASS", "FAIL", "BLOCKED", "INCOMPLETE"].includes(value.verdict as string) || typeof value.summary !== "string" || !value.summary || (value.passed !== undefined && (typeof value.passed !== "number" || !Number.isInteger(value.passed) || value.passed < 0)) || (value.failed !== undefined && (typeof value.failed !== "number" || !Number.isInteger(value.failed) || value.failed < 0)) || (value.artifacts !== undefined && (!Array.isArray(value.artifacts) || value.artifacts.some(digest => typeof digest !== "string" || !DIGEST.test(digest))))) return undefined;
   const artifacts = value.artifacts === undefined ? undefined : (value.artifacts as string[]).map(digest => digest.toLowerCase());
+  if (artifacts !== undefined && !structurallyEqual(artifacts, uniq(artifacts))) return undefined;
   return { verdict: value.verdict as VerificationEvidence["result"]["verdict"], summary: value.summary, ...(value.passed === undefined ? {} : { passed: value.passed }), ...(value.failed === undefined ? {} : { failed: value.failed }), ...(artifacts === undefined ? {} : { artifacts }) };
 }
 function validVerificationEvidence(value: unknown): value is VerificationEvidence {
@@ -314,10 +315,10 @@ function canonicalEvidenceFromAuthority(binding: VerificationExecutionAuthorityB
   if (signedArtifacts.some(artifact => !artifact)) return undefined;
   const canonicalArtifacts = signedArtifacts as CanonicalVerificationResultArtifact[];
   if (!structurallyEqual(canonicalArtifacts, binding.artifacts)) return undefined;
-  const resultDigests = (result.artifacts ?? []).map(digest => digest.toLowerCase());
-  if (!structurallyEqual(canonicalArtifacts.map(artifact => artifact.digest), resultDigests)) return undefined;
+  const resultDigests = result.artifacts ?? [];
+  if (!structurallyEqual(uniq(canonicalArtifacts.map(artifact => artifact.digest)), resultDigests)) return undefined;
   if (!structurallyEqual(canonicalArtifacts, artifacts)) return undefined;
-  return { producer, execution, result: { ...result, ...(canonicalArtifacts.length > 0 || result.artifacts !== undefined ? { artifacts: canonicalArtifacts.map(artifact => artifact.digest) } : {}) }, observedAt: binding.observedAt, artifacts: canonicalArtifacts };
+  return { producer, execution, result, observedAt: binding.observedAt, artifacts: canonicalArtifacts };
 }
 function authorityBindingReplayMatches(runId: string, request: VerificationExecutionRequest, local: VerificationExecutionAuthorityBinding, candidate: VerificationExecutionAuthorityBinding): boolean {
   const comparableExecution = (execution: Execution): Record<string, unknown> => {
@@ -363,7 +364,7 @@ function assertExecutionEvidenceBindings(execution: ExecutionDocument, request?:
     const item = evidence.get(obligationId);
     const obligation = plan?.obligations.find(candidate => candidate.id === obligationId);
     if (!claim || !item || !obligation || claim.claim !== item.result.summary || (request && (observation.requestId !== request.requestId || observation.snapshotId !== request.project.snapshotId || claim.requestId !== request.requestId || claim.snapshotId !== request.project.snapshotId || item.requestId !== request.requestId || item.snapshotId !== request.project.snapshotId)) || observation.requestId !== item.requestId || observation.snapshotId !== item.snapshotId || claim.requestId !== item.requestId || claim.snapshotId !== item.snapshotId || !structurallyEqual(observation.producer, item.producer) || !structurallyEqual(observation.execution, item.execution) || !structurallyEqual(observation.artifacts, observation.artifacts.map(artifact => canonicalArtifact(artifact)!))) throw Error("invalid execution evidence binding");
-    if (!structurallyEqual(observation.artifacts.map(artifact => artifact.digest), item.result.artifacts ?? [])) throw Error("invalid execution evidence binding");
+    if (!structurallyEqual(uniq(observation.artifacts.map(artifact => artifact.digest)), item.result.artifacts ?? [])) throw Error("invalid execution evidence binding");
     const persistedAuthority = authorityByObligation.get(obligationId);
     const expectedRequest = requestDigest ?? persistedAuthority?.binding.requestDigest;
     const expectedPlan = planDigest ?? persistedAuthority?.binding.planDigest;
@@ -557,7 +558,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     const observationRequestId = input.request.requestId;
     const observationSnapshotId = input.request.project.snapshotId;
     let observation: Observation = { schemaVersion: "observation/v1", observationId, requestId: observationRequestId, snapshotId: observationSnapshotId, producer, execution, artifacts };
-    let result: VerificationEvidence["result"] = { verdict, summary, ...(verdict === "PASS" ? { passed: 1 } : verdict === "FAIL" ? { failed: 1 } : {}), artifacts: artifacts.map(item => item.digest) };
+    let result: VerificationEvidence["result"] = { verdict, summary, ...(verdict === "PASS" ? { passed: 1 } : verdict === "FAIL" ? { failed: 1 } : {}), artifacts: uniq(artifacts.map(item => item.digest)) };
     let item: VerificationEvidence = { schemaVersion: "verification-evidence/v1", evidenceId: `evidence:${obligation.id}`, requestId: observationRequestId, snapshotId: observationSnapshotId, obligationId: obligation.id, producer, execution, result, observedAt: finishedAt };
     const binding = authorityBindingFor(input.runId, requestDigest, planDigest, obligationDigest, observation, item);
     const candidate = await issueExecutionAuthority(input.dependencies.executionAuthority, binding);
@@ -617,8 +618,13 @@ async function evaluateFreshness(policy: FreshnessPolicy, observation: Observati
   return status === "fresh" || status === "stale" || status === "unknown" ? status : "unknown";
 }
 function canonicalEvaluatedAt(execution: ExecutionDocument): string {
-  const dates = [...execution.observations.map(item => item.execution.finishedAt), ...execution.evidence.map(item => item.observedAt)].filter(validDate).sort();
-  const evaluatedAt = dates[dates.length - 1];
+  const dates = [...execution.observations.map(item => item.execution.finishedAt), ...execution.evidence.map(item => item.observedAt)].filter(validDate);
+  const evaluatedAt = dates.reduce<string | undefined>((selected, candidate) => {
+    if (!selected) return candidate;
+    const candidateInstant = Date.parse(candidate);
+    const selectedInstant = Date.parse(selected);
+    return candidateInstant > selectedInstant || (candidateInstant === selectedInstant && candidate > selected) ? candidate : selected;
+  }, undefined);
   if (!evaluatedAt) throw Error("execution has no canonical evaluation timestamp");
   for (const claim of execution.claims) {
     const observation = execution.observations.find(item => item.observationId === claim.observationIds[0]);
@@ -631,6 +637,7 @@ async function evaluateEvidence(input: EvaluateEvidenceInput): Promise<EvidenceD
   assertExecutionEvidenceBindings(input.execution, input.request, input.plan, input.runId);
   await verifyPersistedExecutionAuthorities(input.execution, input.request, input.plan, input.runId, input.dependencies.executionAuthority);
   const evaluatedAt = canonicalEvaluatedAt(input.execution);
+  const freshnessEvaluatedAt = clockNow(input.dependencies.now);
   const observations = new Map(input.execution.observations.map(item => [item.observationId, item]));
   const evidenceByObligation = new Map(input.execution.evidence.map(item => [item.obligationId, item]));
   const evaluations = await Promise.all([...input.execution.claims].sort((a,b)=>a.claimId.localeCompare(b.claimId)).map(async claim => {
@@ -638,7 +645,7 @@ async function evaluateEvidence(input: EvaluateEvidenceInput): Promise<EvidenceD
     const evidence = evidenceByObligation.get(claim.obligationId);
     const obligation = input.plan.obligations.find(item=>item.id===claim.obligationId);
     if (!obligation) throw Error("evidence claim has no obligation");
-    const freshness = await evaluateFreshness(input.dependencies.freshnessPolicy, observation, evidence, evaluatedAt);
+    const freshness = await evaluateFreshness(input.dependencies.freshnessPolicy, observation, evidence, freshnessEvaluatedAt);
     return makeEvaluation(observation, claim, obligation, evaluatedAt, input.request, freshness);
   }));
   const claimsById = new Map(input.execution.claims.map(claim => [claim.claimId, claim]));
@@ -765,6 +772,9 @@ function assertCanonicalRunIndexes(run: CanonicalRunState, execution: ExecutionD
   if (!structurallyEqual(run.observationIds, observationIds) || !structurallyEqual(run.claimIds, claimIds) || !structurallyEqual(run.evaluationIds, evaluationIds)) throw Error("invalid persisted run indexes");
 }
 const repositoryRunLocks = new WeakMap<object, Map<string, Promise<void>>>();
+export function getVerificationRunLockCount(repository: RepositoryPort): number {
+  return repositoryRunLocks.get(repository as unknown as object)?.size ?? 0;
+}
 async function runVerificationUnlocked(input: RunVerificationInput): Promise<RunVerificationResult> {
   const { dependencies } = input;
   const repository = dependencies.repository;
@@ -915,12 +925,13 @@ export async function runVerification(input: RunVerificationInput): Promise<RunV
   const prior = locks.get(input.runId) ?? Promise.resolve();
   let release!: () => void;
   const wait = new Promise<void>(resolve => { release = resolve; });
-  locks.set(input.runId, prior.then(() => wait));
+  const entry = prior.then(() => wait);
+  locks.set(input.runId, entry);
   try {
     await prior;
     return await runVerificationUnlocked(input);
   } finally {
     release();
-    if (locks.get(input.runId) === wait) locks.delete(input.runId);
+    if (locks.get(input.runId) === entry) locks.delete(input.runId);
   }
 }

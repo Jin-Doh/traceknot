@@ -7,7 +7,7 @@ import {
   establishTestBasis,
   canonicalRequestDigest,
   performRiskDiscovery,
-
+  getVerificationRunLockCount,
   runVerification,
   transitionRunState,
   type ArtifactStore,
@@ -259,6 +259,61 @@ test.each(["fresh", "stale", "unknown"] as const)("requires the freshness policy
   expect(status === "fresh" ? result.verdict.qaVerdict : result.verdict.qaVerdict).not.toBe(status === "fresh" ? "INCOMPLETE" : "PASS");
 });
 
+test("uses the current freshness instant without rewriting authenticated chronology on stale replay", async () => {
+  const fakes = makeDependencies();
+  let now = FIXED_NOW;
+  const freshnessInputs: string[] = [];
+  const dependencies = {
+    ...fakes.dependencies,
+    now: () => now,
+    freshnessPolicy: {
+      evaluateFreshness: async (input: { evaluatedAt: string; evidence: { observedAt: string } }) => {
+        freshnessInputs.push(input.evaluatedAt);
+        return Date.parse(input.evaluatedAt) >= Date.parse(input.evidence.observedAt) && now === FIXED_NOW ? "fresh" as const : "stale" as const;
+      },
+    },
+  } as unknown as VerificationRunDependencies;
+  const runId = "freshness-stale-replay";
+  const first = await runOnce(dependencies, runId);
+  const chronology = first.documents.evidence?.evaluations.map(item => item.evaluatedAt);
+  expect(first.verdict.qaVerdict).toBe("PASS");
+  const run = fakes.repository.runs.get(runId);
+  if (!run) throw new Error("missing persisted run");
+  fakes.repository.runs.set(runId, { ...run, state: "EXECUTING" });
+  now = "2026-08-03T00:00:10.000Z";
+  const replay = await runVerification({ runId, dependencies });
+  expect(replay.verdict.qaVerdict).not.toBe("PASS");
+  expect(freshnessInputs.at(-1)).toBe(now);
+  expect(replay.documents.evidence?.evaluations.map(item => item.evaluatedAt)).toEqual(chronology);
+});
+
+test("selects the latest parsed instant across mixed fractional timestamps", async () => {
+  const fakes = makeDependencies();
+  const runId = "mixed-fractional-timestamps";
+  const first = await runOnce(fakes.dependencies, runId);
+  const execution = first.documents.execution;
+  const run = fakes.repository.runs.get(runId);
+  if (!execution || !run) throw new Error("missing persisted execution");
+  const high = "2026-08-03T00:00:00.90Z";
+  const low = "2026-08-03T00:00:00.899Z";
+  const highObservationId = execution.observations[0]?.observationId;
+  if (!highObservationId) throw new Error("missing persisted observation");
+  const timestampFor = (observationId: string) => observationId === highObservationId ? high : low;
+  const observations = execution.observations.map(item => ({ ...item, execution: { ...item.execution, startedAt: timestampFor(item.observationId), finishedAt: timestampFor(item.observationId) } }));
+  const evidence = execution.evidence.map(item => {
+    const timestamp = timestampFor(`observation:${item.obligationId}`);
+    return { ...item, execution: { ...item.execution, startedAt: timestamp, finishedAt: timestamp }, observedAt: timestamp };
+  });
+  const authorities = execution.authorities.map(authority => {
+    const timestamp = timestampFor(`observation:${authority.binding.obligationId}`);
+    return { ...authority, binding: { ...authority.binding, execution: { ...authority.binding.execution, startedAt: timestamp, finishedAt: timestamp }, observedAt: timestamp } };
+  });
+  fakes.repository.stageDocuments.set(`${runId}:execution`, { ...execution, observations, evidence, authorities });
+  fakes.repository.runs.set(runId, { ...run, state: "EXECUTING" });
+  const dependencies = { ...fakes.dependencies, executionAuthority: { ...fakes.dependencies.executionAuthority, verifyExecutionAuthority: async () => true } };
+  const replay = await runVerification({ runId, dependencies });
+  expect(replay.documents.evidence?.evaluations.every(item => item.evaluatedAt === high)).toBe(true);
+});
 
 test.each([
   ["extra root key", (request: VerificationRequest) => ({ ...request, extra: true })],
@@ -307,7 +362,14 @@ test("canonicalizes executor and artifact-store artifacts before authority and p
   const execution = result.documents.execution;
   expect(result.verdict.qaVerdict).toBe("PASS");
   expect(execution?.observations[0]?.artifacts).toEqual([{ type: "verification-result", digest: digest.toLowerCase() }, { type: "verification-result", digest: digest.toLowerCase(), path: "/tmp/result" }]);
-  expect(execution?.evidence[0]?.result.artifacts).toEqual([digest.toLowerCase(), digest.toLowerCase()]);
+  expect(execution?.evidence[0]?.result.artifacts).toEqual([digest.toLowerCase()]);
+  const resultDigests = execution?.evidence[0]?.result.artifacts ?? [];
+  expect(new Set(resultDigests).size).toBe(resultDigests.length);
+  const schema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/evidence.schema.json`).text()) as object;
+  const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
+  for (const evidence of execution?.evidence ?? []) {
+    expect(validate(evidence), validate.errors ? JSON.stringify(validate.errors) : undefined).toBe(true);
+  }
   expect(execution?.observations.every(item => item.artifacts.every(artifact => /^[a-f0-9]{64}$/.test(artifact.digest) && Object.keys(artifact).every(key => ["type", "digest", "path"].includes(key))))).toBe(true);
 });
 
@@ -1690,12 +1752,16 @@ describe("verification run orchestration", () => {
     expect(fakes.executorCalls).toBe(0);
     expect(result.verdict.qaVerdict).not.toBe("PASS");
   });
-  test("serializes concurrent observable runs without double dispatch", async () => {
+  test("serializes repeated same-run calls and releases run locks without double dispatch", async () => {
     const fakes = makeDependencies();
     const [first, second] = await Promise.all([runOnce(fakes.dependencies, "concurrent-run"), runOnce(fakes.dependencies, "concurrent-run")]);
     expect(first.verdict).toEqual(second.verdict);
     expect(fakes.executorCalls).toBe(first.documents.execution?.observations.length ?? 0);
     expect(fakes.repository.runs.get("concurrent-run")?.state).toBe("TERMINAL");
+    expect(getVerificationRunLockCount(fakes.dependencies.repository)).toBe(0);
+    await runOnce(fakes.dependencies, "concurrent-run");
+    await runOnce(fakes.dependencies, "concurrent-run");
+    expect(getVerificationRunLockCount(fakes.dependencies.repository)).toBe(0);
   });
 
   test("rejects a stale repository writer without overwriting the terminal pair", async () => {
