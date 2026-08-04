@@ -108,6 +108,7 @@ const ZH_COMBINED_QUANTITY_UNITS = new Set([
   "小时", "分钟", "秒", "公里", "米", "厘米", "毫米", "公斤", "千克", "克", "毫克", "升", "毫升", "平方米", "立方米", "百分点", "美元", "个人",
 ]);
 const ZH_NON_UNIT_WORDS = new Set(["至", "到"]);
+const ZH_UNIT_TERMINAL = /(?:度|米|克|升|瓦|赫兹|字节|比特|秒|分钟|小时|天|周|月|年|元|百分点)$/u;
 
 interface ChineseWordSegment {
   segment: string;
@@ -121,10 +122,45 @@ function chineseWordSegments(text: string): ChineseWordSegment[] {
     .map((segment) => ({ segment: segment.segment, index: segment.index, end: segment.index + segment.segment.length }));
 }
 
-function chineseQuantityUnit(segment: string, combined: boolean): string {
-  if (ZH_COMBINED_QUANTITY_UNITS.has(segment)) return segment;
-  if (!combined && /^\p{Script=Han}$/u.test(segment) && !ZH_NON_UNIT_WORDS.has(segment)) return segment;
-  return "";
+function isCombinedChineseUnit(unit: string): boolean {
+  return ZH_COMBINED_QUANTITY_UNITS.has(unit) || ZH_UNIT_TERMINAL.test(unit);
+}
+
+function chineseNumberSegment(
+  text: string,
+  segments: ChineseWordSegment[],
+  index: number,
+): { start: number; end: number; next: number } | undefined {
+  const word = segments[index];
+  if (!word) return undefined;
+  const exactNumber = new RegExp(`^${ZH_SIGNED_NUMBER}$`, "u");
+  let numericIndex = index;
+  let numericWord = word;
+  if (/^(?:正|负)$/u.test(word.segment)) {
+    numericIndex += 1;
+    numericWord = segments[numericIndex];
+    if (!numericWord || !new RegExp(`^${ZH_NUMBER_CORE}$`, "u").test(numericWord.segment)) return undefined;
+    if (!/^\s*$/u.test(text.slice(word.end, numericWord.index))) return undefined;
+  } else if (!exactNumber.test(word.segment)) return undefined;
+  if (segments[numericIndex - 1]?.segment === "之" && segments[numericIndex - 2]?.segment === "百分") return undefined;
+  return { start: word.index, end: numericWord.end, next: numericIndex + 1 };
+}
+
+function chineseQuantityUnitEnd(text: string, segments: ChineseWordSegment[], index: number): { end: number; next: number } | undefined {
+  let value = "";
+  let previousEnd = segments[index - 1]?.end ?? 0;
+  let accepted: { end: number; next: number } | undefined;
+  for (let unitIndex = index; unitIndex < Math.min(index + 3, segments.length); unitIndex += 1) {
+    const word = segments[unitIndex];
+    if (!/^\s*$/u.test(text.slice(previousEnd, word.index)) || !/^\p{Script=Han}+$/u.test(word.segment)) break;
+    value += word.segment;
+    previousEnd = word.end;
+    if (ZH_NON_UNIT_WORDS.has(value)) continue;
+    if ((unitIndex === index && /^\p{Script=Han}$/u.test(value)) || isCombinedChineseUnit(value)) {
+      accepted = { end: word.end, next: unitIndex + 1 };
+    }
+  }
+  return accepted;
 }
 
 function chineseQuantityOperand(
@@ -134,32 +170,28 @@ function chineseQuantityOperand(
 ): { start: number; end: number; next: number } | undefined {
   const word = segments[index];
   if (!word) return undefined;
-  const exactNumber = new RegExp(`^${ZH_SIGNED_NUMBER}$`, "u");
-  if (exactNumber.test(word.segment)) {
-    if (segments[index - 1]?.segment === "之" && segments[index - 2]?.segment === "百分") return undefined;
-    const unitWord = segments[index + 1];
-    if (!unitWord || !/^\s*$/u.test(text.slice(word.end, unitWord.index))) return undefined;
-    const unit = chineseQuantityUnit(unitWord.segment, false);
+  const number = chineseNumberSegment(text, segments, index);
+  if (number) {
+    const unit = chineseQuantityUnitEnd(text, segments, number.next);
     if (!unit) return undefined;
-    return { start: word.index, end: unitWord.end, next: index + 2 };
+    return { start: number.start, end: unit.end, next: unit.next };
   }
   const combined = word.segment.match(new RegExp(`^(${ZH_SIGNED_NUMBER})(\\p{Script=Han}+)$`, "u"));
-  if (!combined || !chineseQuantityUnit(combined[2], true)) return undefined;
+  if (!combined || !isCombinedChineseUnit(combined[2])) return undefined;
   return { start: word.index, end: word.end, next: index + 1 };
 }
 
 function chineseQuantityOccurrences(text: string): string[] {
   const segments = chineseWordSegments(text);
   const quantities: string[] = [];
-  const exactNumber = new RegExp(`^${ZH_SIGNED_NUMBER}$`, "u");
   for (let index = 0; index < segments.length; index += 1) {
-    const first = segments[index];
-    if (exactNumber.test(first.segment)) {
+    const first = chineseNumberSegment(text, segments, index);
+    if (first) {
       let rangeMatched = false;
-      for (const secondIndex of [index + 1, index + 2]) {
+      for (const secondIndex of [first.next, first.next + 1]) {
         const second = chineseQuantityOperand(text, segments, secondIndex);
         if (!second || !/^\s*(?:至|到|[-–—])\s*$/u.test(text.slice(first.end, second.start))) continue;
-        quantities.push(text.slice(first.index, second.end));
+        quantities.push(text.slice(first.start, second.end));
         index = second.next - 1;
         rangeMatched = true;
         break;
@@ -952,8 +984,13 @@ function claimLabel(text: string, index: number, valueLength: number, bindSubjec
   if (!left && !right && bindSubject) {
     const localClause = (leftClause.split(/\b(?:while|whereas|and|but)\b/i).at(-1) ?? leftClause)
       .replace(/^[\t ]{0,3}(?:(?:[-+*]|\d+[.)])\s+|>\s*)+/, "");
-    const chineseSubject = localClause.trim().match(/^([\p{Script=Han}]{1,24}?)(?:包含|支持|拥有|运行|执行|使用|记录|提供|需要|允许|要求|保留|配置|安装|发布|为|是)$/u)?.[1];
-    if (chineseSubject) return chineseSubject;
+    const chineseClause = localClause.trim();
+    if (/^[\p{Script=Han}\s]{1,48}$/u.test(chineseClause)) {
+      const segments = chineseWordSegments(chineseClause);
+      const subjectSegments = segments.length > 1 ? segments.slice(0, -1) : segments;
+      const chineseSubject = subjectSegments.map((segment) => segment.segment).join("");
+      if (chineseSubject) return chineseSubject;
+    }
     const words = localClause.match(/[\p{L}_][\p{L}\p{N}_-]*/gu) ?? [];
     const relationSubject = localClause.match(/(?:^|\s)(?:the\s+|a\s+|an\s+)?([\p{L}_][\p{L}\p{N}_-]*)\s+(?:listens?|runs?|serves?|uses?|routes?|maps?|connects?|belongs?)\b/iu)?.[1]?.toLowerCase();
     const object = rightClause.match(/^\s*(?:(?:serves?|routes?|maps?|connects?|belongs?)\s+(?:to\s+)?|(?:(?:is|are|was|were)|will\s+be|(?:has|have|had)\s+been)\s+(?:assigned|mapped|routed|connected)\s+to\s+(?:the\s+|a\s+|an\s+)?)([\p{L}_][\p{L}\p{N}_-]*)/iu)?.[1]?.toLowerCase();

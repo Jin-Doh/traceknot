@@ -423,6 +423,16 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("FAIL");
   });
 
+  test("derives Simplified Chinese quantity subjects without a predicate allowlist", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const before = `${context}\n甲组有三项检查，乙组有四项检查。`;
+    const after = `${context}\n乙组有三项检查，甲组有四项检查。`;
+    const report = verifyPreservation(before, after);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+    expect(report.status).toBe("FAIL");
+  });
+
   test.each([
     ["系统支持三位用户。", "系统支持四位用户。"],
     ["系统包含三项检查。", "系统包含四项检查。"],
@@ -448,6 +458,22 @@ describe("rewrite preservation gate", () => {
   test("preserves complete multi-character Simplified Chinese units", () => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n路线长度为三公里。`, `${context}\n路线长度为三公斤。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(report.status).toBe("FAIL");
+  });
+
+  test("includes separately segmented signs in Simplified Chinese quantities", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n偏差：三公里。`, `${context}\n偏差：负三公里。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(report.status).toBe("FAIL");
+  });
+
+  test("assembles compound units emitted as multiple Chinese word segments", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n温度为三摄氏度。`, `${context}\n温度为四摄氏度。`);
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
     expect(report.status).toBe("FAIL");
