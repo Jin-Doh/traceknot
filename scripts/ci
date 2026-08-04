@@ -34,6 +34,12 @@ git ls-files '*.json' | while IFS= read -r json_file; do
     JSON_FILE=$json_file bun -e 'JSON.parse(await Bun.file(process.env.JSON_FILE).text())'
 done
 
+printf '%s\n' '==> README localization contract'
+bun scripts/check-readme-contract.ts
+bun x --no-install tsc --ignoreConfig --noEmit --strict --types bun \
+    --target ES2022 --module ESNext --moduleResolution Bundler \
+    scripts/check-readme-contract.ts
+
 printf '%s\n' '==> prompt-injection risk'
 bun scripts/audit-prompt-injection.ts --threshold high
 

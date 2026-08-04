@@ -100,6 +100,7 @@ const LEVEL_RANK: Record<RiskLevel, number> = {
 const DEFAULT_TARGETS = [
   "README.md",
   "README.ko.md",
+  "README.zh.md",
   "BRAND.md",
   "BRAND.ko.md",
   "skill",
