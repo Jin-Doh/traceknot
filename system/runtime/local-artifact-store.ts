@@ -58,7 +58,7 @@ function loadNative(): Native | undefined {
       [errnoSymbol]: { args: [], returns: FFIType.ptr },
     });
     const symbols = loaded.symbols as unknown as Native["symbols"] & Record<string, () => unknown>;
-    return { symbols: { ...symbols, errno: symbols[errnoSymbol] } } as unknown as Native;
+    return { symbols: Object.assign(symbols, { errno: symbols[errnoSymbol] }) };
   } catch {
     return undefined;
   }
