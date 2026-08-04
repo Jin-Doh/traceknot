@@ -52,7 +52,7 @@ The repository's deterministic prose scanner supports Korean, English, and expli
 
 The `zh-Hans` rules check repeated formulaic structures, inflated stock phrases, repetitive paragraph transitions, and repeated ASCII punctuation between Chinese characters. They are readability heuristics, not authorship evidence. Semantic review remains necessary for translation accuracy, while the shared command, link, and boundary checks preserve technical facts.
 
-Rewrite preservation tokenizes Simplified Chinese before binding normative clauses and quantities. It coalesces adjacent written-numeral segments, keeps Arabic and written values attached to grammatical counters or units, and removes Markdown container markers (including task-list checkboxes) before deriving quantity subjects. These are deterministic integrity checks rather than a substitute for human translation review.
+Rewrite preservation tokenizes Simplified Chinese before binding normative clauses and quantities. It coalesces adjacent or unit-attached written-numeral segments, keeps signed Arabic and written values attached to grammatical counters or measurement terminals, and preserves original Markdown line boundaries while removing container markers (including task-list checkboxes) before deriving quantity subjects. Concise modals bind to bounded Han clauses without a finite action-verb list, while known lexical compounds remain ordinary prose. These are deterministic integrity checks rather than a substitute for human translation review.
 
 The common Hero artwork contains no language. Translate its alternative text and surrounding caption in Markdown instead of creating language-specific image variants.
 

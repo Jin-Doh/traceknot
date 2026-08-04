@@ -98,21 +98,19 @@ const ZH_NUMBER_CORE = "(?:零|〇|一|二|两|三|四|五|六|七|八|九|十|�
 const ZH_SIGNED_NUMBER = `(?:正|负)?${ZH_NUMBER_CORE}`;
 const ZH_ARABIC_NUMBER = "(?:\\d+(?:[.,]\\d+)?)";
 const ZH_PERCENTAGE = `(?:正|负)?百分之${ZH_NUMBER_CORE}`;
-const ZH_ACTIONS = new Set([
-  "审核", "验证", "检查", "记录", "保留", "批准", "执行", "运行", "发布", "提供", "确保", "完成", "遵守", "满足", "使用", "配置", "安装", "报告", "绑定", "评估", "选择", "提交", "更新", "读取", "写入", "删除", "创建", "调用", "等待", "返回", "通过", "拒绝", "阻止", "启用", "关闭", "输入", "输出", "处理", "确认", "声明", "查看",
-]);
 const ZH_CONCISE_MODALS = new Set(["需", "须", "可", "不可", "务必", "不必"]);
 const ZH_LEXICAL_PREFIXES = new Set(["刚", "必", "认", "许"]);
+const ZH_LEXICAL_MODAL_COMPOUNDS = ["可视化", "可惜", "可爱", "可口", "可观", "可疑", "不可思议"];
 const ZH_SEGMENTER = new Intl.Segmenter("zh-CN", { granularity: "word" });
 const ZH_SINGLE_QUANTITY_UNITS = new Set([
-  ..."个位项次名件条张本份台套组批艘盒亩只辆架头匹峰座间所家户杯瓶碗盘袋箱包支根枝把柄面扇层排列行页章节部册卷幅枚颗粒块片段场轮番遍趟回首曲声株棵朵束丝缕滴年月份日天倍元米克升瓦度秒",
+  ..."个位项次名件条张本份台套组批艘盒亩只辆架头匹峰座间所家户杯瓶碗盘袋箱包支根枝把柄面扇层排列行页章节部册卷幅枚颗粒块片段场轮番遍趟回首曲声株棵朵束丝缕滴年月份日天倍元米克升瓦度秒吨寸安帕伏焦牛",
 ]);
 const ZH_COMBINED_QUANTITY_UNITS = new Set([
   ...ZH_SINGLE_QUANTITY_UNITS,
   "小时", "分钟", "秒", "公里", "米", "厘米", "毫米", "公斤", "千克", "克", "毫克", "升", "毫升", "平方米", "立方米", "百分点", "美元", "个人",
 ]);
 const ZH_NON_UNIT_WORDS = new Set(["至", "到"]);
-const ZH_UNIT_TERMINAL = /(?:度|米|克|升|瓦|赫兹|字节|比特|秒|分钟|小时|天|周|月|年|元|百分点)$/u;
+const ZH_UNIT_TERMINAL = /(?:度|米|克|升|瓦|赫兹|字节|比特|秒|分钟|小时|天|周|月|年|元|百分点|吨|寸|安(?:培)?|帕|伏(?:特)?|欧姆|焦(?:耳)?|牛(?:顿)?|摩尔|坎德拉)$/u;
 
 interface ChineseWordSegment {
   segment: string;
@@ -144,7 +142,7 @@ function chineseNumberSegment(
   if (/^(?:正|负)$/u.test(word.segment)) {
     numericIndex += 1;
     numericWord = segments[numericIndex];
-    if (!numericWord || !exactChineseNumber.test(numericWord.segment)) return undefined;
+    if (!numericWord || !exactNumber.test(numericWord.segment)) return undefined;
     if (!/^\s*$/u.test(text.slice(word.end, numericWord.index))) return undefined;
   } else if (!exactNumber.test(word.segment)) return undefined;
   if (segments[numericIndex - 1]?.segment === "之" && segments[numericIndex - 2]?.segment === "百分") return undefined;
@@ -161,14 +159,22 @@ function chineseNumberSegment(
   return { start, end: numericWord.end, next: numericIndex + 1 };
 }
 
-function chineseQuantityUnitEnd(text: string, segments: ChineseWordSegment[], index: number): { end: number; next: number } | undefined {
+function chineseQuantityUnitEnd(
+  text: string,
+  segments: ChineseWordSegment[],
+  index: number,
+  allowLeadingNumeralPrefix = false,
+): { end: number; next: number } | undefined {
   let value = "";
   let previousEnd = segments[index - 1]?.end ?? 0;
   let accepted: { end: number; next: number } | undefined;
   for (let unitIndex = index; unitIndex < Math.min(index + 3, segments.length); unitIndex += 1) {
     const word = segments[unitIndex];
     if (!/^\s*$/u.test(text.slice(previousEnd, word.index)) || !/^\p{Script=Han}+$/u.test(word.segment)) break;
-    value += word.segment;
+    const attached = allowLeadingNumeralPrefix && unitIndex === index
+      ? word.segment.match(new RegExp(`^${ZH_NUMBER_CORE}(\\p{Script=Han}+)$`, "u"))
+      : undefined;
+    value += attached?.[1] ?? word.segment;
     previousEnd = word.end;
     if (ZH_NON_UNIT_WORDS.has(value)) continue;
     if ((unitIndex === index && ZH_SINGLE_QUANTITY_UNITS.has(value)) || isCombinedChineseUnit(value)) {
@@ -187,12 +193,17 @@ function chineseQuantityOperand(
   if (!word) return undefined;
   const number = chineseNumberSegment(text, segments, index);
   if (number) {
-    const unit = chineseQuantityUnitEnd(text, segments, number.next);
+    const writtenOperand = new RegExp(`^(?:正|负)?${ZH_NUMBER_CORE}$`, "u").test(text.slice(number.start, number.end));
+    const unit = chineseQuantityUnitEnd(text, segments, number.next, writtenOperand);
     if (!unit) return undefined;
     return { start: number.start, end: unit.end, next: unit.next };
   }
   const combined = word.segment.match(new RegExp(`^(${ZH_SIGNED_NUMBER})(\\p{Script=Han}+)$`, "u"));
   if (!combined || !isCombinedChineseUnit(combined[2])) return undefined;
+  if (word.segment === "一度") {
+    const leftContext = text.slice(Math.max(0, word.index - 16), word.index);
+    if (!/(?:温度|角度|偏差|变化|范围|为|是|约|达到|等于|零下)[：:\s]*$/u.test(leftContext)) return undefined;
+  }
   return { start: word.index, end: word.end, next: index + 1 };
 }
 
@@ -228,12 +239,15 @@ function chineseNormativeOccurrences(text: string): Array<{ index: number; value
     const segment = segments[index];
     if (!ZH_CONCISE_MODALS.has(segment.segment)) continue;
     if (ZH_LEXICAL_PREFIXES.has(segments[index - 1]?.segment ?? "")) continue;
+    if (ZH_LEXICAL_MODAL_COMPOUNDS.some((word) => text.startsWith(word, segment.index))) continue;
     const modalEnd = segment.index + segment.segment.length;
-    for (let actionIndex = index + 1; actionIndex < segments.length; actionIndex += 1) {
-      const action = segments[actionIndex];
-      const intervening = text.slice(modalEnd, action.index);
+    const immediate = segments[index + 1];
+    if (immediate?.index === modalEnd && /^\p{Script=Han}$/u.test(immediate.segment)) continue;
+    for (let clauseIndex = index + 1; clauseIndex < segments.length; clauseIndex += 1) {
+      const clauseWord = segments[clauseIndex];
+      const intervening = text.slice(modalEnd, clauseWord.index);
       if (intervening.length > 24 || /[.,;!?。；，！？\n]/u.test(intervening)) break;
-      if (!ZH_ACTIONS.has(action.segment)) continue;
+      if (!/^\p{Script=Han}{2,}$/u.test(clauseWord.segment)) continue;
       occurrences.push({ index: segment.index, value: segment.segment });
       break;
     }
@@ -1059,7 +1073,7 @@ function protectedValueBindings(text: string, values: Map<string, { category: st
   for (const [key, item] of values) {
     const separator = key.indexOf("\u0000");
     const category = key.slice(0, separator);
-    const searchText = category === "number" ? normalizeNumericText(normalizedText) : normalizedText;
+    const searchText = category === "number" ? normalizeNumericText(text) : normalizedText;
     const value = key.slice(separator + 1).replace(/\s+/g, " ");
     let cursor = 0;
     for (let count = 0; count < item.count; count += 1) {
