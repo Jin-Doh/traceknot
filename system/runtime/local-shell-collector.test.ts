@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rename, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
+import type { Artifact } from "../core/qa-core";
 import { LocalArtifactStore } from "./local-artifact-store";
+import type { ArtifactStore } from "./verification-run";
 import { LocalShellCollector, ShellCollectorError, type ShellObservationRequest } from "./local-shell-collector";
 
 const digest = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -163,6 +165,80 @@ describe("LocalShellCollector", () => {
       expect(observation.execution.finishedAt).toMatch(/^2026-01-01T00:00:01\.000Z$/);
     } finally {
       await cleanup(root, store);
+    }
+  });
+  test("denies dangerous environment overrides and preserves the fixed executable path", async () => {
+    const root = await temporaryDirectory();
+    const store = new LocalArtifactStore(join(root, "artifacts"));
+    try {
+      const observation = await new LocalShellCollector({ rootDir: root, snapshotId: "snapshot-shell-1", artifactStore: store, envAllowlist: ["PATH", "LD_PRELOAD", "NODE_OPTIONS", "SAFE_MARK"] }).collect({
+        ...requestFor(root),
+        env: { PATH: "/tmp/attacker", LD_PRELOAD: "/tmp/attacker.dylib", NODE_OPTIONS: "--require /tmp/attacker.js", SAFE_MARK: "allowed" },
+        argv: ["-e", "process.stdout.write(JSON.stringify({path:process.env.PATH,ld:process.env.LD_PRELOAD,node:process.env.NODE_OPTIONS,safe:process.env.SAFE_MARK}))"],
+      });
+      const stdout = observation.artifacts.find(artifact => artifact.path === "stdout");
+      const values = JSON.parse(new TextDecoder().decode(await store.readArtifact(stdout!.digest))) as Record<string, string | undefined>;
+      expect(values.path).toBe("/usr/bin:/bin:/usr/sbin:/sbin");
+      expect(values.ld).toBeUndefined();
+      expect(values.node).toBeUndefined();
+      expect(values.safe).toBe("allowed");
+    } finally {
+      await cleanup(root, store);
+    }
+  });
+
+  test("pins cwd descriptors and rejects a root rename plus symlink replacement", async () => {
+    const root = await temporaryDirectory();
+    const outside = await temporaryDirectory();
+    const moved = `${root}-moved`;
+    const store = new LocalArtifactStore(join(root, "artifacts"));
+    try {
+      const run = collectorFor(root, store).collect({
+        ...requestFor(root),
+
+        argv: ["-e", `setTimeout(() => require("node:fs").writeFileSync("cwd-marker", "pinned"), 250)`],
+        timeoutMs: 2_000,
+      });
+      await pause(30);
+      await rename(root, moved);
+      await symlink(outside, root, "dir");
+      await expect(run).rejects.toMatchObject({ code: "ROOT_CHANGED" });
+      expect(await readFile(join(moved, "cwd-marker"), "utf8")).toBe("pinned");
+      await expect(readFile(join(outside, "cwd-marker"), "utf8")).rejects.toBeDefined();
+    } finally {
+      await store.close();
+      await unlink(root).catch(() => undefined);
+      await rm(moved, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+  test("runs concurrent collectors with independent pinned cwd descriptors", async () => {
+    const roots = await Promise.all([temporaryDirectory(), temporaryDirectory()]);
+    const stores = roots.map(root => new LocalArtifactStore(join(root, "artifacts")));
+    try {
+      const observations = await Promise.all(roots.map((root, index) => collectorFor(root, stores[index]!, `snapshot-shell-${index}`).collect({
+        ...requestFor(root, `snapshot-shell-${index}`),
+        argv: ["-e", `require("node:fs").writeFileSync("concurrent-marker", ${JSON.stringify(String(index))})`],
+      })));
+      expect(observations.every(observation => observation.execution.exitStatus === "passed")).toBe(true);
+      expect(await readFile(join(roots[0]!, "concurrent-marker"), "utf8")).toBe("0");
+      expect(await readFile(join(roots[1]!, "concurrent-marker"), "utf8")).toBe("1");
+    } finally {
+      await Promise.all(stores.map(store => store.close()));
+      await Promise.all(roots.map(root => rm(root, { recursive: true, force: true })));
+    }
+  });
+
+  test("rejects an artifact store that lies on readback", async () => {
+    const root = await temporaryDirectory();
+    const liar: ArtifactStore & { readArtifact: (digest: string) => Promise<Uint8Array> } = {
+      storeArtifact: async (artifact: Artifact) => artifact,
+      readArtifact: async () => new Uint8Array([99]),
+    };
+    try {
+      await expect(new LocalShellCollector({ rootDir: root, snapshotId: "snapshot-shell-1", artifactStore: liar }).collect({ ...requestFor(root), argv: ["-e", ""] })).rejects.toMatchObject({ code: "ARTIFACT_STORE_FAILED" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

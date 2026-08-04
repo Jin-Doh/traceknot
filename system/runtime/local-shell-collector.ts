@@ -1,9 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
-import { constants } from "node:fs";
-import { open, lstat, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import type { Artifact, Execution, Observation, Producer } from "../core/qa-core";
 import type { ArtifactStore, VerificationExecutionRequest } from "./verification-run";
+import {
+  assertSecureRoot,
+  closeSecureRoot,
+  closeSecureDescriptor,
+  openSecureDirectory,
+  openSecureRoot,
+  readSecureRegularFile,
+  type SecureRootDescriptor,
+} from "./local-artifact-store";
 
 const SAFE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -73,53 +80,59 @@ const sleep = (milliseconds: number): Promise<void> => {
   setTimeout(resolve, milliseconds);
   return promise;
 };
-const within = (root: string, target: string): boolean => {
-  const relativePath = relative(root, target);
-  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
-};
 const validDigest = (value: string): boolean => /^[a-f0-9]{64}$/.test(value);
+const DANGEROUS_ENV = /^(?:LD_[A-Z0-9_]*|DYLD_[A-Z0-9_]*|NODE_OPTIONS|BUN_OPTIONS|PYTHONINSPECT|PYTHONPATH|RUBYOPT|PERL5OPT|GODEBUG|JAVA_TOOL_OPTIONS|CLASSPATH|COMPlus_[A-Z0-9_]*)$/i;
+const equalBytes = (left: Uint8Array, right: Uint8Array): boolean => left.byteLength === right.byteLength && left.every((value, index) => value === right[index]);
 
-async function checkedRoot(rootDir: string): Promise<string> {
-  if (!rootDir || typeof rootDir !== "string") throw new ShellCollectorError("ROOT_INVALID", "collector root is required");
-  const candidate = resolve(rootDir);
-  const info = await lstat(candidate).catch(error => { throw new ShellCollectorError("ROOT_INVALID", `collector root cannot be read: ${String(error)}`, { cause: error }); });
-  if (!info.isDirectory() || info.isSymbolicLink()) throw new ShellCollectorError("ROOT_INVALID", "collector root must be a regular directory");
-  const canonical = await realpath(candidate).catch(error => { throw new ShellCollectorError("ROOT_INVALID", `collector root cannot be resolved: ${String(error)}`, { cause: error }); });
-  return canonical;
+const SPAWN_WRAPPER = `
+const fs = require("node:fs");
+const { dlopen, FFIType } = require("bun:ffi");
+const library = process.platform === "darwin" ? "/usr/lib/libSystem.B.dylib" : process.platform === "linux" ? "libc.so.6" : undefined;
+if (!library) process.exit(126);
+const symbols = dlopen(library, { fchdir: { args: [FFIType.i32], returns: FFIType.i32 } }).symbols;
+if (symbols.fchdir(0) !== 0) process.exit(126);
+let pinnedPath;
+if (process.platform === "darwin") {
+  pinnedPath = fs.realpathSync("/dev/fd/0");
+} else {
+  pinnedPath = fs.readlinkSync("/proc/self/fd/0");
+}
+try {
+  process.chdir(pinnedPath);
+  const descriptor = fs.fstatSync(0);
+  const current = fs.statSync(".");
+  if (descriptor.dev !== current.dev || descriptor.ino !== current.ino) process.exit(126);
+} catch {
+  process.exit(126);
+}
+const target = JSON.parse(process.argv[1]);
+let child;
+try {
+  child = Bun.spawn(target, { env: process.env, stdin: "ignore", stdout: "inherit", stderr: "inherit", detached: true });
+} catch (error) {
+  process.stderr.write("__TRACEKNOT_SPAWN_FAILURE__" + String(error));
+  process.exit(125);
+}
+const status = await child.exited;
+process.exit(typeof status === "number" ? status : 1);
+`;
+
+async function spawnInDirectory(directory: number, executable: string, argv: readonly string[], env: Record<string, string>): Promise<Bun.Subprocess> {
+  return Bun.spawn([process.execPath, "-e", SPAWN_WRAPPER, JSON.stringify([executable, ...argv])], {
+    env,
+    stdio: [directory, "pipe", "pipe"],
+    detached: true,
+  });
 }
 
-async function checkedPath(root: string, requested: string | undefined, label: string, directory: boolean): Promise<string> {
-  const absoluteRequest = requested !== undefined && isAbsolute(requested);
-  const candidate = resolve(root, requested ?? ".");
-  const info = await lstat(candidate).catch(error => { throw new ShellCollectorError("PATH_INVALID", `${label} cannot be read: ${String(error)}`, { cause: error }); });
-  if (info.isSymbolicLink() || (directory ? !info.isDirectory() : !info.isFile())) throw new ShellCollectorError("PATH_INVALID", `${label} must be a non-symlink ${directory ? "directory" : "regular file"}`);
-  const canonical = await realpath(candidate).catch(error => { throw new ShellCollectorError("PATH_INVALID", `${label} cannot be resolved: ${String(error)}`, { cause: error }); });
-  if (!within(root, canonical) || (!absoluteRequest && canonical !== candidate)) throw new ShellCollectorError("PATH_INVALID", `${label} must remain inside the snapshot root`);
-  return canonical;
-}
-
-async function readBoundedFile(path: string, limit: number): Promise<Uint8Array> {
-  const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)).catch(error => { throw new ShellCollectorError("ARTIFACT_READ_FAILED", `artifact cannot be opened: ${String(error)}`, { cause: error }); });
-  try {
-    const stat = await handle.stat();
-    if (!stat.isFile() || stat.isSymbolicLink()) throw new ShellCollectorError("ARTIFACT_READ_FAILED", "declared artifact must be a regular non-symlink file");
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    for (;;) {
-      const chunk = new Uint8Array(Math.min(64 * 1024, limit - total + 1));
-      const result = await handle.read(chunk, 0, chunk.byteLength, null);
-      if (result.bytesRead === 0) break;
-      total += result.bytesRead;
-      if (total > limit) throw new ShellCollectorError("ARTIFACT_TOO_LARGE", "declared artifact exceeds the configured byte bound");
-      chunks.push(chunk.subarray(0, result.bytesRead));
-    }
-    const result = new Uint8Array(total);
-    let offset = 0;
-    for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.byteLength; }
-    return result;
-  } finally {
-    await handle.close().catch(() => undefined);
+function relativePath(root: string, alias: string, requested: string | undefined, label: string): string {
+  const bases = [root, alias];
+  for (const base of bases) {
+    const target = requested === undefined ? base : isAbsolute(requested) ? resolve(requested) : resolve(base, requested);
+    const result = relative(base, target);
+    if (result === "" || (!result.startsWith("..") && !isAbsolute(result))) return result;
   }
+  throw new ShellCollectorError("PATH_INVALID", `${label} must remain inside the snapshot root`);
 }
 
 type Capture = Readonly<{ bytes: Uint8Array; overflow: boolean }>;
@@ -224,14 +237,18 @@ function storeInput(request: ShellObservationRequest): VerificationExecutionRequ
 
 async function saveArtifact(store: ArtifactStore, artifact: Artifact & Readonly<{ bytes?: Uint8Array }>, request: ShellObservationRequest): Promise<Artifact> {
   const method = store.storeArtifact ?? store.putArtifact ?? store.store;
-  if (!method) throw new ShellCollectorError("ARTIFACT_STORE_UNAVAILABLE", "artifact store does not implement a storage port");
+  const readback = (store as ArtifactStore & Readonly<{ readArtifact?: (digest: string) => Promise<Uint8Array> }>).readArtifact;
+  if (!method || typeof readback !== "function") throw new ShellCollectorError("ARTIFACT_STORE_UNAVAILABLE", "artifact store must provide storage and readback ports");
   let saved: Artifact | undefined;
   try {
     saved = await method.call(store, artifact, storeInput(request));
+    const bytes = await readback.call(store, artifact.digest);
+    if (digest(bytes) !== artifact.digest || (artifact.bytes && !equalBytes(bytes, artifact.bytes))) throw new ShellCollectorError("ARTIFACT_STORE_FAILED", "artifact store readback failed integrity verification");
   } catch (error) {
+    if (error instanceof ShellCollectorError) throw error;
     throw new ShellCollectorError("ARTIFACT_STORE_FAILED", `artifact publication failed: ${String(error)}`, { cause: error });
   }
-  if (!saved || saved.type !== artifact.type || saved.digest !== artifact.digest) throw new ShellCollectorError("ARTIFACT_STORE_FAILED", "artifact store returned an unverified artifact");
+  if (!saved || saved.type !== artifact.type || saved.digest !== artifact.digest || (artifact.path !== undefined && saved.path !== artifact.path)) throw new ShellCollectorError("ARTIFACT_STORE_FAILED", "artifact store returned an unverified artifact");
   return saved;
 }
 
@@ -252,7 +269,6 @@ export class LocalShellCollector {
   private readonly envAllowlist: ReadonlySet<string>;
   private readonly toolVersion: string;
   private readonly clock: () => string | Date;
-  private rootReady: Promise<string>;
 
   constructor(options: LocalShellCollectorOptions) {
     this.rootDir = resolve(options.rootDir);
@@ -265,41 +281,77 @@ export class LocalShellCollector {
     this.envAllowlist = new Set(options.envAllowlist ?? ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"]);
     this.toolVersion = options.toolVersion ?? "unknown";
     this.clock = options.now ?? (() => new Date());
-    this.rootReady = checkedRoot(this.rootDir);
   }
 
   async collect(request: ShellObservationRequest): Promise<LocalShellObservation> {
-    const root = await this.rootReady;
-    if (!request || request.snapshotId !== this.snapshotId) throw new ShellCollectorError("SNAPSHOT_MISMATCH", "shell observation is not bound to the configured snapshot");
+    let root: SecureRootDescriptor;
+    try {
+      root = await openSecureRoot(this.rootDir);
+      assertSecureRoot(root);
+    } catch (error) {
+      throw new ShellCollectorError("ROOT_INVALID", `collector root cannot be securely opened: ${String(error)}`, { cause: error });
+    }
+    try {
+      return await this.collectAtRoot(root, request);
+    } finally {
+      await closeSecureRoot(root);
+    }
+  }
+
+  private async collectAtRoot(root: SecureRootDescriptor, request: ShellObservationRequest): Promise<LocalShellObservation> {
+    if (!request || typeof request !== "object" || typeof request.snapshotId !== "string" || request.snapshotId !== this.snapshotId) throw new ShellCollectorError("SNAPSHOT_MISMATCH", "shell observation is not bound to the configured snapshot");
     if (this.rootIdentity !== undefined && request.rootIdentity !== undefined && request.rootIdentity !== this.rootIdentity) throw new ShellCollectorError("ROOT_IDENTITY_MISMATCH", "shell observation root identity does not match the configured snapshot");
-    if (!request.requestId || !request.executable || request.executable.includes("\0")) throw new ShellCollectorError("REQUEST_INVALID", "requestId and executable are required and executable cannot contain NUL");
+    if (typeof request.requestId !== "string" || !request.requestId || typeof request.executable !== "string" || !request.executable || request.executable.includes("\0")) throw new ShellCollectorError("REQUEST_INVALID", "requestId and executable are required and executable cannot contain NUL");
+    if (request.argv !== undefined && !Array.isArray(request.argv)) throw new ShellCollectorError("REQUEST_INVALID", "argv must be an array");
+    if (request.cwd !== undefined && (typeof request.cwd !== "string" || request.cwd.includes("\0"))) throw new ShellCollectorError("REQUEST_INVALID", "cwd must be a NUL-free string");
+    if (request.observationId !== undefined && (typeof request.observationId !== "string" || !request.observationId)) throw new ShellCollectorError("REQUEST_INVALID", "observationId must be a non-empty string");
+    if (request.toolVersion !== undefined && typeof request.toolVersion !== "string") throw new ShellCollectorError("REQUEST_INVALID", "toolVersion must be a string");
+    if (request.declaredArtifacts !== undefined && !Array.isArray(request.declaredArtifacts)) throw new ShellCollectorError("REQUEST_INVALID", "declaredArtifacts must be an array");
+    if (request.env !== undefined && (typeof request.env !== "object" || request.env === null || Object.entries(request.env).some(([name, value]) => name.includes("\0") || typeof value !== "string" || value.includes("\0")))) throw new ShellCollectorError("REQUEST_INVALID", "env must contain only NUL-free string values");
     const argv = [...(request.argv ?? [])];
     if (argv.some(value => typeof value !== "string" || value.includes("\0"))) throw new ShellCollectorError("REQUEST_INVALID", "argv values must be NUL-free strings");
-    const cwd = await checkedPath(root, request.cwd, "cwd", true);
+    const cwdRelative = relativePath(root.canonical, root.rootDir, request.cwd, "cwd");
+    const cwd = resolve(root.canonical, cwdRelative);
+    let cwdDescriptor: number;
+    try {
+      cwdDescriptor = openSecureDirectory(root.fd, cwdRelative);
+    } catch (error) {
+      throw new ShellCollectorError("PATH_INVALID", `cwd cannot be securely opened: ${String(error)}`, { cause: error });
+    }
     const timeoutMs = boundedNumber(request.timeoutMs, this.defaultTimeoutMs, MAX_TIMEOUT_MS, "timeoutMs");
     const maxOutputBytes = boundedNumber(request.maxOutputBytes, this.defaultOutputBytes, DEFAULT_ARTIFACT_BYTES, "maxOutputBytes");
     const executable = request.executable;
     const env: Record<string, string> = { PATH: SAFE_PATH };
     for (const name of this.envAllowlist) {
-      if (SECRET_NAME.test(name)) continue;
-      const value = request.env?.[name] ?? (name === "PATH" ? SAFE_PATH : process.env[name]);
-      if (value !== undefined) env[name] = value;
+      if (name === "PATH" || SECRET_NAME.test(name) || DANGEROUS_ENV.test(name)) continue;
+      const value = request.env?.[name] ?? process.env[name];
+      if (typeof value === "string" && !value.includes("\0")) env[name] = value;
     }
     for (const [name, value] of Object.entries(request.env ?? {})) {
-      if (SECRET_NAME.test(name) || !this.envAllowlist.has(name)) continue;
+      if (name === "PATH" || SECRET_NAME.test(name) || DANGEROUS_ENV.test(name) || !this.envAllowlist.has(name)) continue;
       env[name] = value;
     }
+    env.PATH = SAFE_PATH;
     const producer = request.producer ?? { kind: "self", identity: "traceknot-local-shell", independence: "self-check" } satisfies Producer;
-    if (producer.kind === "self" && producer.independence !== "self-check") throw new ShellCollectorError("PRODUCER_INVALID", "self producer must use self-check independence");
+    if (!producer || typeof producer !== "object" || typeof producer.kind !== "string" || typeof producer.identity !== "string" || typeof producer.independence !== "string") {
+      closeSecureDescriptor(cwdDescriptor);
+      throw new ShellCollectorError("PRODUCER_INVALID", "producer must be a valid producer object");
+    }
+    if (producer.kind === "self" && producer.independence !== "self-check") {
+      closeSecureDescriptor(cwdDescriptor);
+      throw new ShellCollectorError("PRODUCER_INVALID", "self producer must use self-check independence");
+    }
     const startedAt = asDateString(this.clock);
     const executionIdentity = `local-shell:${JSON.stringify([executable, argv])}`;
     let child: Bun.Subprocess;
     try {
-      child = Bun.spawn([executable, ...argv], { cwd, env, stdout: "pipe", stderr: "pipe", detached: true });
+      child = await spawnInDirectory(cwdDescriptor, executable, argv, env);
     } catch (error) {
+      closeSecureDescriptor(cwdDescriptor);
       const finishedAt = asDateString(this.clock);
       return { schemaVersion: "observation/v1", observationId: request.observationId ?? randomUUID(), requestId: request.requestId, snapshotId: request.snapshotId, producer, execution: { kind: "command", identity: executionIdentity, startedAt, finishedAt, exitStatus: "failed" }, artifacts: [], actualValues: { toolVersion: request.toolVersion ?? this.toolVersion, executable, argv: JSON.stringify(argv), cwd, spawnError: String(error) } };
     }
+    closeSecureDescriptor(cwdDescriptor);
     let overflow = false;
     let overflowStop: Promise<void> | undefined;
     const triggerOverflow = (): void => {
@@ -317,6 +369,13 @@ export class LocalShellCollector {
     }
     const [exitCode, stdout, stderr] = await Promise.all([exitPromise, stdoutPromise, stderrPromise]);
     if (overflowStop) await overflowStop;
+    try { assertSecureRoot(root); } catch (error) { throw new ShellCollectorError("ROOT_CHANGED", `snapshot root changed during command execution: ${String(error)}`, { cause: error }); }
+    const spawnFailurePrefix = "__TRACEKNOT_SPAWN_FAILURE__";
+    const spawnFailure = new TextDecoder().decode(stderr.bytes);
+    if (!timedOut && !overflow && exitCode === 125 && spawnFailure.startsWith(spawnFailurePrefix)) {
+      const finishedAt = asDateString(this.clock);
+      return { schemaVersion: "observation/v1", observationId: request.observationId ?? randomUUID(), requestId: request.requestId, snapshotId: request.snapshotId, producer, execution: { kind: "command", identity: executionIdentity, startedAt, finishedAt, exitStatus: "failed" }, artifacts: [], actualValues: { toolVersion: request.toolVersion ?? this.toolVersion, executable, argv: JSON.stringify(argv), cwd, spawnError: spawnFailure.slice(spawnFailurePrefix.length) } };
+    }
     const finishedAt = asDateString(this.clock);
     const actualValues: Record<string, string | number | boolean | null> = {
       toolVersion: request.toolVersion ?? this.toolVersion,
@@ -336,14 +395,21 @@ export class LocalShellCollector {
     artifacts.push(await saveArtifact(this.artifactStore, { type: "shell-output", path: "stdout", digest: digest(stdout.bytes), bytes: stdout.bytes } as Artifact & { bytes: Uint8Array }, request));
     artifacts.push(await saveArtifact(this.artifactStore, { type: "shell-output", path: "stderr", digest: digest(stderr.bytes), bytes: stderr.bytes } as Artifact & { bytes: Uint8Array }, request));
     for (const declaration of request.declaredArtifacts ?? []) {
-      if (!declaration.type || !validDigest(declaration.digest)) throw new ShellCollectorError("DECLARED_ARTIFACT_INVALID", "declared artifact type/digest is invalid");
-      const path = await checkedPath(root, declaration.path, "declared artifact", false);
-      const bytes = await readBoundedFile(path, this.maxArtifactBytes);
+      if (!declaration || typeof declaration.type !== "string" || !declaration.type || typeof declaration.digest !== "string" || !validDigest(declaration.digest) || typeof declaration.path !== "string" || !declaration.path) throw new ShellCollectorError("DECLARED_ARTIFACT_INVALID", "declared artifact type/digest/path is invalid");
+      const artifactRelative = relativePath(root.canonical, root.rootDir, declaration.path, "declared artifact");
+      let bytes: Uint8Array;
+      try {
+        bytes = await readSecureRegularFile(root.fd, artifactRelative, this.maxArtifactBytes);
+      } catch (error) {
+        const code = String(error).includes("byte bound") ? "ARTIFACT_TOO_LARGE" : "ARTIFACT_READ_FAILED";
+        throw new ShellCollectorError(code, `declared artifact cannot be securely read: ${String(error)}`, { cause: error });
+      }
       if (digest(bytes) !== declaration.digest) throw new ShellCollectorError("DECLARED_ARTIFACT_MISMATCH", `declared artifact digest mismatch for ${declaration.path}`);
+      const path = resolve(root.canonical, artifactRelative);
       artifacts.push(await saveArtifact(this.artifactStore, { ...declaration, path, bytes } as Artifact & { bytes: Uint8Array }, request));
     }
-    const observation: Observation = { schemaVersion: "observation/v1", observationId: request.observationId ?? randomUUID(), requestId: request.requestId, snapshotId: request.snapshotId, producer, execution: { kind: "command", identity: executionIdentity, startedAt, finishedAt, exitStatus: status, ...(typeof exitCode === "number" && !timedOut ? { exitCode } : {}) }, artifacts, actualValues };
-    return observation;
+    try { assertSecureRoot(root); } catch (error) { throw new ShellCollectorError("ROOT_CHANGED", `snapshot root changed before observation publication: ${String(error)}`, { cause: error }); }
+    return { schemaVersion: "observation/v1", observationId: request.observationId ?? randomUUID(), requestId: request.requestId, snapshotId: request.snapshotId, producer, execution: { kind: "command", identity: executionIdentity, startedAt, finishedAt, exitStatus: status, ...(typeof exitCode === "number" && !timedOut ? { exitCode } : {}) }, artifacts, actualValues };
   }
 
   async execute(request: ShellObservationRequest): Promise<LocalShellObservation> { return this.collect(request); }
