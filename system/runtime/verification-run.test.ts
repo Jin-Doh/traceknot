@@ -204,6 +204,28 @@ test.each(["uppercase", "reordered"] as const)("rejects a %s noncanonical author
   expect(fakes.repository.stageWrites).not.toContain("execution");
   expect(fakes.repository.runs.get(runId)?.state).toBe("PLANNED");
 });
+test("rejects an authority observedAt mismatch before execution persistence", async () => {
+  const fakes = makeDependencies();
+  const request = { ...makeRequest("authority-observed-at-mismatch"), testBasis: [makeRequest().testBasis[0]!] };
+  const runId = "authority-observed-at-mismatch";
+  const replay = makeReplayAuthority(fakes, binding => ({ ...binding, observedAt: "2026-08-03T00:00:09.000Z" }));
+  const executor: VerificationExecutor = {
+    executeObligation: async executionRequest => ({
+      status: "PASS",
+      runId: executionRequest.runId,
+      requestId: executionRequest.requestId,
+      snapshotId: executionRequest.snapshotId,
+      idempotencyKey: executionRequest.idempotencyKey,
+      producer: { kind: "deterministic-verifier", identity: "observed-at-replay-executor", independence: "independent-producer" },
+      artifacts: [{ type: "verification-result", digest: "a".repeat(64) }],
+    }),
+  };
+  const dependencies = { ...replay.dependencies, executor };
+  await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("execution authority binding is not canonical");
+  expect(replay.issued).toHaveLength(1);
+  expect(replay.issued[0]).toEqual(replay.signed[0]);
+  expect(fakes.repository.stageWrites).not.toContain("execution");
+});
 test("rejects self producer with independent independence in an authority replay", async () => {
   const fakes = makeDependencies();
   const request = { ...makeRequest("authority-self-independent"), testBasis: [makeRequest().testBasis[0]!] };
@@ -1070,13 +1092,40 @@ describe("verification run orchestration", () => {
       const target = saved.evidence[0];
       const tamperedEvidence = mutation === "extra key"
         ? { ...target, unexpected: true }
-        : { ...target, contentHash: "A".repeat(64) };
+        : { ...target, contentHash: "a".repeat(64) };
       fakes.repository.stageDocuments.set(`${runId}:execution`, { ...saved, evidence: [tamperedEvidence, ...saved.evidence.slice(1)] });
       fakes.repository.runs.set(runId, { ...run, state, updatedAt: FIXED_NOW });
       const executorCalls = fakes.executorCalls;
       const stageWrites = fakes.repository.stageWrites.length;
       const runWrites = fakes.repository.runWrites.length;
       await expect(runVerification({ runId, request: makeRequest(), dependencies: fakes.dependencies })).rejects.toThrow("invalid persisted execution evidence reference");
+      expect(fakes.executorCalls).toBe(executorCalls);
+      expect(fakes.repository.stageWrites.length).toBe(stageWrites);
+      expect(fakes.repository.runWrites.length).toBe(runWrites);
+    }
+  });
+  test.each(["EXECUTING", "TERMINAL"] as const)("rejects persisted observation envelope tampering before writes or redispatch on %s resume", async state => {
+    for (const mutation of ["extra key", "empty actualValues", "null actual value", "nested actual value"] as const) {
+      const fakes = makeDependencies();
+      const runId = `observation-envelope-${state.toLowerCase()}-${mutation.replaceAll(" ", "-")}`;
+      await runOnce(fakes.dependencies, runId);
+      const run = fakes.repository.runs.get(runId);
+      const saved = fakes.repository.stageDocuments.get(`${runId}:execution`) as ExecutionDocument;
+      if (!run || !saved || !saved.observations[0]) throw new Error("missing complete execution");
+      const target = saved.observations[0];
+      const tamperedObservation = mutation === "extra key"
+        ? { ...target, unexpected: true }
+        : mutation === "empty actualValues"
+          ? { ...target, actualValues: {} }
+          : mutation === "null actual value"
+            ? { ...target, actualValues: { result: null } }
+            : { ...target, actualValues: { result: { value: true } } };
+      fakes.repository.stageDocuments.set(`${runId}:execution`, { ...saved, observations: [tamperedObservation, ...saved.observations.slice(1)] });
+      fakes.repository.runs.set(runId, { ...run, state, updatedAt: FIXED_NOW });
+      const executorCalls = fakes.executorCalls;
+      const stageWrites = fakes.repository.stageWrites.length;
+      const runWrites = fakes.repository.runWrites.length;
+      await expect(runVerification({ runId, request: makeRequest(), dependencies: fakes.dependencies })).rejects.toThrow("invalid persisted execution reference");
       expect(fakes.executorCalls).toBe(executorCalls);
       expect(fakes.repository.stageWrites.length).toBe(stageWrites);
       expect(fakes.repository.runWrites.length).toBe(runWrites);

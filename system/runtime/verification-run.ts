@@ -11,7 +11,7 @@ export type EvidenceType="experiment"|"test-result"|"browser-result"|"build-resu
 export type VerificationObligationPlan=Readonly<{id:string;conditionIds:readonly string[];evidenceType:EvidenceType;mandatory:boolean;independence:IndependenceLevel;entryCriteria:readonly string[];completionCriteria:readonly string[]}>;
 export type VerificationPlan=Readonly<{schemaVersion:"verification-plan/v1";requestId:string;snapshotId:string;risks:readonly VerificationRisk[];conditions:readonly VerificationCondition[];obligations:readonly VerificationObligationPlan[]}>;
 export type CanonicalVerificationResultArtifact=Readonly<{type:"verification-result";digest:string;path?:string}>;
-export type VerificationEvidence=Readonly<{schemaVersion:"verification-evidence/v1";evidenceId:string;requestId:string;snapshotId:string;obligationId:string;producer:Producer;execution:Execution;result:Readonly<{verdict:"PASS"|"FAIL"|"BLOCKED"|"INCOMPLETE";summary:string;passed?:number;failed?:number;artifacts?:readonly string[]}>;observedAt:string;contentHash?:string}>;
+export type VerificationEvidence=Readonly<{schemaVersion:"verification-evidence/v1";evidenceId:string;requestId:string;snapshotId:string;obligationId:string;producer:Producer;execution:Execution;result:Readonly<{verdict:"PASS"|"FAIL"|"BLOCKED"|"INCOMPLETE";summary:string;passed?:number;failed?:number;artifacts?:readonly string[]}>;observedAt:string}>;
 export type VerificationExecutionRequest=Readonly<{runId:string;requestId:string;requestDigest:string;snapshotId:string;obligation:VerificationObligationPlan;conditionIds:readonly string[];idempotencyKey:string}>;
 export type VerificationExecutionOutput=Readonly<{status:"passed"|"failed"|"blocked"|"incomplete"|"PASS"|"FAIL"|"BLOCKED"|"INCOMPLETE";runId:string;requestId:string;snapshotId:string;idempotencyKey:string;producer:Producer;summary?:string;artifacts?:readonly Artifact[];executionKind?:Execution["kind"];identity?:string;exitCode?:number}>;
 export type VerificationExecutionAuthorityBinding=Readonly<{runId:string;requestId:string;requestDigest:string;snapshotId:string;obligationId:string;idempotencyKey:string;producer:Producer;execution:Execution;result:VerificationEvidence["result"];observedAt:string;artifactDigests:readonly string[]}>;
@@ -92,6 +92,17 @@ function canonicalExecution(value: unknown): Execution | undefined {
 }
 function validExecution(value: unknown): value is Execution {
   return isRecord(value) && exactOwnKeys(value, ["kind", "identity", "startedAt", "finishedAt", "exitStatus"], ["exitCode"]) && canonicalExecution(value) !== undefined;
+}
+function validObservation(value: unknown): value is Observation {
+  if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "observationId", "requestId", "snapshotId", "producer", "execution", "artifacts"], ["actualValues"]) || value.schemaVersion !== "observation/v1" || typeof value.observationId !== "string" || !value.observationId || typeof value.requestId !== "string" || !value.requestId || typeof value.snapshotId !== "string" || !value.snapshotId || !validProducer(value.producer) || !validExecution(value.execution) || !Array.isArray(value.artifacts) || value.artifacts.some(artifact => !validArtifact(artifact))) return false;
+  const actualValues = value.actualValues;
+  if (actualValues === undefined) return true;
+  if (!isRecord(actualValues)) return false;
+  const keys = Object.keys(actualValues);
+  return keys.length > 0 && keys.every(key => {
+    const actualValue = actualValues[key];
+    return Boolean(key) && (typeof actualValue === "string" || typeof actualValue === "boolean" || (typeof actualValue === "number" && Number.isFinite(actualValue)));
+  });
 }
 function validBasisItem(value: unknown): value is VerificationBasisItem {
   return isRecord(value) && exactOwnKeys(value, ["id", "kind", "origin", "text"], ["source"]) && typeof value.id === "string" && Boolean(value.id) && BASIS_KINDS.includes(value.kind as BasisKind) && (value.origin === "explicit" || value.origin === "derived") && typeof value.text === "string" && Boolean(value.text) && (value.source === undefined || (typeof value.source === "string" && Boolean(value.source)));
@@ -257,7 +268,7 @@ function canonicalResult(value: unknown): VerificationEvidence["result"] | undef
   return { verdict: value.verdict as VerificationEvidence["result"]["verdict"], summary: value.summary, ...(value.passed === undefined ? {} : { passed: value.passed }), ...(value.failed === undefined ? {} : { failed: value.failed }), ...(artifacts === undefined ? {} : { artifacts }) };
 }
 function validVerificationEvidence(value: unknown): value is VerificationEvidence {
-  if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "evidenceId", "requestId", "snapshotId", "obligationId", "producer", "execution", "result", "observedAt"], ["contentHash"]) || value.schemaVersion !== "verification-evidence/v1" || typeof value.evidenceId !== "string" || !value.evidenceId || typeof value.requestId !== "string" || !value.requestId || typeof value.snapshotId !== "string" || !value.snapshotId || typeof value.obligationId !== "string" || !value.obligationId || !validProducer(value.producer) || !validExecution(value.execution) || canonicalResult(value.result) === undefined || !validDate(value.observedAt) || (value.contentHash !== undefined && (typeof value.contentHash !== "string" || !/^[0-9a-f]{64}$/.test(value.contentHash)))) return false;
+  if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "evidenceId", "requestId", "snapshotId", "obligationId", "producer", "execution", "result", "observedAt"]) || "contentHash" in value || value.schemaVersion !== "verification-evidence/v1" || typeof value.evidenceId !== "string" || !value.evidenceId || typeof value.requestId !== "string" || !value.requestId || typeof value.snapshotId !== "string" || !value.snapshotId || typeof value.obligationId !== "string" || !value.obligationId || !validProducer(value.producer) || !validExecution(value.execution) || canonicalResult(value.result) === undefined || !validDate(value.observedAt)) return false;
   return true;
 }
 function validAuthority(value: unknown): value is ExecutionAuthority {
@@ -275,7 +286,7 @@ function canonicalEvidenceFromAuthority(binding: VerificationExecutionAuthorityB
   const producer = canonicalProducer(binding.producer);
   const execution = canonicalExecution(binding.execution);
   const result = canonicalResult(binding.result);
-  if (!producer || !execution || !result || !validDate(binding.observedAt) || !resultMatchesExecution(result, execution)) return undefined;
+  if (!producer || !execution || !result || !validDate(binding.observedAt) || binding.observedAt !== execution.finishedAt || !resultMatchesExecution(result, execution)) return undefined;
   const artifactDigests = uniq(binding.artifactDigests.map(digest => digest.toLowerCase()));
   const resultDigests = uniq((result.artifacts ?? []).map(digest => digest.toLowerCase()));
   if (JSON.stringify(artifactDigests) !== JSON.stringify(resultDigests)) return undefined;
@@ -305,6 +316,7 @@ function assertExecutionEvidenceBindings(execution: ExecutionDocument, request?:
   const evidence = new Map<string, VerificationEvidence>();
   const expectedObligations = plan ? new Set(plan.obligations.map(item => item.id)) : undefined;
   for (const observation of execution.observations) {
+    if (!validObservation(observation)) throw Error("invalid execution observation binding");
     const prefix = "observation:";
     if (!observation.observationId.startsWith(prefix)) throw Error("invalid execution observation binding");
     const obligationId = observation.observationId.slice(prefix.length);
@@ -654,7 +666,7 @@ function validateStage(stage: StageName, value: unknown, request: VerificationRe
     const usageOutbox = Array.isArray(rawUsageOutbox) ? rawUsageOutbox : [];
     const usageEventKeys = usageOutbox.map(item => isRecord(item) && typeof item.eventKey === "string" ? item.eventKey : "");
     if (usageOutbox.some(item => !validUsageOutboxEntry(item, request, runId) || (obligationSet && isRecord(item) && typeof item.obligationId === "string" && !obligationSet.has(item.obligationId))) || usageEventKeys.some(key => !key) || new Set(usageEventKeys).size !== usageEventKeys.length || JSON.stringify(usageEventKeys) !== JSON.stringify([...usageEventKeys].sort())) throw Error("invalid persisted execution usage outbox");
-    for (const observation of value.observations) if (!isRecord(observation) || observation.schemaVersion !== "observation/v1" || observation.requestId !== request.requestId || observation.snapshotId !== request.project.snapshotId || !validProducer(observation.producer) || !validExecution(observation.execution) || !Array.isArray(observation.artifacts) || observation.artifacts.some(artifact=>!validArtifact(artifact))) throw Error("invalid persisted execution reference");
+    for (const observation of value.observations) if (!validObservation(observation) || observation.requestId !== request.requestId || observation.snapshotId !== request.project.snapshotId) throw Error("invalid persisted execution reference");
     for (const claim of value.claims) {
       if (!isRecord(claim) || claim.schemaVersion !== "evidence-claim/v1" || claim.requestId !== request.requestId || claim.snapshotId !== request.project.snapshotId || typeof claim.claimId !== "string" || claim.claimId !== `claim:${claim.obligationId}` || !Array.isArray(claim.observationIds) || claim.observationIds.length !== 1 || claim.observationIds[0] !== `observation:${claim.obligationId}` || typeof claim.obligationId !== "string" || !claim.obligationId || typeof claim.criterionId !== "string" || claim.criterionId !== `criterion:${claim.obligationId}` || (obligationSet && !obligationSet.has(claim.obligationId))) throw Error("invalid persisted claim reference");
       if (claimObligations.has(claim.obligationId)) throw Error("invalid persisted claim reference");
