@@ -37,7 +37,7 @@ export type DispatchClaim=Readonly<{schemaVersion:"verification-dispatch-claim/v
 export type DispatchClaimResult=Readonly<{claimed:boolean;status:"CLAIMED"|"COMPLETED";claim:DispatchClaim;outputStored:boolean;completion?:VerificationExecutionCompletionEnvelope}>;
 export type RepositoryTransition=Readonly<{runId:string;expectedRevision?:number;stage?:StageName;document?:StageDocument;run:CanonicalRunState}>;
 export interface RepositoryPort {readonly loadRun:(id:string)=>MaybePromise<CanonicalRunState|undefined>;readonly loadStageDocument:(id:string,s:StageName)=>MaybePromise<unknown|undefined>;readonly commitTransition:(transition:RepositoryTransition)=>MaybePromise<boolean>;readonly claimExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<DispatchClaimResult>;readonly completeExecutionDispatch?:(claim:DispatchClaim,completion:VerificationExecutionCompletionEnvelope|undefined,now?:string)=>MaybePromise<boolean>;readonly releaseExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<boolean>};
-export type VerificationRunDependencies=Readonly<{repository:RepositoryPort;executor:VerificationExecutor;artifactStore:ArtifactStore;capabilityProvider:CapabilityProvider;executionAuthority:ExecutionAuthorityPort;freshnessPolicy:FreshnessPolicy;freshnessAuthority?:FreshnessAuthorityPort;browserExecutor?:BrowserExecutor;approvalProvider?:ApprovalProvider;usageRecorder?:UsageRecorder;now:Clock;dispatchOwnerId?:string;ownerId?:string;dispatchLeaseDurationMs?:number;leaseDurationMs?:number}>;
+export type VerificationRunDependencies=Readonly<{repository:RepositoryPort;executor:VerificationExecutor;artifactStore:ArtifactStore;capabilityProvider:CapabilityProvider;executionAuthority:ExecutionAuthorityPort;freshnessPolicy:FreshnessPolicy;freshnessAuthority:FreshnessAuthorityPort;browserExecutor?:BrowserExecutor;approvalProvider?:ApprovalProvider;usageRecorder?:UsageRecorder;now:Clock;dispatchOwnerId?:string;ownerId?:string;dispatchLeaseDurationMs?:number;leaseDurationMs?:number}>;
 export type BasisDocument=Readonly<{schemaVersion:"verification-basis/v1";requestId:string;snapshotId:string;basis:readonly VerificationBasisItem[];basisIds:readonly string[]}>; export type DiscoveryDocument=Readonly<{schemaVersion:"risk-discovery/v1";requestId:string;snapshotId:string;risks:readonly VerificationRisk[];conditions:readonly VerificationCondition[]}>; export type PlanDocument=VerificationPlan; export type UsageOutboxEntry=Readonly<{executionKey:string;obligationId:string;event:"execution"|"artifact";eventKey:string}>; export type ExecutionDocument=Readonly<{schemaVersion:"verification-execution/v1";requestId:string;snapshotId:string;observations:readonly Observation[];claims:readonly EvidenceClaim[];evidence:readonly VerificationEvidence[];authorities:readonly ExecutionAuthority[];usageOutbox:readonly UsageOutboxEntry[]}>; export type EvidenceDocument=Readonly<{schemaVersion:"verification-evidence-evaluation/v1";requestId:string;snapshotId:string;freshnessEvaluatedAt:string;freshnessAuthority:FreshnessAuthority;evaluations:readonly EvidenceEvaluation[];acceptedClaimIds:readonly string[];coverage:CoverageInput}>; export type ResidualRiskDocument=Readonly<{schemaVersion:"verification-residual-risk/v1";requestId:string;snapshotId:string;defects:readonly DefectSummary[]}>; export type VerdictDocument=VerdictResult; export type StageDocument=VerificationRequest|BasisDocument|DiscoveryDocument|PlanDocument|ExecutionDocument|EvidenceDocument|ResidualRiskDocument|VerdictDocument;
 export type VerificationRunDocuments={request?:VerificationRequest;basis?:BasisDocument;discovery?:DiscoveryDocument;plan?:PlanDocument;execution?:ExecutionDocument;evidence?:EvidenceDocument;"residual-risk"?:ResidualRiskDocument;verdict?:VerdictDocument};
 export type EstablishTestBasisInput=Readonly<{runId?:string;request:VerificationRequest;dependencies:VerificationRunDependencies}>; export type PerformRiskDiscoveryInput=Readonly<{request:VerificationRequest;basis:BasisDocument;dependencies:VerificationRunDependencies}>; export type BuildVerificationPlanInput=Readonly<{request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;dependencies:VerificationRunDependencies}>; type ExecuteObligationsInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;dependencies:VerificationRunDependencies;checkpoint?:ExecutionDocument}>; type EvaluateEvidenceInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;dependencies:VerificationRunDependencies;freshnessEvaluatedAt?:string;freshnessAuthority?:FreshnessAuthority}>; type EvaluateResidualRiskInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;evidence:EvidenceDocument;dependencies:VerificationRunDependencies}>; type ResolveVerdictInput=Readonly<{runId:string;request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;plan:VerificationPlan;execution:ExecutionDocument;evidence:EvidenceDocument;residualRisk:ResidualRiskDocument;dependencies:VerificationRunDependencies}>; export type RunVerificationInput=Readonly<{runId:string;request?:VerificationRequest;dependencies:VerificationRunDependencies}>; export type RunVerificationResult=Readonly<{run:CanonicalRunState;verdict:VerdictResult;documents:VerificationRunDocuments}>;
@@ -932,7 +932,18 @@ async function loadCheckedStage<T>(repository: RepositoryPort, runId: string, st
     if (stage === "execution") await verifyPersistedExecutionAuthorities(value as unknown as ExecutionDocument, request, prior?.plan, runId, dependencies.executionAuthority);
     if (stage === "evidence") {
       if (!prior?.plan || !prior.execution) throw Error("invalid persisted evidence prerequisites");
-      const canonical = await evaluateEvidence({ runId, request, plan: prior.plan, execution: prior.execution, dependencies, freshnessEvaluatedAt: (value as EvidenceDocument).freshnessEvaluatedAt, freshnessAuthority: (value as EvidenceDocument).freshnessAuthority });
+      const persistedEvidence = value as EvidenceDocument;
+      const persistedFreshnessByObligation = new Map(prior.execution.claims.map(claim => {
+        const evaluation = persistedEvidence.evaluations.find(item => item.claimId === claim.claimId);
+        return [claim.obligationId, evaluation?.checks.fresh ? "fresh" as const : "stale" as const];
+      }));
+      const canonicalDependencies: VerificationRunDependencies = {
+        ...dependencies,
+        freshnessPolicy: {
+          evaluateFreshness: async (input: { evidence: VerificationEvidence }) => persistedFreshnessByObligation.get(input.evidence.obligationId) ?? "unknown",
+        },
+      };
+      const canonical = await evaluateEvidence({ runId, request, plan: prior.plan, execution: prior.execution, dependencies: canonicalDependencies, freshnessEvaluatedAt: persistedEvidence.freshnessEvaluatedAt, freshnessAuthority: persistedEvidence.freshnessAuthority });
       if (!structurallyEqual(value, canonical)) throw Error("invalid persisted evidence canonicalization");
     }
     if (stage === "residual-risk") {
@@ -1028,6 +1039,14 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
     if (run.state === "EXECUTING") {
       if (!plan || !execution) throw Error("plan or execution document is missing");
       validateExecutionCompleteness(execution, plan);
+      const persistedEvidence = documents.evidence ?? await loadStage<EvidenceDocument>(repository, input.runId, "evidence");
+      if (persistedEvidence) {
+        validateStage("evidence", persistedEvidence, req, input.runId, documents);
+        if (persistedEvidence.freshnessAuthority.binding.executionDigest === canonicalSha256(execution)) {
+          const checkedEvidence = await loadCheckedStage<EvidenceDocument>(repository, input.runId, "evidence", req, dependencies, documents);
+          if (checkedEvidence) documents.evidence = checkedEvidence;
+        }
+      }
       const doc = await evaluateEvidence({ runId: input.runId, request: req, plan, execution, dependencies });
       const next = transitionRunState({ schemaVersion: run.schemaVersion, runId: run.runId, requestId: run.requestId, rootIdentity: run.rootIdentity, snapshotId: run.snapshotId, state: run.state, observationIds: execution.observations.map(item=>item.observationId), claimIds: execution.claims.map(item=>item.claimId), evaluationIds: doc.evaluations.map(item=>item.evaluationId), revision: run.revision, createdAt: run.createdAt, updatedAt: run.updatedAt }, "EVIDENCE_EVALUATED", clockNow(dependencies.now));
       await commitStageAndRun(repository, next, "evidence", doc, run.revision);

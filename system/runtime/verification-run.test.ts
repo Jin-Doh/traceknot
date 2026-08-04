@@ -1963,6 +1963,40 @@ describe("verification run orchestration", () => {
     expect(new Set(requests).size).toBe(1);
     expect([...store.dispatchClaims.values()][0]?.status).toBe("COMPLETED");
   });
+  test("rejects a mutated persisted completion envelope before replay", async () => {
+    const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
+    class CrashAfterCompleteRepository extends FakeRepository {
+      crash = true;
+      override async completeExecutionDispatch(claim: DispatchClaim, completion: VerificationExecutionCompletionEnvelope | undefined, now = FIXED_NOW) {
+        const completed = await super.completeExecutionDispatch(claim, completion, now);
+        if (this.crash) {
+          this.crash = false;
+          throw new Error("simulated completion crash");
+        }
+        return completed;
+      }
+    }
+    const runId = "completion-envelope-tamper";
+    const request = { ...makeRequest(), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    const fakes = makeDependencies({}, new CrashAfterCompleteRepository(store));
+    const requests: string[] = [];
+    const executor: VerificationExecutor = {
+      atomicSameKeyIdempotency: true,
+      executeObligation: async requestInput => {
+        requests.push(requestInput.idempotencyKey);
+        return fakes.dependencies.executor.executeObligation!(requestInput);
+      },
+    };
+    const dependencies = { ...fakes.dependencies, executor, dispatchOwnerId: "completion-tamper-owner" };
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("simulated completion crash");
+    const entry = [...store.dispatchClaims.values()][0];
+    if (!entry?.completion) throw new Error("missing persisted completion envelope");
+    const tampered = structuredClone(entry.completion) as VerificationExecutionCompletionEnvelope & { output: VerificationExecutionOutput & { summary?: string } };
+    tampered.output.summary = "mutated after durable completion";
+    store.dispatchClaims.set(entry.claim.claimKey, { ...entry, completion: tampered });
+    await expect(runVerification({ runId, dependencies })).rejects.toThrow("invalid persisted dispatch completion");
+    expect(requests).toHaveLength(1);
+  });
 
   test("fixed-clock adapters atomically claim and dispatch one shared obligation", async () => {
     const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
@@ -2038,6 +2072,18 @@ describe("verification run orchestration", () => {
     expect(resumed.run.state).toBe("TERMINAL");
     expect(resumed.verdict.qaVerdict).toBe("FAIL");
     expect(freshnessInputs.at(-1)).toBe(FIXED_NOW);
+  });
+  test("rejects a persisted freshness timestamp mutation before resume", async () => {
+    const fakes = makeDependencies();
+    const runId = "freshness-timestamp-tamper";
+    await runOnce(fakes.dependencies, runId);
+    const run = fakes.repository.runs.get(runId);
+    const saved = fakes.repository.stageDocuments.get(`${runId}:evidence`) as { freshnessEvaluatedAt: string; freshnessAuthority: FreshnessAuthority };
+    if (!run || !saved) throw new Error("missing persisted freshness evidence");
+    fakes.repository.stageDocuments.set(`${runId}:evidence`, { ...saved, freshnessEvaluatedAt: "2026-08-03T00:01:00.000Z" });
+    fakes.repository.runs.set(runId, { ...run, state: "EXECUTING", updatedAt: FIXED_NOW });
+    const executorCalls = fakes.executorCalls;
+    await expect(runOnce(fakes.dependencies, runId)).rejects.toThrow();
   });
 
   test("rejects a stale repository writer without overwriting the terminal pair", async () => {
