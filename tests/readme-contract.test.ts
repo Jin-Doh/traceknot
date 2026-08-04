@@ -55,6 +55,13 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLocalLinks({ path: "README.md", content: "<img src='assets/not-here.png'>" })).toThrow("local link does not exist");
   });
 
+  test("parses multiline reference-link destinations", () => {
+    expect(() => checkReadmeLocalLinks({
+      path: "README.md",
+      content: "[guide][g]\n\n[g]:\n  docs/not-here.md",
+    })).toThrow("docs/not-here.md");
+  });
+
   test("rejects missing unquoted HTML targets", () => {
     expect(() => checkReadmeLocalLinks({ path: "README.md", content: "<img src=assets/not-here.png>" })).toThrow("local link does not exist");
   });
@@ -115,6 +122,21 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLocalLinks({ path: "README.md", content })).not.toThrow();
   });
 
+  test("keeps indented paragraph-continuation links visible", () => {
+    const content = "Paragraph text\n    [guide](docs/not-here.md)";
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content })).toThrow("docs/not-here.md");
+  });
+
+  test("masks multiline Markdown code spans before link validation", () => {
+    const content = "`sample starts\n[literal](docs/not-here.md)\nends`";
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content })).not.toThrow();
+  });
+
+  test("parses srcset candidates after a data URL", () => {
+    const content = '<img srcset="data:image/png;base64,AAAA 1x, assets/not-here.png 2x">';
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content })).toThrow("assets/not-here.png");
+  });
+
   test("requires a real balanced Markdown label before validating a destination", () => {
     expect(() => checkReadmeLocalLinks({ path: "README.md", content: "[outer [inner]](docs/not-here.md)" })).toThrow(
       "docs/not-here.md",
@@ -143,6 +165,13 @@ describe("README localization section contract", () => {
     );
     expect(() => checkReadmeSharedCommands([{ path: "README.md", content: `${bare}\n${bare}` }])).toThrow(
       "must appear exactly once",
+    );
+  });
+
+  test("requires a line-anchored matching shared-command closing fence", () => {
+    const malformed = "<!-- shared-command:ci -->\n\n```sh\necho ok\n```not-a-closing-fence";
+    expect(() => checkReadmeSharedCommands([{ path: "README.md", content: malformed }])).toThrow(
+      "must be followed by a fenced block",
     );
   });
 });
