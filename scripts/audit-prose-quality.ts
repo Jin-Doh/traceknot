@@ -91,6 +91,7 @@ const DEFAULT_CONFIG: Config = {
     "README.ko.md",
     "BRAND.md",
     "BRAND.ko.md",
+    "assets/readme/README.md",
     "docs/architecture.md",
     "docs/qa-process.md",
     "docs/trust-model.md",
