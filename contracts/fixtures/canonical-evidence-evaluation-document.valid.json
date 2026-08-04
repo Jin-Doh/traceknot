@@ -15,6 +15,7 @@
       "executionDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "freshnessEvaluatedAt": "2026-08-03T00:00:02.000Z",
       "evaluationIds": ["evaluation-1"],
+      "evaluationsDigest": "0b88cf7898b367ef24651985767def66fb17b792e7ce0e6b8a30cf10d46f3d28",
       "acceptedClaimIds": ["claim-1"],
       "coverage": {
         "basisIds": ["basis-1"],

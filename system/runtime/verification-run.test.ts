@@ -1805,6 +1805,75 @@ describe("verification run orchestration", () => {
     await expect(runOnce(fakes.dependencies, runId)).rejects.toThrow();
     expect(fakes.executorCalls).toBe(executorCalls);
   });
+  test.each(["EVIDENCE_EVALUATED", "TERMINAL"] as const)("rejects a persisted REJECTED evaluation checks.fresh mutation before %s resume issuer side effects", async state => {
+    const fakes = makeDependencies();
+    const runId = `freshness-evaluation-fresh-tamper-${state.toLowerCase()}`;
+    let issueCalls = 0;
+    const issueFreshnessAuthority = fakes.dependencies.freshnessAuthority.issueFreshnessAuthority!;
+    const verifyFreshnessAuthority = fakes.dependencies.freshnessAuthority.verifyFreshnessAuthority!;
+    const dependencies = {
+      ...fakes.dependencies,
+      freshnessPolicy: { evaluateFreshness: async () => "stale" as const },
+      freshnessAuthority: {
+        issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
+          issueCalls++;
+          return issueFreshnessAuthority(binding);
+        },
+        verifyFreshnessAuthority,
+      },
+    } as unknown as VerificationRunDependencies;
+    const first = await runOnce(dependencies, runId);
+    const run = fakes.repository.runs.get(runId);
+    const saved = fakes.repository.stageDocuments.get(`${runId}:evidence`) as Record<string, unknown>;
+    if (!run || !saved) throw new Error("missing persisted evidence");
+    const evaluations = (saved.evaluations as Array<Record<string, unknown>>).map((evaluation, index) => index === 0
+      ? { ...evaluation, checks: { ...(evaluation.checks as Record<string, boolean>), fresh: true } }
+      : evaluation);
+    fakes.repository.stageDocuments.set(`${runId}:evidence`, { ...saved, evaluations });
+    fakes.repository.runs.set(runId, { ...run, state, updatedAt: FIXED_NOW });
+    issueCalls = 0;
+    const runWritesBeforeResume = fakes.repository.runWrites.length;
+    await expect(runOnce(dependencies, runId)).rejects.toThrow("invalid persisted evidence evaluation digest");
+    expect(fakes.repository.runs.get(runId)?.state).toBe(state);
+    expect(fakes.repository.runWrites.length).toBe(runWritesBeforeResume);
+    expect(issueCalls).toBe(0);
+    expect(first.run.state).toBe("TERMINAL");
+  });
+  test.each(["add", "remove"] as const)("rejects a persisted STALE_EVIDENCE %s mutation before terminal resume issuer side effects", async mutation => {
+    const fakes = makeDependencies(mutation === "add" ? { producerKind: "harness-managed", producerIndependence: "separate-verification-context" } : {});
+    const runId = `freshness-stale-reason-${mutation}`;
+    let issueCalls = 0;
+    const issueFreshnessAuthority = fakes.dependencies.freshnessAuthority.issueFreshnessAuthority!;
+    const verifyFreshnessAuthority = fakes.dependencies.freshnessAuthority.verifyFreshnessAuthority!;
+    const dependencies = {
+      ...fakes.dependencies,
+      freshnessPolicy: { evaluateFreshness: async () => mutation === "add" ? "fresh" as const : "stale" as const },
+      freshnessAuthority: {
+        issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
+          issueCalls++;
+          return issueFreshnessAuthority(binding);
+        },
+        verifyFreshnessAuthority,
+      },
+    } as unknown as VerificationRunDependencies;
+    await runOnce(dependencies, runId);
+    const run = fakes.repository.runs.get(runId);
+    const saved = fakes.repository.stageDocuments.get(`${runId}:evidence`) as Record<string, unknown>;
+    if (!run || !saved) throw new Error("missing persisted evidence");
+    const evaluations = (saved.evaluations as Array<Record<string, unknown>>).map((evaluation, index) => {
+      if (index !== 0) return evaluation;
+      const rejectionReasons = [...(evaluation.rejectionReasons as string[])];
+      return { ...evaluation, rejectionReasons: mutation === "add" ? [...rejectionReasons, "STALE_EVIDENCE"] : rejectionReasons.filter(reason => reason !== "STALE_EVIDENCE") };
+    });
+    fakes.repository.stageDocuments.set(`${runId}:evidence`, { ...saved, evaluations });
+    fakes.repository.runs.set(runId, { ...run, state: "TERMINAL", updatedAt: FIXED_NOW });
+    issueCalls = 0;
+    const runWritesBeforeResume = fakes.repository.runWrites.length;
+    await expect(runOnce(dependencies, runId)).rejects.toThrow("invalid persisted evidence evaluation digest");
+    expect(fakes.repository.runs.get(runId)?.state).toBe("TERMINAL");
+    expect(fakes.repository.runWrites.length).toBe(runWritesBeforeResume);
+    expect(issueCalls).toBe(0);
+  });
   test("rejects a material residual defect inserted after failed verdict save", async () => {
     const fakes = makeDependencies();
     const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => ({
