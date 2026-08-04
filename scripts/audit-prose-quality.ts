@@ -101,6 +101,7 @@ const ZH_PERCENTAGE = `(?:正|负)?百分之${ZH_NUMBER_CORE}`;
 const ZH_CONCISE_MODALS = new Set(["需", "须", "可", "不可", "务必", "不必", "切勿", "勿"]);
 const ZH_LEXICAL_PREFIXES = new Set(["刚", "必", "认", "许"]);
 const ZH_LEXICAL_MODAL_COMPOUNDS = ["可视化", "可惜", "可爱", "可口", "可观", "可疑", "不可思议"];
+const ZH_SUBJECT_MODIFIERS = new Set(["目前", "当前", "现在", "如今", "暂时", "已经", "仍然", "仍", "还", "仅", "只", "总共", "共", "大约", "约"]);
 const ZH_SEGMENTER = new Intl.Segmenter("zh-CN", { granularity: "word" });
 const ZH_SINGLE_QUANTITY_UNITS = new Set([
   ..."个位项次名件条张本份台套组批艘盒亩只辆架头匹峰座间所家户杯瓶碗盘袋箱包支根枝把柄面扇层排列行页章节部册卷幅枚颗粒块片段场轮番遍趟回首曲声株棵朵束丝缕滴年月份日天倍元米克升瓦度秒吨寸安帕伏焦牛种类门款笔宗桩则例科道管",
@@ -200,9 +201,9 @@ function chineseQuantityOperand(
   }
   const combined = word.segment.match(new RegExp(`^(${ZH_SIGNED_NUMBER})(\\p{Script=Han}+)$`, "u"));
   if (!combined || !isCombinedChineseUnit(combined[2])) return undefined;
-  if (word.segment === "一度") {
+  if (word.segment === "一度" || word.segment === "一面") {
     const leftContext = text.slice(Math.max(0, word.index - 16), word.index);
-    if (!/(?:温度|角度|偏差|变化|范围|为|是|约|达到|等于|零下)[：:\s]*$/u.test(leftContext)) return undefined;
+    if (!/(?:数量|总计|共有|包含|温度|角度|偏差|变化|范围|墙|旗|镜|鼓|屏|侧面|表面|有|为|是|约|达到|等于|零下)[：:\s]*$/u.test(leftContext)) return undefined;
   }
   return { start: word.index, end: word.end, next: index + 1 };
 }
@@ -241,8 +242,8 @@ function chineseNormativeOccurrences(text: string): Array<{ index: number; value
     if (ZH_LEXICAL_PREFIXES.has(segments[index - 1]?.segment ?? "")) continue;
     if (ZH_LEXICAL_MODAL_COMPOUNDS.some((word) => text.startsWith(word, segment.index))) continue;
     const modalEnd = segment.index + segment.segment.length;
-    const immediate = segments[index + 1];
-    if (immediate?.index === modalEnd && /^\p{Script=Han}$/u.test(immediate.segment)) continue;
+    const clauseTail = text.slice(segment.index).split(/[.,;!?。；，！？\n]/u, 1)[0].slice(0, 26);
+    if (segment.segment === "可" && /^可\p{Script=Han}{1,12}性/u.test(clauseTail)) continue;
     for (let clauseIndex = index + 1; clauseIndex < segments.length; clauseIndex += 1) {
       const clauseWord = segments[clauseIndex];
       const intervening = text.slice(modalEnd, clauseWord.index);
@@ -1007,8 +1008,46 @@ function stripMarkdownContainerPrefix(value: string): string {
 }
 
 function stripMarkdownSubjectFormatting(value: string): string {
-  return value
-    .replace(/!?\[([^\]\r\n]+)\]\([^\r\n)]*\)/gu, "$1")
+  let normalized = "";
+  let cursor = 0;
+  let search = 0;
+  while (search < value.length) {
+    const closingLabel = value.indexOf("](", search);
+    if (closingLabel < 0) break;
+    const openingLabel = openingLinkBracketIndex(value, closingLabel);
+    if (openingLabel < cursor || isEscaped(value, closingLabel)) {
+      search = closingLabel + 2;
+      continue;
+    }
+    let depth = 1;
+    let escaped = false;
+    let inAngleDestination = value[closingLabel + 2] === "<";
+    let closingDestination = -1;
+    for (let index = closingLabel + 2; index < value.length; index += 1) {
+      const character = value[index];
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (inAngleDestination) {
+        if (character === ">") inAngleDestination = false;
+      } else if (character === "(") {
+        depth += 1;
+      } else if (character === ")") {
+        depth -= 1;
+        if (depth === 0) {
+          closingDestination = index;
+          break;
+        }
+      }
+    }
+    if (closingDestination < 0) break;
+    normalized += value.slice(cursor, openingLabel) + value.slice(openingLabel + 1, closingLabel);
+    cursor = closingDestination + 1;
+    search = cursor;
+  }
+  normalized += value.slice(cursor);
+  return normalized
     .replace(/\[([^\]\r\n]+)\]\[[^\]\r\n]*\]/gu, "$1")
     .replace(/(?:\*\*|__|~~|\*|_)/g, "");
 }
@@ -1031,7 +1070,8 @@ function claimLabel(text: string, index: number, valueLength: number, bindSubjec
     const chineseClause = localClause.trim();
     if (/^[\p{Script=Han}\s]{1,48}$/u.test(chineseClause)) {
       const segments = chineseWordSegments(chineseClause);
-      const subjectSegments = segments.length > 1 ? segments.slice(0, -1) : segments;
+      const subjectSegments = segments.length > 1 ? segments.slice(0, -1) : [...segments];
+      while (subjectSegments.length > 1 && ZH_SUBJECT_MODIFIERS.has(subjectSegments.at(-1)?.segment ?? "")) subjectSegments.pop();
       const chineseSubject = subjectSegments.map((segment) => segment.segment).join("");
       if (chineseSubject) return chineseSubject;
     }

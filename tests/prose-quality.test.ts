@@ -446,6 +446,7 @@ describe("rewrite preservation gate", () => {
   test.each([
     ["**甲组**", "**乙组**"],
     ["[甲组](#group)", "[乙组](#group)"],
+    ["[甲组](docs/page_(v1).md)", "[乙组](docs/page_(v1).md)"],
   ])("strips inline Markdown formatting around Simplified Chinese subjects: %s", (first, second) => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const before = `${context}\n- [ ] ${first}有三项检查。\n- [x] ${second}有四项检查。`;
@@ -586,6 +587,7 @@ describe("rewrite preservation gate", () => {
     ["这个功能十分重要。", "这个功能非常重要。"],
     ["系统一并处理结果。", "系统同时处理结果。"],
     ["说明：一度陷入困境。", "说明：曾经陷入困境。"],
+    ["说明：一面处理结果。", "说明：同时处理结果。"],
   ])("does not extract numeral-shaped lexical words: %s", (source, rewrite) => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
@@ -648,6 +650,8 @@ describe("rewrite preservation gate", () => {
   test.each([
     ["用户不可访问数据。", "用户可访问数据。"],
     ["用户不可登录系统。", "用户可登录系统。"],
+    ["用户须先登录系统。", "用户不必先登录系统。"],
+    ["用户不可再发布数据。", "用户可再发布数据。"],
   ])("recognizes concise modals before actions outside a finite verb list: %s", (source, rewrite) => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
@@ -661,6 +665,26 @@ describe("rewrite preservation gate", () => {
     const report = verifyPreservation(`${context}\n界面采用可视化发布结果。`, `${context}\n界面采用图形化发布结果。`);
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
+    expect(report.status).toBe("PASS");
+  });
+
+  test.each([
+    ["组件可维护性很好。", "组件易于维护。"],
+    ["接口可扩展性很好。", "接口容易扩展。"],
+    ["页面可访问性很好。", "页面便于访问。"],
+  ])("does not parse productive 可…性 adjectives as concise modals: %s", (source, rewrite) => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
+    expect(report.status).toBe("PASS");
+  });
+
+  test("excludes clause modifiers from Simplified Chinese subject bindings", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n甲组目前有三项检查。`, `${context}\n甲组当前有三项检查。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures.some((failure) => failure.category === "protected-context")).toBe(false);
     expect(report.status).toBe("PASS");
   });
 
