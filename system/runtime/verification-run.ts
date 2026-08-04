@@ -12,7 +12,7 @@ export type VerificationObligationPlan=Readonly<{id:string;conditionIds:readonly
 export type VerificationPlan=Readonly<{schemaVersion:"verification-plan/v1";requestId:string;snapshotId:string;risks:readonly VerificationRisk[];conditions:readonly VerificationCondition[];obligations:readonly VerificationObligationPlan[]}>;
 export type CanonicalVerificationResultArtifact=Readonly<{type:"verification-result";digest:string;path?:string}>;
 export type VerificationEvidence=Readonly<{schemaVersion:"verification-evidence/v1";evidenceId:string;requestId:string;snapshotId:string;obligationId:string;producer:Producer;execution:Execution;result:Readonly<{verdict:"PASS"|"FAIL"|"BLOCKED"|"INCOMPLETE";summary:string;passed?:number;failed?:number;artifacts?:readonly string[]}>;observedAt:string}>;
-export type VerificationExecutionRequest=Readonly<{runId:string;requestId:string;requestDigest:string;planDigest:string;obligationDigest:string;snapshotId:string;obligation:VerificationObligationPlan;conditionIds:readonly string[];idempotencyKey:string}>;
+export type VerificationExecutionRequest=Readonly<{runId:string;requestId:string;requestDigest:string;planDigest:string;obligationDigest:string;rootIdentity:string;snapshotId:string;obligation:VerificationObligationPlan;conditionIds:readonly string[];idempotencyKey:string}>;
 export type VerificationExecutionOutput=Readonly<{status:"passed"|"failed"|"blocked"|"incomplete"|"PASS"|"FAIL"|"BLOCKED"|"INCOMPLETE";runId:string;requestId:string;snapshotId:string;idempotencyKey:string;producer:Producer;summary?:string;artifacts?:readonly Artifact[];executionKind?:Execution["kind"];identity?:string;exitCode?:number}>;
 export type VerificationExecutionAuthorityBinding=Readonly<{runId:string;requestId:string;requestDigest:string;planDigest:string;obligationDigest:string;snapshotId:string;obligationId:string;idempotencyKey:string;producer:Producer;execution:Execution;result:VerificationEvidence["result"];observedAt:string;artifacts:readonly CanonicalVerificationResultArtifact[]}>;
 export type ExecutionAuthority=Readonly<{schemaVersion:"verification-execution-authority/v1";authorityId:string;issuer:string;binding:VerificationExecutionAuthorityBinding}>;
@@ -29,11 +29,11 @@ export interface CapabilityProvider {readonly hasCapability?:(s:string)=>MaybePr
 export interface BrowserExecutor {readonly executeBrowser?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>;readonly execute?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>};
 export interface ApprovalProvider {readonly requestApproval?:(i:ApprovalRequest)=>MaybePromise<ApprovalResult|undefined>;readonly approve?:(i:ApprovalRequest)=>MaybePromise<ApprovalResult|undefined>};
 export interface UsageRecorder {readonly recordUsage?:(e:UsageEvent)=>MaybePromise<void>;readonly record?:(e:UsageEvent)=>MaybePromise<void>};
-export type DispatchClaim=Readonly<{schemaVersion:"verification-dispatch-claim/v1";claimKey:string;runId:string;requestId:string;planDigest:string;obligationId:string;idempotencyKey:string}>;
+export type DispatchClaim=Readonly<{schemaVersion:"verification-dispatch-claim/v1";claimKey:string;runId:string;requestId:string;rootIdentity:string;snapshotId:string;planDigest:string;obligationId:string;idempotencyKey:string;ownerId:string;leaseGeneration:number;leaseExpiresAt:string}>;
 export type DispatchClaimResult=Readonly<{claimed:boolean;status:"CLAIMED"|"COMPLETED";claim:DispatchClaim;outputStored:boolean;output?:VerificationExecutionOutput}>;
 export type RepositoryTransition=Readonly<{runId:string;expectedRevision?:number;stage?:StageName;document?:StageDocument;run:CanonicalRunState}>;
-export interface RepositoryPort {readonly loadRun:(id:string)=>MaybePromise<CanonicalRunState|undefined>;readonly loadStageDocument:(id:string,s:StageName)=>MaybePromise<unknown|undefined>;readonly commitTransition:(transition:RepositoryTransition)=>MaybePromise<boolean>;readonly claimExecutionDispatch?:(claim:DispatchClaim)=>MaybePromise<DispatchClaimResult>;readonly completeExecutionDispatch?:(claim:DispatchClaim,output:VerificationExecutionOutput|undefined)=>MaybePromise<boolean>;readonly releaseExecutionDispatch?:(claim:DispatchClaim)=>MaybePromise<boolean>};
-export type VerificationRunDependencies=Readonly<{repository:RepositoryPort;executor:VerificationExecutor;artifactStore:ArtifactStore;capabilityProvider:CapabilityProvider;executionAuthority:ExecutionAuthorityPort;freshnessPolicy:FreshnessPolicy;browserExecutor?:BrowserExecutor;approvalProvider?:ApprovalProvider;usageRecorder?:UsageRecorder;now:Clock}>;
+export interface RepositoryPort {readonly loadRun:(id:string)=>MaybePromise<CanonicalRunState|undefined>;readonly loadStageDocument:(id:string,s:StageName)=>MaybePromise<unknown|undefined>;readonly commitTransition:(transition:RepositoryTransition)=>MaybePromise<boolean>;readonly claimExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<DispatchClaimResult>;readonly completeExecutionDispatch?:(claim:DispatchClaim,output:VerificationExecutionOutput|undefined,now?:string)=>MaybePromise<boolean>;readonly releaseExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<boolean>};
+export type VerificationRunDependencies=Readonly<{repository:RepositoryPort;executor:VerificationExecutor;artifactStore:ArtifactStore;capabilityProvider:CapabilityProvider;executionAuthority:ExecutionAuthorityPort;freshnessPolicy:FreshnessPolicy;browserExecutor?:BrowserExecutor;approvalProvider?:ApprovalProvider;usageRecorder?:UsageRecorder;now:Clock;dispatchOwnerId?:string;ownerId?:string;dispatchLeaseDurationMs?:number;leaseDurationMs?:number}>;
 export type BasisDocument=Readonly<{schemaVersion:"verification-basis/v1";requestId:string;snapshotId:string;basis:readonly VerificationBasisItem[];basisIds:readonly string[]}>; export type DiscoveryDocument=Readonly<{schemaVersion:"risk-discovery/v1";requestId:string;snapshotId:string;risks:readonly VerificationRisk[];conditions:readonly VerificationCondition[]}>; export type PlanDocument=VerificationPlan; export type UsageOutboxEntry=Readonly<{executionKey:string;obligationId:string;event:"execution"|"artifact";eventKey:string}>; export type ExecutionDocument=Readonly<{schemaVersion:"verification-execution/v1";requestId:string;snapshotId:string;observations:readonly Observation[];claims:readonly EvidenceClaim[];evidence:readonly VerificationEvidence[];authorities:readonly ExecutionAuthority[];usageOutbox:readonly UsageOutboxEntry[]}>; export type EvidenceDocument=Readonly<{schemaVersion:"verification-evidence-evaluation/v1";requestId:string;snapshotId:string;freshnessEvaluatedAt:string;evaluations:readonly EvidenceEvaluation[];acceptedClaimIds:readonly string[];coverage:CoverageInput}>; export type ResidualRiskDocument=Readonly<{schemaVersion:"verification-residual-risk/v1";requestId:string;snapshotId:string;defects:readonly DefectSummary[]}>; export type VerdictDocument=VerdictResult; export type StageDocument=VerificationRequest|BasisDocument|DiscoveryDocument|PlanDocument|ExecutionDocument|EvidenceDocument|ResidualRiskDocument|VerdictDocument;
 export type VerificationRunDocuments={request?:VerificationRequest;basis?:BasisDocument;discovery?:DiscoveryDocument;plan?:PlanDocument;execution?:ExecutionDocument;evidence?:EvidenceDocument;"residual-risk"?:ResidualRiskDocument;verdict?:VerdictDocument};
 export type EstablishTestBasisInput=Readonly<{runId?:string;request:VerificationRequest;dependencies:VerificationRunDependencies}>; export type PerformRiskDiscoveryInput=Readonly<{request:VerificationRequest;basis:BasisDocument;dependencies:VerificationRunDependencies}>; export type BuildVerificationPlanInput=Readonly<{request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;dependencies:VerificationRunDependencies}>; type ExecuteObligationsInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;dependencies:VerificationRunDependencies;checkpoint?:ExecutionDocument}>; type EvaluateEvidenceInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;dependencies:VerificationRunDependencies;freshnessEvaluatedAt?:string}>; type EvaluateResidualRiskInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;evidence:EvidenceDocument;dependencies:VerificationRunDependencies}>; type ResolveVerdictInput=Readonly<{runId:string;request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;plan:VerificationPlan;execution:ExecutionDocument;evidence:EvidenceDocument;residualRisk:ResidualRiskDocument;dependencies:VerificationRunDependencies}>; export type RunVerificationInput=Readonly<{runId:string;request?:VerificationRequest;dependencies:VerificationRunDependencies}>; export type RunVerificationResult=Readonly<{run:CanonicalRunState;verdict:VerdictResult;documents:VerificationRunDocuments}>;
@@ -270,36 +270,60 @@ function validUsageOutboxEntry(value: unknown, request: VerificationRequest, pla
   const expectedKey = `verification:${canonicalSha256([runId, canonicalRequestDigest(request), canonicalPlanDigest(plan), canonicalObligationDigest(obligation)])}`;
   return value.executionKey === expectedKey && value.eventKey === usageEventKey(value.executionKey, value.event);
 }
-function dispatchClaimFor(request: VerificationExecutionRequest): DispatchClaim {
-  return { schemaVersion: "verification-dispatch-claim/v1", claimKey: `verification-dispatch:${canonicalSha256([request.runId, request.requestId, request.planDigest, request.obligation.id, request.idempotencyKey])}`, runId: request.runId, requestId: request.requestId, planDigest: request.planDigest, obligationId: request.obligation.id, idempotencyKey: request.idempotencyKey };
+const DISPATCH_LEASE_DURATION_MS = 30_000;
+function dispatchFacilityConfigured(repository: RepositoryPort): boolean {
+  const methods = [repository.claimExecutionDispatch, repository.completeExecutionDispatch, repository.releaseExecutionDispatch];
+  const configured = methods.filter(method => typeof method === "function").length;
+  if (configured !== 0 && configured !== methods.length) throw Error("dispatch claim facility must provide claim, complete, and release");
+  return configured === methods.length;
+}
+function dispatchOwnerFor(dependencies: VerificationRunDependencies): string {
+  const owner = dependencies.dispatchOwnerId ?? dependencies.ownerId ?? "verification-runtime";
+  if (typeof owner !== "string" || !owner) throw Error("dispatch owner identity is required");
+  return owner;
+}
+function dispatchLeaseDurationFor(dependencies: VerificationRunDependencies): number {
+  const duration = dependencies.dispatchLeaseDurationMs ?? dependencies.leaseDurationMs ?? DISPATCH_LEASE_DURATION_MS;
+  if (typeof duration !== "number" || !Number.isFinite(duration) || duration <= 0) throw Error("dispatch lease duration must be positive");
+  return duration;
+}
+function dispatchClaimKeyFor(request: VerificationExecutionRequest): string {
+  return `verification-dispatch:${canonicalSha256([request.runId, request.requestId, request.rootIdentity, request.snapshotId, request.planDigest, request.obligation.id, request.idempotencyKey])}`;
+}
+function dispatchClaimFor(request: VerificationExecutionRequest, ownerId: string, now: string, duration: number): DispatchClaim {
+  return { schemaVersion: "verification-dispatch-claim/v1", claimKey: dispatchClaimKeyFor(request), runId: request.runId, requestId: request.requestId, rootIdentity: request.rootIdentity, snapshotId: request.snapshotId, planDigest: request.planDigest, obligationId: request.obligation.id, idempotencyKey: request.idempotencyKey, ownerId, leaseGeneration: 1, leaseExpiresAt: new Date(Date.parse(now) + duration).toISOString() };
 }
 function validDispatchClaim(value: unknown): value is DispatchClaim {
-  return isRecord(value) && exactOwnKeys(value, ["schemaVersion", "claimKey", "runId", "requestId", "planDigest", "obligationId", "idempotencyKey"]) && value.schemaVersion === "verification-dispatch-claim/v1" && typeof value.claimKey === "string" && value.claimKey.startsWith("verification-dispatch:") && typeof value.runId === "string" && Boolean(value.runId) && typeof value.requestId === "string" && Boolean(value.requestId) && typeof value.planDigest === "string" && REQUEST_DIGEST.test(value.planDigest) && typeof value.obligationId === "string" && Boolean(value.obligationId) && validExecutionKey(value.idempotencyKey);
+  return isRecord(value) && exactOwnKeys(value, ["schemaVersion", "claimKey", "runId", "requestId", "rootIdentity", "snapshotId", "planDigest", "obligationId", "idempotencyKey", "ownerId", "leaseGeneration", "leaseExpiresAt"]) && value.schemaVersion === "verification-dispatch-claim/v1" && typeof value.claimKey === "string" && value.claimKey.startsWith("verification-dispatch:") && typeof value.runId === "string" && Boolean(value.runId) && typeof value.requestId === "string" && Boolean(value.requestId) && typeof value.rootIdentity === "string" && Boolean(value.rootIdentity) && typeof value.snapshotId === "string" && Boolean(value.snapshotId) && typeof value.planDigest === "string" && REQUEST_DIGEST.test(value.planDigest) && typeof value.obligationId === "string" && Boolean(value.obligationId) && validExecutionKey(value.idempotencyKey) && typeof value.ownerId === "string" && Boolean(value.ownerId) && typeof value.leaseGeneration === "number" && Number.isInteger(value.leaseGeneration) && value.leaseGeneration > 0 && validDate(value.leaseExpiresAt);
 }
-type DispatchLease=Readonly<{owned:boolean;outputStored:boolean;output?:VerificationExecutionOutput}>;
-async function claimExecutionDispatch(repository: RepositoryPort, request: VerificationExecutionRequest): Promise<DispatchLease> {
-  const claim = dispatchClaimFor(request);
+function stableDispatchClaimMatches(value: DispatchClaim, request: VerificationExecutionRequest): boolean {
+  return value.claimKey === dispatchClaimKeyFor(request) && value.runId === request.runId && value.requestId === request.requestId && value.rootIdentity === request.rootIdentity && value.snapshotId === request.snapshotId && value.planDigest === request.planDigest && value.obligationId === request.obligation.id && value.idempotencyKey === request.idempotencyKey;
+}
+type DispatchLease=Readonly<{owned:boolean;outputStored:boolean;claim:DispatchClaim;output?:VerificationExecutionOutput}>;
+async function claimExecutionDispatch(repository: RepositoryPort, request: VerificationExecutionRequest, dependencies: VerificationRunDependencies): Promise<DispatchLease> {
+  const now = clockNow(dependencies.now);
+  const claim = dispatchClaimFor(request, dispatchOwnerFor(dependencies), now, dispatchLeaseDurationFor(dependencies));
   const claimMethod = repository.claimExecutionDispatch;
   if (!claimMethod) throw Error("atomic dispatch claim facility is required");
-  const result = await claimMethod.call(repository, claim);
+  const result = await claimMethod.call(repository, claim, now);
   if (!isRecord(result) || !exactOwnKeys(result, ["claimed", "status", "claim", "outputStored"], ["output"]) || typeof result.claimed !== "boolean" || (result.status !== "CLAIMED" && result.status !== "COMPLETED") || typeof result.outputStored !== "boolean" || !validDispatchClaim(result.claim) || (result.output !== undefined && !isRecord(result.output))) throw Error("invalid dispatch claim result");
-  if (!structurallyEqual(result.claim, claim)) throw Error("dispatch claim binding mismatch");
+  if (!stableDispatchClaimMatches(result.claim, request)) throw Error("dispatch claim binding mismatch");
   if (result.claimed) {
-    if (result.status !== "CLAIMED" || result.outputStored) throw Error("invalid dispatch claim result");
-    return { owned: true, outputStored: false };
+    if (result.status !== "CLAIMED" || result.outputStored || result.claim.ownerId !== claim.ownerId || Date.parse(result.claim.leaseExpiresAt) <= Date.parse(now)) throw Error("invalid dispatch claim result");
+    return { owned: true, outputStored: false, claim: result.claim };
   }
-  if (result.status !== "COMPLETED" || !result.outputStored) throw Error("dispatch claim already exists");
-  return { owned: false, outputStored: true, output: result.output as VerificationExecutionOutput | undefined };
+  if (result.status === "CLAIMED") throw Error("dispatch claim already exists");
+  if (!result.outputStored) throw Error("dispatch claim already exists");
+  return { owned: false, outputStored: true, claim: result.claim, output: result.output as VerificationExecutionOutput | undefined };
 }
-async function completeExecutionDispatch(repository: RepositoryPort, request: VerificationExecutionRequest, output: VerificationExecutionOutput | undefined): Promise<void> {
+async function completeExecutionDispatch(repository: RepositoryPort, claim: DispatchClaim, output: VerificationExecutionOutput | undefined, now: string): Promise<void> {
   if (!repository.completeExecutionDispatch) return;
-  const claim = dispatchClaimFor(request);
-  const completed = await repository.completeExecutionDispatch.call(repository, claim, output);
+  const completed = await repository.completeExecutionDispatch.call(repository, claim, output, now);
   if (completed !== true) throw Error("dispatch result persistence failed");
 }
-async function releaseExecutionDispatch(repository: RepositoryPort, request: VerificationExecutionRequest): Promise<void> {
+async function releaseExecutionDispatch(repository: RepositoryPort, claim: DispatchClaim, now: string): Promise<void> {
   if (!repository.releaseExecutionDispatch) return;
-  const released = await repository.releaseExecutionDispatch.call(repository, dispatchClaimFor(request));
+  const released = await repository.releaseExecutionDispatch.call(repository, claim, now);
   if (released !== true) throw Error("dispatch claim release failed");
 }
 async function executeExecutor(port: VerificationExecutor, input: VerificationExecutionRequest): Promise<VerificationExecutionOutput | undefined> { if (port.executeObligation) return port.executeObligation(input); return port.execute ? port.execute(input) : undefined; }
@@ -488,6 +512,7 @@ async function checkpointRun(input: ExecuteObligationsInput, document: Execution
 }
 async function executeObligations(input: ExecuteObligationsInput): Promise<ExecutionDocument> {
   validRequest(input.request);
+  const dispatchClaimsConfigured = dispatchFacilityConfigured(input.dependencies.repository);
   if (input.checkpoint) {
     validateStage("execution", input.checkpoint, input.request, input.runId, { plan: input.plan });
     await verifyPersistedExecutionAuthorities(input.checkpoint, input.request, input.plan, input.runId, input.dependencies.executionAuthority);
@@ -531,24 +556,27 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     const requestDigest = canonicalRequestDigest(input.request);
     const planDigest = canonicalPlanDigest(input.plan);
     const obligationDigest = canonicalObligationDigest(obligation);
-    const request = { runId: input.runId, requestId: input.request.requestId, requestDigest, planDigest, obligationDigest, snapshotId: input.request.project.snapshotId, obligation, conditionIds: uniq(obligation.conditionIds), idempotencyKey: idempotencyKeyFor(input.runId, requestDigest, planDigest, obligationDigest) };
+    const request = { runId: input.runId, requestId: input.request.requestId, requestDigest, planDigest, obligationDigest, rootIdentity: input.request.project.rootIdentity, snapshotId: input.request.project.snapshotId, obligation, conditionIds: uniq(obligation.conditionIds), idempotencyKey: idempotencyKeyFor(input.runId, requestDigest, planDigest, obligationDigest) };
     const available = await hasCapability(input.dependencies.capabilityProvider, capabilityFor(obligation));
     let startedAt: string;
     let finishedAt: string;
     let output: VerificationExecutionOutput | undefined;
+    let lease: DispatchLease | undefined;
     if (available) {
-      const lease = await claimExecutionDispatch(input.dependencies.repository, request);
+      if (dispatchClaimsConfigured) {
+        lease = await claimExecutionDispatch(input.dependencies.repository, request, input.dependencies);
+      }
       startedAt = clockNow(input.dependencies.now);
-      if (lease.owned) {
+      if (!lease || lease.owned) {
         try {
           output = obligation.evidenceType === "browser-result"
             ? input.dependencies.browserExecutor ? await executeBrowser(input.dependencies.browserExecutor, request) : undefined
             : await executeExecutor(input.dependencies.executor, request);
         } catch (error) {
-          await releaseExecutionDispatch(input.dependencies.repository, request);
+          if (lease?.owned) await releaseExecutionDispatch(input.dependencies.repository, lease.claim, clockNow(input.dependencies.now));
           throw error;
         }
-        await completeExecutionDispatch(input.dependencies.repository, request, output);
+        if (lease?.owned) await completeExecutionDispatch(input.dependencies.repository, lease.claim, output, clockNow(input.dependencies.now));
       } else {
         output = lease.output;
       }

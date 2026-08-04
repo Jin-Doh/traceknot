@@ -59,22 +59,28 @@ class FakeRepository {
   readonly runWrites: CanonicalRunState[] = [];
   async loadRun(runId: string): Promise<CanonicalRunState | undefined> { return this.runs.get(runId); }
   async loadStageDocument(runId: string, stage: string): Promise<unknown | undefined> { return this.stageDocuments.get(`${runId}:${stage}`); }
-  async claimExecutionDispatch(claim: DispatchClaim): Promise<{ claimed: boolean; status: "CLAIMED" | "COMPLETED"; claim: DispatchClaim; outputStored: boolean; output?: VerificationExecutionOutput }> {
+  async claimExecutionDispatch(claim: DispatchClaim, now = FIXED_NOW): Promise<{ claimed: boolean; status: "CLAIMED" | "COMPLETED"; claim: DispatchClaim; outputStored: boolean; output?: VerificationExecutionOutput }> {
     const existing = this.dispatchClaims.get(claim.claimKey);
-    if (existing) return { claimed: false, ...structuredClone(existing) };
+    if (existing?.status === "COMPLETED") return { claimed: false, ...structuredClone(existing) };
+    if (existing) {
+      if (Date.parse(now) <= Date.parse(existing.claim.leaseExpiresAt)) return { claimed: false, ...structuredClone(existing) };
+      const takeover = { ...claim, leaseGeneration: existing.claim.leaseGeneration + 1 };
+      this.dispatchClaims.set(claim.claimKey, { claim: structuredClone(takeover), status: "CLAIMED", outputStored: false });
+      return { claimed: true, claim: structuredClone(takeover), status: "CLAIMED", outputStored: false };
+    }
     const created = { claim: structuredClone(claim), status: "CLAIMED" as const, outputStored: false };
     this.dispatchClaims.set(claim.claimKey, created);
     return { claimed: true, ...structuredClone(created) };
   }
-  async completeExecutionDispatch(claim: DispatchClaim, output: VerificationExecutionOutput | undefined): Promise<boolean> {
+  async completeExecutionDispatch(claim: DispatchClaim, output: VerificationExecutionOutput | undefined, now = FIXED_NOW): Promise<boolean> {
     const existing = this.dispatchClaims.get(claim.claimKey);
-    if (!existing || existing.status !== "CLAIMED") return false;
+    if (!existing || existing.status !== "CLAIMED" || existing.claim.ownerId !== claim.ownerId || existing.claim.leaseGeneration !== claim.leaseGeneration || Date.parse(now) > Date.parse(existing.claim.leaseExpiresAt)) return false;
     this.dispatchClaims.set(claim.claimKey, { ...existing, status: "COMPLETED", outputStored: true, ...(output === undefined ? {} : { output: structuredClone(output) }) });
     return true;
   }
-  async releaseExecutionDispatch(claim: DispatchClaim): Promise<boolean> {
+  async releaseExecutionDispatch(claim: DispatchClaim, now = FIXED_NOW): Promise<boolean> {
     const existing = this.dispatchClaims.get(claim.claimKey);
-    if (!existing || existing.status !== "CLAIMED") return false;
+    if (!existing || existing.status !== "CLAIMED" || existing.claim.ownerId !== claim.ownerId || existing.claim.leaseGeneration !== claim.leaseGeneration || Date.parse(now) > Date.parse(existing.claim.leaseExpiresAt)) return false;
     this.dispatchClaims.delete(claim.claimKey);
     return true;
   }
@@ -1822,6 +1828,158 @@ describe("verification run orchestration", () => {
     const [firstResult, secondResult] = await Promise.all([first, second]);
     expect(firstResult.verdict).toEqual(secondResult.verdict);
     expect(getVerificationRunLockCount(dependencies.repository)).toBe(0);
+  });
+
+  test("fails closed on a partial dispatch claim facility before claim or executor calls", async () => {
+    const fakes = makeDependencies();
+    let claimCalls = 0;
+    const partialRepository: RepositoryPort = {
+      loadRun: fakes.repository.loadRun.bind(fakes.repository),
+      loadStageDocument: fakes.repository.loadStageDocument.bind(fakes.repository),
+      commitTransition: fakes.repository.commitTransition.bind(fakes.repository),
+      claimExecutionDispatch: async (...args) => {
+        claimCalls++;
+        return fakes.repository.claimExecutionDispatch(...args);
+      },
+    };
+    const dependencies = { ...fakes.dependencies, repository: partialRepository };
+    await expect(runOnce(dependencies, "partial-dispatch-facility")).rejects.toThrow("dispatch claim facility must provide claim, complete, and release");
+    expect(claimCalls).toBe(0);
+    expect(fakes.executorCalls).toBe(0);
+  });
+
+  test("retakes a crashed claim only after strict expiry with one stable idempotency key", async () => {
+    const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
+    class CrashAfterClaimRepository extends FakeRepository {
+      crash = true;
+      override async claimExecutionDispatch(claim: DispatchClaim, now = FIXED_NOW) {
+        const result = await super.claimExecutionDispatch(claim, now);
+        if (this.crash) {
+          this.crash = false;
+          throw new Error("simulated crash after durable claim");
+        }
+        return result;
+      }
+    }
+    const runId = "claim-crash-recovery";
+    const request = { ...makeRequest(), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    let now = FIXED_NOW;
+    const firstRepository = new CrashAfterClaimRepository(store);
+    const first = makeDependencies({}, firstRepository);
+    const firstDependencies = { ...first.dependencies, dispatchOwnerId: "owner-a", now: () => now };
+    await expect(runVerification({ runId, request, dependencies: firstDependencies })).rejects.toThrow("simulated crash after durable claim");
+    expect(first.executorCalls).toBe(0);
+    const persistedClaim = [...store.dispatchClaims.values()][0]?.claim;
+    if (!persistedClaim) throw new Error("missing durable claim");
+    const second = makeDependencies({}, new FakeRepository(store));
+    const beforeExpiry = { ...second.dependencies, dispatchOwnerId: "owner-b", now: () => now };
+    await expect(runVerification({ runId, dependencies: beforeExpiry })).rejects.toThrow("dispatch claim already exists");
+    expect(second.executorCalls).toBe(0);
+    now = new Date(Date.parse(persistedClaim.leaseExpiresAt) + 1).toISOString();
+    const keys: string[] = [];
+    const takeoverExecutor: VerificationExecutor = {
+      executeObligation: async request => {
+        keys.push(request.idempotencyKey);
+        return {
+          status: "PASS",
+          runId: request.runId,
+          requestId: request.requestId,
+          snapshotId: request.snapshotId,
+          idempotencyKey: request.idempotencyKey,
+          producer: { kind: "deterministic-verifier", identity: "takeover-executor", independence: "independent-producer" },
+          artifacts: [{ type: "verification-result", digest: "c".repeat(64) }],
+        };
+      },
+    };
+    const resumed = await runVerification({ runId, dependencies: { ...second.dependencies, dispatchOwnerId: "owner-b", now: () => now, executor: takeoverExecutor } });
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toBe(persistedClaim.idempotencyKey);
+    expect([...store.dispatchClaims.values()][0]?.claim.leaseGeneration).toBe(2);
+    expect([...store.dispatchClaims.values()][0]?.claim.ownerId).toBe("owner-b");
+  });
+
+  test("fences stale completion and release after a repository-CAS takeover", async () => {
+    const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
+    const runId = "claim-stale-owner";
+    const request = { ...makeRequest(), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    let now = FIXED_NOW;
+    const first = makeDependencies({}, new FakeRepository(store));
+    let markStarted!: () => void;
+    let releaseFirst!: () => void;
+    const started = new Promise<void>(resolve => { markStarted = resolve; });
+    const firstGate = new Promise<void>(resolve => { releaseFirst = resolve; });
+    const sideEffects = new Map<string, number>();
+    const executeIdempotently = async (request: VerificationExecutionRequest): Promise<VerificationExecutionOutput> => {
+      sideEffects.set(request.idempotencyKey, (sideEffects.get(request.idempotencyKey) ?? 0) + 1);
+      return {
+        status: "PASS",
+        runId: request.runId,
+        requestId: request.requestId,
+        snapshotId: request.snapshotId,
+        idempotencyKey: request.idempotencyKey,
+        producer: { kind: "deterministic-verifier", identity: "idempotent-executor", independence: "independent-producer" },
+        artifacts: [{ type: "verification-result", digest: "d".repeat(64) }],
+      };
+    };
+    const firstExecutor: VerificationExecutor = {
+      executeObligation: async request => {
+        markStarted();
+        await firstGate;
+        return executeIdempotently(request);
+      },
+    };
+    const firstRun = runVerification({ runId, request, dependencies: { ...first.dependencies, dispatchOwnerId: "owner-a", now: () => now, executor: firstExecutor } });
+    await started;
+    const staleClaim = structuredClone([...store.dispatchClaims.values()][0]?.claim);
+    if (!staleClaim) throw new Error("missing first owner claim");
+    now = new Date(Date.parse(staleClaim.leaseExpiresAt) + 1).toISOString();
+    const second = makeDependencies({}, new FakeRepository(store));
+    const secondRun = runVerification({ runId, dependencies: { ...second.dependencies, dispatchOwnerId: "owner-b", now: () => now, executor: { executeObligation: executeIdempotently } } });
+    const winner = await secondRun;
+    expect(winner.run.state).toBe("TERMINAL");
+    expect([...store.dispatchClaims.values()][0]?.claim.ownerId).toBe("owner-b");
+    expect([...store.dispatchClaims.values()][0]?.claim.leaseGeneration).toBe(2);
+    expect(await first.repository.completeExecutionDispatch(staleClaim, undefined, now)).toBe(false);
+    expect(await first.repository.releaseExecutionDispatch(staleClaim, now)).toBe(false);
+    releaseFirst();
+    await expect(firstRun).rejects.toThrow("dispatch result persistence failed");
+    expect(sideEffects.get(staleClaim.idempotencyKey)).toBe(2);
+    expect([...store.dispatchClaims.values()][0]?.status).toBe("COMPLETED");
+    expect([...store.dispatchClaims.values()][0]?.claim.ownerId).toBe("owner-b");
+  });
+
+  test("reuses the durable idempotency result when completion crashes after repository persistence", async () => {
+    const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
+    class CrashAfterCompleteRepository extends FakeRepository {
+      crash = true;
+      override async completeExecutionDispatch(claim: DispatchClaim, output: VerificationExecutionOutput | undefined, now = FIXED_NOW) {
+        const completed = await super.completeExecutionDispatch(claim, output, now);
+        if (this.crash) {
+          this.crash = false;
+          throw new Error("simulated crash after execute before caller completion");
+        }
+        return completed;
+      }
+    }
+    const request = { ...makeRequest(), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    const repository = new CrashAfterCompleteRepository(store);
+    const fakes = makeDependencies({}, repository);
+    const requests: string[] = [];
+    const executor: VerificationExecutor = {
+      executeObligation: async requestInput => {
+        requests.push(requestInput.idempotencyKey);
+        return fakes.dependencies.executor.executeObligation!(requestInput);
+      },
+    };
+    const dependencies = { ...fakes.dependencies, executor, dispatchOwnerId: "owner-stable" };
+    await expect(runVerification({ runId: "claim-complete-crash", request, dependencies })).rejects.toThrow("simulated crash after execute before caller completion");
+    expect(requests).toHaveLength(1);
+    const resumed = await runVerification({ runId: "claim-complete-crash", dependencies });
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(requests).toHaveLength(1);
+    expect(new Set(requests).size).toBe(1);
+    expect([...store.dispatchClaims.values()][0]?.status).toBe("COMPLETED");
   });
 
   test("fixed-clock adapters atomically claim and dispatch one shared obligation", async () => {
