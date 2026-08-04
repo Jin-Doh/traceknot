@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { toText } from "hast-util-to-text";
 import type { Element, Root as HastRoot } from "hast";
-import type { Code, Html, Nodes as MdastNode, Parents, Root as MdastRoot } from "mdast";
+import type { Code, Html, Parents, Root as MdastRoot } from "mdast";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
@@ -39,9 +40,7 @@ const REQUIRED_RENDERED_BOUNDARIES = [
   "authoritative: false",
   "phase1Authorized: false",
 ] as const;
-const REQUIRED_RAW_BOUNDARIES = [
-  "npx skills add Jin-Doh/traceknot --skill traceknot --global",
-] as const;
+const REQUIRED_SKILL_INSTALL_COMMAND = "npx skills add Jin-Doh/traceknot --skill traceknot --global";
 const REQUIRED_OPERATIONAL_LITERALS: Readonly<Record<string, readonly string[]>> = {
   "README.md": [
     "curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh",
@@ -88,18 +87,31 @@ function htmlTree(content: string): HastRoot {
   return HTML_PROCESSOR.runSync(HTML_PROCESSOR.parse(content)) as HastRoot;
 }
 
-function renderedMarkdownText(content: string): string {
-  const chunks: Array<{ offset: number; value: string }> = [];
-  const walk = (node: MdastNode, suppressed = false): void => {
-    if (!suppressed && (node.type === "text" || node.type === "inlineCode")) {
-      chunks.push({ offset: node.position?.start.offset ?? Number.MAX_SAFE_INTEGER, value: node.value });
+function visibleHtmlTree(content: string, removePre = false): HastRoot {
+  const tree = structuredClone(htmlTree(content));
+  const prune = (node: HastRoot | Element): void => {
+    node.children = node.children.filter((child) => child.type !== "element"
+      || ((!removePre || child.tagName !== "pre") && child.properties.hidden == null));
+    for (const child of node.children) {
+      if (child.type === "element") prune(child);
     }
-    if (!("children" in node)) return;
-    const suppressChildren = suppressed || (node.type !== "root" && node.children.some((child) => child.type === "html"));
-    for (const child of node.children) walk(child, suppressChildren);
   };
-  walk(markdownTree(content));
-  return chunks.sort((left, right) => left.offset - right.offset).map((chunk) => chunk.value).join("\n");
+  prune(tree);
+  return tree;
+}
+
+function renderedMarkdownText(content: string): string {
+  return toText(visibleHtmlTree(content, true));
+}
+
+function visibleAnchorTargets(content: string): string[] {
+  const targets: string[] = [];
+  visit(visibleHtmlTree(content), "element", (node: Element) => {
+    if (node.tagName === "a" && (typeof node.properties.href === "string" || typeof node.properties.href === "number")) {
+      targets.push(String(node.properties.href));
+    }
+  });
+  return targets;
 }
 
 function collectSectionMarkers(content: string): Map<string, number> {
@@ -187,7 +199,7 @@ export function checkReadmeSections(path: string, content: string): void {
 }
 
 function checkLanguageNavigation(record: ReadmeRecord): void {
-  const visibleTargets = new Set(localTargets(record.content).map((target) => target.split(/[?#]/, 1)[0]));
+  const visibleTargets = new Set(visibleAnchorTargets(record.content).map((target) => target.split(/[?#]/, 1)[0]));
   for (const target of README_PATHS) {
     if (!visibleTargets.has(target)) {
       throw new Error(`${record.path}: missing language link to ${target}`);
@@ -200,8 +212,8 @@ export function checkReadmeLanguageNavigation(path: string, content: string): vo
 }
 
 function checkBoundaries(record: ReadmeRecord): void {
-  for (const boundary of REQUIRED_RAW_BOUNDARIES) {
-    if (!record.content.includes(boundary)) throw new Error(`${record.path}: missing public boundary literal ${boundary}`);
+  if (record.sharedCommands.get("skill-install")?.trim() !== REQUIRED_SKILL_INSTALL_COMMAND) {
+    throw new Error(`${record.path}: skill-install command must be ${REQUIRED_SKILL_INSTALL_COMMAND}`);
   }
   const prose = renderedMarkdownText(record.content);
   for (const boundary of REQUIRED_RENDERED_BOUNDARIES) {
@@ -210,7 +222,7 @@ function checkBoundaries(record: ReadmeRecord): void {
 }
 
 export function checkReadmeBoundaries(path: string, content: string): void {
-  checkBoundaries({ path, content, sections: new Map(), sharedCommands: new Map() });
+  checkBoundaries({ path, content, sections: new Map(), sharedCommands: collectSharedCommands(content, path) });
 }
 
 function checkSharedCommands(records: ReadmeRecord[]): void {

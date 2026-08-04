@@ -23,7 +23,7 @@ describe("README localization section contract", () => {
   });
 
   test("requires authority boundaries in rendered prose rather than comments or fenced examples", () => {
-    const command = "```sh\nnpx skills add Jin-Doh/traceknot --skill traceknot --global\n```";
+    const command = "<!-- shared-command:skill-install -->\n```sh\nnpx skills add Jin-Doh/traceknot --skill traceknot --global\n```";
     expect(() => checkReadmeBoundaries("README.md", `${command}\n\`authoritative: false\`\n\`phase1Authorized: false\``)).not.toThrow();
     expect(() => checkReadmeBoundaries(
       "README.md",
@@ -37,6 +37,19 @@ describe("README localization section contract", () => {
       "README.md",
       `${command}\n<span hidden>authoritative: false phase1Authorized: false</span>`,
     )).toThrow("missing rendered public boundary literal authoritative: false");
+    expect(() => checkReadmeBoundaries(
+      "README.md",
+      `${command}\nauthoritative: false<br>phase1Authorized: false`,
+    )).not.toThrow();
+  });
+
+  test("requires the public install command in the parsed shared block", () => {
+    const hidden = "<!-- npx skills add Jin-Doh/traceknot --skill traceknot --global -->";
+    const wrongBlock = "<!-- shared-command:skill-install -->\n```sh\necho hidden\n```";
+    expect(() => checkReadmeBoundaries(
+      "README.md",
+      `${hidden}\n${wrongBlock}\n\`authoritative: false\`\n\`phase1Authorized: false\``,
+    )).toThrow("skill-install command must be");
   });
 
   test.each([
@@ -132,6 +145,11 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLanguageNavigation("README.md", commented)).toThrow("missing language link");
     const visible = "[English](README.md) [한국어](README.ko.md) [简体中文](README.zh.md)";
     expect(() => checkReadmeLanguageNavigation("README.md", visible)).not.toThrow();
+  });
+
+  test("does not accept hidden raw-HTML language navigation", () => {
+    const content = "[English](README.md) [한국어](README.ko.md) <a hidden href=\"README.zh.md\">简体中文</a>";
+    expect(() => checkReadmeLanguageNavigation("README.md", content)).toThrow("missing language link to README.zh.md");
   });
 
   test("extracts HTML URL attributes only from visible tags", () => {
