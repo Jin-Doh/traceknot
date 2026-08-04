@@ -372,6 +372,16 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("FAIL");
   });
 
+  test("binds Simplified Chinese quantities to their clause subjects", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const before = `${context}\n甲组包含三项检查，乙组包含四项检查。`;
+    const after = `${context}\n乙组包含三项检查，甲组包含四项检查。`;
+    const report = verifyPreservation(before, after);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+    expect(report.status).toBe("FAIL");
+  });
+
   test.each([
     ["系统支持三位用户。", "系统支持四位用户。"],
     ["系统包含三项检查。", "系统包含四项检查。"],
@@ -417,6 +427,22 @@ describe("rewrite preservation gate", () => {
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
     expect(report.status).toBe("PASS");
+  });
+
+  test("does not treat 不可 inside an ordinary adjective as an obligation", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n这个结果不可思议。`, `${context}\n这个结果令人惊讶。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures.some((failure) => failure.category === "normative")).toBe(false);
+    expect(report.status).toBe("PASS");
+  });
+
+  test("preserves 不可 when it governs a normative action", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n用户不可发布。`, `${context}\n用户可以发布。`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "normative" }));
+    expect(report.status).toBe("FAIL");
   });
 
   test("stops Simplified Chinese normative clauses at ASCII sentence marks", () => {
