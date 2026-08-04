@@ -96,6 +96,7 @@ const DEFAULT_CONFIG = JSON.parse(
 
 const ZH_NUMBER_CORE = "(?:零|〇|一|二|两|三|四|五|六|七|八|九|十|百|千|万|亿)+(?:点(?:零|〇|一|二|三|四|五|六|七|八|九)+)?";
 const ZH_SIGNED_NUMBER = `(?:正|负)?${ZH_NUMBER_CORE}`;
+const ZH_PERCENTAGE = `(?:正|负)?百分之${ZH_NUMBER_CORE}`;
 const ZH_ACTIONS = new Set([
   "审核", "验证", "检查", "记录", "保留", "批准", "执行", "运行", "发布", "提供", "确保", "完成", "遵守", "满足", "使用", "配置", "安装", "报告", "绑定", "评估", "选择", "提交", "更新", "读取", "写入", "删除", "创建", "调用", "等待", "返回", "通过", "拒绝", "阻止", "启用", "关闭", "输入", "输出", "处理", "确认", "声明", "查看",
 ]);
@@ -745,9 +746,10 @@ function protectedValues(text: string): Map<string, { category: string; count: n
     ["number", /\b(?:(?:(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?),?\s+)?(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:(?:,\s*|\s+)\d{4})?|(?:(?:Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?),?\s+)?\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)(?:\s+\d{4})?)\b/gi],
     ["number", /\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|trillion)(?:[\s-]+(?:(?:and)[\s-]+)?(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|trillion))*\b(?=\s+(?:retries?|attempts?|items?|users?|deployments?|records?|files?|requests?|seconds?|minutes?|hours?|days?|weeks?|months?|years?|bytes?|bits?))|(?:한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)(?=\s*(?:개|명|건|회|번|원|년|월|일|시간|분|초|대|권|장|마리|곳|배))/gi],
     ["number", /(?:영|공|일|이|삼|사|오|육|칠|팔|구|십|백|천|만)(?:\s*(?:영|공|일|이|삼|사|오|육|칠|팔|구|십|백|천|만))*(?=\s*(?:개|명|건|회|번|원|년|월|일|시간|분|초|대|권|장|마리|곳|배))/g],
+    ["number", new RegExp(`${ZH_PERCENTAGE}\\s*(?:至|到|[-–—])\\s*(?:正|负)?(?:百分之)?${ZH_NUMBER_CORE}`, "gu")],
     ["number", new RegExp(`(?<![唯统])${ZH_SIGNED_NUMBER}\\s*(?:至|到|[-–—])\\s*${ZH_SIGNED_NUMBER}\\s*\\p{Script=Han}`, "gu")],
     ["number", new RegExp(`(?<![唯统])(?!(?:百分之))${ZH_SIGNED_NUMBER}\\s*\\p{Script=Han}`, "gu")],
-    ["number", new RegExp(`(?:正|负)?百分之${ZH_NUMBER_CORE}`, "gu")],
+    ["number", new RegExp(ZH_PERCENTAGE, "gu")],
     ["number", /(?<![\w.])(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s*(?:%|°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|[KMGTPE]i?B|[KMGTPE]?bps|bytes?|bits?|thousand|million|billion|trillion|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))?\s*[-–—/:]\s*(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s*(?:%|°[CFK]|kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|[KMGTPE]i?B|[KMGTPE]?bps|bytes?|bits?|thousand|million|billion|trillion|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))?(?!\w|\.\d)/gi],
     ["number", /\b\d{4}-\d{2}-\d{2}\b|(?<![\w.])(?:(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?\s*[-–—/:]\s*(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?)\b|\bv?\d+(?:\.\d+)+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?\b|(?<![\w.])(?:(?:[<>]=?|[≤≥=≠])\s*)?(?:[+−±-]?[$€£¥₩]|[$€£¥₩][+−±-]?|[+−±-]?)(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+−-]?\d+)?(?:\s+(?:(?:kg|g|mg|lb|oz|km|m|cm|mm|mi|ft|in|ms|s|h|USD|EUR|GBP|JPY|KRW|seconds?|minutes?|hours?|days?|weeks?|months?|years?|percent|thousand|million|billion|trillion)\b|(?:%|°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트))|(?:°[CFK]|개|명|건|회|원|년|월|일|시간|분|초|대|권|장|마리|곳|배|퍼센트)|%|[A-Za-z]+\b|\b)/g],
     ["normative", /\b(?:MUST|SHALL|SHOULD|MAY)(?:\s+NOT)?\b|\b(?:is|are|was|were)(?:\s+not)?\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|\b(?:will(?:\s+not)?\s+be|has(?:\s+not)?\s+been|have(?:\s+not)?\s+been|had(?:\s+not)?\s+been)\s+(?:required|prohibited|forbidden|permitted|allowed|optional)\b|(?:(?:(?:해서는|하여서는|하면|한다면)\s+안\s+(?:된다|됩니다))|(?:해야|하여야)\s+(?:한다|합니다)|할\s+수\s+(?:있다|있습니다))|(?:不应该|不允许|无需|需要|应该|允许|必须|不得|禁止|应当|不应|可以|可选)/gi],
@@ -865,7 +867,8 @@ function claimLabel(text: string, index: number, valueLength: number, bindSubjec
   const left = leftLabels.at(-1);
   const right = rightLabels[0];
   if (!left && !right && bindSubject) {
-    const localClause = leftClause.split(/\b(?:while|whereas|and|but)\b/i).at(-1) ?? leftClause;
+    const localClause = (leftClause.split(/\b(?:while|whereas|and|but)\b/i).at(-1) ?? leftClause)
+      .replace(/^[\t ]{0,3}(?:(?:[-+*]|\d+[.)])\s+|>\s*)+/, "");
     const chineseSubject = localClause.trim().match(/^([\p{Script=Han}]{1,24}?)(?:包含|支持|拥有|运行|执行|使用|记录|提供|需要|允许|要求|保留|配置|安装|发布|为|是)$/u)?.[1];
     if (chineseSubject) return chineseSubject;
     const words = localClause.match(/[\p{L}_][\p{L}\p{N}_-]*/gu) ?? [];

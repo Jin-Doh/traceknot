@@ -386,10 +386,31 @@ describe("rewrite preservation gate", () => {
     expect(report.status).toBe("FAIL");
   });
 
+  test.each([
+    ["成功率为百分之三十至四十。", "成功率为百分之三十至五十。"],
+    ["成功率为负百分之三十到负百分之四十。", "成功率为负百分之三十到负百分之五十。"],
+  ])("preserves both endpoints of Simplified Chinese percentage ranges: %s", (source, rewrite) => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(report.status).toBe("FAIL");
+  });
+
   test("binds Simplified Chinese quantities to their clause subjects", () => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const before = `${context}\n甲组包含三项检查，乙组包含四项检查。`;
     const after = `${context}\n乙组包含三项检查，甲组包含四项检查。`;
+    const report = verifyPreservation(before, after);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
+    expect(report.status).toBe("FAIL");
+  });
+
+  test("binds Simplified Chinese quantity subjects inside Markdown containers", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const before = `${context}\n- 甲组包含三项检查。\n- 乙组包含四项检查。`;
+    const after = `${context}\n- 乙组包含三项检查。\n- 甲组包含四项检查。`;
     const report = verifyPreservation(before, after);
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "protected-context" }));
