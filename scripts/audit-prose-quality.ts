@@ -498,9 +498,7 @@ function markdownQuotationSyntaxRanges(text: string): TextRange[] {
       return;
     }
     if (node.type === "definition") {
-      const source = text.slice(start, end);
-      const destinationBoundary = source.indexOf("]:");
-      if (destinationBoundary >= 0) ranges.push({ start: start + destinationBoundary + 2, end });
+      ranges.push({ start, end });
     }
   });
   return ranges;
