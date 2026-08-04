@@ -54,6 +54,8 @@ The `zh-Hans` path delegates Markdown-aware typography, punctuation, and Chinese
 
 Rewrite preservation deliberately does not claim semantic understanding of Simplified Chinese normative clauses, written quantities, subjects, or counters. Human review remains mandatory for translation accuracy and meaning preservation. The language-neutral contracts for code, links, URLs, versions, and Arabic-number facts still apply, as do the shared README structure and command checks.
 
+Rewrite scope uses the platform `Intl.Segmenter` word boundary implementation, so typography-only spacing between Chinese and Western text does not count as a structural token rewrite.
+
 The common Hero artwork contains no language. Translate its alternative text and surrounding caption in Markdown instead of creating language-specific image variants.
 
 ## Updating the READMEs

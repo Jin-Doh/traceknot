@@ -99,6 +99,7 @@ const RENDERED_HTML_PROCESSOR = unified()
   .use(remarkGfm)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeRaw);
+const WORD_SEGMENTER = new Intl.Segmenter("zh-CN", { granularity: "word" });
 
 // `prose-quality.config.json` is the single publication-surface inventory.
 // The scanner default reads it instead of maintaining a second include list.
@@ -713,8 +714,11 @@ function sequenceEditDistance(left: string[], right: string[], maximumDistance: 
 }
 
 function tokenChangeRate(before: string, after: string, rejectionThreshold: number): number {
-  const leftTokens = before.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [];
-  const rightTokens = after.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) ?? [];
+  const tokens = (value: string): string[] => [...WORD_SEGMENTER.segment(value.toLocaleLowerCase())]
+    .filter((segment) => segment.isWordLike)
+    .map((segment) => segment.segment);
+  const leftTokens = tokens(before);
+  const rightTokens = tokens(after);
   const combinedTotal = leftTokens.length + rightTokens.length;
   if (combinedTotal === 0) return 0;
   const maximumDistance = Math.ceil(rejectionThreshold * combinedTotal);

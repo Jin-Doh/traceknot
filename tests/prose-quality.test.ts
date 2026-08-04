@@ -411,6 +411,12 @@ describe("rewrite preservation gate", () => {
     expect(verifyPreservation(base, "one two alpha beta gamma delta epsilon zeta eta theta", 0.2, 0.5).status).toBe("FAIL");
   });
 
+  test("does not treat zh-Hans typography-only spacing as a rewrite", () => {
+    const report = verifyPreservation("自动在中文和English之间加入空格。", "自动在中文和 English 之间加入空格。");
+    expect(report.status).toBe("PASS");
+    expect(report.tokenChangeRate).toBe(0);
+  });
+
   test("counts inserted prose and rejects unbounded scope expansion", () => {
     const base = "one two three four five six seven eight nine ten";
     const expanded = `${base} alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon`;
