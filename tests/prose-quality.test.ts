@@ -399,9 +399,20 @@ describe("rewrite preservation gate", () => {
   test.each([
     ["系统支持三位用户。", "系统支持四位用户。"],
     ["系统包含三项检查。", "系统包含四项检查。"],
+    ["港口接收三艘船。", "港口接收四艘船。"],
+    ["仓库保留三盒样本。", "仓库保留四盒样本。"],
+    ["农场检查三亩土地。", "农场检查四亩土地。"],
   ])("preserves quantities using common Simplified Chinese counters: %s", (source, rewrite) => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
+    expect(report.tokenChangeRate).toBeLessThan(0.3);
+    expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
+    expect(report.status).toBe("FAIL");
+  });
+
+  test("preserves the counter attached to a Simplified Chinese quantity", () => {
+    const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
+    const report = verifyPreservation(`${context}\n港口接收三艘船。`, `${context}\n港口接收三批船。`);
     expect(report.tokenChangeRate).toBeLessThan(0.3);
     expect(report.failures).toContainEqual(expect.objectContaining({ category: "number" }));
     expect(report.status).toBe("FAIL");
@@ -435,6 +446,10 @@ describe("rewrite preservation gate", () => {
     ["团队认可审核结果。", "团队接受审核结果。"],
     ["材料属于刚需审核样本。", "材料属于必要审核样本。"],
     ["这是必需审核材料。", "这是必要审核材料。"],
+    ["团队许可审核流程。", "团队批准审核流程。"],
+    ["这是需求审核样本。", "这是请求审核样本。"],
+    ["这个可惜审核结果。", "这个遗憾审核结果。"],
+    ["团队急需审核支持。", "团队迫切审核支持。"],
   ])("does not extract concise modals embedded in ordinary words: %s", (source, rewrite) => {
     const context = Array(20).fill("系统持续记录运行结果并保留完整证据供审阅者检查。").join("\n");
     const report = verifyPreservation(`${context}\n${source}`, `${context}\n${rewrite}`);
