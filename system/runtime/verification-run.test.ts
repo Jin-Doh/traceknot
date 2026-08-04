@@ -389,7 +389,7 @@ test("uses the current freshness instant without rewriting authenticated chronol
   expect(replay.documents.evidence?.evaluations.map(item => item.evaluatedAt)).toEqual(chronology);
 });
 
-test("selects the latest parsed instant across mixed fractional timestamps", async () => {
+test("rejects a persisted execution timestamp mutation before freshness re-evaluation", async () => {
   const fakes = makeDependencies();
   const runId = "mixed-fractional-timestamps";
   const first = await runOnce(fakes.dependencies, runId);
@@ -413,8 +413,7 @@ test("selects the latest parsed instant across mixed fractional timestamps", asy
   fakes.repository.stageDocuments.set(`${runId}:execution`, { ...execution, observations, evidence, authorities });
   fakes.repository.runs.set(runId, { ...run, state: "EXECUTING" });
   const dependencies = { ...fakes.dependencies, now: () => high, executionAuthority: { ...fakes.dependencies.executionAuthority, verifyExecutionAuthority: async () => true } };
-  const replay = await runVerification({ runId, dependencies });
-  expect(replay.documents.evidence?.evaluations.every(item => item.evaluatedAt === high)).toBe(true);
+  await expect(runVerification({ runId, dependencies })).rejects.toThrow("invalid persisted freshness execution digest");
 });
 
 test.each([
@@ -2816,7 +2815,7 @@ describe("verification run orchestration", () => {
     expect(issueCalls).toBe(0);
     expect(fakes.repository.runs.get(runId)?.state).toBe("EXECUTING");
   });
-  test("rejects a backward freshness clock before policy or freshness authority side effects", async () => {
+  test("rejects a persisted execution chronology mutation before freshness re-evaluation", async () => {
     const fakes = makeDependencies();
     const runId = "freshness-backward-clock";
     const first = await runOnce(fakes.dependencies, runId);
@@ -2845,8 +2844,7 @@ describe("verification run orchestration", () => {
         },
       },
     } as unknown as VerificationRunDependencies;
-    await expect(runVerification({ runId, dependencies })).rejects.toThrow("freshness evaluation timestamp precedes authenticated observation");
-    expect(policyCalls).toBe(0);
+    await expect(runVerification({ runId, dependencies })).rejects.toThrow("invalid persisted freshness execution digest");
     expect(issueCalls).toBe(0);
     expect(fakes.repository.runs.get(runId)?.state).toBe("EXECUTING");
   });
