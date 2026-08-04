@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { checkReadmeDocumentationLinks, checkReadmeLocalLinks, checkReadmeSections, checkReadmeSharedCommands } from "../scripts/check-readme-contract";
+import { checkPublicationInventory, checkReadmeDocumentationLinks, checkReadmeLocalLinks, checkReadmeSections, checkReadmeSharedCommands } from "../scripts/check-readme-contract";
 
 const sections = [
   "hero",
@@ -53,6 +53,16 @@ describe("README localization section contract", () => {
   test("rejects missing reference-style and single-quoted HTML targets", () => {
     expect(() => checkReadmeLocalLinks({ path: "README.md", content: "[guide][g]\n\n[g]: docs/not-here.md" })).toThrow("local link does not exist");
     expect(() => checkReadmeLocalLinks({ path: "README.md", content: "<img src='assets/not-here.png'>" })).toThrow("local link does not exist");
+  });
+
+  test("rejects missing unquoted HTML targets", () => {
+    expect(() => checkReadmeLocalLinks({ path: "README.md", content: "<img src=assets/not-here.png>" })).toThrow("local link does not exist");
+  });
+
+  test("rejects exclusions that narrow the publication inventory", () => {
+    expect(() => checkPublicationInventory({ include: ["**/*.md"], exclude: ["docs/**"] })).toThrow(
+      "cannot exclude Markdown files",
+    );
   });
 
   test("rejects unpaired shared-command markers", () => {

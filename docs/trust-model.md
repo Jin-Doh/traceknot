@@ -11,8 +11,10 @@ Traceknot is evidence-bound, host-neutral, and non-authoritative by default. It 
 - A command exit code proves only the result of that command, not coverage sufficiency.
 - Agent, task, queue, and lifecycle states remain observations rather than QA proof.
 - Observations, Evidence Claims, Evidence Evaluations, and Obligation Outcomes remain distinct records.
-- Only an accepted evaluation of positive, snapshot-bound evidence may satisfy a mandatory success criterion.
+- In `resolveProofCarryingQaVerdict`, only an accepted evaluation of positive, snapshot-bound evidence may satisfy a mandatory success criterion.
 - Accepted material risk requires an accountable owner, scope, reason, mitigation, approval evidence, and expiry.
+
+The exported `resolveQaVerdict` path remains a legacy compatibility resolver. It accepts the older flat evidence/result shape and does not enforce the Observation → Evidence Claim → Evidence Evaluation graph guarantees above. New integrations should use `resolveProofCarryingQaVerdict` when they require those guarantees.
 
 ## Capability handshake
 

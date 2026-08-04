@@ -34,6 +34,8 @@ const REQUIRED_BOUNDARIES = [
 ] as const;
 const REQUIRED_OPERATIONAL_LITERALS: Readonly<Record<string, readonly string[]>> = {
   "README.md": [
+    "curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh",
+    "curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh | sh",
     "TRACEKNOT_REF=<tag-or-commit>",
     "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/install.sh",
     'TRACEKNOT_REF="$TRACEKNOT_REF" sh',
@@ -165,7 +167,9 @@ function localTargets(content: string): string[] {
   const targets: string[] = [];
   for (const match of content.matchAll(/!?\[[^\]]*\]\(([^)]+)\)/g)) targets.push(match[1].trim().split(/\s+["']/)[0]);
   for (const match of content.matchAll(/^[\t ]{0,3}\[[^\]\r\n]+\]:[\t ]*(?:<([^>\r\n]+)>|([^\s\r\n]+))/gm)) targets.push(match[1] ?? match[2]);
-  for (const match of content.matchAll(/(?:href|src)\s*=\s*(["'])(.*?)\1/g)) targets.push(match[2]);
+  for (const match of content.matchAll(/(?:href|src)\s*=\s*(?:(["'])(.*?)\1|([^\s"'=<>`]+))/g)) {
+    targets.push(match[2] ?? match[3]);
+  }
   return targets;
 }
 
@@ -219,11 +223,18 @@ export function checkReadmeLocalLinks(record: Pick<ReadmeRecord, "path" | "conte
   }
 }
 
-function checkPublicationContracts(): void {
-  const config = JSON.parse(readFileSync(resolve(ROOT, "prose-quality.config.json"), "utf8")) as { include?: unknown };
+export function checkPublicationInventory(config: { include?: unknown; exclude?: unknown }): void {
   if (!Array.isArray(config.include) || config.include.length !== 1 || config.include[0] !== "**/*.md") {
     throw new Error("prose-quality.config.json: repository publication coverage must remain **/*.md");
   }
+  if (!Array.isArray(config.exclude) || config.exclude.length !== 0) {
+    throw new Error("prose-quality.config.json: repository publication coverage cannot exclude Markdown files");
+  }
+}
+
+function checkPublicationContracts(): void {
+  const config = JSON.parse(readFileSync(resolve(ROOT, "prose-quality.config.json"), "utf8")) as { include?: unknown; exclude?: unknown };
+  checkPublicationInventory(config);
   for (const [path, literals] of Object.entries(REQUIRED_OPERATIONAL_LITERALS)) {
     const content = readFileSync(resolve(ROOT, path), "utf8");
     const missing = literals.filter((literal) => !content.includes(literal));
