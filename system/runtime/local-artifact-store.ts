@@ -14,9 +14,6 @@ const O_NONBLOCK = constants.O_NONBLOCK ?? 0;
 const AT_FDCWD = -2;
 const LOCK_EX = 2;
 const LOCK_UN = 8;
-const LOCK_NB = 4;
-const EINTR = 4;
-const EAGAIN = process.platform === "darwin" ? 35 : 11;
 const MAX_TYPE_BYTES = 1 << 20;
 const MAX_ARTIFACT_BYTES = 256 << 20;
 const MAGIC = new TextEncoder().encode("TRACEKNOT-ARTIFACT-V1\0");
@@ -210,21 +207,6 @@ function withLock<T>(lockFd: number, operation: () => T): T {
   }
 }
 
-async function withAsyncLock<T>(lockFd: number, operation: () => Promise<T> | T): Promise<T> {
-  const n = native();
-  for (;;) {
-    const result = n.symbols.flock(lockFd, LOCK_EX | LOCK_NB);
-    if (result >= 0) break;
-    const error = errno();
-    if (error !== EAGAIN && error !== EINTR) throw new ArtifactPathError(`artifact lock acquire failed (errno ${error})`);
-    await Bun.sleep(0);
-  }
-  try {
-    return await operation();
-  } finally {
-    check(n.symbols.flock(lockFd, LOCK_UN), "artifact lock release");
-  }
-}
 function compareBytes(a: Uint8Array, b: Uint8Array): boolean {
   return a.byteLength === b.byteLength && a.every((value, index) => value === b[index]);
 }
@@ -389,18 +371,16 @@ export class LocalArtifactStore implements ArtifactStore {
       if (!artifact || typeof artifact !== "object") throw new ArtifactIntegrityError("artifact is required");
       if (typeof artifact.type !== "string" || artifact.type.length === 0) throw new ArtifactIntegrityError("artifact type is required");
       if (typeof artifact.digest !== "string" || !DIGEST.test(artifact.digest)) throw new ArtifactIntegrityError("artifact digest must be a lowercase SHA-256 hex string");
-      return withAsyncLock(this.lockFd, async () => {
-        const sourceAvailable = (typeof artifact.path === "string" && artifact.path.length > 0) || asBytes(artifact.bytes) !== undefined || asBytes(artifact.data) !== undefined || asBytes(artifact.content) !== undefined || typeof artifact.content === "string";
-        const bytes = sourceAvailable ? await readSourceBytes(artifact) : undefined;
-        return this.persistUnderLock(artifact, bytes);
-      });
+      const sourceAvailable = (typeof artifact.path === "string" && artifact.path.length > 0) || asBytes(artifact.bytes) !== undefined || asBytes(artifact.data) !== undefined || asBytes(artifact.content) !== undefined || typeof artifact.content === "string";
+      const bytes = sourceAvailable ? await readSourceBytes(artifact) : undefined;
+      return withLock(this.lockFd, () => this.persistUnderLock(artifact, bytes));
     });
   }
   async readArtifact(digest: string): Promise<Uint8Array> {
     return this.serialized(async () => {
       if (this.closed) throw new ArtifactPathError("artifact store is closed");
       if (!DIGEST.test(digest)) throw new ArtifactIntegrityError("artifact digest must be a lowercase SHA-256 hex string");
-      return withAsyncLock(this.lockFd, () => {
+      return withLock(this.lockFd, () => {
         const object = readObject(this.objectsFd, digest);
         if (!object) throw new ArtifactPathError("stored artifact does not exist");
         return new Uint8Array(object.bytes);
@@ -411,13 +391,12 @@ export class LocalArtifactStore implements ArtifactStore {
     return this.serialized(async () => {
       if (this.closed) throw new ArtifactPathError("artifact store is closed");
       if (!DIGEST.test(digest)) return false;
-      return withAsyncLock(this.lockFd, () => readObject(this.objectsFd, digest) !== undefined);
+      return withLock(this.lockFd, () => readObject(this.objectsFd, digest) !== undefined);
     });
   }
   async close(): Promise<void> {
     await this.serialized(async () => {
       if (this.closed) return;
-      withLock(this.lockFd, () => undefined);
       this.closed = true;
       closeFd(this.lockFd); closeFd(this.objectsFd); closeFd(this.rootFd);
     });

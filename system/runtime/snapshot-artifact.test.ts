@@ -223,6 +223,32 @@ test("independent descriptor stores serialize same and different digest writes w
     await cleanup(root);
   }
 });
+test("cross-instance source persistence, reads, and queued close remain ordered", async () => {
+  const root = await temporaryDirectory();
+  const artifactRoot = join(root, "artifacts");
+  const source = join(root, "large-source.bin");
+  const bytes = Buffer.alloc(1024 * 1024, 0x5a);
+  const artifactDigest = digest(bytes);
+  const first = new LocalArtifactStore(artifactRoot);
+  const second = new LocalArtifactStore(artifactRoot);
+  try {
+    await writeFile(source, bytes);
+    const persisted = first.storeArtifact({ type: "large", digest: artifactDigest, path: source }, request);
+    const observedBeforePublication = second.hasArtifact(artifactDigest);
+    await expect(observedBeforePublication).resolves.toBe(false);
+    await persisted;
+    await expect(second.readArtifact(artifactDigest)).resolves.toEqual(bytes);
+
+    const queuedPersist = first.storeArtifact({ type: "large", digest: artifactDigest, path: source }, request);
+    const closing = first.close();
+    await Promise.all([queuedPersist, closing]);
+    await expect(first.hasArtifact(artifactDigest)).rejects.toBeInstanceOf(ArtifactPathError);
+    await expect(second.readArtifact(artifactDigest)).resolves.toEqual(bytes);
+  } finally {
+    await second.close();
+    await cleanup(root);
+  }
+});
 
 test("local artifact store fails closed on mismatch, torn frames, corruption, and symlink sources", async () => {
   const root = await temporaryDirectory();
