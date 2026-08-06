@@ -1,0 +1,112 @@
+name: Auto PR triage
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  auto-triage:
+    name: Self-assign and label PRs
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Apply labels and self-assignment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prNumber = context.payload.pull_request.number;
+            const pr = context.payload.pull_request;
+            const title = (pr.title || "").toLowerCase();
+            const body = (pr.body || "").toLowerCase();
+            const author = pr.user?.login;
+            const isBotAuthor = pr.user?.type === "Bot";
+
+            const existingIssue = await github.rest.issues.get({
+              owner,
+              repo,
+              issue_number: prNumber,
+            });
+
+            const changedFiles = await github.paginate(
+              github.rest.pulls.listFiles,
+              {
+                owner,
+                repo,
+                pull_number: prNumber,
+                per_page: 100,
+              },
+            );
+            const filenames = changedFiles.map((item) => item.filename || "");
+
+            const labels = new Set();
+
+            if (title.includes("fix") || title.includes("bug") || body.includes("bug") || body.includes("fix")) {
+              labels.add("bug");
+            }
+
+            if (
+              title.includes("doc") ||
+              title.includes("readme") ||
+              body.includes("documentation") ||
+              filenames.some((file) => file.startsWith("docs/") || /^README/i.test(file) || file.endsWith(".md"))
+            ) {
+              labels.add("documentation");
+            }
+
+            if (
+              filenames.some((file) => file.startsWith(".github/workflows/") || file.startsWith(".github/codeql/")) ||
+              title.includes("github_action") ||
+              title.includes("github actions")
+            ) {
+              labels.add("github_actions");
+            }
+
+            if (
+              filenames.some((file) =>
+                file === "package.json" ||
+                file === "bun.lock" ||
+                file === "package-lock.json" ||
+                file === "pnpm-lock.yaml" ||
+                file === "yarn.lock" ||
+                file === ".github/dependabot.yml"
+              )
+            ) {
+              labels.add("dependencies");
+            }
+
+            if (labels.size === 0) {
+              labels.add("enhancement");
+            }
+
+            const presentLabels = new Set(existingIssue.data.labels.map((label) => label.name));
+            const newLabels = [...labels].filter((label) => !presentLabels.has(label));
+
+            if (newLabels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: prNumber,
+                labels: newLabels,
+              });
+            }
+
+            if (!isBotAuthor && author) {
+              const hasAuthorAssigned = existingIssue.data.assignees?.some((assignee) => assignee.login === author);
+              if (!hasAuthorAssigned) {
+                await github.rest.issues.addAssignees({
+                  owner,
+                  repo,
+                  issue_number: prNumber,
+                  assignees: [author],
+                });
+              }
+            }
