@@ -331,6 +331,14 @@ test("rejects self producer with independent independence in an authority replay
   await expect(runVerification({ runId: "authority-self-independent", request, dependencies: replay.dependencies })).rejects.toThrow("execution authority issue failed");
   expect(fakes.repository.stageWrites).not.toContain("execution");
 });
+test.each([
+  "2026-02-30T00:00:00Z",
+  "2026-01-01T24:00:00Z",
+] as const)("rejects calendar-invalid runtime timestamps: %s", async timestamp => {
+  const fakes = makeDependencies();
+  await expect(runOnce({ ...fakes.dependencies, now: () => timestamp }, `calendar-invalid-${timestamp}`)).rejects.toThrow("runId and canonical UTC now are required");
+});
+
 test("canonical request digest is key-order stable and value/array-order sensitive", () => {
   const request = makeRequest();
   const reordered = reorderObjectKeysDeep(request);
