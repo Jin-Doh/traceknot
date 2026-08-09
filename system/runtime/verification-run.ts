@@ -48,7 +48,7 @@ export class DispatchClaimAcquisitionError extends Error {
   }
 }
 export type RepositoryTransition=Readonly<{runId:string;expectedRevision?:number;stage?:StageName;document?:StageDocument;run:CanonicalRunState}>;
-export interface RepositoryPort {readonly loadRun:(id:string)=>MaybePromise<CanonicalRunState|undefined>;readonly loadStageDocument:(id:string,s:StageName)=>MaybePromise<unknown|undefined>;readonly commitTransition:(transition:RepositoryTransition)=>MaybePromise<boolean>;readonly claimExecutionDispatch?:(claim:DispatchClaim,now?:string,attemptToken?:symbol)=>MaybePromise<DispatchClaimResult>;readonly completeExecutionDispatch?:(claim:DispatchClaim,completion:VerificationExecutionCompletionEnvelope|undefined,now?:string)=>MaybePromise<boolean>;readonly releaseExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<boolean>};
+export interface RepositoryPort {readonly generationFencedDispatchCompletion?:true;readonly loadRun:(id:string)=>MaybePromise<CanonicalRunState|undefined>;readonly loadStageDocument:(id:string,s:StageName)=>MaybePromise<unknown|undefined>;readonly commitTransition:(transition:RepositoryTransition)=>MaybePromise<boolean>;readonly claimExecutionDispatch?:(claim:DispatchClaim,now?:string,attemptToken?:symbol)=>MaybePromise<DispatchClaimResult>;readonly completeExecutionDispatch?:(claim:DispatchClaim,completion:VerificationExecutionCompletionEnvelope|undefined,now?:string)=>MaybePromise<boolean>;readonly releaseExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<boolean>};
 export type TerminalEvidenceVerdictTransition=Readonly<{runId:string;expectedRevision?:number;evidence:EvidenceDocument;verdict:VerdictDocument;run:CanonicalRunState}>;
 export interface RepositoryPort {readonly commitEvidenceAndVerdict?:(transition:TerminalEvidenceVerdictTransition)=>MaybePromise<boolean>};
 export type VerificationRunDependencies=Readonly<{repository:RepositoryPort;executor:VerificationExecutor;artifactStore:ArtifactStore;capabilityProvider:CapabilityProvider;executionAuthority:ExecutionAuthorityPort;freshnessPolicy:FreshnessPolicy;freshnessAuthority:FreshnessAuthorityPort;browserExecutor?:BrowserExecutor;approvalProvider?:ApprovalProvider;usageRecorder?:UsageRecorder;now:Clock;dispatchOwnerId?:string;ownerId?:string;dispatchLeaseDurationMs?:number;leaseDurationMs?:number}>;
@@ -1058,6 +1058,9 @@ export function getVerificationRunLockCount(repository: RepositoryPort): number 
 async function runVerificationUnlocked(input: RunVerificationInput): Promise<RunVerificationResult> {
   const { dependencies } = input;
   const repository = dependencies.repository;
+  const dispatchMethods = [repository.claimExecutionDispatch, repository.completeExecutionDispatch, repository.releaseExecutionDispatch];
+  if (dispatchMethods.some(Boolean) && !dispatchMethods.every(method => typeof method === "function")) throw Error("dispatch claim facility must provide claim, complete, and release");
+  if (repository.generationFencedDispatchCompletion !== true) throw Error("repository must declare generation-fenced dispatch completion");
   let run = await loadRun(repository, input.runId);
   const persisted = await loadStage<VerificationRequest>(repository, input.runId, "request");
   if (persisted) validateStage("request", persisted, input.request ?? persisted, input.runId);
