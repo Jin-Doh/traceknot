@@ -28,7 +28,7 @@ export type FreshnessPolicyPort = FreshnessPolicy;
 export type BrowserExecutionRequest=VerificationExecutionRequest; export type BrowserExecutionOutput=VerificationExecutionOutput; export type StoredArtifact=CanonicalVerificationResultArtifact; export type ApprovalRequest=Readonly<{runId:string;defect:DefectSummary}>; export type ApprovalResult=Readonly<{approved:boolean;acceptanceExpiresAt?:string}>; export type UsageEvent=Readonly<{runId:string;obligationId?:string;event:"execution"|"artifact"|"approval";executionKey?:string;eventKey?:string}>;
 export type StageName="request"|"basis"|"discovery"|"plan"|"execution"|"evidence"|"residual-risk"|"verdict";
 export interface VerificationExecutor {readonly atomicSameKeyIdempotency?:true;readonly executeObligation?:(i:VerificationExecutionRequest)=>MaybePromise<VerificationExecutionOutput|undefined>;readonly execute?:(i:VerificationExecutionRequest)=>MaybePromise<VerificationExecutionOutput|undefined>};
-export interface ArtifactStore {readonly storeVerificationResultArtifact?:(a:CanonicalVerificationResultArtifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly storeArtifact?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly putArtifact?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly store?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>};
+export interface ArtifactStore {readonly atomicSameKeyIdempotency?:true;readonly storeVerificationResultArtifact?:(a:CanonicalVerificationResultArtifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly storeArtifact?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly putArtifact?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly store?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>};
 export interface CapabilityProvider {readonly hasCapability?:(s:string)=>MaybePromise<boolean>;readonly has?:(s:string)=>MaybePromise<boolean>;readonly getCapabilities?:()=>MaybePromise<readonly string[]>;readonly capabilities?:readonly string[]};
 export interface BrowserExecutor {readonly atomicSameKeyIdempotency?:true;readonly executeBrowser?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>;readonly execute?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>};
 export interface ApprovalProvider {readonly requestApproval?:(i:ApprovalRequest)=>MaybePromise<ApprovalResult|undefined>;readonly approve?:(i:ApprovalRequest)=>MaybePromise<ApprovalResult|undefined>};
@@ -559,6 +559,7 @@ async function canonicalizeAndStoreExecutionOutput(value: unknown, input: Verifi
   const output = canonicalExecutionOutput(value);
   if (!output || !outputReceiptMatches(output, input)) return undefined;
   const artifacts = (output.artifacts ?? []) as readonly CanonicalVerificationResultArtifact[];
+  if (artifacts.length > 0 && store.atomicSameKeyIdempotency !== true) throw Error("artifact store must declare atomic same-key idempotency");
   const stored: CanonicalVerificationResultArtifact[] = [];
   for (const artifact of artifacts) {
     const saved = await storeArtifact(store, artifact, input);
