@@ -339,6 +339,65 @@ test.each([
   await expect(runOnce({ ...fakes.dependencies, now: () => timestamp }, `calendar-invalid-${timestamp}`)).rejects.toThrow("runId and canonical UTC now are required");
 });
 
+test("rejects invalid resumed string clocks before executor or artifact writes", async () => {
+  const fakes = makeDependencies();
+  await runOnce(fakes.dependencies);
+  const run = fakes.repository.runs.get(RUN_ID);
+  if (!run) throw new Error("missing persisted run");
+  fakes.repository.runs.set(RUN_ID, { ...run, state: "PLANNED", updatedAt: FIXED_NOW });
+  fakes.repository.stageDocuments.delete(`${RUN_ID}:execution`);
+  fakes.repository.stageDocuments.delete(`${RUN_ID}:evidence`);
+  fakes.repository.stageDocuments.delete(`${RUN_ID}:verdict`);
+  fakes.repository.dispatchClaims.clear();
+  const executorCalls = fakes.executorCalls;
+  let artifactWrites = 0;
+  const storeVerificationResultArtifact = fakes.dependencies.artifactStore.storeVerificationResultArtifact!;
+  const artifactStore: ArtifactStore = {
+    ...fakes.dependencies.artifactStore,
+    storeVerificationResultArtifact: async (artifact, input) => {
+      artifactWrites++;
+      return storeVerificationResultArtifact(artifact, input);
+    },
+  };
+  const resumedAuthority = makeOneShotExecutionAuthority().port;
+  await expect(runVerification({
+    runId: RUN_ID,
+    dependencies: { ...fakes.dependencies, artifactStore, executionAuthority: resumedAuthority, now: () => "2026-02-30T00:00:00Z" },
+  })).rejects.toThrow("clock must return canonical ISO date-time");
+  expect(fakes.executorCalls).toBe(executorCalls);
+  expect(artifactWrites).toBe(0);
+});
+
+test("rejects reversed sub-millisecond executor chronology before artifact writes", async () => {
+  const fakes = makeDependencies();
+  let executorReturned = false;
+  let artifactWrites = 0;
+  const executeObligation = fakes.dependencies.executor.executeObligation!;
+  const storeVerificationResultArtifact = fakes.dependencies.artifactStore.storeVerificationResultArtifact!;
+  const executor: VerificationExecutor = {
+    ...fakes.dependencies.executor,
+    executeObligation: async input => {
+      const output = await executeObligation(input);
+      executorReturned = true;
+      return output;
+    },
+  };
+  const artifactStore: ArtifactStore = {
+    ...fakes.dependencies.artifactStore,
+    storeVerificationResultArtifact: async (artifact, input) => {
+      artifactWrites++;
+      return storeVerificationResultArtifact(artifact, input);
+    },
+  };
+  await expect(runOnce({
+    ...fakes.dependencies,
+    executor,
+    artifactStore,
+    now: () => executorReturned ? "2026-08-03T00:00:00.0001Z" : "2026-08-03T00:00:00.0009Z",
+  }, "sub-millisecond-reversal")).rejects.toThrow("execution clock moved backwards");
+  expect(artifactWrites).toBe(0);
+});
+
 test("canonical request digest is key-order stable and value/array-order sensitive", () => {
   const request = makeRequest();
   const reordered = reorderObjectKeysDeep(request);
