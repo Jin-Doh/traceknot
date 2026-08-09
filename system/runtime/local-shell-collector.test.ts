@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, realpath, rename, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rename, rm, symlink, unlink, watch, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -10,11 +10,22 @@ import { LocalShellCollector, ShellCollectorError, type ShellObservationRequest 
 
 const digest = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 const temporaryDirectory = async (): Promise<string> => mkdtemp(join(tmpdir(), "traceknot-shell-"));
-const pause = (milliseconds: number): Promise<void> => {
-  const { promise, resolve } = Promise.withResolvers<void>();
-  setTimeout(resolve, milliseconds);
-  return promise;
-};
+async function waitForPathEvent(directory: string, filename: string): Promise<void> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2_000);
+  try {
+    for await (const event of watch(directory, { signal: controller.signal })) {
+      if (event.filename === filename) return;
+    }
+    throw new Error(`filesystem watcher closed before ${filename} was created`);
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(`timed out waiting for ${filename}`, { cause: error });
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    controller.abort();
+  }
+}
 const requestFor = (root: string, snapshotId = "snapshot-shell-1"): ShellObservationRequest => ({
   requestId: "request-shell-1",
   snapshotId,
@@ -84,9 +95,15 @@ describe("LocalShellCollector", () => {
   test("terminates descendants on timeout and records timed-out lifecycle", async () => {
     const root = await temporaryDirectory();
     const store = new LocalArtifactStore(join(root, "artifacts"));
-    const marker = join(root, "descendant-marker");
     try {
-      const script = `const child=Bun.spawn([${JSON.stringify(process.execPath)},'-e',${JSON.stringify(`setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(marker)},'escaped'),4000)`) }],{detached:true}); setTimeout(()=>{},10000);`;
+      const script = `
+        const child = Bun.spawn([
+          process.execPath,
+          "-e",
+          "process.stdout.write(String(process.pid)); setTimeout(() => {}, 10_000);",
+        ], { detached: true, stdout: "inherit" });
+        await child.exited;
+      `;
       const observation = await collectorFor(root, store).collect({
         ...requestFor(root),
         argv: ["-e", script],
@@ -94,8 +111,10 @@ describe("LocalShellCollector", () => {
       });
       expect(observation.execution.exitStatus).toBe("timed-out");
       expect(observation.actualValues?.timedOut).toBe(true);
-      await pause(300);
-      await expect(readFile(marker)).rejects.toBeDefined();
+      const stdout = observation.artifacts.find(artifact => artifact.path === "stdout");
+      const descendantPid = Number(new TextDecoder().decode(await store.readArtifact(stdout!.digest)));
+      expect(Number.isSafeInteger(descendantPid)).toBe(true);
+      expect(() => process.kill(descendantPid, 0)).toThrow();
     } finally {
       await cleanup(root, store);
     }
@@ -193,13 +212,14 @@ describe("LocalShellCollector", () => {
     const moved = `${root}-moved`;
     const store = new LocalArtifactStore(join(root, "artifacts"));
     try {
+      const ready = waitForPathEvent(root, "ready");
       const run = collectorFor(root, store).collect({
         ...requestFor(root),
 
-        argv: ["-e", `setTimeout(() => require("node:fs").writeFileSync("cwd-marker", "pinned"), 250)`],
+        argv: ["-e", `require("node:fs").writeFileSync("ready", "ready"); setTimeout(() => require("node:fs").writeFileSync("cwd-marker", "pinned"), 250)`],
         timeoutMs: 2_000,
       });
-      await pause(30);
+      await ready;
       await rename(root, moved);
       await symlink(outside, root, "dir");
       await expect(run).rejects.toMatchObject({ code: "ROOT_CHANGED" });
