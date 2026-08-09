@@ -48,12 +48,14 @@ export class DispatchClaimAcquisitionError extends Error {
   }
 }
 export type RepositoryTransition=Readonly<{runId:string;expectedRevision?:number;stage?:StageName;document?:StageDocument;run:CanonicalRunState}>;
-export interface RepositoryPort {readonly generationFencedDispatchCompletion?:true;readonly loadRun:(id:string)=>MaybePromise<CanonicalRunState|undefined>;readonly loadStageDocument:(id:string,s:StageName)=>MaybePromise<unknown|undefined>;readonly commitTransition:(transition:RepositoryTransition)=>MaybePromise<boolean>;readonly claimExecutionDispatch?:(claim:DispatchClaim,now?:string,attemptToken?:symbol)=>MaybePromise<DispatchClaimResult>;readonly completeExecutionDispatch?:(claim:DispatchClaim,completion:VerificationExecutionCompletionEnvelope|undefined,now?:string)=>MaybePromise<boolean>;readonly releaseExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<boolean>};
+export interface RepositoryPort {readonly generationFencedDispatchCompletion?:true;readonly generationFencedDispatchCheckpoint?:true;readonly loadRun:(id:string)=>MaybePromise<CanonicalRunState|undefined>;readonly loadStageDocument:(id:string,s:StageName)=>MaybePromise<unknown|undefined>;readonly commitTransition:(transition:RepositoryTransition)=>MaybePromise<boolean>;readonly claimExecutionDispatch?:(claim:DispatchClaim,now?:string,attemptToken?:symbol)=>MaybePromise<DispatchClaimResult>;readonly completeExecutionDispatch?:(claim:DispatchClaim,completion:VerificationExecutionCompletionEnvelope|undefined,now?:string)=>MaybePromise<boolean>;readonly releaseExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<boolean>};
 export type TerminalEvidenceVerdictTransition=Readonly<{runId:string;expectedRevision?:number;evidence:EvidenceDocument;verdict:VerdictDocument;run:CanonicalRunState}>;
 export interface RepositoryPort {readonly commitEvidenceAndVerdict?:(transition:TerminalEvidenceVerdictTransition)=>MaybePromise<boolean>};
 export type VerificationRunDependencies=Readonly<{repository:RepositoryPort;executor:VerificationExecutor;artifactStore:ArtifactStore;capabilityProvider:CapabilityProvider;executionAuthority:ExecutionAuthorityPort;freshnessPolicy:FreshnessPolicy;freshnessAuthority:FreshnessAuthorityPort;browserExecutor?:BrowserExecutor;approvalProvider?:ApprovalProvider;usageRecorder?:UsageRecorder;now:Clock;dispatchOwnerId?:string;ownerId?:string;dispatchLeaseDurationMs?:number;leaseDurationMs?:number}>;
 export type BasisDocument=Readonly<{schemaVersion:"verification-basis/v1";requestId:string;snapshotId:string;basis:readonly VerificationBasisItem[];basisIds:readonly string[]}>; export type DiscoveryDocument=Readonly<{schemaVersion:"risk-discovery/v1";requestId:string;snapshotId:string;risks:readonly VerificationRisk[];conditions:readonly VerificationCondition[]}>; export type PlanDocument=VerificationPlan; export type UsageOutboxEntry=Readonly<{executionKey:string;obligationId:string;event:"execution"|"artifact";eventKey:string}>; export type ExecutionDocument=Readonly<{schemaVersion:"verification-execution/v1";requestId:string;snapshotId:string;observations:readonly Observation[];claims:readonly EvidenceClaim[];evidence:readonly VerificationEvidence[];authorities:readonly ExecutionAuthority[];usageOutbox:readonly UsageOutboxEntry[]}>; export type EvidenceDocument=Readonly<{schemaVersion:"verification-evidence-evaluation/v1";requestId:string;snapshotId:string;freshnessEvaluatedAt:string;freshnessAuthority:FreshnessAuthority;evaluations:readonly EvidenceEvaluation[];acceptedClaimIds:readonly string[];coverage:CoverageInput}>; export type ResidualRiskDocument=Readonly<{schemaVersion:"verification-residual-risk/v1";requestId:string;snapshotId:string;defects:readonly DefectSummary[]}>; export type VerdictDocument=VerdictResult; export type StageDocument=VerificationRequest|BasisDocument|DiscoveryDocument|PlanDocument|ExecutionDocument|EvidenceDocument|ResidualRiskDocument|VerdictDocument;
 export type VerificationRunDocuments={request?:VerificationRequest;basis?:BasisDocument;discovery?:DiscoveryDocument;plan?:PlanDocument;execution?:ExecutionDocument;evidence?:EvidenceDocument;"residual-risk"?:ResidualRiskDocument;verdict?:VerdictDocument};
+export type ExecutionCheckpointTransition=Readonly<{runId:string;expectedRevision:number;document:ExecutionDocument;run:CanonicalRunState}>;
+export interface RepositoryPort {readonly commitExecutionCheckpoint?:(transition:ExecutionCheckpointTransition,claim:DispatchClaim)=>MaybePromise<boolean>};
 export type EstablishTestBasisInput=Readonly<{runId?:string;request:VerificationRequest;dependencies:VerificationRunDependencies}>; export type PerformRiskDiscoveryInput=Readonly<{request:VerificationRequest;basis:BasisDocument;dependencies:VerificationRunDependencies}>; export type BuildVerificationPlanInput=Readonly<{request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;dependencies:VerificationRunDependencies}>; type ExecuteObligationsInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;dependencies:VerificationRunDependencies;checkpoint?:ExecutionDocument;checkpointRunState:RunState;checkpointRevision:number}>; type EvaluateEvidenceInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;dependencies:VerificationRunDependencies;freshnessEvaluatedAt?:string;freshnessAuthority?:FreshnessAuthority}>; type EvaluateResidualRiskInput=Readonly<{runId:string;request:VerificationRequest;plan:VerificationPlan;execution:ExecutionDocument;evidence:EvidenceDocument;dependencies:VerificationRunDependencies}>; type ResolveVerdictInput=Readonly<{runId:string;request:VerificationRequest;basis:BasisDocument;discovery:DiscoveryDocument;plan:PlanDocument;execution:ExecutionDocument;evidence:EvidenceDocument;residualRisk:ResidualRiskDocument;dependencies:VerificationRunDependencies}>; export type RunVerificationInput=Readonly<{runId:string;request?:VerificationRequest;dependencies:VerificationRunDependencies}>; export type RunVerificationResult=Readonly<{run:CanonicalRunState;verdict:VerdictResult;documents:VerificationRunDocuments}>;
 type ExecuteObligationsResult=Readonly<{document:ExecutionDocument;checkpointRevision:number}>;
 
@@ -295,6 +297,7 @@ function dispatchFacilityConfigured(repository: RepositoryPort): boolean {
   const methods = [repository.claimExecutionDispatch, repository.completeExecutionDispatch, repository.releaseExecutionDispatch];
   const configured = methods.filter(method => typeof method === "function").length;
   if (configured !== methods.length) throw Error("durable dispatch claim facility must provide claim, complete, and release");
+  if (typeof repository.commitExecutionCheckpoint !== "function") throw Error("durable dispatch claim facility must provide generation-fenced execution checkpoints");
   return true;
 }
 function dispatchOwnerFor(dependencies: VerificationRunDependencies): string {
@@ -544,9 +547,11 @@ async function createCompletionEnvelope(request: VerificationExecutionRequest, c
   const item: VerificationEvidence = { schemaVersion: "verification-evidence/v1", evidenceId: `evidence:${request.obligation.id}`, requestId: request.requestId, snapshotId: request.snapshotId, obligationId: request.obligation.id, producer, execution, result, observedAt: finishedAt };
   const binding = authorityBindingFor(request.runId, request.requestDigest, request.planDigest, request.obligationDigest, request.rootIdentity, observation, item);
   const authority = await issueExecutionAuthority(dependencies.executionAuthority, binding);
-  if (!authority || !validAuthority(authority) || !structurallyEqual(authority.binding, binding) || !await verifyExecutionAuthority(dependencies.executionAuthority, authority, binding)) return undefined;
+  if (!authority || !validAuthority(authority) || !structurallyEqual(authority.binding, binding)) throw Error("execution authority issue failed");
+  if (!await verifyExecutionAuthority(dependencies.executionAuthority, authority, binding)) throw Error("execution authority verification failed");
   const envelope: VerificationExecutionCompletionEnvelope = { schemaVersion: "verification-execution-completion/v1", runId: request.runId, requestId: request.requestId, rootIdentity: request.rootIdentity, snapshotId: request.snapshotId, planDigest: request.planDigest, obligationId: request.obligation.id, idempotencyKey: request.idempotencyKey, output: canonicalOutput, authority };
-  return validCompletionEnvelope(envelope, request, claim) ? freeze(envelope) : undefined;
+  if (!validCompletionEnvelope(envelope, request, claim)) throw Error("execution completion envelope validation failed");
+  return freeze(envelope);
 }
 async function storeArtifact(store: ArtifactStore, artifact: CanonicalVerificationResultArtifact, input: VerificationExecutionRequest): Promise<CanonicalVerificationResultArtifact | undefined> {
   const saved = store.storeVerificationResultArtifact ? await store.storeVerificationResultArtifact(artifact, input) : store.storeArtifact ? await store.storeArtifact(artifact, input) : store.putArtifact ? await store.putArtifact(artifact, input) : store.store ? await store.store(artifact, input) : undefined;
@@ -592,13 +597,15 @@ async function commitTerminalEvidenceAndVerdict(repository: RepositoryPort, run:
   const committed = await repository.commitEvidenceAndVerdict.call(repository, { runId: run.runId, expectedRevision: expectedRevision < 0 ? undefined : expectedRevision, evidence, verdict, run });
   if (committed !== true) throw Error("terminal evidence/verdict persistence failed");
 }
-async function checkpointRun(input: ExecuteObligationsInput, document: ExecutionDocument): Promise<number> {
+async function checkpointRun(input: ExecuteObligationsInput, document: ExecutionDocument, claim?: DispatchClaim): Promise<number> {
   const current = await loadRun(input.dependencies.repository, input.runId);
   if (!current) throw Error("execution checkpoint run is missing");
   if (current.state !== input.checkpointRunState || current.revision !== input.checkpointRevision) throw Error("stale execution checkpoint state/revision");
   const touched = touchRun(current, clockNow(input.dependencies.now));
-  const committed = await input.dependencies.repository.commitTransition({ runId: input.runId, expectedRevision: input.checkpointRevision, stage: "execution", document, run: touched });
-  if (!committed) throw Error("stale execution checkpoint state/revision");
+  const committed = claim
+    ? await input.dependencies.repository.commitExecutionCheckpoint?.call(input.dependencies.repository, { runId: input.runId, expectedRevision: input.checkpointRevision, document, run: touched }, claim)
+    : await input.dependencies.repository.commitTransition({ runId: input.runId, expectedRevision: input.checkpointRevision, stage: "execution", document, run: touched });
+  if (!committed) throw Error(claim ? "stale dispatch execution checkpoint" : "stale execution checkpoint state/revision");
   return touched.revision;
 }
 async function executeObligations(input: ExecuteObligationsInput): Promise<ExecuteObligationsResult> {
@@ -618,7 +625,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
   if (usageEnabled && input.dependencies.usageRecorder?.atomicSameKeyIdempotency !== true) throw Error("usage recorder must declare atomic same-key idempotency");
   const completed = new Set(claims.map(item => item.obligationId));
   let checkpointRevision = input.checkpointRevision;
-  const persistCheckpoint = async (): Promise<void> => {
+  const persistCheckpoint = async (claim?: DispatchClaim): Promise<void> => {
     const checkpoint: ExecutionDocument = {
       schemaVersion: "verification-execution/v1",
       requestId: input.request.requestId,
@@ -630,7 +637,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
       usageOutbox: [...usageOutbox].sort((a, b) => compareCodeUnits(a.eventKey, b.eventKey)),
     };
     assertExecutionEvidenceBindings(checkpoint, input.request, input.plan, input.runId);
-    checkpointRevision = await checkpointRun({ ...input, checkpointRevision }, freeze(checkpoint));
+    checkpointRevision = await checkpointRun({ ...input, checkpointRevision }, freeze(checkpoint), claim);
   };
   const flushPendingUsage = async (): Promise<void> => {
     if (!usageEnabled) return;
@@ -788,7 +795,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
       if (artifacts.length > 0 && !usageOutbox.some(entry => entry.executionKey === executionKey && entry.event === "artifact")) usageOutbox.push({ executionKey, obligationId: obligation.id, event: "artifact", eventKey: usageEventKey(executionKey, "artifact") });
       if (!usageOutbox.some(entry => entry.executionKey === executionKey && entry.event === "execution")) usageOutbox.push({ executionKey, obligationId: obligation.id, event: "execution", eventKey: usageEventKey(executionKey, "execution") });
     }
-    await persistCheckpoint();
+    await persistCheckpoint(lease.owned && !completionPersisted ? lease.claim : undefined);
     await flushPendingUsage();
     await releaseClaim(false);
     } catch (error) {
@@ -1060,7 +1067,9 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
   const repository = dependencies.repository;
   const dispatchMethods = [repository.claimExecutionDispatch, repository.completeExecutionDispatch, repository.releaseExecutionDispatch];
   if (dispatchMethods.some(Boolean) && !dispatchMethods.every(method => typeof method === "function")) throw Error("dispatch claim facility must provide claim, complete, and release");
+  if (typeof repository.commitExecutionCheckpoint !== "function") throw Error("repository must provide generation-fenced execution checkpoints");
   if (repository.generationFencedDispatchCompletion !== true) throw Error("repository must declare generation-fenced dispatch completion");
+  if (repository.generationFencedDispatchCheckpoint !== true) throw Error("repository must declare generation-fenced dispatch checkpoints");
   let run = await loadRun(repository, input.runId);
   const persisted = await loadStage<VerificationRequest>(repository, input.runId, "request");
   if (persisted) validateStage("request", persisted, input.request ?? persisted, input.runId);
