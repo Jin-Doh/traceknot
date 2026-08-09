@@ -1,19 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { closeSync, constants, fstatSync, writeSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { canonicalJson, isSha256Digest, sha256Digest, type JsonValue, type Sha256Digest } from "./context-plan";
 import {
   ArtifactPathError,
-  assertSecureRoot,
-  closeSecureRoot,
-  openSecureRoot,
+  openOrCreateSecureDirectory,
+  openOrCreateSecureDirectoryPath,
   readSecureRegularFile,
   secureFlock,
   secureFsync,
   secureOpenAt,
   secureRenameAt,
   secureUnlinkAt,
-  type SecureRootDescriptor,
 } from "./local-artifact-store";
 
 export type ContextCacheObject = Readonly<{
@@ -76,16 +74,24 @@ export class LocalContextCache {
     return key.slice("sha256:".length);
   }
 
+  private openDirectory(): number {
+    const root = openOrCreateSecureDirectoryPath(this.root);
+    try {
+      return openOrCreateSecureDirectory(root, "sha256");
+    } finally {
+      closeSync(root);
+    }
+  }
+
   async get<T extends JsonValue = JsonValue>(key: Sha256Digest): Promise<T | undefined> {
     const name = this.name(key);
-    const directory = await openSecureRoot(join(this.root, "sha256"));
+    const directory = this.openDirectory();
     try {
-      assertSecureRoot(directory);
       const object = await readObject(directory, name, key);
       if (!object) return undefined;
       return structuredClone(object.payload) as T;
     } finally {
-      await closeSecureRoot(directory);
+      closeSync(directory);
     }
   }
 
@@ -98,23 +104,22 @@ export class LocalContextCache {
       payloadDigest: sha256Digest(canonicalPayload),
       payload: structuredClone(payload),
     });
-    const directory = await openSecureRoot(join(this.root, "sha256"));
+    const directory = this.openDirectory();
     const temporary = `.${name}.${process.pid}.${randomUUID()}.tmp`;
     let lock: number | undefined;
     let locked = false;
     let temporaryExists = false;
     try {
-      lock = secureOpenAt(directory.fd, ".context-cache.lock", constants.O_RDWR | constants.O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600);
+      lock = secureOpenAt(directory, ".context-cache.lock", constants.O_RDWR | constants.O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600);
       if (!fstatSync(lock).isFile()) throw new ContextCacheIntegrityError("context cache lock must be a regular file");
       secureFlock(lock, LOCK_EX);
       locked = true;
-      assertSecureRoot(directory);
       const existing = await readObject(directory, name, key);
       if (existing) {
         if (canonicalJson(existing.payload) !== canonicalPayload) throw new ContextCacheCollisionError("context cache key collision");
         return object;
       }
-      const descriptor = secureOpenAt(directory.fd, temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600);
+      const descriptor = secureOpenAt(directory, temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600);
       temporaryExists = true;
       try {
         const bytes = Buffer.from(`${canonicalJson(object)}\n`, "utf8");
@@ -127,29 +132,28 @@ export class LocalContextCache {
       } finally {
         closeSync(descriptor);
       }
-      assertSecureRoot(directory);
-      secureRenameAt(directory.fd, temporary, directory.fd, name);
+      secureRenameAt(directory, temporary, directory, name);
       temporaryExists = false;
-      secureFsync(directory.fd);
+      secureFsync(directory);
       return object;
     } finally {
       try {
-        if (temporaryExists) secureUnlinkAt(directory.fd, temporary);
+        if (temporaryExists) secureUnlinkAt(directory, temporary);
       } finally {
         try {
           if (locked && lock !== undefined) secureFlock(lock, LOCK_UN);
         } finally {
           if (lock !== undefined) closeSync(lock);
-          await closeSecureRoot(directory);
+          closeSync(directory);
         }
       }
     }
   }
 }
 
-async function readObject(directory: SecureRootDescriptor, name: string, key: Sha256Digest): Promise<ContextCacheObject | undefined> {
+async function readObject(directory: number, name: string, key: Sha256Digest): Promise<ContextCacheObject | undefined> {
   try {
-    const bytes = await readSecureRegularFile(directory.fd, name, MAX_CACHE_OBJECT_BYTES);
+    const bytes = await readSecureRegularFile(directory, name, MAX_CACHE_OBJECT_BYTES);
     return parseObject(new TextDecoder("utf-8", { fatal: true }).decode(bytes), key);
   } catch (error) {
     if (error instanceof ArtifactPathError && error.message.includes("(errno 2)")) return undefined;
