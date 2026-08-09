@@ -1058,6 +1058,8 @@ export function getVerificationRunLockCount(repository: RepositoryPort): number 
 async function runVerificationUnlocked(input: RunVerificationInput): Promise<RunVerificationResult> {
   const { dependencies } = input;
   const repository = dependencies.repository;
+  const dispatchMethods = [repository.claimExecutionDispatch, repository.completeExecutionDispatch, repository.releaseExecutionDispatch];
+  if (dispatchMethods.some(Boolean) && !dispatchMethods.every(method => typeof method === "function")) throw Error("dispatch claim facility must provide claim, complete, and release");
   if (repository.generationFencedDispatchCompletion !== true) throw Error("repository must declare generation-fenced dispatch completion");
   let run = await loadRun(repository, input.runId);
   const persisted = await loadStage<VerificationRequest>(repository, input.runId, "request");
