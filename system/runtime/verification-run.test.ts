@@ -206,6 +206,7 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
   };
   const capabilityProvider = { has: () => !options.missingCapability } as unknown as CapabilityProvider;
   const artifactStore: ArtifactStore = {
+    atomicSameKeyIdempotency: true,
     storeVerificationResultArtifact: async (artifact: Artifact) => options.missingArtifactStorage ? { type: "unexpected-artifact", digest: "c".repeat(64) } : artifact,
     storeArtifact: async (artifact: Artifact) => options.missingArtifactStorage ? { type: "unexpected-artifact", digest: "c".repeat(64) } : artifact,
     putArtifact: async (artifact: Artifact) => options.missingArtifactStorage ? { type: "unexpected-artifact", digest: "c".repeat(64) } : artifact,
@@ -470,6 +471,7 @@ test("canonicalizes executor and artifact-store artifacts before authority and p
     artifacts: [{ type: "verification-result", digest }, { type: "verification-result", digest: digest.toLowerCase(), path: "/tmp/result" }] as unknown as Artifact[],
   }), }
   const artifactStore: ArtifactStore = {
+    atomicSameKeyIdempotency: true,
     storeVerificationResultArtifact: async artifact => ({ ...artifact, digest: artifact.digest.toUpperCase(), extra: "discard" } as unknown as Artifact),
   };
   const result = await runOnce({ ...fakes.dependencies, executor, artifactStore }, "artifact-normalization");
@@ -487,6 +489,19 @@ test("canonicalizes executor and artifact-store artifacts before authority and p
   expect(execution?.observations.every(item => item.artifacts.every(artifact => /^[a-f0-9]{64}$/.test(artifact.digest) && Object.keys(artifact).every(key => ["type", "digest", "path"].includes(key))))).toBe(true);
 });
 
+test("rejects artifact stores without atomic same-key idempotency before writes", async () => {
+  const fakes = makeDependencies();
+  let artifactWrites = 0;
+  const artifactStore = {
+    storeVerificationResultArtifact: async (artifact: Artifact) => {
+      artifactWrites++;
+      return artifact;
+    },
+  } as ArtifactStore;
+  await expect(runOnce({ ...fakes.dependencies, artifactStore }, "artifact-store-idempotency-contract")).rejects.toThrow("artifact store must declare atomic same-key idempotency");
+  expect(artifactWrites).toBe(0);
+});
+
 test("rejects empty and non-string artifact digests or paths without storing them", async () => {
   for (const malformed of [
     { type: "verification-result", digest: "" },
@@ -500,7 +515,7 @@ test("rejects empty and non-string artifact digests or paths without storing the
       producer: { kind: "deterministic-verifier", identity: "malformed-artifact-executor", independence: "independent-producer" },
       artifacts: [malformed] as unknown as Artifact[],
     }), }
-    const artifactStore: ArtifactStore = { storeVerificationResultArtifact: async artifact => { stores++; return artifact; } };
+    const artifactStore: ArtifactStore = { atomicSameKeyIdempotency: true, storeVerificationResultArtifact: async artifact => { stores++; return artifact; } };
     const result = await runOnce({ ...fakes.dependencies, executor, artifactStore }, `malformed-artifact-${stores}`);
     expect(result.verdict.qaVerdict).not.toBe("PASS");
     expect(stores).toBe(0);
@@ -514,7 +529,7 @@ test("fails closed when a valid artifact is accompanied by a malformed artifact"
     producer: { kind: "deterministic-verifier", identity: "mixed-artifact-executor", independence: "independent-producer" },
     artifacts: [{ type: "verification-result", digest: "a".repeat(64) }, { type: "verification-result", digest: "", path: "" }] as unknown as Artifact[],
   }), }
-  const artifactStore: ArtifactStore = { storeVerificationResultArtifact: async artifact => { stores++; return artifact; } };
+  const artifactStore: ArtifactStore = { atomicSameKeyIdempotency: true, storeVerificationResultArtifact: async artifact => { stores++; return artifact; } };
   const result = await runOnce({ ...fakes.dependencies, executor, artifactStore }, "mixed-malformed-artifact");
   expect(result.verdict.qaVerdict).not.toBe("PASS");
   expect(stores).toBe(0);
@@ -539,6 +554,7 @@ test.each(["BLOCKED", "INCOMPLETE"] as const)("rejects sparse diagnostic artifac
     }),
   };
   const artifactStore: ArtifactStore = {
+    atomicSameKeyIdempotency: true,
     storeVerificationResultArtifact: async artifact => { stores++; return artifact; },
   };
   const result = await runOnce({ ...fakes.dependencies, executor, artifactStore }, `sparse-diagnostic-${status.toLowerCase()}`);
@@ -566,6 +582,7 @@ test.each([
     ],
   }), }
   const artifactStore: ArtifactStore = {
+    atomicSameKeyIdempotency: true,
     storeVerificationResultArtifact: async artifact => artifact.digest === validDigest ? artifact : malformedResponse as unknown as Artifact,
   };
   const result = await runOnce({ ...fakes.dependencies, executor, artifactStore }, `mixed-store-${_name.replaceAll(" ", "-")}`);
@@ -580,6 +597,7 @@ test("releases the dispatch claim and retries after an artifact store exception"
   const request = { ...makeRequest("artifact-store-retry-request"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
   let storeCalls = 0;
   const artifactStore: ArtifactStore = {
+    atomicSameKeyIdempotency: true,
     storeVerificationResultArtifact: async artifact => {
       storeCalls++;
       if (storeCalls === 1) throw new Error("artifact store failed before write");
@@ -605,9 +623,23 @@ test("releases the dispatch claim when the execution authority issuer throws and
   const runId = "authority-issuer-retry";
   const request = { ...makeRequest("authority-issuer-retry-request"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
   let failIssuer = true;
+  let artifactEffects = 0;
+  const storedReceipts = new Set<string>();
+  const artifactStore: ArtifactStore = {
+    atomicSameKeyIdempotency: true,
+    storeVerificationResultArtifact: async (artifact, input) => {
+      const receipt = `${input.idempotencyKey}:${artifact.digest}`;
+      if (!storedReceipts.has(receipt)) {
+        storedReceipts.add(receipt);
+        artifactEffects++;
+      }
+      return artifact;
+    },
+  };
   const baseAuthority = fakes.dependencies.executionAuthority;
   const dependencies = {
     ...fakes.dependencies,
+    artifactStore,
     executionAuthority: {
       issueExecutionAuthority: async (binding: ExecutionAuthority["binding"]) => {
         if (failIssuer) {
@@ -620,10 +652,12 @@ test("releases the dispatch claim when the execution authority issuer throws and
     },
   };
   await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("execution authority issuer failed");
+  expect(artifactEffects).toBe(1);
   expect(fakes.repository.dispatchClaims.size).toBe(0);
   expect(fakes.repository.stageDocuments.has(`${runId}:execution`)).toBe(false);
   const executorCallsAfterFailure = fakes.executorCalls;
   const resumed = await runVerification({ runId, dependencies });
+  expect(artifactEffects).toBe(1);
   expect(fakes.executorCalls).toBeGreaterThan(executorCallsAfterFailure);
   expect(resumed.run.state).toBe("TERMINAL");
   expect(resumed.verdict.qaVerdict).toBe("PASS");
@@ -684,6 +718,7 @@ test.each(["BLOCKED", "INCOMPLETE"] as const)("retains diagnostic artifacts for 
     }),
   };
   const artifactStore: ArtifactStore = {
+    atomicSameKeyIdempotency: true,
     storeVerificationResultArtifact: async artifact => { stores++; return artifact; },
   };
   const dependencies = { ...fakes.dependencies, executor, artifactStore };
@@ -724,6 +759,7 @@ test.each(["BLOCKED", "INCOMPLETE"] as const)("retains diagnostic artifacts thro
     },
   };
   const artifactStore: ArtifactStore = {
+    atomicSameKeyIdempotency: true,
     storeVerificationResultArtifact: async artifact => { stores++; return artifact; },
   };
   const dependencies = { ...fakes.dependencies, executor, artifactStore };
@@ -752,6 +788,7 @@ test.each([
   const fakes = makeDependencies();
   let stores = 0;
   const artifactStore: ArtifactStore = {
+    atomicSameKeyIdempotency: true,
     storeVerificationResultArtifact: async artifact => { stores++; return artifact; },
   };
   const executor: VerificationExecutor = {
@@ -948,6 +985,7 @@ describe("verification run orchestration", () => {
       return artifact;
     };
     const artifactStore: ArtifactStore = {
+      atomicSameKeyIdempotency: true,
       storeVerificationResultArtifact: storeArtifact,
       storeArtifact,
       putArtifact: storeArtifact,
@@ -1408,7 +1446,7 @@ describe("verification run orchestration", () => {
     const fakes = makeDependencies();
     let artifactCalls = 0;
     let usageCalls = 0;
-    const artifactStore: ArtifactStore = { storeVerificationResultArtifact: async artifact => { artifactCalls++; return artifact; } };
+    const artifactStore: ArtifactStore = { atomicSameKeyIdempotency: true, storeVerificationResultArtifact: async artifact => { artifactCalls++; return artifact; } };
     const usageRecorder: UsageRecorder = { atomicSameKeyIdempotency: true, recordUsage: async () => { usageCalls++; } };
     const dependencies = { ...fakes.dependencies, artifactStore, usageRecorder };
     await runOnce(dependencies);
@@ -2004,6 +2042,7 @@ describe("verification run orchestration", () => {
     const fakes = makeDependencies();
     let artifactStores = 0;
     const artifactStore: ArtifactStore = {
+      atomicSameKeyIdempotency: true,
       storeVerificationResultArtifact: async artifact => { artifactStores++; return artifact; },
     };
     let executionUsageCalls = 0;
@@ -2135,6 +2174,7 @@ describe("verification run orchestration", () => {
     }, }
     let throwOnce = true;
     const artifactStore: ArtifactStore = {
+      atomicSameKeyIdempotency: true,
       storeVerificationResultArtifact: async artifact => {
         if (throwOnce) { throwOnce = false; throw new Error("artifact storage failed after external completion"); }
         return artifact;
