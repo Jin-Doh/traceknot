@@ -60,6 +60,7 @@ const DIGEST = /^[0-9a-fA-F]{64}$/;
 const REQUEST_DIGEST = /^[0-9a-f]{64}$/;
 const ACQUISITION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const uniq = (xs: readonly string[]): string[] => [...new Set(xs)].sort();
+const compareCodeUnits = (left: string, right: string): number => left < right ? -1 : left > right ? 1 : 0;
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 function canonicalJsonValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalJsonValue);
@@ -172,7 +173,7 @@ export function canonicalObligationDigest(obligation: VerificationObligationPlan
   return canonicalSha256(obligation);
 }
 function canonicalBasis(request: VerificationRequest): BasisDocument {
-  const basis = [...request.testBasis].map(item => ({ ...item })).sort((a, b) => a.id.localeCompare(b.id));
+  const basis = [...request.testBasis].map(item => ({ ...item })).sort((a, b) => compareCodeUnits(a.id, b.id));
   const ids = basis.map(item => item.id);
   if (!ids.length || ids.some(id => !id) || new Set(ids).size !== ids.length) throw new Error("test basis must contain unique IDs");
   return { schemaVersion: "verification-basis/v1", requestId: request.requestId, snapshotId: request.project.snapshotId, basis, basisIds: uniq(ids) };
@@ -183,7 +184,7 @@ export function createInitialRun(runId: string, request: VerificationRequest, no
   return freeze({ schemaVersion: "verification-run/v1", runId, requestId: request.requestId, rootIdentity: request.project.rootIdentity, snapshotId: request.project.snapshotId, state: "CREATED", observationIds: [], claimIds: [], evaluationIds: [], revision: 0, createdAt: now, updatedAt: now });
 }
 function assertCanonicalRun(value: unknown, expectedRunId?: string): asserts value is CanonicalRunState {
-  const sortedUnique = (ids: readonly unknown[]): boolean => ids.every((id, index) => typeof id === "string" && Boolean(id) && (index === 0 || (typeof ids[index - 1] === "string" && (ids[index - 1] as string).localeCompare(id) < 0)));
+  const sortedUnique = (ids: readonly unknown[]): boolean => ids.every((id, index) => typeof id === "string" && Boolean(id) && (index === 0 || (typeof ids[index - 1] === "string" && compareCodeUnits(ids[index - 1] as string, id) < 0)));
   if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "runId", "requestId", "rootIdentity", "snapshotId", "state", "observationIds", "claimIds", "evaluationIds", "revision", "createdAt", "updatedAt"]) || value.schemaVersion !== "verification-run/v1" || (expectedRunId !== undefined && value.runId !== expectedRunId) || typeof value.runId !== "string" || !value.runId || typeof value.requestId !== "string" || !value.requestId || typeof value.rootIdentity !== "string" || !value.rootIdentity || typeof value.snapshotId !== "string" || !value.snapshotId || !RUN_STATES.includes(value.state as RunState) || typeof value.revision !== "number" || !Number.isSafeInteger(value.revision) || value.revision < 0 || !validDate(value.createdAt) || !validDate(value.updatedAt) || Date.parse(value.updatedAt) < Date.parse(value.createdAt) || !Array.isArray(value.observationIds) || !Array.isArray(value.claimIds) || !Array.isArray(value.evaluationIds) || [value.observationIds, value.claimIds, value.evaluationIds].some(ids => !sortedUnique(ids))) throw new Error("invalid persisted run");
 }
 export function transitionRunState(run: CanonicalRunState, nextState: RunState, updatedAt: string): CanonicalRunState {
@@ -233,11 +234,11 @@ function canonicalDiscovery(request: VerificationRequest, basis: BasisDocument):
   validRequest(request);
   const canonical = canonicalBasis(request);
   if (!structurallyEqual(basis, canonical)) throw Error("invalid discovery basis canonicalization");
-  const risks = canonical.basis.map(item => { const level = riskLevel(item, request); const score = level === "R3" ? 3 : level === "R2" ? 2 : 1; return { id: `risk:${item.id}`, level, impact: score, likelihood: score, basisIds: [item.id], rationale: `Verification risk derived from ${level} basis ${item.id}.` }; }).sort((a, b) => a.id.localeCompare(b.id));
+  const risks = canonical.basis.map(item => { const level = riskLevel(item, request); const score = level === "R3" ? 3 : level === "R2" ? 2 : 1; return { id: `risk:${item.id}`, level, impact: score, likelihood: score, basisIds: [item.id], rationale: `Verification risk derived from ${level} basis ${item.id}.` }; }).sort((a, b) => compareCodeUnits(a.id, b.id));
   const conditions = canonical.basis.map(item => { const techniques = browserMaterial(material(item)) ? ["browser-verification", "canonical-verification"] : ["canonical-verification"]; if (riskLevel(item, request) === "R3") techniques.push("independent-producer"); return { id: `condition:${item.id}`, basisIds: [item.id], riskIds: [`risk:${item.id}`], techniques: uniq(techniques), expectedResult: `Evidence demonstrates ${item.id}.` }; });
   if (!canonical.basis.some(item => browserMaterial(material(item))) && browserMaterial(requestMaterial(request))) {
-    const basisIds = canonical.basis.map(item => item.id).sort((a, b) => a.localeCompare(b));
-    const riskIds = risks.map(item => item.id).sort((a, b) => a.localeCompare(b));
+    const basisIds = canonical.basis.map(item => item.id).sort(compareCodeUnits);
+    const riskIds = risks.map(item => item.id).sort(compareCodeUnits);
     const baseId = "condition:request-browser";
     const requestConditionId = (() => {
       if (!conditions.some(item => item.id === baseId)) return baseId;
@@ -249,7 +250,7 @@ function canonicalDiscovery(request: VerificationRequest, basis: BasisDocument):
     })();
     conditions.push({ id: requestConditionId, basisIds, riskIds, techniques: ["browser-verification", "canonical-verification"], expectedResult: "Evidence demonstrates the request-level browser change." });
   }
-  conditions.sort((a, b) => a.id.localeCompare(b.id));
+  conditions.sort((a, b) => compareCodeUnits(a.id, b.id));
   return freeze({ schemaVersion: "risk-discovery/v1", requestId: request.requestId, snapshotId: request.project.snapshotId, risks, conditions });
 }
 
@@ -260,13 +261,13 @@ export async function buildVerificationPlan(input: BuildVerificationPlanInput): 
   validRequest(input.request);
   const canonical = canonicalDiscovery(input.request, input.basis);
   if (!structurallyEqual(canonical, input.discovery)) throw Error("invalid discovery canonicalization");
-  const risks = [...input.discovery.risks].sort((a, b) => a.id.localeCompare(b.id));
-  const conditions = [...input.discovery.conditions].sort((a, b) => a.id.localeCompare(b.id));
+  const risks = [...input.discovery.risks].sort((a, b) => compareCodeUnits(a.id, b.id));
+  const conditions = [...input.discovery.conditions].sort((a, b) => compareCodeUnits(a.id, b.id));
   const obligations = conditions.map(item => {
     const levels = item.riskIds.map(id => risks.find(risk => risk.id === id)?.level);
     const materialRisk = levels.some(level => level === "R2" || level === "R3");
     return { id: `obligation:${item.id}`, conditionIds: [item.id], evidenceType: item.techniques.includes("browser-verification") ? "browser-result" as const : "test-result" as const, mandatory: true, independence: materialRisk ? "independent-producer" as const : "separate-verification-context" as const, entryCriteria: [], completionCriteria: [item.expectedResult] };
-  }).sort((a, b) => a.id.localeCompare(b.id));
+  }).sort((a, b) => compareCodeUnits(a.id, b.id));
   return freeze({ schemaVersion: "verification-plan/v1", requestId: input.request.requestId, snapshotId: input.request.project.snapshotId, risks, conditions, obligations });
 }
 function capabilityFor(obligation: VerificationObligationPlan): string { return obligation.evidenceType === "browser-result" ? "browser" : obligation.evidenceType; }
@@ -426,7 +427,7 @@ function assertExecutionEvidenceBindings(execution: ExecutionDocument, request?:
   const claims = new Map<string, EvidenceClaim>();
   const evidence = new Map<string, VerificationEvidence>();
   const expectedObligations = plan ? new Set(plan.obligations.map(item => item.id)) : undefined;
-  const sorted = (values: readonly string[]): boolean => values.every((value, index) => index === 0 || values[index - 1]!.localeCompare(value) < 0);
+  const sorted = (values: readonly string[]): boolean => values.every((value, index) => index === 0 || compareCodeUnits(values[index - 1]!, value) < 0);
   if (!sorted(execution.observations.map(item => item.observationId)) || !sorted(execution.claims.map(item => item.claimId)) || !sorted(execution.evidence.map(item => item.evidenceId)) || !sorted(execution.authorities.map(item => item.binding.obligationId)) || !sorted(execution.usageOutbox.map(item => item.eventKey))) throw Error("invalid execution canonical ordering");
   for (const observation of execution.observations) {
     if (!validObservation(observation)) throw Error("invalid execution observation binding");
@@ -615,11 +616,11 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
       schemaVersion: "verification-execution/v1",
       requestId: input.request.requestId,
       snapshotId: input.request.project.snapshotId,
-      observations: [...observations].sort((a, b) => a.observationId.localeCompare(b.observationId)),
-      claims: [...claims].sort((a, b) => a.claimId.localeCompare(b.claimId)),
-      evidence: [...evidence].sort((a, b) => a.evidenceId.localeCompare(b.evidenceId)),
-      authorities: [...authorities].sort((a, b) => a.binding.obligationId.localeCompare(b.binding.obligationId)),
-      usageOutbox: [...usageOutbox].sort((a, b) => a.eventKey.localeCompare(b.eventKey)),
+      observations: [...observations].sort((a, b) => compareCodeUnits(a.observationId, b.observationId)),
+      claims: [...claims].sort((a, b) => compareCodeUnits(a.claimId, b.claimId)),
+      evidence: [...evidence].sort((a, b) => compareCodeUnits(a.evidenceId, b.evidenceId)),
+      authorities: [...authorities].sort((a, b) => compareCodeUnits(a.binding.obligationId, b.binding.obligationId)),
+      usageOutbox: [...usageOutbox].sort((a, b) => compareCodeUnits(a.eventKey, b.eventKey)),
     };
     assertExecutionEvidenceBindings(checkpoint, input.request, input.plan, input.runId);
     checkpointRevision = await checkpointRun({ ...input, checkpointRevision }, freeze(checkpoint));
@@ -627,7 +628,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
   const flushPendingUsage = async (): Promise<void> => {
     if (!usageEnabled) return;
     while (usageOutbox.length > 0) {
-      usageOutbox.sort((a, b) => a.eventKey.localeCompare(b.eventKey));
+      usageOutbox.sort((a, b) => compareCodeUnits(a.eventKey, b.eventKey));
       const pending = usageOutbox[0];
       if (!pending) break;
       await record(input.dependencies.usageRecorder, { runId: input.runId, obligationId: pending.obligationId, event: pending.event, executionKey: pending.executionKey, eventKey: pending.eventKey });
@@ -636,7 +637,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     }
   };
   await flushPendingUsage();
-  for (const obligation of [...input.plan.obligations].sort((a, b) => a.id.localeCompare(b.id))) {
+  for (const obligation of [...input.plan.obligations].sort((a, b) => compareCodeUnits(a.id, b.id))) {
     let completionAuthority: ExecutionAuthority | undefined;
     if (completed.has(obligation.id)) continue;
     const requestDigest = canonicalRequestDigest(input.request);
@@ -784,7 +785,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
       throw error;
     }
   }
-  const finalDocument: ExecutionDocument = { schemaVersion: "verification-execution/v1", requestId: input.request.requestId, snapshotId: input.request.project.snapshotId, observations: observations.sort((a, b) => a.observationId.localeCompare(b.observationId)), claims: claims.sort((a, b) => a.claimId.localeCompare(b.claimId)), evidence: evidence.sort((a, b) => a.evidenceId.localeCompare(b.evidenceId)), authorities: authorities.sort((a, b) => a.binding.obligationId.localeCompare(b.binding.obligationId)), usageOutbox: usageOutbox.sort((a, b) => a.eventKey.localeCompare(b.eventKey)) };
+  const finalDocument: ExecutionDocument = { schemaVersion: "verification-execution/v1", requestId: input.request.requestId, snapshotId: input.request.project.snapshotId, observations: observations.sort((a, b) => compareCodeUnits(a.observationId, b.observationId)), claims: claims.sort((a, b) => compareCodeUnits(a.claimId, b.claimId)), evidence: evidence.sort((a, b) => compareCodeUnits(a.evidenceId, b.evidenceId)), authorities: authorities.sort((a, b) => compareCodeUnits(a.binding.obligationId, b.binding.obligationId)), usageOutbox: usageOutbox.sort((a, b) => compareCodeUnits(a.eventKey, b.eventKey)) };
   assertExecutionEvidenceBindings(finalDocument, input.request, input.plan, input.runId);
   return freeze({ document: freeze(finalDocument), checkpointRevision });
 }
@@ -815,7 +816,7 @@ function validEvidenceEvaluation(value: unknown): value is EvidenceEvaluation {
 export function canonicalEvaluationsDigest(evaluations: readonly EvidenceEvaluation[]): string {
   const canonical = evaluations.map(evaluation => canonicalEvidenceEvaluation(evaluation));
   if (canonical.some(evaluation => evaluation === undefined)) throw Error("invalid evidence evaluation");
-  canonical.sort((left, right) => left!.evaluationId.localeCompare(right!.evaluationId));
+  canonical.sort((left, right) => compareCodeUnits(left!.evaluationId, right!.evaluationId));
   return canonicalSha256(canonical);
 }
 async function makeEvaluation(observation: Observation | undefined, claim: EvidenceClaim, obligation: VerificationObligationPlan, evaluatedAt: string, request: VerificationRequest, freshness: FreshnessStatus): Promise<EvidenceEvaluation> {
@@ -846,7 +847,7 @@ function canonicalEvaluatedAt(execution: ExecutionDocument): string {
 }
 function validFreshnessAuthority(value: unknown): value is FreshnessAuthority {
   if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "authorityId", "issuer", "binding"]) || value.schemaVersion !== "verification-freshness-authority/v1" || typeof value.authorityId !== "string" || !value.authorityId || typeof value.issuer !== "string" || !value.issuer || !isRecord(value.binding) || !exactOwnKeys(value.binding, ["schemaVersion", "requestId", "snapshotId", "planDigest", "executionDigest", "freshnessEvaluatedAt", "evaluationIds", "evaluationsDigest", "acceptedClaimIds", "coverage"]) || value.binding.schemaVersion !== "verification-freshness-binding/v1" || typeof value.binding.requestId !== "string" || !value.binding.requestId || typeof value.binding.snapshotId !== "string" || !value.binding.snapshotId || typeof value.binding.planDigest !== "string" || !REQUEST_DIGEST.test(value.binding.planDigest) || typeof value.binding.executionDigest !== "string" || !REQUEST_DIGEST.test(value.binding.executionDigest) || !validDate(value.binding.freshnessEvaluatedAt) || typeof value.binding.evaluationsDigest !== "string" || !REQUEST_DIGEST.test(value.binding.evaluationsDigest) || !Array.isArray(value.binding.evaluationIds) || !Array.isArray(value.binding.acceptedClaimIds) || !isRecord(value.binding.coverage)) return false;
-  const sortedUnique = (values: unknown): boolean => Array.isArray(values) && values.every((item, index) => typeof item === "string" && Boolean(item) && (index === 0 || (values[index - 1] as string).localeCompare(item) < 0));
+  const sortedUnique = (values: unknown): boolean => Array.isArray(values) && values.every((item, index) => typeof item === "string" && Boolean(item) && (index === 0 || compareCodeUnits(values[index - 1] as string, item) < 0));
   return sortedUnique(value.binding.evaluationIds) && sortedUnique(value.binding.acceptedClaimIds) && exactOwnKeys(value.binding.coverage, ["basisIds", "coveredBasisIds", "riskIds", "coveredRiskIds", "conditionIds", "coveredConditionIds"]) && Object.values(value.binding.coverage).every(items => sortedUnique(items));
 }
 function freshnessBindingFor(request: VerificationRequest, plan: VerificationPlan, execution: ExecutionDocument, freshnessEvaluatedAt: string, evaluations: readonly EvidenceEvaluation[], acceptedClaimIds: readonly string[], coverage: CoverageInput): FreshnessAuthorityBinding {
@@ -872,7 +873,7 @@ async function evaluateEvidence(input: EvaluateEvidenceInput): Promise<EvidenceD
   if (Date.parse(freshnessEvaluatedAt) < Date.parse(evaluatedAt)) throw Error("freshness evaluation timestamp precedes authenticated observation");
   const observations = new Map(input.execution.observations.map(item => [item.observationId, item]));
   const evidenceByObligation = new Map(input.execution.evidence.map(item => [item.obligationId, item]));
-  const evaluations = await Promise.all([...input.execution.claims].sort((a,b)=>a.claimId.localeCompare(b.claimId)).map(async claim => {
+  const evaluations = await Promise.all([...input.execution.claims].sort((a,b)=>compareCodeUnits(a.claimId, b.claimId)).map(async claim => {
     const observation = observations.get(claim.observationIds[0]);
     const evidence = evidenceByObligation.get(claim.obligationId);
     const obligation = input.plan.obligations.find(item=>item.id===claim.obligationId);
@@ -889,8 +890,13 @@ async function evaluateEvidence(input: EvaluateEvidenceInput): Promise<EvidenceD
   const binding = freshnessBindingFor(input.request, input.plan, input.execution, freshnessEvaluatedAt, evaluations, acceptedClaimIds, coverage);
   let freshnessAuthority: FreshnessAuthority | undefined;
   if (input.freshnessAuthority !== undefined) {
-    if (!validFreshnessAuthority(input.freshnessAuthority) || !structurallyEqual(input.freshnessAuthority.binding, binding) || !await verifyFreshnessAuthority(input.dependencies.freshnessAuthority, input.freshnessAuthority, binding)) throw Error("freshness authority verification failed");
-    freshnessAuthority = input.freshnessAuthority;
+    if (!validFreshnessAuthority(input.freshnessAuthority)) throw Error("freshness authority verification failed");
+    if (structurallyEqual(input.freshnessAuthority.binding, binding)) {
+      if (!await verifyFreshnessAuthority(input.dependencies.freshnessAuthority, input.freshnessAuthority, binding)) throw Error("freshness authority verification failed");
+      freshnessAuthority = input.freshnessAuthority;
+    } else {
+      freshnessAuthority = await issueFreshnessAuthority(input.dependencies.freshnessAuthority, binding);
+    }
   } else {
     freshnessAuthority = await issueFreshnessAuthority(input.dependencies.freshnessAuthority, binding);
   }
@@ -1030,9 +1036,9 @@ async function loadHistoricallyCheckedEvidence(repository: RepositoryPort, runId
   return loadCheckedStage<EvidenceDocument>(repository, runId, "evidence", request, persistedValidationDependencies, prior);
 }
 function assertCanonicalRunIndexes(run: CanonicalRunState, execution: ExecutionDocument, evidence: EvidenceDocument): void {
-  const observationIds = execution.observations.map(item => item.observationId).sort((a, b) => a.localeCompare(b));
-  const claimIds = execution.claims.map(item => item.claimId).sort((a, b) => a.localeCompare(b));
-  const evaluationIds = evidence.evaluations.map(item => item.evaluationId).sort((a, b) => a.localeCompare(b));
+  const observationIds = execution.observations.map(item => item.observationId).sort(compareCodeUnits);
+  const claimIds = execution.claims.map(item => item.claimId).sort(compareCodeUnits);
+  const evaluationIds = evidence.evaluations.map(item => item.evaluationId).sort(compareCodeUnits);
   if (!structurallyEqual(run.observationIds, observationIds) || !structurallyEqual(run.claimIds, claimIds) || !structurallyEqual(run.evaluationIds, evaluationIds)) throw Error("invalid persisted run indexes");
 }
 const repositoryRunLocks = new WeakMap<object, Map<string, Promise<void>>>();
