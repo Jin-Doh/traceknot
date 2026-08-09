@@ -6,6 +6,8 @@ on:
       - opened
       - reopened
       - ready_for_review
+      - edited
+      - synchronize
 
 permissions:
   contents: read
@@ -25,10 +27,12 @@ jobs:
             const repo = context.repo.repo;
             const prNumber = context.payload.pull_request.number;
             const pr = context.payload.pull_request;
-            const title = (pr.title || "").toLowerCase();
-            const body = (pr.body || "").toLowerCase();
+            const text = `${pr.title || ""}\n${pr.body || ""}`;
             const author = pr.user?.login;
             const isBotAuthor = pr.user?.type === "Bot";
+            const hasBugToken = /(^|[^a-z0-9])(?:bugs?|fix(?:es|ed|ing)?)(?=$|[^a-z0-9])/i.test(text);
+            const hasDocumentationToken = /(^|[^a-z0-9])(?:docs?|documentation|readme)(?=$|[^a-z0-9])/i.test(text);
+            const hasGithubActionToken = /(^|[^a-z0-9])github[ _-]+actions?(?=$|[^a-z0-9])/i.test(text);
 
             const existingIssue = await github.rest.issues.get({
               owner,
@@ -49,14 +53,12 @@ jobs:
 
             const labels = new Set();
 
-            if (title.includes("fix") || title.includes("bug") || body.includes("bug") || body.includes("fix")) {
+            if (hasBugToken) {
               labels.add("bug");
             }
 
             if (
-              title.includes("doc") ||
-              title.includes("readme") ||
-              body.includes("documentation") ||
+              hasDocumentationToken ||
               filenames.some((file) => file.startsWith("docs/") || /^README/i.test(file) || file.endsWith(".md"))
             ) {
               labels.add("documentation");
@@ -64,8 +66,7 @@ jobs:
 
             if (
               filenames.some((file) => file.startsWith(".github/workflows/") || file.startsWith(".github/codeql/")) ||
-              title.includes("github_action") ||
-              title.includes("github actions")
+              hasGithubActionToken
             ) {
               labels.add("github_actions");
             }
@@ -87,8 +88,11 @@ jobs:
               labels.add("enhancement");
             }
 
-            const presentLabels = new Set(existingIssue.data.labels.map((label) => label.name));
+            const managedLabels = new Set(["bug", "documentation", "github_actions", "dependencies", "enhancement"]);
+            const presentLabelNames = existingIssue.data.labels.map((label) => label.name);
+            const presentLabels = new Set(presentLabelNames);
             const newLabels = [...labels].filter((label) => !presentLabels.has(label));
+            const obsoleteLabels = presentLabelNames.filter((label) => managedLabels.has(label) && !labels.has(label));
 
             if (newLabels.length > 0) {
               await github.rest.issues.addLabels({
@@ -99,14 +103,36 @@ jobs:
               });
             }
 
+            for (const label of obsoleteLabels) {
+              await github.rest.issues.removeLabel({
+                owner,
+                repo,
+                issue_number: prNumber,
+                name: label,
+              });
+            }
+
             if (!isBotAuthor && author) {
               const hasAuthorAssigned = existingIssue.data.assignees?.some((assignee) => assignee.login === author);
               if (!hasAuthorAssigned) {
-                await github.rest.issues.addAssignees({
-                  owner,
-                  repo,
-                  issue_number: prNumber,
-                  assignees: [author],
-                });
+                let canAssign = true;
+                try {
+                  await github.rest.issues.checkUserCanBeAssigned({ owner, repo, assignee: author });
+                } catch (error) {
+                  if (error?.status === 404) {
+                    canAssign = false;
+                  } else {
+                    throw error;
+                  }
+                }
+
+                if (canAssign) {
+                  await github.rest.issues.addAssignees({
+                    owner,
+                    repo,
+                    issue_number: prNumber,
+                    assignees: [author],
+                  });
+                }
               }
             }
