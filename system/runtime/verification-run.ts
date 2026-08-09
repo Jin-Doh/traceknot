@@ -689,8 +689,8 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
         finishedAt = clockNow(input.dependencies.now);
         if (output) {
           try {
+            if (!outputExitCodeMatchesStatus(output)) throw Error("executor output status contradicts exit code");
             output = await canonicalizeAndStoreExecutionOutput(output, request, input.dependencies.artifactStore);
-            if (output && !outputExitCodeMatchesStatus(output)) throw Error("executor output status contradicts exit code");
           } catch (error) {
             await releaseClaim(true);
             throw error;
