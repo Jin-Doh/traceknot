@@ -4,12 +4,29 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { canonicalRequestDigest, type VerificationRequest } from "../system/runtime/verification-run";
+import { isCanonicalUtcDate, isCanonicalUtcTimestamp } from "../system/core/canonical-time";
 type ContractCase = {
   name: string;
   schema: string;
   positive: string;
   negatives: readonly string[];
 };
+
+describe("canonical UTC time validation", () => {
+  test("rejects normalized calendar overflow and noncanonical timestamps", () => {
+    for (const value of ["2026-02-30", "2025-02-29", "2026-13-01", "2026-01-00"]) {
+      expect(isCanonicalUtcDate(value)).toBe(false);
+    }
+    for (const value of ["2026-02-30T00:00:00Z", "2026-01-01T24:00:00Z", "2026-01-01T00:60:00Z", "2026-01-01T00:00:60Z", "2026-01-01T00:00:00+00:00"]) {
+      expect(isCanonicalUtcTimestamp(value)).toBe(false);
+    }
+  });
+
+  test("accepts real leap days and canonical fractional UTC timestamps", () => {
+    expect(isCanonicalUtcDate("2024-02-29")).toBe(true);
+    expect(isCanonicalUtcTimestamp("2024-02-29T23:59:59.123456Z")).toBe(true);
+  });
+});
 
 const contractCases: readonly ContractCase[] = [
   {

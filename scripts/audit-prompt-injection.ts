@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { relative, resolve } from "node:path";
+import { isCanonicalUtcTimestamp } from "../system/core/canonical-time";
 import { toText } from "hast-util-to-text";
 import type { Element, Root as HastRoot } from "hast";
 import type { Html, Paragraph } from "mdast";
@@ -305,8 +306,8 @@ function loadExceptions(root: string): ExceptionEntry[] {
     if (!entry.ruleId || !entry.path || !entry.lineHash || !entry.owner || !entry.reason || !entry.mitigation || !entry.expiresAt) {
       throw new Error(`incomplete prompt-risk exception for ${entry.ruleId || "unknown rule"}`);
     }
+    if (!isCanonicalUtcTimestamp(entry.expiresAt)) throw new Error(`invalid exception expiry: ${entry.expiresAt}`);
     const expires = Date.parse(entry.expiresAt);
-    if (!Number.isFinite(expires)) throw new Error(`invalid exception expiry: ${entry.expiresAt}`);
     if (expires <= now) throw new Error(`expired prompt-risk exception: ${entry.ruleId} ${entry.path}`);
   }
   return parsed.exceptions;

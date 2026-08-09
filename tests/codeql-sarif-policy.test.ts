@@ -92,6 +92,22 @@ describe("CodeQL SARIF security floor", () => {
     expect(report.policyErrors).toContain("exception js/test-rule expired on 2026-08-02");
   });
 
+  test("rejects calendar-invalid exception dates", () => {
+    const report = evaluateSarif([sarif(9.1, "invalid-date-fingerprint")], {
+      ...policy,
+      exceptions: [{
+        ruleId: "js/test-rule",
+        fingerprint: "invalid-date-fingerprint",
+        owner: "security-maintainers",
+        reason: "Temporary compatibility constraint",
+        mitigation: "Input is restricted to trusted maintainers",
+        expiresOn: "2026-02-30",
+      }],
+    }, new Date("2026-02-01T00:00:00Z"));
+    expect(report.status).toBe("FAIL");
+    expect(report.policyErrors).toContain("exception js/test-rule has invalid expiresOn 2026-02-30");
+  });
+
   test("blocks when no SARIF evidence is supplied", () => {
     expect(evaluateSarif([], policy).status).toBe("BLOCKED");
   });
