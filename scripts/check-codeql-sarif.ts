@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
+import { isCanonicalUtcDate } from "../system/core/canonical-time";
 
 export interface CodeqlException {
   ruleId: string;
@@ -127,13 +128,12 @@ function exceptionErrors(policy: CodeqlPolicy, now: Date): string[] {
     const identity = `${exception.ruleId}\u0000${exception.fingerprint}`;
     if (identities.has(identity)) errors.push(`duplicate exception for ${exception.ruleId} ${exception.fingerprint}`);
     identities.add(identity);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(exception.expiresOn)) {
+    if (!isCanonicalUtcDate(exception.expiresOn)) {
       errors.push(`exception ${exception.ruleId} has invalid expiresOn ${exception.expiresOn}`);
       continue;
     }
     const expiresAt = Date.parse(`${exception.expiresOn}T23:59:59.999Z`);
-    if (!Number.isFinite(expiresAt)) errors.push(`exception ${exception.ruleId} has invalid expiresOn ${exception.expiresOn}`);
-    else if (expiresAt < now.getTime()) errors.push(`exception ${exception.ruleId} expired on ${exception.expiresOn}`);
+    if (expiresAt < now.getTime()) errors.push(`exception ${exception.ruleId} expired on ${exception.expiresOn}`);
   }
   return errors;
 }
