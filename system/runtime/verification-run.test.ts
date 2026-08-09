@@ -206,6 +206,7 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
   };
   const freshnessAuthorities = new Map<string, FreshnessAuthority>();
   const freshnessAuthority = {
+    atomicSameKeyIdempotency: true as const,
     issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]): Promise<FreshnessAuthority> => {
       const key = JSON.stringify(binding);
       const existing = freshnessAuthorities.get(key);
@@ -2039,6 +2040,7 @@ describe("verification run orchestration", () => {
       ...fakes.dependencies,
       freshnessPolicy: { evaluateFreshness: async () => "stale" as const },
       freshnessAuthority: {
+        atomicSameKeyIdempotency: true as const,
         issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
           issueCalls++;
           return issueFreshnessAuthority(binding);
@@ -2073,6 +2075,7 @@ describe("verification run orchestration", () => {
       ...fakes.dependencies,
       freshnessPolicy: { evaluateFreshness: async () => mutation === "add" ? "fresh" as const : "stale" as const },
       freshnessAuthority: {
+        atomicSameKeyIdempotency: true as const,
         issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
           issueCalls++;
           return issueFreshnessAuthority(binding);
@@ -2921,9 +2924,9 @@ describe("verification run orchestration", () => {
     const dependencies = {
       ...fakes.dependencies,
       freshnessAuthority: {
+        atomicSameKeyIdempotency: true as const,
         issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
           issueCalls++;
-          if (issueCalls > 1) throw new Error("freshness authority issuer called twice");
           return issueFreshnessAuthority(binding);
         },
         verifyFreshnessAuthority: (authority: FreshnessAuthority, binding: FreshnessAuthority["binding"]) => verifyFreshnessAuthority(authority, binding),
@@ -2934,6 +2937,61 @@ describe("verification run orchestration", () => {
     expect(first.run.state).toBe("TERMINAL");
     expect(resumed.run.state).toBe("TERMINAL");
     expect(issueCalls).toBe(1);
+  });
+  test.each([undefined, false] as const)("rejects freshness authority without atomic same-key idempotency declaration: %s", async declaration => {
+    const fakes = makeDependencies();
+    let issueCalls = 0;
+    const issueFreshnessAuthority = fakes.dependencies.freshnessAuthority.issueFreshnessAuthority!;
+    const dependencies = {
+      ...fakes.dependencies,
+      freshnessAuthority: {
+        ...(declaration === undefined ? {} : { atomicSameKeyIdempotency: declaration }),
+        issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
+          issueCalls++;
+          return issueFreshnessAuthority(binding);
+        },
+        verifyFreshnessAuthority: fakes.dependencies.freshnessAuthority.verifyFreshnessAuthority,
+      },
+    } as unknown as VerificationRunDependencies;
+    await expect(runOnce(dependencies, `freshness-authority-idempotency-${String(declaration)}`)).rejects.toThrow("freshness authority must declare atomic same-key idempotency");
+    expect(issueCalls).toBe(0);
+    expect(fakes.executorCalls).toBe(0);
+  });
+  test("recovers a fixed-clock evidence commit failure with one freshness authority issuance", async () => {
+    const fakes = makeDependencies();
+    const runId = "freshness-authority-fixed-clock-commit-retry";
+    const request = { ...makeRequest("freshness-authority-fixed-clock-commit-retry-request"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    const issued = new Map<string, FreshnessAuthority>();
+    let issueCalls = 0;
+    let actualIssuances = 0;
+    const issueFreshnessAuthority = fakes.dependencies.freshnessAuthority.issueFreshnessAuthority!;
+    const verifyFreshnessAuthority = fakes.dependencies.freshnessAuthority.verifyFreshnessAuthority!;
+    const dependencies = {
+      ...fakes.dependencies,
+      freshnessAuthority: {
+        atomicSameKeyIdempotency: true as const,
+        issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
+          issueCalls++;
+          const key = JSON.stringify(binding);
+          const existing = issued.get(key);
+          if (existing) return existing;
+          actualIssuances++;
+          const authority = await issueFreshnessAuthority(binding);
+          if (!authority) throw new Error("fixture freshness authority issuance failed");
+          issued.set(key, authority);
+          return authority;
+        },
+        verifyFreshnessAuthority,
+      },
+    } satisfies VerificationRunDependencies;
+    fakes.repository.failNextStage = "evidence";
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("simulated saveStage crash");
+    expect(fakes.repository.runs.get(runId)?.state).toBe("EXECUTING");
+    expect(fakes.repository.stageDocuments.has(`${runId}:evidence`)).toBe(false);
+    const resumed = await runVerification({ runId, dependencies });
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(issueCalls).toBe(2);
+    expect(actualIssuances).toBe(1);
   });
   test("reissues a freshness authority when same-instant policy results change", async () => {
     const fakes = makeDependencies();
@@ -2950,6 +3008,7 @@ describe("verification run orchestration", () => {
       ...fakes.dependencies,
       freshnessPolicy: { evaluateFreshness: async () => status },
       freshnessAuthority: {
+        atomicSameKeyIdempotency: true as const,
         issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
           issueCalls++;
           return issueFreshnessAuthority(binding);
@@ -3043,6 +3102,7 @@ describe("verification run orchestration", () => {
         evaluateFreshness: async (input: { evaluatedAt: string }) => input.evaluatedAt === FIXED_NOW ? "fresh" as const : "stale" as const,
       },
       freshnessAuthority: {
+        atomicSameKeyIdempotency: true as const,
         issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
           if (rejectRefresh && binding.freshnessEvaluatedAt === now) throw new Error("simulated freshness authority failure");
           return issueFreshnessAuthority(binding);
