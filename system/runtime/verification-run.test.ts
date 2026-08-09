@@ -942,6 +942,17 @@ describe("verification run orchestration", () => {
     ["FAIL", 0],
   ] as const)("rejects contradictory %s output with exit code %d before authority", async (status, exitCode) => {
     const fakes = makeDependencies();
+    let artifactCalls = 0;
+    const storeArtifact = async (artifact: Artifact): Promise<Artifact> => {
+      artifactCalls++;
+      return artifact;
+    };
+    const artifactStore: ArtifactStore = {
+      storeVerificationResultArtifact: storeArtifact,
+      storeArtifact,
+      putArtifact: storeArtifact,
+      store: storeArtifact,
+    };
     const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => ({
       status,
       exitCode,
@@ -956,8 +967,9 @@ describe("verification run orchestration", () => {
     await expect(runVerification({
       runId: `contradictory-${status.toLowerCase()}-${exitCode}`,
       request: makeRequest(),
-      dependencies: { ...fakes.dependencies, executor },
+      dependencies: { ...fakes.dependencies, executor, artifactStore },
     })).rejects.toThrow("executor output status contradicts exit code");
+    expect(artifactCalls).toBe(0);
     expect(fakes.repository.stageWrites).not.toContain("execution");
   });
   test.each([
