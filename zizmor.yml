@@ -1,0 +1,8 @@
+rules:
+  dangerous-triggers:
+    ignore:
+      # auto-pr-triage needs pull_request_target to label/self-assign PRs
+      # from external forks (requires pull-requests: write on the base repo).
+      # It never checks out or executes PR-controlled code; it only reads PR
+      # metadata via github-script and applies labels/assignees.
+      - auto-pr-triage.yml:3

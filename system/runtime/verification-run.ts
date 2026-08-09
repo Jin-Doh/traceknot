@@ -1,4 +1,5 @@
 import { resolveProofCarryingQaVerdict, type Artifact, type CoverageInput, type DefectSummary, type EvidenceClaim, type EvidenceEvaluation, type Execution, type IndependenceLevel, type Observation, type ProofCarryingObligation, type Producer, type SuccessCriterion, type TraceabilityLink, type VerdictResult } from "../core/qa-core";
+import { isCanonicalUtcTimestamp } from "../core/canonical-time";
 export type MaybePromise<T> = T | PromiseLike<T>; export type Clock = () => string | Date;
 export const RUN_STATES=["CREATED","BASIS_ESTABLISHED","DISCOVERY_COMPLETED","PLANNED","EXECUTING","EVIDENCE_EVALUATED","VERDICT_RESOLVED","TERMINAL"] as const; export type RunState=(typeof RUN_STATES)[number];
 export type CanonicalRunState=Readonly<{schemaVersion:"verification-run/v1";runId:string;requestId:string;rootIdentity:string;snapshotId:string;state:RunState;observationIds:readonly string[];claimIds:readonly string[];evaluationIds:readonly string[];revision:number;createdAt:string;updatedAt:string}>;
@@ -108,7 +109,7 @@ function canonicalArtifact(value: unknown): CanonicalVerificationResultArtifact 
 function validArtifact(value: unknown): value is CanonicalVerificationResultArtifact {
   return canonicalArtifact(value) !== undefined && isRecord(value) && value.digest === (value.digest as string).toLowerCase();
 }
-const validDate = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value) && !Number.isNaN(Date.parse(value));
+const validDate = isCanonicalUtcTimestamp;
 function canonicalExecution(value: unknown): Execution | undefined {
   if (!isRecord(value) || !EXECUTION_KINDS.includes(value.kind as Execution["kind"]) || typeof value.identity !== "string" || !value.identity || !validDate(value.startedAt) || !validDate(value.finishedAt) || !EXIT_STATUSES.includes(value.exitStatus as Execution["exitStatus"]) || (value.exitCode !== undefined && (typeof value.exitCode !== "number" || !Number.isInteger(value.exitCode)))) return undefined;
   const startedAt = Date.parse(value.startedAt);
@@ -180,7 +181,7 @@ function canonicalBasis(request: VerificationRequest): BasisDocument {
 }
 export function createInitialRun(runId: string, request: VerificationRequest, now: string): CanonicalRunState {
   validRequest(request);
-  if (!runId || !validDate(now)) throw Error("runId and now are required");
+  if (!runId || !validDate(now)) throw Error("runId and canonical UTC now are required");
   return freeze({ schemaVersion: "verification-run/v1", runId, requestId: request.requestId, rootIdentity: request.project.rootIdentity, snapshotId: request.project.snapshotId, state: "CREATED", observationIds: [], claimIds: [], evaluationIds: [], revision: 0, createdAt: now, updatedAt: now });
 }
 function assertCanonicalRun(value: unknown, expectedRunId?: string): asserts value is CanonicalRunState {
@@ -706,7 +707,6 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
           await completeExecutionDispatch(input.dependencies.repository, lease.claim, completion, clockNow(input.dependencies.now));
           completionPersisted = true;
         } else {
-          await releaseClaim(false);
           output = undefined;
         }
       } else {
@@ -717,7 +717,6 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
         finishedAt = lease.completion.authority.binding.execution.finishedAt;
       }
     } else {
-      await releaseClaim(false);
       startedAt = clockNow(input.dependencies.now);
       finishedAt = startedAt;
     }
@@ -788,6 +787,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     }
     await persistCheckpoint();
     await flushPendingUsage();
+    await releaseClaim(false);
     } catch (error) {
       await releaseClaim(true);
       throw error;
