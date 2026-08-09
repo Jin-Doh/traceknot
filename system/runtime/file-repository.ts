@@ -197,6 +197,7 @@ async function acquireStateLock(runFd: number): Promise<() => Promise<void>> {
 
 /** Atomic, append-oriented JSON repository used by the verify CLI. */
 export class FileVerificationRepository implements RepositoryPort {
+  readonly generationFencedDispatchCompletion = true;
   readonly rootDir: string;
   private readonly operations = new Map<string, Promise<void>>();
   private rootPromise: Promise<SecureRootDescriptor> | undefined;
@@ -301,14 +302,15 @@ export class FileVerificationRepository implements RepositoryPort {
         if (attemptToken) throw new ClaimError("dispatch claim is held by another owner", previous.claim, attemptToken);
         throw new Error("dispatch claim is held by another owner");
       }
-      await this.saveStateAt(runFd, { ...state, dispatch: { ...state.dispatch, [claim.claimKey]: { claim, status: "CLAIMED", outputStored: false } } });
-      return { claimed: true, status: "CLAIMED", claim, outputStored: false };
+      const acquired = previous?.status === "CLAIMED" ? { ...claim, leaseGeneration: previous.claim.leaseGeneration + 1 } : claim;
+      await this.saveStateAt(runFd, { ...state, dispatch: { ...state.dispatch, [claim.claimKey]: { claim: acquired, status: "CLAIMED", outputStored: false } } });
+      return { claimed: true, status: "CLAIMED", claim: acquired, outputStored: false };
     });
   }
   async completeExecutionDispatch(claim: DispatchClaim, completion: VerificationExecutionCompletionEnvelope | undefined, _now = new Date().toISOString()): Promise<boolean> {
     return this.serialize(claim.runId, async runFd => {
       const state = await this.loadStateAt(runFd); const previous = state?.dispatch[claim.claimKey];
-      if (!state || !previous || previous.status !== "CLAIMED" || previous.claim.acquisitionId !== claim.acquisitionId) return false;
+      if (!state || !previous || previous.status !== "CLAIMED" || previous.claim.ownerId !== claim.ownerId || previous.claim.leaseGeneration !== claim.leaseGeneration || previous.claim.acquisitionId !== claim.acquisitionId) return false;
       await this.saveStateAt(runFd, { ...state, dispatch: { ...state.dispatch, [claim.claimKey]: { claim: previous.claim, status: "COMPLETED", outputStored: completion !== undefined, ...(completion ? { completion } : {}) } } });
       return true;
     });
@@ -317,7 +319,7 @@ export class FileVerificationRepository implements RepositoryPort {
     return this.serialize(claim.runId, async runFd => {
       const state = await this.loadStateAt(runFd); const previous = state?.dispatch[claim.claimKey];
       if (!state || !previous) return true;
-      if (previous.claim.acquisitionId !== claim.acquisitionId) return false;
+      if (previous.claim.ownerId !== claim.ownerId || previous.claim.leaseGeneration !== claim.leaseGeneration || previous.claim.acquisitionId !== claim.acquisitionId) return false;
       const dispatch = { ...state.dispatch }; delete dispatch[claim.claimKey];
       await this.saveStateAt(runFd, { ...state, dispatch });
       return true;
