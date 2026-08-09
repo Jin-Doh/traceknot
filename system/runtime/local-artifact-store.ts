@@ -279,7 +279,7 @@ async function readSourceBytes(artifact: ArtifactLike): Promise<Uint8Array> {
     if (handle) await handle.close().catch(() => undefined);
   }
 }
-function openPinnedDirectory(rootDir: string): number {
+export function openOrCreateSecureDirectoryPath(rootDir: string): number {
   let absolute = resolve(rootDir);
   try {
     absolute = join(realpathSync(dirname(absolute)), basename(absolute));
@@ -308,7 +308,7 @@ function openPinnedDirectory(rootDir: string): number {
     throw new ArtifactPathError(`artifact root cannot be opened: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
-function openChildDirectory(parentFd: number, name: string): number {
+export function openOrCreateSecureDirectory(parentFd: number, name: string): number {
   const n = native();
   let fd = n.symbols.openat(parentFd, cstring(name), constants.O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC, 0);
   if (fd < 0) {
@@ -474,11 +474,11 @@ export class LocalArtifactStore implements ArtifactStore {
     if (typeof rootDir !== "string" || rootDir.length === 0) throw new ArtifactPathError("artifact root is required");
     this.rootDir = resolve(rootDir);
     this.fsync = typeof rootDirOrOptions === "string" ? true : rootDirOrOptions.fsync !== false;
-    const rootFd = openPinnedDirectory(this.rootDir);
+    const rootFd = openOrCreateSecureDirectoryPath(this.rootDir);
     let objectsFd: number | undefined;
     let lockFd: number | undefined;
     try {
-      objectsFd = openChildDirectory(rootFd, ".objects");
+      objectsFd = openOrCreateSecureDirectory(rootFd, ".objects");
       lockFd = openLock(rootFd);
       this.rootFd = rootFd;
       this.objectsFd = objectsFd;

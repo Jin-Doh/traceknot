@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/context-plan.v1.json",
+  "title": "Context plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "segments"],
+  "properties": {
+    "schemaVersion": { "const": "context-plan/v1" },
+    "segments": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "prefixItems": [
+        { "$ref": "#/$defs/segment", "type": "object", "properties": { "id": { "const": "traceknot-protocol" } } },
+        { "$ref": "#/$defs/segment", "type": "object", "properties": { "id": { "const": "schemas" } } },
+        { "$ref": "#/$defs/segment", "type": "object", "properties": { "id": { "const": "verification-profile" } } },
+        { "$ref": "#/$defs/segment", "type": "object", "properties": { "id": { "const": "repository-basis" } } },
+        { "$ref": "#/$defs/segment", "type": "object", "properties": { "id": { "const": "current-change" } } },
+        { "$ref": "#/$defs/segment", "type": "object", "properties": { "id": { "const": "current-obligation" } } },
+        { "$ref": "#/$defs/segment", "type": "object", "properties": { "id": { "const": "prior-evidence" } } }
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "stability", "digest", "cachePolicy", "sensitivity"],
+      "properties": {
+        "id": {
+          "enum": [
+            "traceknot-protocol",
+            "schemas",
+            "verification-profile",
+            "repository-basis",
+            "current-change",
+            "current-obligation",
+            "prior-evidence"
+          ]
+        },
+        "stability": { "enum": ["immutable", "version-bound", "snapshot-bound", "run-bound"] },
+        "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "cachePolicy": { "enum": ["provider-prefix", "local-content-addressed", "none"] },
+        "sensitivity": { "enum": ["public", "repository-private", "secret"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "sensitivity": { "const": "secret" } }, "required": ["sensitivity"] },
+          "then": { "properties": { "cachePolicy": { "const": "none" } } }
+        },
+        {
+          "if": { "properties": { "stability": { "const": "run-bound" } }, "required": ["stability"] },
+          "then": { "properties": { "cachePolicy": { "const": "none" } } }
+        },
+        {
+          "if": { "properties": { "cachePolicy": { "const": "provider-prefix" } }, "required": ["cachePolicy"] },
+          "then": {
+            "properties": {
+              "stability": { "enum": ["immutable", "version-bound"] },
+              "sensitivity": { "const": "public" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
