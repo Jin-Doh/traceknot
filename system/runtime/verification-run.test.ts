@@ -336,7 +336,7 @@ test.each([
   "2026-01-01T24:00:00Z",
 ] as const)("rejects calendar-invalid runtime timestamps: %s", async timestamp => {
   const fakes = makeDependencies();
-  await expect(runOnce({ ...fakes.dependencies, now: () => timestamp }, `calendar-invalid-${timestamp}`)).rejects.toThrow("runId and canonical UTC now are required");
+  await expect(runOnce({ ...fakes.dependencies, now: () => timestamp }, `calendar-invalid-${timestamp}`)).rejects.toThrow("clock must return canonical ISO date-time");
 });
 
 test("rejects invalid resumed string clocks before executor or artifact writes", async () => {
