@@ -3,12 +3,40 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+import { canonicalRequestDigest, type VerificationRequest } from "../system/runtime/verification-run";
+import { addMillisecondsToCanonicalUtcTimestamp, compareCanonicalUtcTimestamps, isCanonicalUtcDate, isCanonicalUtcTimestamp } from "../system/core/canonical-time";
 type ContractCase = {
   name: string;
   schema: string;
   positive: string;
   negatives: readonly string[];
 };
+
+describe("canonical UTC time validation", () => {
+  test("rejects normalized calendar overflow and noncanonical timestamps", () => {
+    for (const value of ["2026-02-30", "2025-02-29", "2026-13-01", "2026-01-00"]) {
+      expect(isCanonicalUtcDate(value)).toBe(false);
+    }
+    for (const value of ["2026-02-30T00:00:00Z", "2026-01-01T24:00:00Z", "2026-01-01T00:60:00Z", "2026-01-01T00:00:60Z", "2026-01-01T00:00:00+00:00"]) {
+      expect(isCanonicalUtcTimestamp(value)).toBe(false);
+    }
+  });
+
+  test("accepts real leap days and canonical fractional UTC timestamps", () => {
+    expect(isCanonicalUtcDate("2024-02-29")).toBe(true);
+    expect(isCanonicalUtcTimestamp("2024-02-29T23:59:59.123456Z")).toBe(true);
+  });
+
+  test("orders arbitrary fractional precision without millisecond truncation", () => {
+    expect(compareCanonicalUtcTimestamps("2026-08-03T00:00:00.0009Z", "2026-08-03T00:00:00.0001Z")).toBeGreaterThan(0);
+    expect(compareCanonicalUtcTimestamps("2026-08-03T00:00:00.1Z", "2026-08-03T00:00:00.1000Z")).toBe(0);
+    expect(compareCanonicalUtcTimestamps("2026-08-03T00:00:00Z", "2026-08-03T00:00:00.0001Z")).toBeLessThan(0);
+  });
+
+  test("adds lease milliseconds without dropping sub-millisecond precision", () => {
+    expect(addMillisecondsToCanonicalUtcTimestamp("2024-02-29T23:59:59.9999Z", 1)).toBe("2024-03-01T00:00:00.0009Z");
+  });
+});
 
 const contractCases: readonly ContractCase[] = [
   {
@@ -21,6 +49,15 @@ const contractCases: readonly ContractCase[] = [
       "canonical-observation.invalid-self-external-approval.json",
       "canonical-observation.invalid-actual-values.json",
       "canonical-observation.invalid-duplicate-actual-values.json",
+    ],
+  },
+  {
+    name: "Verification evidence",
+    schema: "evidence.schema.json",
+    positive: "canonical-evidence.valid-runtime.json",
+    negatives: [
+      "canonical-evidence.invalid-legacy-host.json",
+      "canonical-evidence.invalid-missing-timestamp.json",
     ],
   },
   {
@@ -62,6 +99,12 @@ const contractCases: readonly ContractCase[] = [
     ],
   },
   {
+    name: "EvidenceEvaluationDocument",
+    schema: "evidence-evaluation-document.schema.json",
+    positive: "canonical-evidence-evaluation-document.valid.json",
+    negatives: [],
+  },
+  {
     name: "Rejected EvidenceEvaluation",
     schema: "evidence-evaluation.schema.json",
     positive: "canonical-evidence-evaluation.valid-rejected-stale.json",
@@ -71,7 +114,7 @@ const contractCases: readonly ContractCase[] = [
     name: "VerificationRun",
     schema: "verification-run.schema.json",
     positive: "canonical-verification-run.valid.json",
-    negatives: ["canonical-verification-run.invalid-state.json"],
+    negatives: ["canonical-verification-run.invalid-state.json", "canonical-verification-run.invalid-missing-root-identity.json", "canonical-verification-run.invalid-additional-property.json"],
   },
 ];
 
@@ -84,6 +127,7 @@ function loadJson(path: string): unknown {
 
 function loadValidator(schemaFile: string) {
   const ajv = new Ajv2020({ allErrors: true, strict: true });
+  if (schemaFile === "evidence-evaluation-document.schema.json") ajv.addSchema(loadJson(join(contractRoot, "evidence-evaluation.schema.json")) as object);
   return ajv.compile(loadJson(join(contractRoot, schemaFile)) as object);
 }
 
@@ -239,5 +283,22 @@ describe("canonical evidence contracts", () => {
 
     expect(validate(fixture)).toBe(false);
     expect(validate.errors?.length).toBeGreaterThan(0);
+  });
+  test("keeps verification request paths non-empty in AJV and runtime", () => {
+    const validate = loadValidator("verification-request.schema.json");
+    const request: VerificationRequest = {
+      schemaVersion: "verification-request/v1",
+      requestId: "request-contract",
+      project: { rootIdentity: "repository", snapshotId: "snapshot-contract" },
+      change: { summary: "validate published request contract", paths: ["system/runtime/verification-run.ts"] },
+      testBasis: [{ id: "basis-contract", kind: "contract", origin: "explicit", text: "The request schema matches runtime validation." }],
+    };
+    const invalid = { ...request, change: { ...request.change, paths: [] } };
+
+    expect(validate(request), validate.errors ? JSON.stringify(validate.errors) : undefined).toBe(true);
+    expect(() => canonicalRequestDigest(request)).not.toThrow();
+    expect(validate(invalid)).toBe(false);
+    expect(validate.errors?.length).toBeGreaterThan(0);
+    expect(() => canonicalRequestDigest(invalid)).toThrow("invalid verification request");
   });
 });

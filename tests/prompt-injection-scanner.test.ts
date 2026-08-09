@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { analyzeText, levelForScore, scanRepository } from "../scripts/audit-prompt-injection";
@@ -175,6 +175,28 @@ describe("prompt-injection risk classification", () => {
   test("does not flag ordinary Simplified Chinese QA instructions", () => {
     const findings = analyzeText("README.zh.md", "运行仓库的标准验证命令，并报告观察到的结果。");
     expect(findings).toHaveLength(0);
+  });
+
+  test("rejects calendar-invalid prompt exception timestamps", () => {
+    const root = mkdtempSync(join(tmpdir(), "traceknot-prompt-exception-"));
+    try {
+      mkdirSync(join(root, "security"));
+      writeFileSync(join(root, "security", "prompt-injection-exceptions.json"), JSON.stringify({
+        schemaVersion: "traceknot.prompt-risk-exceptions/v1",
+        exceptions: [{
+          ruleId: "PI001",
+          path: "README.md",
+          lineHash: "f".repeat(64),
+          owner: "security-maintainers",
+          reason: "Temporary false positive",
+          mitigation: "Manual review",
+          expiresAt: "2026-02-30T00:00:00Z",
+        }],
+      }));
+      expect(() => scanRepository(root)).toThrow("invalid exception expiry: 2026-02-30T00:00:00Z");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("scans published documentation directories", () => {

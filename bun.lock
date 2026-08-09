@@ -28,6 +28,7 @@
     "brace-expansion": "1.1.18",
     "fast-json-patch": "3.1.1",
     "fast-uri": "3.1.5",
+    "js-yaml": "3.15.1",
   },
   "packages": {
     "@babel/helper-string-parser": ["@babel/helper-string-parser@8.0.0", "", {}, "sha512-6mJgmFFFIIO82vvoLt9XtRC7/TkzXfts1t/SpRX4IHSzMgqoPYCWesVu1udUPUWioAE/2fcG6WuI8zrkE1gwrg=="],
