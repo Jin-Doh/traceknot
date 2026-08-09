@@ -3,6 +3,24 @@
 
 set -eu
 
+SELF_HOSTED_INNER=0
+case ${1-} in
+    "")
+        ;;
+    --self-hosted-inner)
+        SELF_HOSTED_INNER=1
+        shift
+        ;;
+    *)
+        printf 'ci: unknown option: %s\n' "$1" >&2
+        exit 2
+        ;;
+esac
+if [ "$#" -ne 0 ]; then
+    printf '%s\n' 'ci: --self-hosted-inner accepts no arguments' >&2
+    exit 2
+fi
+
 ROOT=$(CDPATH= cd -P "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 
@@ -80,5 +98,10 @@ bun x --no-install ajv validate --spec=draft2020 \
 
 printf '%s\n' '==> whitespace integrity'
 git diff --check
+
+if [ "$SELF_HOSTED_INNER" -eq 0 ]; then
+    printf '%s\n' '==> canonical self-hosting verification'
+    bun scripts/self-verify.ts
+fi
 
 printf '%s\n' 'Traceknot CI gate: PASS'

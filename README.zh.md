@@ -235,7 +235,7 @@ bun install --frozen-lockfile --ignore-scripts
 bun run ci
 ```
 
-该 gate 会验证 installer lifecycle、schema、capability record、prompt-injection 风险、发布文案、测试、strict TypeScript 和 whitespace 完整性。`bun run prose-quality` 会为韩文、英文以及显式映射的简体中文发布文案生成 advisory report；它不会根据汉字自动推断 locale，也不会把其他语言套用到错误的规则上。
+该 gate 会验证 installer lifecycle、schema、capability record、prompt-injection 风险、发布文案、测试、strict TypeScript 和 whitespace 完整性。最后，`bun run self-verify` 会通过 Traceknot 针对捕获的 repository snapshot 运行 canonical gate，同时避免递归调用自身。`bun run prose-quality` 会为韩文、英文以及显式映射的简体中文发布文案生成 advisory report；它不会根据汉字自动推断 locale，也不会把其他语言套用到错误的规则上。
 
 安全相关 finding 应包含明确的预期结果、观察结果、复现方法、目标 snapshot 和剩余风险。智能体自己的完成声明不能作为验证证据。
 
