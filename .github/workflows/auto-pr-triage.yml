@@ -13,6 +13,10 @@ permissions:
   contents: read
   pull-requests: write
 
+concurrency:
+  group: auto-pr-triage-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   auto-triage:
     name: Self-assign and label PRs
@@ -30,8 +34,8 @@ jobs:
             const text = `${pr.title || ""}\n${pr.body || ""}`;
             const author = pr.user?.login;
             const isBotAuthor = pr.user?.type === "Bot";
-            const hasBugToken = /(^|[^a-z0-9])(?:bugs?|fix(?:es|ed|ing)?)(?=$|[^a-z0-9])/i.test(text);
-            const hasDocumentationToken = /(^|[^a-z0-9])(?:docs?|documentation|readme)(?=$|[^a-z0-9])/i.test(text);
+            const hasBugToken = /(^|[^a-z0-9])(?:(?:bug|hot)fix(?:es|ed|ing)?|bugs?|fix(?:es|ed|ing)?)(?=$|[^a-z0-9])/i.test(text);
+            const hasDocumentationToken = /(^|[^a-z0-9])(?:docs?|documentation|document(?:s|ed|ing)?|readme)(?=$|[^a-z0-9])/i.test(text);
             const hasGithubActionToken = /(^|[^a-z0-9])github[ _-]+actions?(?=$|[^a-z0-9])/i.test(text);
 
             const existingIssue = await github.rest.issues.get({

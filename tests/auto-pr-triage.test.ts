@@ -17,9 +17,22 @@ function pullRequestTargetTypes(source: string): string[] {
   return trigger.types;
 }
 
+function workflowConcurrency(source: string): Record<string, unknown> {
+  const parsed: unknown = Bun.YAML.parse(source);
+  if (!isRecord(parsed) || !isRecord(parsed.concurrency)) throw new Error("workflow concurrency is missing");
+  return parsed.concurrency;
+}
+
 describe("auto PR triage workflow", () => {
   test("runs again when PR metadata or changed files can alter triage", () => {
     expect(pullRequestTargetTypes(workflow)).toEqual(expect.arrayContaining(["edited", "synchronize"]));
+  });
+
+  test("serializes overlapping runs for the same pull request", () => {
+    expect(workflowConcurrency(workflow)).toEqual({
+      group: "auto-pr-triage-${{ github.event.pull_request.number }}",
+      "cancel-in-progress": true,
+    });
   });
 
   test("converges managed labels while preserving unrelated labels", async () => {
@@ -44,6 +57,20 @@ describe("auto PR triage workflow", () => {
 
     expect(calls.addLabels).toHaveLength(0);
     expect(calls.removeLabel).toHaveLength(0);
+  });
+
+  test("recognizes common compound fixes and documentation verb forms", async () => {
+    const scenarios = [
+      ["Bugfix: prevent a crash", "bug"],
+      ["Hotfix release", "bug"],
+      ["Document the API", "documentation"],
+      ["Documenting configuration", "documentation"],
+    ] as const;
+
+    for (const [title, expectedLabel] of scenarios) {
+      const calls = await run({ title, labels: [], assignees: ["external-contributor"] });
+      expect(calls.addLabels.map((call) => call.labels)).toEqual([[expectedLabel]]);
+    }
   });
 
   test("recognizes singular GitHub Action wording", async () => {
