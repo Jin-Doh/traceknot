@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/usage-report.v1.json",
+  "title": "Run usage report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "requestId",
+    "snapshotId",
+    "inputTokens",
+    "cachedInputTokens",
+    "cacheWriteTokens",
+    "outputTokens",
+    "reasoningTokens",
+    "modelCalls",
+    "cacheHitRate",
+    "estimatedCost"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "usage-report/v1" },
+    "runId": { "type": "string", "minLength": 1 },
+    "requestId": { "type": "string", "minLength": 1 },
+    "snapshotId": { "type": "string", "minLength": 1 },
+    "inputTokens": { "$ref": "#/$defs/tokenMetric" },
+    "cachedInputTokens": { "$ref": "#/$defs/tokenMetric" },
+    "cacheWriteTokens": { "$ref": "#/$defs/tokenMetric" },
+    "outputTokens": { "$ref": "#/$defs/tokenMetric" },
+    "reasoningTokens": { "$ref": "#/$defs/tokenMetric" },
+    "modelCalls": { "type": "integer", "minimum": 0 },
+    "cacheHitRate": {
+      "oneOf": [
+        { "type": "number", "minimum": 0, "maximum": 1 },
+        { "const": "unavailable" }
+      ]
+    },
+    "estimatedCost": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": { "status": { "const": "unavailable" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "currency", "amount"],
+          "properties": {
+            "status": { "enum": ["actual", "estimated"] },
+            "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+            "amount": { "type": "number", "minimum": 0 }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "tokenMetric": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "const": "unavailable" }
+      ]
+    }
+  }
+}
