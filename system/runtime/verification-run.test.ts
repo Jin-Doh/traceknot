@@ -3048,6 +3048,41 @@ describe("verification run orchestration", () => {
     expect(issueCalls).toBe(2);
     expect(actualIssuances).toBe(1);
   });
+  test.each(["observationIds", "claimIds", "evaluationIds"] as const)("rejects corrupted terminal %s before freshness or repository side effects", async index => {
+    const fakes = makeDependencies();
+    const runId = `terminal-index-${index}`;
+    await runOnce(fakes.dependencies, runId);
+    const run = fakes.repository.runs.get(runId);
+    if (!run) throw new Error("missing terminal run");
+    fakes.repository.runs.set(runId, { ...run, [index]: [...run[index], `${index}:unexpected`] });
+    let freshnessCalls = 0;
+    let authorityCalls = 0;
+    const issueFreshnessAuthority = fakes.dependencies.freshnessAuthority.issueFreshnessAuthority!;
+    const dependencies = {
+      ...fakes.dependencies,
+      freshnessPolicy: {
+        evaluateFreshness: async () => {
+          freshnessCalls++;
+          return "fresh" as const;
+        },
+      },
+      freshnessAuthority: {
+        ...fakes.dependencies.freshnessAuthority,
+        issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
+          authorityCalls++;
+          return issueFreshnessAuthority(binding);
+        },
+      },
+      now: () => "2026-08-03T00:01:00.000Z",
+    } satisfies VerificationRunDependencies;
+    const runWrites = fakes.repository.runWrites.length;
+    const stageWrites = fakes.repository.stageWrites.length;
+    await expect(runVerification({ runId, dependencies })).rejects.toThrow("invalid persisted run indexes");
+    expect(freshnessCalls).toBe(0);
+    expect(authorityCalls).toBe(0);
+    expect(fakes.repository.runWrites.length).toBe(runWrites);
+    expect(fakes.repository.stageWrites.length).toBe(stageWrites);
+  });
   test("reissues a freshness authority when same-instant policy results change", async () => {
     const fakes = makeDependencies();
     const runId = "freshness-authority-same-instant-policy-change";

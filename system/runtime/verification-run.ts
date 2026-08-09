@@ -1220,6 +1220,7 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
   if (!finalEvidence) throw Error("evidence document is missing");
   documents.evidence = finalEvidence;
   const historicalEvidence = finalEvidence;
+  assertCanonicalRunIndexes(run, finalExecution, historicalEvidence);
   const finalResidual = documents["residual-risk"] ?? await loadCheckedStage<ResidualRiskDocument>(repository, input.runId, "residual-risk", req, dependencies, documents);
   if (!finalResidual) throw Error("residual-risk document is missing");
   documents["residual-risk"] = finalResidual;
