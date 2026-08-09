@@ -49,6 +49,7 @@ type FakeRepositoryStore = {
   dispatchClaims: Map<string, { claim: DispatchClaim; status: "CLAIMED" | "COMPLETED"; outputStored: boolean; completion?: VerificationExecutionCompletionEnvelope }>;
 };
 class FakeRepository {
+  readonly generationFencedDispatchCompletion = true;
   readonly runs: Map<string, CanonicalRunState>;
   readonly stageDocuments: Map<string, unknown>;
   readonly dispatchClaims: Map<string, { claim: DispatchClaim; status: "CLAIMED" | "COMPLETED"; outputStored: boolean; completion?: VerificationExecutionCompletionEnvelope }>;
@@ -77,9 +78,9 @@ class FakeRepository {
     this.dispatchClaims.set(claim.claimKey, created);
     return { claimed: true, ...structuredClone(created) };
   }
-  async completeExecutionDispatch(claim: DispatchClaim, completion: VerificationExecutionCompletionEnvelope | undefined, now = FIXED_NOW): Promise<boolean> {
+  async completeExecutionDispatch(claim: DispatchClaim, completion: VerificationExecutionCompletionEnvelope | undefined, _now = FIXED_NOW): Promise<boolean> {
     const existing = this.dispatchClaims.get(claim.claimKey);
-    if (!existing || existing.status !== "CLAIMED" || existing.claim.ownerId !== claim.ownerId || existing.claim.leaseGeneration !== claim.leaseGeneration || existing.claim.acquisitionId !== claim.acquisitionId || Date.parse(now) > Date.parse(existing.claim.leaseExpiresAt)) return false;
+    if (!existing || existing.status !== "CLAIMED" || existing.claim.ownerId !== claim.ownerId || existing.claim.leaseGeneration !== claim.leaseGeneration || existing.claim.acquisitionId !== claim.acquisitionId) return false;
     this.dispatchClaims.set(claim.claimKey, { ...existing, status: "COMPLETED", outputStored: completion !== undefined, ...(completion === undefined ? {} : { completion: structuredClone(completion) }) });
     return true;
   }
@@ -915,6 +916,43 @@ describe("verification run orchestration", () => {
     expect(result.run.state).toBe("TERMINAL");
     expect(oneShot.issued).toHaveLength(result.documents.execution?.authorities.length ?? 0);
     expect(new Set(oneShot.issued.map(authority => authority.binding.idempotencyKey)).size).toBe(oneShot.issued.length);
+  });
+
+  test("completes an unreplaced dispatch generation after lease expiry without reissuing authority", async () => {
+    const fakes = makeDependencies();
+    const oneShot = makeOneShotExecutionAuthority();
+    const executeObligation = fakes.dependencies.executor.executeObligation!;
+    let executorReturned = false;
+    const executor: VerificationExecutor = {
+      ...fakes.dependencies.executor,
+      executeObligation: async input => {
+        const output = await executeObligation(input);
+        executorReturned = true;
+        return output;
+      },
+    };
+    const request = { ...makeRequest("authority-expired-lease"), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    const result = await runVerification({
+      runId: "authority-expired-lease",
+      request,
+      dependencies: {
+        ...fakes.dependencies,
+        executor,
+        executionAuthority: oneShot.port,
+        now: () => executorReturned ? "2026-08-03T00:00:31.000Z" : FIXED_NOW,
+      },
+    });
+    expect(result.run.state).toBe("TERMINAL");
+    expect(oneShot.issued).toHaveLength(1);
+  });
+
+  test("rejects repositories without generation-fenced dispatch completion before execution", async () => {
+    const repository = new FakeRepository();
+    Object.defineProperty(repository, "generationFencedDispatchCompletion", { value: undefined });
+    const fakes = makeDependencies({}, repository);
+    await expect(runOnce(fakes.dependencies, "repository-dispatch-contract")).rejects.toThrow("repository must declare generation-fenced dispatch completion");
+    expect(fakes.executorCalls).toBe(0);
+    expect(repository.runWrites).toHaveLength(0);
   });
 
   test("reuses the completion authority after a crash before execution checkpoint persistence", async () => {
