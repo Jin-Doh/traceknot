@@ -30,6 +30,7 @@ import {
   type VerificationRequest,
   type VerificationRunDependencies,
   type ExecutionDocument,
+  type ExecutionCheckpointTransition,
   type TerminalEvidenceVerdictTransition,
 } from "./verification-run";
 
@@ -40,7 +41,7 @@ const SNAPSHOT_ID = "snapshot-001";
 
 type RunInput = Parameters<typeof runVerification>[0];
 type RunStateValue = CanonicalRunState["state"];
-type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerKind?: "self" | "harness-managed" | "deterministic-verifier" | "ci" | "human" | "external-system"; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean; invalidProducer?: boolean };
+type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerKind?: "self" | "harness-managed" | "deterministic-verifier" | "ci" | "human" | "external-system"; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean; rejectedAuthority?: boolean; invalidProducer?: boolean };
 
 type FakeDispatchClaimResult = { claimed: boolean; status: "CLAIMED" | "COMPLETED"; claim: DispatchClaim; outputStored: boolean; completion?: VerificationExecutionCompletionEnvelope };
 type FakeRepositoryStore = {
@@ -50,6 +51,7 @@ type FakeRepositoryStore = {
 };
 class FakeRepository {
   readonly generationFencedDispatchCompletion = true;
+  readonly generationFencedDispatchCheckpoint = true;
   readonly runs: Map<string, CanonicalRunState>;
   readonly stageDocuments: Map<string, unknown>;
   readonly dispatchClaims: Map<string, { claim: DispatchClaim; status: "CLAIMED" | "COMPLETED"; outputStored: boolean; completion?: VerificationExecutionCompletionEnvelope }>;
@@ -61,6 +63,7 @@ class FakeRepository {
   }
   failNextState?: RunStateValue;
   failNextStage?: string;
+  takeoverBeforeExecutionCheckpoint = false;
   readonly stageWrites: string[] = [];
   readonly runWrites: CanonicalRunState[] = [];
   async loadRun(runId: string): Promise<CanonicalRunState | undefined> { return this.runs.get(runId); }
@@ -89,6 +92,16 @@ class FakeRepository {
     if (!existing || existing.status !== "CLAIMED" || existing.claim.ownerId !== claim.ownerId || existing.claim.leaseGeneration !== claim.leaseGeneration || existing.claim.acquisitionId !== claim.acquisitionId || Date.parse(now) > Date.parse(existing.claim.leaseExpiresAt)) return false;
     this.dispatchClaims.delete(claim.claimKey);
     return true;
+  }
+  async commitExecutionCheckpoint(transition: ExecutionCheckpointTransition, claim: DispatchClaim): Promise<boolean> {
+    const existing = this.dispatchClaims.get(claim.claimKey);
+    if (existing?.status === "CLAIMED" && this.takeoverBeforeExecutionCheckpoint) {
+      this.takeoverBeforeExecutionCheckpoint = false;
+      this.dispatchClaims.set(claim.claimKey, { claim: { ...existing.claim, ownerId: "takeover-worker", leaseGeneration: existing.claim.leaseGeneration + 1, acquisitionId: "00000000-0000-4000-8000-000000000099" }, status: "CLAIMED", outputStored: false });
+    }
+    const current = this.dispatchClaims.get(claim.claimKey);
+    if (!current || current.status !== "CLAIMED" || current.claim.ownerId !== claim.ownerId || current.claim.leaseGeneration !== claim.leaseGeneration || current.claim.acquisitionId !== claim.acquisitionId) return false;
+    return this.commitTransition({ ...transition, stage: "execution" });
   }
   async commitTransition(transition: { runId: string; expectedRevision?: number; stage?: string; document?: unknown; run: CanonicalRunState }): Promise<boolean> {
     const current = this.runs.get(transition.runId);
@@ -186,6 +199,7 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
     },
     verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]): Promise<boolean> => {
       authorityCalls++;
+      if (options.rejectedAuthority) return false;
       const stored = authorities.get(binding.idempotencyKey);
       return Boolean(stored && JSON.stringify(stored) === JSON.stringify(authority) && JSON.stringify(stored.binding) === JSON.stringify(binding));
     },
@@ -1870,6 +1884,24 @@ describe("verification run orchestration", () => {
     const runId = `authority-${_name}`;
     await expect(runOnce(fakes.dependencies, runId)).rejects.toThrow(/execution authority/);
     expect(fakes.repository.stageDocuments.has(`${runId}:execution`)).toBe(false);
+  });
+  test("aborts when an issued execution authority fails verification", async () => {
+    const fakes = makeDependencies({ rejectedAuthority: true });
+    const runId = "authority-verification-false";
+    await expect(runOnce(fakes.dependencies, runId)).rejects.toThrow("execution authority verification failed");
+    expect(fakes.authorityCalls).toBe(1);
+    expect(fakes.repository.stageDocuments.has(`${runId}:execution`)).toBe(false);
+    expect(fakes.repository.runs.get(runId)?.state).toBe("PLANNED");
+  });
+  test("fences a fallback checkpoint after dispatch lease takeover", async () => {
+    const repository = new FakeRepository();
+    repository.takeoverBeforeExecutionCheckpoint = true;
+    const fakes = makeDependencies({ missingCapability: true }, repository);
+    const runId = "fallback-checkpoint-takeover";
+    await expect(runOnce(fakes.dependencies, runId)).rejects.toThrow("stale dispatch execution checkpoint");
+    expect(fakes.executorCalls).toBe(0);
+    expect(repository.stageDocuments.has(`${runId}:execution`)).toBe(false);
+    expect(repository.runs.get(runId)?.state).toBe("PLANNED");
   });
   test.each([
     ["missing capability", { missingCapability: true }, "BLOCKED"],
