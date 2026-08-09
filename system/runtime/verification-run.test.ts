@@ -1950,7 +1950,6 @@ describe("verification run orchestration", () => {
         dispatchOwnerId: "takeover-winner",
         capabilityProvider: { has: () => true },
         now: () => "2026-08-03T00:01:00.000Z",
-        clock: { now: () => "2026-08-03T00:01:00.000Z" },
       },
     });
     expect(resumed.run.state).toBe("TERMINAL");
