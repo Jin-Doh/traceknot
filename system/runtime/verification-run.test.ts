@@ -938,6 +938,29 @@ describe("verification run orchestration", () => {
     expect(result.documents.execution?.authorities.every(authority => authority.binding.result.verdict === "FAIL" && authority.binding.artifacts.length === 1 && authority.binding.artifacts[0]?.digest === "f".repeat(64))).toBe(true);
   });
   test.each([
+    ["PASS", 1],
+    ["FAIL", 0],
+  ] as const)("rejects contradictory %s output with exit code %d before authority", async (status, exitCode) => {
+    const fakes = makeDependencies();
+    const executor: VerificationExecutor = { atomicSameKeyIdempotency: true, executeObligation: async request => ({
+      status,
+      exitCode,
+      runId: request.runId,
+      requestId: request.requestId,
+      snapshotId: request.snapshotId,
+      idempotencyKey: request.idempotencyKey,
+      producer: { kind: "deterministic-verifier", identity: "fixture-contradictory-executor", independence: "independent-producer" },
+      artifacts: [{ type: "verification-result", digest: "c".repeat(64) }],
+    }) };
+
+    await expect(runVerification({
+      runId: `contradictory-${status.toLowerCase()}-${exitCode}`,
+      request: makeRequest(),
+      dependencies: { ...fakes.dependencies, executor },
+    })).rejects.toThrow("executor output status contradicts exit code");
+    expect(fakes.repository.stageWrites).not.toContain("execution");
+  });
+  test.each([
     ["invalid executor digest", { invalidArtifact: true }],
     ["missing artifact storage", { missingArtifactStorage: true }],
     ["mismatched output provenance", { mismatchedProvenance: true }],
