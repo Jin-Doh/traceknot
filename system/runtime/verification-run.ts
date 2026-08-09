@@ -1075,9 +1075,9 @@ async function runVerificationUnlocked(input: RunVerificationInput): Promise<Run
   const persisted = await loadStage<VerificationRequest>(repository, input.runId, "request");
   if (persisted) validateStage("request", persisted, input.request ?? persisted, input.runId);
   let request = input.request;
+  if (persisted && request && !structurallyEqual(request, persisted)) throw Error("resume request identity/structural mismatch");
   if (run) {
     if (!persisted) throw Error("resume requires persisted request document");
-    if (request && !structurallyEqual(request, persisted)) throw Error("resume request identity/structural mismatch");
     request = persisted;
     if (run.requestId !== request.requestId || run.rootIdentity !== request.project.rootIdentity || run.snapshotId !== request.project.snapshotId) throw Error("run identity mismatch");
   } else {

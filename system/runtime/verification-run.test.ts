@@ -1562,6 +1562,20 @@ describe("verification run orchestration", () => {
     const changed = { ...makeRequest(), project: { rootIdentity: "other-repository", snapshotId: SNAPSHOT_ID } };
     await expect(runVerification({ runId: RUN_ID, request: changed, dependencies: second.dependencies })).rejects.toThrow("resume request identity");
   });
+  test("rejects a mismatched caller request against an orphaned persisted request before run creation", async () => {
+    const fakes = makeDependencies();
+    const runId = "orphaned-persisted-request";
+    const persisted = makeRequest("orphaned-persisted-request-document");
+    const supplied = { ...persisted, change: { summary: "different caller request", paths: ["unexpected/path.ts"] } } satisfies VerificationRequest;
+    fakes.repository.stageDocuments.set(`${runId}:request`, persisted);
+    const runWrites = fakes.repository.runWrites.length;
+    const stageWrites = fakes.repository.stageWrites.length;
+    await expect(runVerification({ runId, request: supplied, dependencies: fakes.dependencies })).rejects.toThrow("resume request identity/structural mismatch");
+    expect(fakes.repository.runs.has(runId)).toBe(false);
+    expect(fakes.repository.runWrites.length).toBe(runWrites);
+    expect(fakes.repository.stageWrites.length).toBe(stageWrites);
+    expect(fakes.executorCalls).toBe(0);
+  });
   test("requires full request equality and rejects changed basis before side effects", async () => {
     const fakes = makeDependencies();
     let artifactCalls = 0;
