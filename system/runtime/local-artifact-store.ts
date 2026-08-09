@@ -437,6 +437,7 @@ function outputArtifact(artifact: ArtifactLike): Artifact {
 
 /** Append-only, descriptor-pinned content-addressed artifact persistence. */
 export class LocalArtifactStore implements ArtifactStore {
+  readonly atomicSameKeyIdempotency = true;
   readonly rootDir: string;
   readonly fsync: boolean;
   private readonly rootFd: number;
