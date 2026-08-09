@@ -68,6 +68,15 @@ describe("context plan", () => {
     expect(validate(plan)).toBe(true);
     expect(validate({ ...plan, timestamp: "2026-08-09T00:00:00Z" })).toBe(false);
   });
+
+  test("rebuilds segments without caller-owned extra fields", () => {
+    const injected = { ...segments[0]!, injected: "not-in-contract" };
+    const input = [injected, ...segments.slice(1)] as ContextSegment[];
+    const plan = buildContextPlan(input);
+    const rebuilt = plan.segments.find(segment => segment.id === injected.id);
+    if (!rebuilt) throw new Error("missing rebuilt segment");
+    expect(Object.hasOwn(rebuilt, "injected")).toBe(false);
+  });
 });
 
 describe("context cache key", () => {

@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
@@ -51,5 +51,14 @@ describe("local content-addressed context cache", () => {
   test("rejects malformed keys before filesystem access", async () => {
     const store = await cache();
     await expect(store.get("sha256:../escape" as `sha256:${string}`)).rejects.toThrow("invalid context cache key");
+  });
+
+  test("rejects a symlinked cache directory without writing outside the root", async () => {
+    const store = await cache();
+    const outside = await mkdtemp(join(tmpdir(), "traceknot-context-cache-outside-"));
+    roots.push(outside);
+    await symlink(outside, join(store.root, "sha256"));
+    await expect(store.put(key, { privateContext: true })).rejects.toThrow();
+    expect(await readdir(outside)).toEqual([]);
   });
 });

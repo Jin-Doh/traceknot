@@ -1,8 +1,20 @@
 import { randomUUID } from "node:crypto";
-import { constants } from "node:fs";
-import { link, mkdir, open, type FileHandle, unlink } from "node:fs/promises";
+import { closeSync, constants, fstatSync, writeSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { canonicalJson, isSha256Digest, sha256Digest, type JsonValue, type Sha256Digest } from "./context-plan";
+import {
+  ArtifactPathError,
+  assertSecureRoot,
+  closeSecureRoot,
+  openSecureRoot,
+  readSecureRegularFile,
+  secureFlock,
+  secureFsync,
+  secureOpenAt,
+  secureRenameAt,
+  secureUnlinkAt,
+  type SecureRootDescriptor,
+} from "./local-artifact-store";
 
 export type ContextCacheObject = Readonly<{
   schemaVersion: "context-cache-object/v1";
@@ -15,6 +27,9 @@ export class ContextCacheIntegrityError extends Error {}
 export class ContextCacheCollisionError extends Error {}
 const O_NOFOLLOW = constants.O_NOFOLLOW ?? 0;
 const O_CLOEXEC = (constants as Record<string, number | undefined>).O_CLOEXEC ?? 0;
+const LOCK_EX = 2;
+const LOCK_UN = 8;
+const MAX_CACHE_OBJECT_BYTES = 64 << 20;
 
 function exactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
   const actual = Object.keys(value).sort();
@@ -56,30 +71,26 @@ export class LocalContextCache {
     this.root = resolve(root);
   }
 
-  private path(key: Sha256Digest): string {
+  private name(key: Sha256Digest): string {
     if (!isSha256Digest(key)) throw Error("invalid context cache key");
-    return join(this.root, "sha256", key.slice("sha256:".length));
+    return key.slice("sha256:".length);
   }
 
   async get<T extends JsonValue = JsonValue>(key: Sha256Digest): Promise<T | undefined> {
-    const path = this.path(key);
-    let handle: FileHandle | undefined;
+    const name = this.name(key);
+    const directory = await openSecureRoot(join(this.root, "sha256"));
     try {
-      handle = await open(path, constants.O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
-      if (!(await handle.stat()).isFile()) throw new ContextCacheIntegrityError("context cache object must be a regular file");
-      const object = parseObject(await handle.readFile({ encoding: "utf8" }), key);
+      assertSecureRoot(directory);
+      const object = await readObject(directory, name, key);
+      if (!object) return undefined;
       return structuredClone(object.payload) as T;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-      if ((error as NodeJS.ErrnoException).code === "ELOOP") throw new ContextCacheIntegrityError("context cache object cannot be a symbolic link");
-      throw error;
     } finally {
-      await handle?.close();
+      await closeSecureRoot(directory);
     }
   }
 
   async put<T extends JsonValue>(key: Sha256Digest, payload: T): Promise<ContextCacheObject> {
-    const path = this.path(key);
+    const name = this.name(key);
     const canonicalPayload = canonicalJson(payload);
     const object = Object.freeze({
       schemaVersion: "context-cache-object/v1" as const,
@@ -87,32 +98,61 @@ export class LocalContextCache {
       payloadDigest: sha256Digest(canonicalPayload),
       payload: structuredClone(payload),
     });
-    const existing = await this.get(key);
-    if (existing !== undefined) {
-      if (canonicalJson(existing) !== canonicalPayload) throw new ContextCacheCollisionError("context cache key collision");
+    const directory = await openSecureRoot(join(this.root, "sha256"));
+    const temporary = `.${name}.${process.pid}.${randomUUID()}.tmp`;
+    let lock: number | undefined;
+    let locked = false;
+    let temporaryExists = false;
+    try {
+      lock = secureOpenAt(directory.fd, ".context-cache.lock", constants.O_RDWR | constants.O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600);
+      if (!fstatSync(lock).isFile()) throw new ContextCacheIntegrityError("context cache lock must be a regular file");
+      secureFlock(lock, LOCK_EX);
+      locked = true;
+      assertSecureRoot(directory);
+      const existing = await readObject(directory, name, key);
+      if (existing) {
+        if (canonicalJson(existing.payload) !== canonicalPayload) throw new ContextCacheCollisionError("context cache key collision");
+        return object;
+      }
+      const descriptor = secureOpenAt(directory.fd, temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600);
+      temporaryExists = true;
+      try {
+        const bytes = Buffer.from(`${canonicalJson(object)}\n`, "utf8");
+        for (let offset = 0; offset < bytes.byteLength;) {
+          const written = writeSync(descriptor, bytes, offset, bytes.byteLength - offset);
+          if (written <= 0) throw new ContextCacheIntegrityError("context cache write made no progress");
+          offset += written;
+        }
+        secureFsync(descriptor);
+      } finally {
+        closeSync(descriptor);
+      }
+      assertSecureRoot(directory);
+      secureRenameAt(directory.fd, temporary, directory.fd, name);
+      temporaryExists = false;
+      secureFsync(directory.fd);
       return object;
-    }
-    const directory = join(this.root, "sha256");
-    await mkdir(directory, { recursive: true, mode: 0o700 });
-    const temporary = join(directory, `.${key.slice("sha256:".length)}.${process.pid}.${randomUUID()}.tmp`);
-    const handle = await open(temporary, "wx", 0o600);
-    try {
-      await handle.writeFile(`${canonicalJson(object)}\n`, "utf8");
-      await handle.sync();
     } finally {
-      await handle.close();
+      try {
+        if (temporaryExists) secureUnlinkAt(directory.fd, temporary);
+      } finally {
+        try {
+          if (locked && lock !== undefined) secureFlock(lock, LOCK_UN);
+        } finally {
+          if (lock !== undefined) closeSync(lock);
+          await closeSecureRoot(directory);
+        }
+      }
     }
-    try {
-      await link(temporary, path);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      const raced = await this.get(key);
-      if (raced === undefined || canonicalJson(raced) !== canonicalPayload) throw new ContextCacheCollisionError("context cache key collision");
-    } finally {
-      await unlink(temporary).catch(error => {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      });
-    }
-    return object;
+  }
+}
+
+async function readObject(directory: SecureRootDescriptor, name: string, key: Sha256Digest): Promise<ContextCacheObject | undefined> {
+  try {
+    const bytes = await readSecureRegularFile(directory.fd, name, MAX_CACHE_OBJECT_BYTES);
+    return parseObject(new TextDecoder("utf-8", { fatal: true }).decode(bytes), key);
+  } catch (error) {
+    if (error instanceof ArtifactPathError && error.message.includes("(errno 2)")) return undefined;
+    throw error;
   }
 }

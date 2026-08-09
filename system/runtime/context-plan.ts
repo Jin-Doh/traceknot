@@ -86,7 +86,13 @@ export function buildContextPlan(input: readonly ContextSegment[]): ContextPlan 
   const segments = SEGMENT_ORDER.map(id => {
     const segment = byId.get(id);
     if (!segment) throw Error(`missing context segment: ${id}`);
-    return Object.freeze({ ...segment });
+    return Object.freeze({
+      id: segment.id,
+      stability: segment.stability,
+      digest: segment.digest,
+      cachePolicy: segment.cachePolicy,
+      sensitivity: segment.sensitivity,
+    });
   });
   return Object.freeze({ schemaVersion: "context-plan/v1", segments: Object.freeze(segments) });
 }
