@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { constants, fstatSync, readSync, realpathSync, writeSync } from "node:fs";
+import { constants, fstatSync, readSync, realpathSync, statSync, writeSync } from "node:fs";
 import { open, type FileHandle } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { dlopen, FFIType, read as ffiRead } from "bun:ffi";
@@ -49,9 +49,9 @@ function loadNative(): Native | undefined {
       renameat: { args: [FFIType.i32, FFIType.cstring, FFIType.i32, FFIType.cstring], returns: FFIType.i32 },
       unlinkat: { args: [FFIType.i32, FFIType.cstring, FFIType.i32], returns: FFIType.i32 },
       linkat: { args: [FFIType.i32, FFIType.cstring, FFIType.i32, FFIType.cstring, FFIType.i32], returns: FFIType.i32 },
-      close: { args: [FFIType.i32], returns: FFIType.i32 },
       fchmod: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
       fsync: { args: [FFIType.i32], returns: FFIType.i32 },
+      close: { args: [FFIType.i32], returns: FFIType.i32 },
       flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
       [errnoSymbol]: { args: [], returns: FFIType.ptr },
     });
@@ -122,6 +122,113 @@ function cstring(value: string): Buffer {
 function check(result: number, action: string): number {
   if (result >= 0) return result;
   throw new ArtifactPathError(`${action} failed (errno ${errno()})`);
+}
+export type SecureRootDescriptor = Readonly<{
+  readonly rootDir: string;
+  readonly canonical: string;
+  readonly fd: number;
+  readonly device: number;
+  readonly inode: number;
+  readonly handle: FileHandle;
+}>;
+
+const DIRECTORY_FLAGS = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | (constants.O_NOFOLLOW ?? 0) | ((constants as Record<string, number | undefined>).O_CLOEXEC ?? 0);
+const FILE_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | ((constants as Record<string, number | undefined>).O_CLOEXEC ?? 0);
+
+export async function openSecureRoot(rootDir: string): Promise<SecureRootDescriptor> {
+  if (typeof rootDir !== "string" || rootDir.length === 0) throw new ArtifactPathError("root directory is required");
+  const candidate = resolve(rootDir);
+  let handle: FileHandle | undefined;
+  try {
+    handle = await open(candidate, DIRECTORY_FLAGS);
+    const descriptorStat = fstatSync(handle.fd);
+    if (!descriptorStat.isDirectory()) throw new ArtifactPathError("root directory must be a directory");
+    const pathStat = statSync(candidate);
+    if (pathStat.dev !== descriptorStat.dev || pathStat.ino !== descriptorStat.ino) throw new ArtifactPathError("root directory changed while opening");
+    const canonical = realpathSync(candidate);
+    return { rootDir: candidate, canonical, fd: handle.fd, device: descriptorStat.dev, inode: descriptorStat.ino, handle };
+  } catch (error) {
+    await handle?.close().catch(() => undefined);
+    if (error instanceof ArtifactStoreError) throw error;
+    throw new ArtifactPathError(`root directory cannot be opened: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+export function assertSecureRoot(root: SecureRootDescriptor): void {
+  let pathStat;
+  try { pathStat = statSync(root.rootDir); } catch (error) { throw new ArtifactPathError(`root directory changed: ${error instanceof Error ? error.message : String(error)}`); }
+  if (pathStat.dev !== root.device || pathStat.ino !== root.inode) throw new ArtifactPathError("root directory changed");
+}
+
+export async function closeSecureRoot(root: SecureRootDescriptor): Promise<void> {
+  await root.handle.close().catch(() => undefined);
+}
+
+function validateComponents(relativePath: string): string[] {
+  if (typeof relativePath !== "string" || relativePath.length === 0 || isAbsolute(relativePath) || relativePath.includes("\0")) throw new ArtifactPathError("relative path is required");
+  const components = relativePath.split("/");
+  if (components.some(component => component.length === 0 || component === "." || component === "..")) throw new ArtifactPathError("relative path contains an unsafe component");
+  return components;
+}
+
+export function openSecureDirectory(rootFd: number, relativePath: string): number {
+  const components = relativePath === "" ? [] : validateComponents(relativePath);
+  let descriptor = check(native().symbols.openat(rootFd, cstring("."), DIRECTORY_FLAGS, 0), "open root directory");
+  try {
+    for (const component of components) {
+      const next = check(native().symbols.openat(descriptor, cstring(component), DIRECTORY_FLAGS, 0), `open directory ${component}`);
+      closeFd(descriptor);
+      descriptor = next;
+    }
+    return descriptor;
+  } catch (error) {
+    closeFd(descriptor);
+    throw error;
+  }
+}
+
+export function openSecureRegularFile(rootFd: number, relativePath: string): number {
+  const components = validateComponents(relativePath);
+  const name = components.pop()!;
+  const parent = openSecureDirectory(rootFd, components.join("/"));
+  try {
+    const descriptor = check(native().symbols.openat(parent, cstring(name), FILE_FLAGS, 0), `open file ${name}`);
+    const descriptorStat = fstatSync(descriptor);
+    if (!descriptorStat.isFile()) {
+      closeFd(descriptor);
+      throw new ArtifactPathError("artifact must be a regular file");
+    }
+    return descriptor;
+  } finally {
+    closeFd(parent);
+  }
+}
+
+export async function readSecureRegularFile(rootFd: number, relativePath: string, limit: number): Promise<Uint8Array> {
+  const descriptor = openSecureRegularFile(rootFd, relativePath);
+  try {
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const chunk = new Uint8Array(Math.min(64 * 1024, limit - total + 1));
+      const bytesRead = readSync(descriptor, chunk, 0, chunk.byteLength, null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      if (total > limit) throw new ArtifactPathError("artifact exceeds the configured byte bound");
+      chunks.push(chunk.subarray(0, bytesRead));
+      await Promise.resolve();
+    }
+    const result = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.byteLength; }
+    return result;
+  } finally {
+    closeFd(descriptor);
+  }
+}
+
+export function closeSecureDescriptor(descriptor: number): void {
+  closeFd(descriptor);
 }
 function closeFd(fd: number | undefined): void {
   if (fd !== undefined && NATIVE) NATIVE.symbols.close(fd);
