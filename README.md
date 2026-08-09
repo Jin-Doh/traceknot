@@ -137,7 +137,7 @@ Use Traceknot for implementation verification, bug-fix confirmation, release che
 | Canonical QA record schemas | **Available.** Closed JSON Schema Draft 2020-12 contracts |
 | Proof-carrying evidence records | **Available.** Observation, claim, evaluation, success-criterion, traceability, and verification-run contracts |
 | Host-neutral verdict core | **Available.** Emits `authoritative: false` |
-| Capability manifests | **Available.** Static manifests are conservative and grant no runtime capability |
+| Shared capability model and manifests | **Available.** One closed nine-field model governs v2 manifests and runtime discovery; static host names grant no capability |
 | User-local full-toolkit installer and updater | **Available.** GitHub release artifacts, digest, and provenance verification |
 | End-to-end `traceknot verify` CLI | **Available.** Validated explicit-command manifests, snapshot-bound evidence, durable resume/report, JSON or Markdown output |
 | Native OMP, Codex, Claude Code, OpenCode, or GajaeCode adapters | **Not implemented.** A host name alone grants no capability |

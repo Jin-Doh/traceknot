@@ -21,6 +21,9 @@ const fixtureRoot = resolve(import.meta.dir, "../contracts/fixtures");
 const schema = JSON.parse(
   readFileSync(resolve(import.meta.dir, "../contracts/risk-discovery-report.schema.json"), "utf8"),
 ) as object;
+const capabilityModelSchema = JSON.parse(
+  readFileSync(resolve(import.meta.dir, "../contracts/capability-model.schema.json"), "utf8"),
+) as object;
 const validReport = JSON.parse(
   readFileSync(join(fixtureRoot, "risk-discovery-report.valid.json"), "utf8"),
 ) as unknown;
@@ -50,6 +53,7 @@ const acceptedSourceCandidateReport = JSON.parse(
   readFileSync(join(fixtureRoot, "risk-discovery-report.valid-source-candidate-accepted-risk.json"), "utf8"),
 ) as unknown;
 const ajv = new Ajv2020({ strict: true, allErrors: true });
+ajv.addSchema(capabilityModelSchema);
 const validate = ajv.compile(schema);
 
 

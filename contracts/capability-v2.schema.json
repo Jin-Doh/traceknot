@@ -10,20 +10,7 @@
     "host": { "type": "string", "minLength": 1 },
     "adapterVersion": { "type": "string", "minLength": 1 },
     "capabilities": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["executeCommands", "executeBrowser", "captureArtifacts", "bindSnapshot", "provideIndependentEvidence", "persistEvidence", "approveExceptions", "isolatedReadOnlyReview", "enforcedStructuredOutput"],
-      "properties": {
-        "executeCommands": { "type": "boolean" },
-        "executeBrowser": { "type": "boolean" },
-        "captureArtifacts": { "type": "boolean" },
-        "bindSnapshot": { "type": "boolean" },
-        "provideIndependentEvidence": { "type": "boolean" },
-        "persistEvidence": { "type": "boolean" },
-        "approveExceptions": { "type": "boolean" },
-        "isolatedReadOnlyReview": { "type": "boolean" },
-        "enforcedStructuredOutput": { "type": "boolean" }
-      }
+      "$ref": "https://traceknot.kyungho.info/schemas/capability-model.v1.json"
     },
     "limitations": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
   }
