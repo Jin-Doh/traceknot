@@ -1,5 +1,5 @@
 import { resolveProofCarryingQaVerdict, type Artifact, type CoverageInput, type DefectSummary, type EvidenceClaim, type EvidenceEvaluation, type Execution, type IndependenceLevel, type Observation, type ProofCarryingObligation, type Producer, type SuccessCriterion, type TraceabilityLink, type VerdictResult } from "../core/qa-core";
-import { isCanonicalUtcTimestamp } from "../core/canonical-time";
+import { addMillisecondsToCanonicalUtcTimestamp, compareCanonicalUtcTimestamps, isCanonicalUtcTimestamp } from "../core/canonical-time";
 export type MaybePromise<T> = T | PromiseLike<T>; export type Clock = () => string | Date;
 export const RUN_STATES=["CREATED","BASIS_ESTABLISHED","DISCOVERY_COMPLETED","PLANNED","EXECUTING","EVIDENCE_EVALUATED","VERDICT_RESOLVED","TERMINAL"] as const; export type RunState=(typeof RUN_STATES)[number];
 export type CanonicalRunState=Readonly<{schemaVersion:"verification-run/v1";runId:string;requestId:string;rootIdentity:string;snapshotId:string;state:RunState;observationIds:readonly string[];claimIds:readonly string[];evaluationIds:readonly string[];revision:number;createdAt:string;updatedAt:string}>;
@@ -112,9 +112,7 @@ function validArtifact(value: unknown): value is CanonicalVerificationResultArti
 const validDate = isCanonicalUtcTimestamp;
 function canonicalExecution(value: unknown): Execution | undefined {
   if (!isRecord(value) || !EXECUTION_KINDS.includes(value.kind as Execution["kind"]) || typeof value.identity !== "string" || !value.identity || !validDate(value.startedAt) || !validDate(value.finishedAt) || !EXIT_STATUSES.includes(value.exitStatus as Execution["exitStatus"]) || (value.exitCode !== undefined && (typeof value.exitCode !== "number" || !Number.isInteger(value.exitCode)))) return undefined;
-  const startedAt = Date.parse(value.startedAt);
-  const finishedAt = Date.parse(value.finishedAt);
-  if (finishedAt < startedAt) return undefined;
+  if (compareCanonicalUtcTimestamps(value.finishedAt, value.startedAt) < 0) return undefined;
   return { kind: value.kind as Execution["kind"], identity: value.identity, startedAt: value.startedAt, finishedAt: value.finishedAt, exitStatus: value.exitStatus as Execution["exitStatus"], ...(value.exitCode === undefined ? {} : { exitCode: value.exitCode }) };
 }
 function validExecution(value: unknown): value is Execution {
@@ -152,7 +150,7 @@ function freeze<T>(value: T): T {
 function clockNow(clock: Clock): string {
   const value = clock();
   const result = value instanceof Date ? value.toISOString() : value;
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(result) || Number.isNaN(Date.parse(result))) throw new Error("clock must return canonical ISO date-time");
+  if (!isCanonicalUtcTimestamp(result)) throw new Error("clock must return canonical ISO date-time");
   return result;
 }
 function validRequest(request: unknown): void {
@@ -186,6 +184,7 @@ export function createInitialRun(runId: string, request: VerificationRequest, no
 }
 function assertCanonicalRun(value: unknown, expectedRunId?: string): asserts value is CanonicalRunState {
   const sortedUnique = (ids: readonly unknown[]): boolean => ids.every((id, index) => typeof id === "string" && Boolean(id) && (index === 0 || (typeof ids[index - 1] === "string" && compareCodeUnits(ids[index - 1] as string, id) < 0)));
+  if (isRecord(value) && validDate(value.createdAt) && validDate(value.updatedAt) && compareCanonicalUtcTimestamps(value.updatedAt, value.createdAt) < 0) throw new Error("invalid persisted run");
   if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "runId", "requestId", "rootIdentity", "snapshotId", "state", "observationIds", "claimIds", "evaluationIds", "revision", "createdAt", "updatedAt"]) || value.schemaVersion !== "verification-run/v1" || (expectedRunId !== undefined && value.runId !== expectedRunId) || typeof value.runId !== "string" || !value.runId || typeof value.requestId !== "string" || !value.requestId || typeof value.rootIdentity !== "string" || !value.rootIdentity || typeof value.snapshotId !== "string" || !value.snapshotId || !RUN_STATES.includes(value.state as RunState) || typeof value.revision !== "number" || !Number.isSafeInteger(value.revision) || value.revision < 0 || !validDate(value.createdAt) || !validDate(value.updatedAt) || Date.parse(value.updatedAt) < Date.parse(value.createdAt) || !Array.isArray(value.observationIds) || !Array.isArray(value.claimIds) || !Array.isArray(value.evaluationIds) || [value.observationIds, value.claimIds, value.evaluationIds].some(ids => !sortedUnique(ids))) throw new Error("invalid persisted run");
 }
 export function transitionRunState(run: CanonicalRunState, nextState: RunState, updatedAt: string): CanonicalRunState {
@@ -193,7 +192,7 @@ export function transitionRunState(run: CanonicalRunState, nextState: RunState, 
   const current = RUN_STATES.indexOf(run.state);
   const next = RUN_STATES.indexOf(nextState);
   if (current < 0 || next !== current + 1) throw new Error(`invalid run transition ${run.state} -> ${nextState}`);
-  if (!validDate(updatedAt) || Date.parse(updatedAt) < Date.parse(run.updatedAt)) throw new Error("updatedAt must be canonical and monotonic");
+  if (!validDate(updatedAt) || compareCanonicalUtcTimestamps(updatedAt, run.updatedAt) < 0) throw new Error("updatedAt must be canonical and monotonic");
   return freeze({ schemaVersion: "verification-run/v1", runId: run.runId, requestId: run.requestId, rootIdentity: run.rootIdentity, snapshotId: run.snapshotId, state: nextState, observationIds: [...run.observationIds], claimIds: [...run.claimIds], evaluationIds: [...run.evaluationIds], revision: run.revision + 1, createdAt: run.createdAt, updatedAt });
 }
 export const transitionRun = transitionRunState;
@@ -312,7 +311,7 @@ function dispatchClaimKeyFor(request: VerificationExecutionRequest): string {
   return `verification-dispatch:${canonicalSha256([request.runId, request.requestId, request.rootIdentity, request.snapshotId, request.planDigest, request.obligation.id, request.idempotencyKey])}`;
 }
 function dispatchClaimFor(request: VerificationExecutionRequest, ownerId: string, now: string, duration: number): DispatchClaim {
-  return { schemaVersion: "verification-dispatch-claim/v1", claimKey: dispatchClaimKeyFor(request), acquisitionId: globalThis.crypto.randomUUID(), runId: request.runId, requestId: request.requestId, rootIdentity: request.rootIdentity, snapshotId: request.snapshotId, planDigest: request.planDigest, obligationId: request.obligation.id, idempotencyKey: request.idempotencyKey, ownerId, leaseGeneration: 1, leaseExpiresAt: new Date(Date.parse(now) + duration).toISOString() };
+  return { schemaVersion: "verification-dispatch-claim/v1", claimKey: dispatchClaimKeyFor(request), acquisitionId: globalThis.crypto.randomUUID(), runId: request.runId, requestId: request.requestId, rootIdentity: request.rootIdentity, snapshotId: request.snapshotId, planDigest: request.planDigest, obligationId: request.obligation.id, idempotencyKey: request.idempotencyKey, ownerId, leaseGeneration: 1, leaseExpiresAt: addMillisecondsToCanonicalUtcTimestamp(now, duration) };
 }
 function validDispatchClaim(value: unknown): value is DispatchClaim {
   return isRecord(value) && exactOwnKeys(value, ["schemaVersion", "claimKey", "acquisitionId", "runId", "requestId", "rootIdentity", "snapshotId", "planDigest", "obligationId", "idempotencyKey", "ownerId", "leaseGeneration", "leaseExpiresAt"]) && value.schemaVersion === "verification-dispatch-claim/v1" && typeof value.claimKey === "string" && value.claimKey.startsWith("verification-dispatch:") && typeof value.acquisitionId === "string" && ACQUISITION_ID.test(value.acquisitionId) && typeof value.runId === "string" && Boolean(value.runId) && typeof value.requestId === "string" && Boolean(value.requestId) && typeof value.rootIdentity === "string" && Boolean(value.rootIdentity) && typeof value.snapshotId === "string" && Boolean(value.snapshotId) && typeof value.planDigest === "string" && REQUEST_DIGEST.test(value.planDigest) && typeof value.obligationId === "string" && Boolean(value.obligationId) && validExecutionKey(value.idempotencyKey) && typeof value.ownerId === "string" && Boolean(value.ownerId) && typeof value.leaseGeneration === "number" && Number.isInteger(value.leaseGeneration) && value.leaseGeneration > 0 && validDate(value.leaseExpiresAt);
@@ -332,7 +331,7 @@ async function claimExecutionDispatch(repository: RepositoryPort, request: Verif
     if (!isRecord(result) || !exactOwnKeys(result, ["claimed", "status", "claim", "outputStored"], ["completion"]) || typeof result.claimed !== "boolean" || (result.status !== "CLAIMED" && result.status !== "COMPLETED") || typeof result.outputStored !== "boolean" || !validDispatchClaim(result.claim) || (result.completion !== undefined && !isRecord(result.completion))) throw Error("invalid dispatch claim result");
     if (!stableDispatchClaimMatches(result.claim, request)) throw Error("dispatch claim binding mismatch");
     if (result.claimed) {
-      if (result.status !== "CLAIMED" || result.outputStored || result.completion !== undefined || result.claim.ownerId !== claim.ownerId || result.claim.acquisitionId !== claim.acquisitionId || Date.parse(result.claim.leaseExpiresAt) <= Date.parse(now)) throw Error("invalid dispatch claim result");
+      if (result.status !== "CLAIMED" || result.outputStored || result.completion !== undefined || result.claim.ownerId !== claim.ownerId || result.claim.acquisitionId !== claim.acquisitionId || compareCanonicalUtcTimestamps(result.claim.leaseExpiresAt, now) <= 0) throw Error("invalid dispatch claim result");
       return { owned: true, outputStored: false, claim: result.claim };
     }
     if (result.status === "CLAIMED") throw Error("dispatch claim already exists");
@@ -579,7 +578,7 @@ async function assertCanonicalVerdict(input: ResolveVerdictInput, persisted: Ver
 }
 function touchRun(run: CanonicalRunState, updatedAt: string): CanonicalRunState {
   assertCanonicalRun(run);
-  if (!validDate(updatedAt) || Date.parse(updatedAt) < Date.parse(run.updatedAt)) throw Error("updatedAt must be canonical and monotonic");
+  if (!validDate(updatedAt) || compareCanonicalUtcTimestamps(updatedAt, run.updatedAt) < 0) throw Error("updatedAt must be canonical and monotonic");
   return freeze({ schemaVersion: "verification-run/v1", runId: run.runId, requestId: run.requestId, rootIdentity: run.rootIdentity, snapshotId: run.snapshotId, state: run.state, observationIds: [...run.observationIds], claimIds: [...run.claimIds], evaluationIds: [...run.evaluationIds], revision: run.revision + 1, createdAt: run.createdAt, updatedAt });
 }
 async function commitStageAndRun(repository: RepositoryPort, run: CanonicalRunState, stage: StageName | undefined, document: StageDocument | undefined, expectedRevision = run.revision - 1): Promise<CanonicalRunState> {
@@ -689,6 +688,10 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
           throw error;
         }
         finishedAt = clockNow(input.dependencies.now);
+        if (compareCanonicalUtcTimestamps(finishedAt, startedAt) < 0) {
+          await releaseClaim(true);
+          throw Error("execution clock moved backwards");
+        }
         if (output) {
           try {
             if (!outputExitCodeMatchesStatus(output)) throw Error("executor output status contradicts exit code");
@@ -842,14 +845,13 @@ function canonicalEvaluatedAt(execution: ExecutionDocument): string {
   const dates = [...execution.observations.map(item => item.execution.finishedAt), ...execution.evidence.map(item => item.observedAt)].filter(validDate);
   const evaluatedAt = dates.reduce<string | undefined>((selected, candidate) => {
     if (!selected) return candidate;
-    const candidateInstant = Date.parse(candidate);
-    const selectedInstant = Date.parse(selected);
-    return candidateInstant > selectedInstant || (candidateInstant === selectedInstant && candidate > selected) ? candidate : selected;
+    return compareCanonicalUtcTimestamps(candidate, selected) > 0 ? candidate : selected;
   }, undefined);
   if (!evaluatedAt) throw Error("execution has no canonical evaluation timestamp");
   for (const claim of execution.claims) {
     const observation = execution.observations.find(item => item.observationId === claim.observationIds[0]);
-    if (!observation || Date.parse(evaluatedAt) < Math.max(Date.parse(observation.execution.finishedAt), Date.parse(execution.evidence.find(item => item.obligationId === claim.obligationId)?.observedAt ?? observation.execution.finishedAt))) throw Error("evaluation timestamp precedes referenced observation");
+    const observedAt = execution.evidence.find(item => item.obligationId === claim.obligationId)?.observedAt ?? observation?.execution.finishedAt;
+    if (!observation || !observedAt || compareCanonicalUtcTimestamps(evaluatedAt, observation.execution.finishedAt) < 0 || compareCanonicalUtcTimestamps(evaluatedAt, observedAt) < 0) throw Error("evaluation timestamp precedes referenced observation");
   }
   return evaluatedAt;
 }
@@ -878,7 +880,7 @@ async function evaluateEvidence(input: EvaluateEvidenceInput): Promise<EvidenceD
   const evaluatedAt = canonicalEvaluatedAt(input.execution);
   const freshnessEvaluatedAt = input.freshnessEvaluatedAt ?? clockNow(input.dependencies.now);
   if (!validDate(freshnessEvaluatedAt)) throw Error("freshness evaluation timestamp must be canonical");
-  if (Date.parse(freshnessEvaluatedAt) < Date.parse(evaluatedAt)) throw Error("freshness evaluation timestamp precedes authenticated observation");
+  if (compareCanonicalUtcTimestamps(freshnessEvaluatedAt, evaluatedAt) < 0) throw Error("freshness evaluation timestamp precedes authenticated observation");
   const observations = new Map(input.execution.observations.map(item => [item.observationId, item]));
   const evidenceByObligation = new Map(input.execution.evidence.map(item => [item.obligationId, item]));
   const evaluations = await Promise.all([...input.execution.claims].sort((a,b)=>compareCodeUnits(a.claimId, b.claimId)).map(async claim => {

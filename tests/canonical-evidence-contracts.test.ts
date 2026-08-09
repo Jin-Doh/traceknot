@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { canonicalRequestDigest, type VerificationRequest } from "../system/runtime/verification-run";
-import { isCanonicalUtcDate, isCanonicalUtcTimestamp } from "../system/core/canonical-time";
+import { addMillisecondsToCanonicalUtcTimestamp, compareCanonicalUtcTimestamps, isCanonicalUtcDate, isCanonicalUtcTimestamp } from "../system/core/canonical-time";
 type ContractCase = {
   name: string;
   schema: string;
@@ -25,6 +25,16 @@ describe("canonical UTC time validation", () => {
   test("accepts real leap days and canonical fractional UTC timestamps", () => {
     expect(isCanonicalUtcDate("2024-02-29")).toBe(true);
     expect(isCanonicalUtcTimestamp("2024-02-29T23:59:59.123456Z")).toBe(true);
+  });
+
+  test("orders arbitrary fractional precision without millisecond truncation", () => {
+    expect(compareCanonicalUtcTimestamps("2026-08-03T00:00:00.0009Z", "2026-08-03T00:00:00.0001Z")).toBeGreaterThan(0);
+    expect(compareCanonicalUtcTimestamps("2026-08-03T00:00:00.1Z", "2026-08-03T00:00:00.1000Z")).toBe(0);
+    expect(compareCanonicalUtcTimestamps("2026-08-03T00:00:00Z", "2026-08-03T00:00:00.0001Z")).toBeLessThan(0);
+  });
+
+  test("adds lease milliseconds without dropping sub-millisecond precision", () => {
+    expect(addMillisecondsToCanonicalUtcTimestamp("2024-02-29T23:59:59.9999Z", 1)).toBe("2024-03-01T00:00:00.0009Z");
   });
 });
 
