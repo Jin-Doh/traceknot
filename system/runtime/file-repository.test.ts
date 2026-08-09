@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
 import { FileVerificationRepository, type VerificationStateMetadata } from "./file-repository";
-import type { CanonicalRunState, DispatchClaim } from "./verification-run";
+import type { CanonicalRunState, DispatchClaim, ExecutionCheckpointTransition } from "./verification-run";
 
 const metadata = (suffix: string): VerificationStateMetadata => ({ schemaVersion: "traceknot-cli-state/v1", rootIdentity: `root-${suffix}`, snapshotId: `snapshot-${suffix}`, manifestDigest: `manifest-${suffix}`, capabilities: ["command"] });
 
@@ -57,6 +57,9 @@ describe("FileVerificationRepository descriptor boundaries", () => {
       expect(await repository.completeExecutionDispatch({ ...takeover.claim, leaseGeneration: 1 }, undefined, "2026-08-03T00:01:02.000Z")).toBe(false);
       expect(await repository.releaseExecutionDispatch({ ...takeover.claim, ownerId: "stale-owner" }, "2026-08-03T00:01:02.000Z")).toBe(false);
       expect(await repository.releaseExecutionDispatch({ ...takeover.claim, leaseGeneration: 1 }, "2026-08-03T00:01:02.000Z")).toBe(false);
+      const checkpoint: ExecutionCheckpointTransition = { runId: "run", expectedRevision: 0, run: { ...run, revision: 1, updatedAt: "2026-08-03T00:01:02.000Z" }, document: { schemaVersion: "verification-execution/v1", requestId: "request", snapshotId: "snapshot", observations: [], claims: [], evidence: [], authorities: [], usageOutbox: [] } };
+      expect(await repository.commitExecutionCheckpoint(checkpoint, firstClaim)).toBe(false);
+      expect(await repository.commitExecutionCheckpoint(checkpoint, takeover.claim)).toBe(true);
       expect(await repository.completeExecutionDispatch(takeover.claim, undefined, "2026-08-03T00:01:02.000Z")).toBe(true);
     } finally { await repository.close(); await rm(root, { recursive: true, force: true }); }
   });

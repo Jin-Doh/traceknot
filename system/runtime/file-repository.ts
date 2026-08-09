@@ -4,6 +4,7 @@ import type {
   CanonicalRunState,
   DispatchClaim,
   DispatchClaimResult,
+  ExecutionCheckpointTransition,
   RepositoryPort,
   RepositoryTransition,
   StageDocument,
@@ -198,6 +199,7 @@ async function acquireStateLock(runFd: number): Promise<() => Promise<void>> {
 /** Atomic, append-oriented JSON repository used by the verify CLI. */
 export class FileVerificationRepository implements RepositoryPort {
   readonly generationFencedDispatchCompletion = true;
+  readonly generationFencedDispatchCheckpoint = true;
   readonly rootDir: string;
   private readonly operations = new Map<string, Promise<void>>();
   private rootPromise: Promise<SecureRootDescriptor> | undefined;
@@ -290,6 +292,16 @@ export class FileVerificationRepository implements RepositoryPort {
       const state = await this.loadStateAt(runFd);
       if (!state || !state.run || transition.expectedRevision !== undefined && state.run.revision !== transition.expectedRevision) return false;
       await this.saveStateAt(runFd, { ...state, run: transition.run, documents: { ...state.documents, evidence: transition.evidence, verdict: transition.verdict } });
+      return true;
+    });
+  }
+  async commitExecutionCheckpoint(transition: ExecutionCheckpointTransition, claim: DispatchClaim): Promise<boolean> {
+    return this.serialize(transition.runId, async runFd => {
+      const state = await this.loadStateAt(runFd);
+      const previous = state?.dispatch[claim.claimKey];
+      if (!state || !state.run || state.run.revision !== transition.expectedRevision || !previous || previous.status !== "CLAIMED" || previous.claim.ownerId !== claim.ownerId || previous.claim.leaseGeneration !== claim.leaseGeneration || previous.claim.acquisitionId !== claim.acquisitionId) return false;
+      if (transition.run.runId !== transition.runId) throw new Error("run identity mismatch");
+      await this.saveStateAt(runFd, { ...state, run: transition.run, documents: { ...state.documents, execution: transition.document } });
       return true;
     });
   }
