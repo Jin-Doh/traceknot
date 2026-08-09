@@ -340,6 +340,21 @@ test("canonical request digest is key-order stable and value/array-order sensiti
   const changedArrayOrder = { ...request, testBasis: [...request.testBasis].reverse() };
   expect(canonicalRequestDigest(changedArrayOrder)).not.toBe(canonicalRequestDigest(request));
 });
+test("orders canonical basis IDs by locale-independent code units", async () => {
+  const testBasis: VerificationRequest["testBasis"] = [
+    { id: "ä", kind: "acceptance-criterion", origin: "explicit", text: "Unicode basis", source: "request" },
+    { id: "z", kind: "invariant", origin: "explicit", text: "ASCII basis", source: "request" },
+  ];
+  const request = {
+    ...makeRequest("unicode-basis-order"),
+    testBasis,
+  } satisfies VerificationRequest;
+  const { dependencies } = makeDependencies();
+
+  const basis = await establishTestBasis({ request, dependencies });
+
+  expect(basis.basis.map(item => item.id)).toEqual(["z", "ä"]);
+});
 test.each(["fresh", "stale", "unknown"] as const)("requires the freshness policy to authenticate %s evidence", async status => {
   const fakes = makeDependencies();
   const freshnessInputs: Array<{ evaluatedAt: string; observedAt: string }> = [];
@@ -2681,6 +2696,43 @@ describe("verification run orchestration", () => {
     expect(first.run.state).toBe("TERMINAL");
     expect(resumed.run.state).toBe("TERMINAL");
     expect(issueCalls).toBe(1);
+  });
+  test("reissues a freshness authority when same-instant policy results change", async () => {
+    const fakes = makeDependencies();
+    const runId = "freshness-authority-same-instant-policy-change";
+    const request = {
+      ...makeRequest("freshness-authority-same-instant-policy-change-request"),
+      testBasis: [makeRequest().testBasis[0]!],
+    } satisfies VerificationRequest;
+    let status: "fresh" | "stale" = "fresh";
+    let issueCalls = 0;
+    const issueFreshnessAuthority = fakes.dependencies.freshnessAuthority.issueFreshnessAuthority!;
+    const verifyFreshnessAuthority = fakes.dependencies.freshnessAuthority.verifyFreshnessAuthority!;
+    const dependencies = {
+      ...fakes.dependencies,
+      freshnessPolicy: { evaluateFreshness: async () => status },
+      freshnessAuthority: {
+        issueFreshnessAuthority: async (binding: FreshnessAuthority["binding"]) => {
+          issueCalls++;
+          return issueFreshnessAuthority(binding);
+        },
+        verifyFreshnessAuthority: (authority: FreshnessAuthority, binding: FreshnessAuthority["binding"]) =>
+          verifyFreshnessAuthority(authority, binding),
+      },
+    } as unknown as VerificationRunDependencies;
+    const first = await runVerification({ runId, request, dependencies });
+    const originalRun = fakes.repository.runs.get(runId);
+    const originalEvidence = first.documents.evidence;
+    if (!originalRun || !originalEvidence) throw new Error("missing persisted freshness checkpoint");
+    status = "stale";
+    fakes.repository.runs.set(runId, { ...originalRun, state: "EVIDENCE_EVALUATED", updatedAt: FIXED_NOW });
+
+    const resumed = await runVerification({ runId, dependencies });
+
+    expect(issueCalls).toBe(2);
+    expect(resumed.documents.evidence?.freshnessAuthority).not.toEqual(originalEvidence.freshnessAuthority);
+    expect(resumed.documents.evidence?.evaluations.every(item => item.checks.fresh === false)).toBe(true);
+    expect(resumed.verdict.qaVerdict).not.toBe("PASS");
   });
   test.each(["EVIDENCE_EVALUATED", "TERMINAL"] as const)("re-evaluates a historical freshness checkpoint at the resumed instant on %s resume", async state => {
     const fakes = makeDependencies();
