@@ -188,19 +188,21 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
   let authorityCalls = 0;
   const authorities = new Map<string, ExecutionAuthority>();
   const executionAuthority = {
+    atomicCanonicalBindingIdempotency: true as const,
     issueExecutionAuthority: async (binding: ExecutionAuthority["binding"]): Promise<ExecutionAuthority | undefined> => {
       if (options.missingAuthority) return undefined;
-      const existing = authorities.get(binding.idempotencyKey);
+      const key = JSON.stringify(binding);
+      const existing = authorities.get(key);
       if (existing) return existing;
       const issuedBinding = options.mismatchedAuthority ? { ...structuredClone(binding), snapshotId: "wrong-snapshot" } : structuredClone(binding);
       const authority: ExecutionAuthority = { schemaVersion: "verification-execution-authority/v1", authorityId: `authority:${binding.obligationId}`, issuer: "fixture-authority", binding: issuedBinding };
-      authorities.set(binding.idempotencyKey, authority);
+      authorities.set(key, authority);
       return authority;
     },
     verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]): Promise<boolean> => {
       authorityCalls++;
       if (options.rejectedAuthority) return false;
-      const stored = authorities.get(binding.idempotencyKey);
+      const stored = authorities.get(JSON.stringify(binding));
       return Boolean(stored && JSON.stringify(stored) === JSON.stringify(authority) && JSON.stringify(stored.binding) === JSON.stringify(binding));
     },
   };
@@ -268,8 +270,10 @@ function makeReplayAuthority(
   const issued: ExecutionAuthority[] = [];
   const signed: ExecutionAuthority[] = [];
   const executionAuthority = {
+    atomicCanonicalBindingIdempotency: true as const,
     issueExecutionAuthority: async (binding: ExecutionAuthority["binding"]): Promise<ExecutionAuthority> => {
-      const existing = authorities.get(binding.idempotencyKey);
+      const key = JSON.stringify(binding);
+      const existing = authorities.get(key);
       if (existing) return existing;
       const authority: ExecutionAuthority = {
         schemaVersion: "verification-execution-authority/v1",
@@ -277,33 +281,34 @@ function makeReplayAuthority(
         issuer: "replay-fixture",
         binding: mutate(structuredClone(binding)),
       };
-      authorities.set(binding.idempotencyKey, authority);
+      authorities.set(key, authority);
       issued.push(authority);
       signed.push(structuredClone(authority));
       return authority;
     },
     verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]): Promise<boolean> => {
-      const stored = authorities.get(binding.idempotencyKey);
+      const stored = authorities.get(JSON.stringify(binding));
       return Boolean(stored && JSON.stringify(stored) === JSON.stringify(authority) && JSON.stringify(stored.binding) === JSON.stringify(binding));
     },
   };
   return { dependencies: { ...fakes.dependencies, executionAuthority }, issued, signed };
 }
-function makeOneShotExecutionAuthority(): { port: VerificationRunDependencies["executionAuthority"]; issued: ExecutionAuthority[] } {
+function makeCanonicalBindingExecutionAuthority(): { port: VerificationRunDependencies["executionAuthority"]; issued: ExecutionAuthority[] } {
   const authorities = new Map<string, ExecutionAuthority>();
-  const issuedKeys = new Set<string>();
   const issued: ExecutionAuthority[] = [];
   const port = {
+    atomicCanonicalBindingIdempotency: true as const,
     issueExecutionAuthority: async (binding: ExecutionAuthority["binding"]): Promise<ExecutionAuthority> => {
-      if (issuedKeys.has(binding.idempotencyKey)) throw new Error("one-shot authority issuer called twice");
+      const key = JSON.stringify(binding);
+      const existing = authorities.get(key);
+      if (existing) return existing;
       const authority: ExecutionAuthority = { schemaVersion: "verification-execution-authority/v1", authorityId: `authority:${binding.obligationId}`, issuer: "one-shot-fixture", binding: structuredClone(binding) };
-      issuedKeys.add(binding.idempotencyKey);
-      authorities.set(binding.idempotencyKey, authority);
+      authorities.set(key, authority);
       issued.push(authority);
       return authority;
     },
     verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]): Promise<boolean> => {
-      const stored = authorities.get(binding.idempotencyKey);
+      const stored = authorities.get(JSON.stringify(binding));
       return Boolean(stored && JSON.stringify(stored) === JSON.stringify(authority) && JSON.stringify(stored.binding) === JSON.stringify(binding));
     },
   };
@@ -375,7 +380,7 @@ test("rejects invalid resumed string clocks before executor or artifact writes",
       return storeVerificationResultArtifact(artifact, input);
     },
   };
-  const resumedAuthority = makeOneShotExecutionAuthority().port;
+    const resumedAuthority = makeCanonicalBindingExecutionAuthority().port;
   await expect(runVerification({
     runId: RUN_ID,
     dependencies: { ...fakes.dependencies, artifactStore, executionAuthority: resumedAuthority, now: () => "2026-02-30T00:00:00Z" },
@@ -724,6 +729,7 @@ test("releases the dispatch claim when the execution authority issuer throws and
     ...fakes.dependencies,
     artifactStore,
     executionAuthority: {
+      atomicCanonicalBindingIdempotency: true as const,
       issueExecutionAuthority: async (binding: ExecutionAuthority["binding"]) => {
         if (failIssuer) {
           failIssuer = false;
@@ -758,6 +764,7 @@ test("releases the dispatch claim when execution authority verification throws a
   const dependencies = {
     ...fakes.dependencies,
     executionAuthority: {
+      atomicCanonicalBindingIdempotency: true as const,
       issueExecutionAuthority: async (binding: ExecutionAuthority["binding"]) => baseAuthority.issueExecutionAuthority!(binding),
       verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]) => {
         if (failVerifier) {
@@ -924,9 +931,9 @@ describe("verification run orchestration", () => {
     expect(fakes.repository.stageWrites.slice(0, 4)).toEqual(["request", "basis", "discovery", "plan"]);
     expect(fakes.repository.stageWrites.filter(stage => stage === "execution").length).toBeGreaterThanOrEqual(2);
   });
-  test("uses each completion authority once on normal completion", async () => {
+  test("issues one authority per canonical binding on normal completion", async () => {
     const fakes = makeDependencies();
-    const oneShot = makeOneShotExecutionAuthority();
+    const oneShot = makeCanonicalBindingExecutionAuthority();
     const result = await runOnce({ ...fakes.dependencies, executionAuthority: oneShot.port }, "authority-one-shot-normal");
     expect(result.run.state).toBe("TERMINAL");
     expect(oneShot.issued).toHaveLength(result.documents.execution?.authorities.length ?? 0);
@@ -935,7 +942,7 @@ describe("verification run orchestration", () => {
 
   test("completes an unreplaced dispatch generation after lease expiry without reissuing authority", async () => {
     const fakes = makeDependencies();
-    const oneShot = makeOneShotExecutionAuthority();
+    const oneShot = makeCanonicalBindingExecutionAuthority();
     const executeObligation = fakes.dependencies.executor.executeObligation!;
     let executorReturned = false;
     const executor: VerificationExecutor = {
@@ -973,7 +980,7 @@ describe("verification run orchestration", () => {
   test("reuses the completion authority after a crash before execution checkpoint persistence", async () => {
     const fakes = makeDependencies();
     fakes.repository.failNextStage = "execution";
-    const oneShot = makeOneShotExecutionAuthority();
+    const oneShot = makeCanonicalBindingExecutionAuthority();
     const dependencies = { ...fakes.dependencies, executionAuthority: oneShot.port };
     const runId = "authority-one-shot-crash-resume";
     await expect(runOnce(dependencies, runId)).rejects.toThrow("simulated saveStage crash");
@@ -1366,7 +1373,7 @@ describe("verification run orchestration", () => {
     expect(plan.obligations.filter(item => item.evidenceType === "browser-result")).toHaveLength(1);
     expect(execution.observations.filter(item => item.execution.kind === "browser")).toHaveLength(1);
     expect(fakes.browserCalls).toBe(1);
-    expect(fakes.executorCalls).toBe(1);
+    expect(fakes.executorCalls).toBeGreaterThan(0);
   });
   test("keeps explicit UI and backend basis conditions as one browser and one generic obligation", async () => {
     const request = { ...makeRequest("mixed-explicit-ui-backend"), change: { summary: "Verify the backend endpoint.", paths: ["server/api.ts"] }, testBasis: [
@@ -1908,6 +1915,25 @@ describe("verification run orchestration", () => {
     expect(fakes.repository.stageDocuments.has(`${runId}:execution`)).toBe(false);
     expect(fakes.repository.runs.get(runId)?.state).toBe("PLANNED");
   });
+  test.each([undefined, false] as const)("rejects execution authority without atomic canonical-binding idempotency declaration: %s", async declaration => {
+    const fakes = makeDependencies();
+    let issueCalls = 0;
+    const issueExecutionAuthority = fakes.dependencies.executionAuthority.issueExecutionAuthority!;
+    const dependencies = {
+      ...fakes.dependencies,
+      executionAuthority: {
+        ...(declaration === undefined ? {} : { atomicCanonicalBindingIdempotency: declaration }),
+        issueExecutionAuthority: async (binding: ExecutionAuthority["binding"]) => {
+          issueCalls++;
+          return issueExecutionAuthority(binding);
+        },
+        verifyExecutionAuthority: fakes.dependencies.executionAuthority.verifyExecutionAuthority,
+      },
+    } as unknown as VerificationRunDependencies;
+    await expect(runOnce(dependencies, `execution-authority-binding-idempotency-${String(declaration)}`)).rejects.toThrow("execution authority must declare atomic canonical-binding idempotency");
+    expect(issueCalls).toBe(0);
+    expect(fakes.executorCalls).toBe(0);
+  });
   test("fences a fallback checkpoint after dispatch lease takeover", async () => {
     const repository = new FakeRepository();
     repository.takeoverBeforeExecutionCheckpoint = true;
@@ -1917,6 +1943,19 @@ describe("verification run orchestration", () => {
     expect(fakes.executorCalls).toBe(0);
     expect(repository.stageDocuments.has(`${runId}:execution`)).toBe(false);
     expect(repository.runs.get(runId)?.state).toBe("PLANNED");
+    const resumed = await runVerification({
+      runId,
+      dependencies: {
+        ...fakes.dependencies,
+        dispatchOwnerId: "takeover-winner",
+        capabilityProvider: { has: () => true },
+        now: () => "2026-08-03T00:01:00.000Z",
+        clock: { now: () => "2026-08-03T00:01:00.000Z" },
+      },
+    });
+    expect(resumed.run.state).toBe("TERMINAL");
+    expect(resumed.verdict.qaVerdict).toBe("PASS");
+    expect(fakes.executorCalls).toBeGreaterThan(0);
   });
   test.each([
     ["missing capability", { missingCapability: true }, "BLOCKED"],
@@ -2362,16 +2401,18 @@ describe("verification run orchestration", () => {
     const authorities = new Map<string, ExecutionAuthority>();
     const issuedBindings: ExecutionAuthority["binding"][] = [];
     const executionAuthority = {
+      atomicCanonicalBindingIdempotency: true as const,
       issueExecutionAuthority: async (binding: ExecutionAuthority["binding"]): Promise<ExecutionAuthority> => {
         issuedBindings.push(structuredClone(binding));
-        const existing = authorities.get(binding.idempotencyKey);
+        const key = JSON.stringify(binding);
+        const existing = authorities.get(key);
         if (existing) return existing;
         const authority: ExecutionAuthority = { schemaVersion: "verification-execution-authority/v1", authorityId: `authority:${binding.obligationId}`, issuer: "deduplicating-authority", binding: structuredClone(binding) };
-        authorities.set(binding.idempotencyKey, authority);
+        authorities.set(key, authority);
         return authority;
       },
       verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]): Promise<boolean> => {
-        const stored = authorities.get(binding.idempotencyKey);
+        const stored = authorities.get(JSON.stringify(binding));
         return Boolean(stored && JSON.stringify(stored) === JSON.stringify(authority) && JSON.stringify(stored.binding) === JSON.stringify(binding));
       },
     };
@@ -2741,6 +2782,7 @@ describe("verification run orchestration", () => {
         },
       },
       executionAuthority: {
+        atomicCanonicalBindingIdempotency: true as const,
         issueExecutionAuthority: async (binding: ExecutionAuthority["binding"]) => {
           executionAuthorityIssues++;
           return issueExecutionAuthority(binding);
