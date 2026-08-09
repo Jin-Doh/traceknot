@@ -706,7 +706,6 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
           await completeExecutionDispatch(input.dependencies.repository, lease.claim, completion, clockNow(input.dependencies.now));
           completionPersisted = true;
         } else {
-          await releaseClaim(false);
           output = undefined;
         }
       } else {
@@ -717,7 +716,6 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
         finishedAt = lease.completion.authority.binding.execution.finishedAt;
       }
     } else {
-      await releaseClaim(false);
       startedAt = clockNow(input.dependencies.now);
       finishedAt = startedAt;
     }
@@ -788,6 +786,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     }
     await persistCheckpoint();
     await flushPendingUsage();
+    await releaseClaim(false);
     } catch (error) {
       await releaseClaim(true);
       throw error;

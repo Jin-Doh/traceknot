@@ -2244,6 +2244,32 @@ describe("verification run orchestration", () => {
   });
 
 
+  test("keeps fallback dispatch ownership until the execution checkpoint commits", async () => {
+    const fakes = makeDependencies({ missingCapability: true });
+    const events: string[] = [];
+    const commitTransition = fakes.repository.commitTransition.bind(fakes.repository);
+    fakes.repository.commitTransition = async transition => {
+      if (transition.stage === "execution") events.push("checkpoint");
+      return commitTransition(transition);
+    };
+    const releaseExecutionDispatch = fakes.repository.releaseExecutionDispatch.bind(fakes.repository);
+    fakes.repository.releaseExecutionDispatch = async (claim, now) => {
+      events.push("release");
+      return releaseExecutionDispatch(claim, now);
+    };
+    const result = await runOnce(fakes.dependencies, "fallback-claim-order");
+    expect(result.documents.execution?.evidence.every(item => item.result.verdict === "BLOCKED")).toBe(true);
+    expect(events).toContain("release");
+    let checkpointCommitted = false;
+    for (const event of events) {
+      if (event === "checkpoint") checkpointCommitted = true;
+      if (event === "release") {
+        expect(checkpointCommitted).toBe(true);
+        checkpointCommitted = false;
+      }
+    }
+  });
+
   test("uses canonical unavailable provenance while preserving rejected evidence checks", async () => {
     const fakes = makeDependencies({ missingExecutorOutput: true });
     const result = await runOnce(fakes.dependencies);
