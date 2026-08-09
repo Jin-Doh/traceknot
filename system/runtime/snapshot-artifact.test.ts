@@ -184,6 +184,7 @@ test("local artifact store verifies bytes, preserves the caller path, and is ide
   try {
     await writeFile(source, bytes);
     const store = new LocalArtifactStore({ rootDir: join(root, "artifacts") });
+    expect(store.atomicSameKeyIdempotency).toBe(true);
     const first = await store.storeVerificationResultArtifact({ type: "verification-result", digest: artifactDigest, path: source }, request);
     const second = await store.putArtifact({ type: "verification-result", digest: artifactDigest, path: source }, request);
     expect(first).toEqual({ type: "verification-result", digest: artifactDigest, path: source });
