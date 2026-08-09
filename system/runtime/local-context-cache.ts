@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { lstat, link, mkdir, open, readFile, unlink } from "node:fs/promises";
+import { constants } from "node:fs";
+import { link, mkdir, open, type FileHandle, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { canonicalJson, isSha256Digest, sha256Digest, type JsonValue, type Sha256Digest } from "./context-plan";
 
@@ -12,6 +13,8 @@ export type ContextCacheObject = Readonly<{
 
 export class ContextCacheIntegrityError extends Error {}
 export class ContextCacheCollisionError extends Error {}
+const O_NOFOLLOW = constants.O_NOFOLLOW ?? 0;
+const O_CLOEXEC = (constants as Record<string, number | undefined>).O_CLOEXEC ?? 0;
 
 function exactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
   const actual = Object.keys(value).sort();
@@ -60,13 +63,18 @@ export class LocalContextCache {
 
   async get<T extends JsonValue = JsonValue>(key: Sha256Digest): Promise<T | undefined> {
     const path = this.path(key);
+    let handle: FileHandle | undefined;
     try {
-      if ((await lstat(path)).isSymbolicLink()) throw new ContextCacheIntegrityError("context cache object cannot be a symbolic link");
-      const object = parseObject(await readFile(path, "utf8"), key);
+      handle = await open(path, constants.O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+      if (!(await handle.stat()).isFile()) throw new ContextCacheIntegrityError("context cache object must be a regular file");
+      const object = parseObject(await handle.readFile({ encoding: "utf8" }), key);
       return structuredClone(object.payload) as T;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      if ((error as NodeJS.ErrnoException).code === "ELOOP") throw new ContextCacheIntegrityError("context cache object cannot be a symbolic link");
       throw error;
+    } finally {
+      await handle?.close();
     }
   }
 
