@@ -186,6 +186,27 @@ export function openSecureDirectory(rootFd: number, relativePath: string): numbe
     throw error;
   }
 }
+function validateName(name: string): Buffer {
+  if (typeof name !== "string" || name.length === 0 || name === "." || name === ".." || name.includes("/") || name.includes("\0")) throw new ArtifactPathError("unsafe directory entry name");
+  return cstring(name);
+}
+export function secureOpenAt(directoryFd: number, name: string, flags: number, mode = 0o600): number {
+  const descriptor = check(native().symbols.openat(directoryFd, validateName(name), flags, mode), `open ${name}`);
+  if ((flags & constants.O_CREAT) !== 0) secureChmod(descriptor, mode);
+  return descriptor;
+}
+export function secureMkdirAt(directoryFd: number, name: string, mode = 0o700): void {
+  check(native().symbols.mkdirat(directoryFd, validateName(name), mode), `mkdir ${name}`);
+}
+export function secureRenameAt(oldDirectoryFd: number, oldName: string, newDirectoryFd: number, newName: string): void {
+  check(native().symbols.renameat(oldDirectoryFd, validateName(oldName), newDirectoryFd, validateName(newName)), `rename ${oldName}`);
+}
+export function secureUnlinkAt(directoryFd: number, name: string): void {
+  check(native().symbols.unlinkat(directoryFd, validateName(name), 0), `unlink ${name}`);
+}
+export function secureFsync(descriptor: number): void { check(native().symbols.fsync(descriptor), "fsync"); }
+export function secureChmod(descriptor: number, mode: number): void { check(native().symbols.fchmod(descriptor, mode), "chmod"); }
+export function secureFlock(descriptor: number, operation: number): void { check(native().symbols.flock(descriptor, operation), "flock"); }
 
 export function openSecureRegularFile(rootFd: number, relativePath: string): number {
   const components = validateComponents(relativePath);

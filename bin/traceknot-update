@@ -1014,7 +1014,7 @@ EOF
         mkdir "$LEGACY_STAGING"
         while IFS= read -r relative; do
             [ -n "$relative" ] || continue
-            case "$relative" in LICENSE|skill/*|contracts/*|adapters/*|system/core/*|bin/*) ;; *) fail "unsafe legacy manifest entry: $relative" ;; esac
+            case "$relative" in LICENSE|skill/*|contracts/*|adapters/*|system/core/*|system/runtime/*|system/cli/*|bin/*) ;; *) fail "unsafe legacy manifest entry: $relative" ;; esac
             [ -f "$PREFIX/$relative" ] || fail "legacy installed file is missing: $relative"
             mkdir -p "$LEGACY_STAGING/$(dirname "$relative")"
             cp -p "$PREFIX/$relative" "$LEGACY_STAGING/$relative"

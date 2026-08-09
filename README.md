@@ -139,11 +139,24 @@ Use Traceknot for implementation verification, bug-fix confirmation, release che
 | Host-neutral verdict core | **Available.** Emits `authoritative: false` |
 | Capability manifests | **Available.** Static manifests are conservative and grant no runtime capability |
 | User-local full-toolkit installer and updater | **Available.** GitHub release artifacts, digest, and provenance verification |
+| End-to-end `traceknot verify` CLI | **Available.** Validated explicit-command manifests, snapshot-bound evidence, durable resume/report, JSON or Markdown output |
 | Native OMP, Codex, Claude Code, OpenCode, or GajaeCode adapters | **Not implemented.** A host name alone grants no capability |
 | Harness completion authority | **Disabled by default.** Optional extension; `phase1Authorized: false` |
 | npm package or dedicated Skill-registry listing | **Not available.** Direct GitHub installation through the Skills CLI is available |
 
 The portable Skill and host-neutral core are usable now. Authoritative harness completion remains a separate integration project.
+
+## Verify CLI
+
+`traceknot verify` executes a validated explicit-command manifest through the local collector and persists each VerificationRun checkpoint atomically. Run state and content-addressed artifacts default to an external user cache, so their writes do not change the Git snapshot under verification:
+
+```sh
+traceknot verify --request request.json --manifest manifest.json --root .
+```
+
+The request must identify the current Git `rootIdentity` and `snapshotId`; either field may use the literal `auto`. A `verification-manifest/v1` manifest assigns one absolute executable plus an argument array to each generated obligation. Shell-string interpolation is rejected.
+
+JSON is the default machine-readable report. Use `--format markdown` for a human-readable report, or `--report-only --run-id ID` to read a terminal run without re-executing commands. Exit codes are `0` for `PASS` or `PASS_WITH_ACCEPTED_RISK`, `1` for `FAIL`, `2` for `BLOCKED`, `3` for `INCOMPLETE`, `64` for invalid input, and `70` for internal failure.
 
 <!-- readme-section:install -->
 
