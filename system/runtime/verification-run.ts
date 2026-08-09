@@ -496,6 +496,12 @@ async function verifyPersistedExecutionAuthorities(execution: ExecutionDocument,
   }
 }
 const UNAVAILABLE_PRODUCER: Producer = { kind: "self", identity: "self/runtime-unavailable", independence: "self-check" };
+function outputExitCodeMatchesStatus(output: VerificationExecutionOutput): boolean {
+  if (output.exitCode === undefined) return true;
+  if (!Number.isInteger(output.exitCode)) return false;
+  const status = normalizeStatus(output.status);
+  return status === "PASS" ? output.exitCode === 0 : status === "FAIL" ? output.exitCode !== 0 : true;
+}
 function executionFor(obligation: VerificationObligationPlan, verdict: VerificationEvidence["result"]["verdict"], startedAt: string, finishedAt: string, output: VerificationExecutionOutput | undefined, producer: Producer): Execution {
   const exitStatus: Execution["exitStatus"] = verdict === "PASS" ? "passed" : verdict === "FAIL" ? "failed" : verdict === "BLOCKED" ? "blocked" : "cancelled";
   const fallbackKind: Execution["kind"] = obligation.evidenceType === "browser-result" ? "browser" : "command";
@@ -684,6 +690,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
         if (output) {
           try {
             output = await canonicalizeAndStoreExecutionOutput(output, request, input.dependencies.artifactStore);
+            if (output && !outputExitCodeMatchesStatus(output)) throw Error("executor output status contradicts exit code");
           } catch (error) {
             await releaseClaim(true);
             throw error;
