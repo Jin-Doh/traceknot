@@ -140,8 +140,7 @@ runs:
         TRACEKNOT_MANIFEST: ${{ steps.prepare.outputs.manifest-path }}
       run: |
         set -euo pipefail
-        umask 077
-        trap 'status=$?; printf "exit=%s\n" "$status" > "${TRACEKNOT_EVIDENCE}/status.txt"' EXIT
+        trap 'status=$?; printf "exit=%s\n" "$status" > "${TRACEKNOT_EVIDENCE}/status.txt"; chmod -R go-rwx "$TRACEKNOT_EVIDENCE"' EXIT
         case "$TRACEKNOT_MODE" in
           self-hosting)
             bun "$GITHUB_ACTION_PATH/scripts/self-verify.ts" | tee "$TRACEKNOT_REPORT"
