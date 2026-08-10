@@ -8,6 +8,7 @@ import {
   buildSelfHostingInputs,
   buildCanonicalSelfHostingCommand,
   SelfHostingCliError,
+  resolveSelfHostingRoot,
   runSelfHostingVerification,
 } from "./self-hosting-verification";
 
@@ -28,6 +29,16 @@ async function git(root: string, ...args: string[]): Promise<void> {
 }
 
 describe("canonical self-hosting verification", () => {
+  test("uses the caller checkout for remote action self-hosting", () => {
+    expect(resolveSelfHostingRoot("/action/archive", "/caller/checkout")).toBe(
+      "/caller/checkout",
+    );
+    expect(resolveSelfHostingRoot("/action/archive", undefined)).toBe("/action/archive");
+    expect(() => resolveSelfHostingRoot("/action/archive", "relative/workspace")).toThrow(
+      "self-hosting root must be absolute",
+    );
+  });
+
   test("pins Bun, GitHub CLI, and system paths without manifest environment authority", () => {
     const root = resolve(".");
     const ghExecutable = Bun.which("gh");

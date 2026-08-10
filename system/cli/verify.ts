@@ -25,6 +25,7 @@ export const VERIFY_EXIT_CODES = Object.freeze({ PASS: 0, FAIL: 1, BLOCKED: 2, I
 const MAX_INPUT_BYTES = 4 * 1024 * 1024;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
+const GIT_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const DANGEROUS_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const SAFE_ENV = new Set(["HOME", "TMPDIR", "LANG", "LC_ALL"]);
 
@@ -41,7 +42,7 @@ type ManifestCommand = Readonly<{
   toolVersion?: string;
 }>;
 type VerifyManifest = Readonly<{ schemaVersion: "verification-manifest/v1"; obligations: readonly ManifestCommand[] }>;
-type CliOptions = Readonly<{ requestPath?: string; manifestPath?: string; rootDir: string; stateDir: string; artifactDir: string; runId?: string; format: "json" | "markdown"; reportOnly: boolean; help: boolean }>;
+type CliOptions = Readonly<{ requestPath?: string; manifestPath?: string; rootDir: string; stateDir: string; artifactDir: string; runId?: string; expectedHead?: string; format: "json" | "markdown"; reportOnly: boolean; help: boolean }>;
 type CliReport = Readonly<{ schemaVersion: "traceknot-cli-report/v1"; run: unknown; verdict: unknown; snapshot: Readonly<{ rootIdentity: string; snapshotId: string; head: string; dirty: boolean }>; documents?: unknown }>;
 
 function usage(): string {
@@ -54,6 +55,7 @@ function usage(): string {
     "  --state-dir DIR         Durable run state outside the repository",
     "  --artifact-dir DIR      Content-addressed artifact root",
     "  --run-id ID             Durable run identifier (default: requestId)",
+    "  --expected-head OID      Require this clean Git HEAD commit",
     "  --format json|markdown   Report format (default: json)",
     "  --report-only           Read an existing run without executing commands",
     "  --help                  Show this message",
@@ -92,6 +94,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
   let requestPath: string | undefined;
   let manifestPath: string | undefined;
   let runId: string | undefined;
+  let expectedHead: string | undefined;
   let format: "json" | "markdown" = "json";
   let reportOnly = false;
   let help = false;
@@ -105,6 +108,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
     else if (arg === "--request") requestPath = next();
     else if (arg === "--manifest" || arg === "--config") manifestPath = next();
     else if (arg === "--run-id") runId = next();
+    else if (arg === "--expected-head") expectedHead = next();
     else if (arg === "--format") { const value = next(); if (value !== "json" && value !== "markdown") fail("--format must be json or markdown"); format = value; }
     else if (arg === "--report-only") reportOnly = true;
     else fail(`unknown option: ${arg}`);
@@ -113,7 +117,8 @@ function parseArgs(argv: readonly string[]): CliOptions {
   if (!stateDir) stateDir = join(homedir(), ".cache", "traceknot", "runs", createHash("sha256").update(absoluteRoot).digest("hex").slice(0, 24));
   if (!artifactDir) artifactDir = join(stateDir, "artifacts");
   if (runId !== undefined && !SAFE_ID.test(runId)) fail("run-id contains unsafe characters");
-  return { requestPath, manifestPath, rootDir: absoluteRoot, stateDir: resolve(stateDir), artifactDir: resolve(artifactDir), runId, format, reportOnly, help };
+  if (expectedHead !== undefined && !GIT_OBJECT_ID.test(expectedHead)) fail("expected-head must be a lowercase Git object ID");
+  return { requestPath, manifestPath, rootDir: absoluteRoot, stateDir: resolve(stateDir), artifactDir: resolve(artifactDir), runId, expectedHead, format, reportOnly, help };
 }
 function requireString(value: unknown, label: string): string { if (typeof value !== "string" || !value || value.includes("\0")) fail(`${label} must be a non-empty NUL-free string`); return value; }
 function validateManifest(value: unknown): VerifyManifest {
@@ -253,6 +258,12 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
   let stores: { close: () => Promise<void> } | undefined;
   try {
     const snapshot = await captureGitSnapshotIdentity(options.rootDir);
+    if (
+      options.expectedHead !== undefined
+      && (snapshot.headCommit !== options.expectedHead || snapshot.dirty)
+    ) {
+      fail(`current snapshot must match expected clean Git HEAD ${options.expectedHead}`);
+    }
     if (options.reportOnly) {
       await assertExistingExternalDirectory(options.rootDir, options.stateDir, "state-dir");
     } else {

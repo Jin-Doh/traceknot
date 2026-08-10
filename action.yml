@@ -2,7 +2,7 @@ name: Traceknot governed verification
 description: Run Traceknot with fail-closed GitHub checks and retained canonical evidence.
 inputs:
   mode:
-    description: self-hosting verifies Traceknot itself; manifest verifies the caller repository.
+    description: self-hosting verifies the checked-out caller Traceknot repository; manifest verifies the caller repository.
     required: false
     default: manifest
   request:
@@ -22,7 +22,7 @@ inputs:
     required: false
     default: markdown
   artifact-name:
-    description: Name of the retained canonical evidence artifact.
+    description: Prefix for the invocation-unique retained canonical evidence artifact.
     required: false
     default: traceknot-evidence
   sarif-path:
@@ -49,8 +49,16 @@ runs:
     - id: install
       name: Install locked Traceknot dependencies
       shell: bash
-      working-directory: ${{ github.action_path }}
-      run: bun install --frozen-lockfile --ignore-scripts
+      env:
+        TRACEKNOT_MODE: ${{ inputs.mode }}
+      run: |
+        set -euo pipefail
+        case "$TRACEKNOT_MODE" in
+          self-hosting) cd "$GITHUB_WORKSPACE" ;;
+          manifest) cd "$GITHUB_ACTION_PATH" ;;
+          *) printf 'mode must be self-hosting or manifest\n' >&2; exit 64 ;;
+        esac
+        bun install --frozen-lockfile --ignore-scripts
 
     - id: prepare
       name: Prepare governed evidence paths
@@ -65,6 +73,7 @@ runs:
         set -euo pipefail
         umask 077
         evidence_path="$(mktemp -d "${RUNNER_TEMP}/traceknot-governed.XXXXXX")"
+        invocation_id="${evidence_path##*.}"
         state_path="${evidence_path}/state"
         artifact_path="${evidence_path}/artifacts"
         input_path="${evidence_path}/inputs"
@@ -122,6 +131,8 @@ runs:
           printf 'request-path=%s\n' "$request_path"
           printf 'manifest-path=%s\n' "$manifest_path"
           printf 'sarif-path=%s\n' "$sarif_path"
+          printf 'invocation-id=%s\n' "$invocation_id"
+          printf 'head-oid=%s\n' "$head_oid"
         } >> "$GITHUB_OUTPUT"
 
     - id: verify
@@ -137,6 +148,7 @@ runs:
         TRACEKNOT_ARTIFACTS: ${{ steps.prepare.outputs.artifact-path }}
         TRACEKNOT_REQUEST: ${{ steps.prepare.outputs.request-path }}
         TRACEKNOT_MANIFEST: ${{ steps.prepare.outputs.manifest-path }}
+        TRACEKNOT_EXPECTED_HEAD: ${{ steps.prepare.outputs.head-oid }}
       run: |
         set -euo pipefail
         trap 'status=$?; printf "exit=%s\n" "$status" > "${TRACEKNOT_EVIDENCE}/status.txt"; chmod -R go-rwx "$TRACEKNOT_EVIDENCE"' EXIT
@@ -152,6 +164,7 @@ runs:
               --request "$TRACEKNOT_REQUEST"
               --manifest "$TRACEKNOT_MANIFEST"
               --format "$TRACEKNOT_FORMAT"
+              --expected-head "$TRACEKNOT_EXPECTED_HEAD"
             )
             if test -n "$TRACEKNOT_RUN_ID"; then
               args+=(--run-id "$TRACEKNOT_RUN_ID")
@@ -188,7 +201,7 @@ runs:
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
-        name: ${{ inputs.artifact-name }}
+        name: ${{ inputs.artifact-name }}-${{ steps.prepare.outputs.invocation-id }}
         path: ${{ steps.prepare.outputs.evidence-path }}
         if-no-files-found: error
         include-hidden-files: true

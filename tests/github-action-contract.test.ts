@@ -68,14 +68,19 @@ describe("reusable governed GitHub Action", () => {
     expect(steps.filter((step) => typeof step.uses === "string").every((step) =>
       /^[^@]+@[0-9a-f]{40}$/.test(String(step.uses).split(" #", 1)[0] ?? "")
     )).toBe(true);
+    expect(String(steps[1]?.run)).toContain("GITHUB_WORKSPACE");
     expect(String(steps[2]?.run)).toContain("umask 077");
     expect(String(steps[2]?.run)).toContain("mktemp -d");
     expect(String(steps[2]?.run)).toContain("git -C \"$GITHUB_WORKSPACE\" cat-file blob");
     expect(String(steps[2]?.run)).toContain("report-path=");
     expect(String(steps[3]?.run)).toContain("self-verify.ts");
+    expect(String(steps[3]?.run)).toContain("--expected-head");
     expect(String(steps[3]?.run)).toContain("status.txt");
     expect(steps[4]?.if).toBe("always()");
     expect(steps[5]?.if).toBe("always()");
+    expect(object(steps[5]?.with, "artifact inputs").name).toContain(
+      "${{ steps.prepare.outputs.invocation-id }}",
+    );
     expect(object(steps[5]?.with, "artifact inputs")["include-hidden-files"]).toBe(true);
   });
 
@@ -236,6 +241,7 @@ exit "$status"
           TRACEKNOT_ARTIFACTS: String(outputs["artifact-path"]),
           TRACEKNOT_REQUEST: String(outputs["request-path"]),
           TRACEKNOT_MANIFEST: String(outputs["manifest-path"]),
+          TRACEKNOT_EXPECTED_HEAD: String(outputs["head-oid"]),
         },
         stdout: "ignore",
         stderr: "pipe",

@@ -5,15 +5,22 @@ import { fileURLToPath } from "node:url";
 import { runSelfHostingCacheParity } from "../system/runtime/self-hosting-parity";
 import {
   buildCanonicalSelfHostingCommand,
+  resolveSelfHostingRoot,
   SelfHostingCliError,
 } from "../system/runtime/self-hosting-verification";
 
-const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const actionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const rootDir = resolveSelfHostingRoot(actionRoot, process.env.GITHUB_WORKSPACE);
 const cacheRoot = await mkdtemp(join(tmpdir(), "traceknot-self-hosting-cache."));
 try {
   try {
-    const report = await runSelfHostingCacheParity(
-      buildCanonicalSelfHostingCommand(rootDir),
+  const report = await runSelfHostingCacheParity(
+      buildCanonicalSelfHostingCommand(
+        rootDir,
+        process.execPath,
+        Bun.which("gh"),
+        process.env.TRACEKNOT_EXPECTED_HEAD,
+      ),
       cacheRoot,
     );
     process.stdout.write(`${JSON.stringify(report)}\n`);

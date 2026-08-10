@@ -8,6 +8,7 @@ export type SelfHostingCommand = Readonly<{
   rootDir: string;
   executable: string;
   argv: readonly string[];
+  expectedHead?: string;
 }>;
 export type SelfHostingManifest = Readonly<{
   schemaVersion: "verification-manifest/v1";
@@ -44,12 +45,22 @@ export class SelfHostingCliError extends Error {
   }
 }
 
+export function resolveSelfHostingRoot(
+  actionRoot: string,
+  workspace: string | undefined,
+): string {
+  const root = workspace ?? actionRoot;
+  if (!isAbsolute(root)) throw new Error("self-hosting root must be absolute");
+  return resolve(root);
+}
+
 const REQUEST_ID = "traceknot-self-hosting";
 
 export function buildCanonicalSelfHostingCommand(
   root: string,
   bunExecutable = process.execPath,
   ghExecutable = Bun.which("gh"),
+  expectedHead?: string,
 ): SelfHostingCommand {
   const rootDir = resolve(root);
   if (!isAbsolute(bunExecutable)) throw Error("self-hosting Bun executable must be absolute");
@@ -70,6 +81,7 @@ export function buildCanonicalSelfHostingCommand(
       join(rootDir, "scripts/ci"),
       "--self-hosted-inner",
     ]),
+    ...(expectedHead === undefined ? {} : { expectedHead }),
   });
 }
 
@@ -179,7 +191,12 @@ export async function runSelfHostingVerification(
       writeFile(requestPath, `${JSON.stringify(inputs.request)}\n`, { mode: 0o600 }),
       writeFile(manifestPath, `${JSON.stringify(inputs.manifest)}\n`, { mode: 0o600 }),
     ]);
-    const common = ["--root", resolve(command.rootDir), "--state-dir", stateDir, "--artifact-dir", artifactDir];
+    const common = [
+      "--root", resolve(command.rootDir),
+      "--state-dir", stateDir,
+      "--artifact-dir", artifactDir,
+      ...(command.expectedHead === undefined ? [] : ["--expected-head", command.expectedHead]),
+    ];
     const executed = await runCli(traceknotExecutable, command.rootDir, [
       ...common,
       "--request", requestPath,
