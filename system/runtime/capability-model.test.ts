@@ -15,11 +15,24 @@ async function json(path: string): Promise<unknown> {
 }
 
 describe("shared host capability model", () => {
+  test("keeps every public capability-bearing schema standalone", async () => {
+    const modelSchema = await json("contracts/capability-model.schema.json");
+    for (const path of [
+      "contracts/capability-v2.schema.json",
+      "contracts/risk-discovery-report.schema.json",
+    ]) {
+      const publicSchema = await json(path) as {
+        $defs?: { capabilityModel?: unknown };
+      };
+      expect(publicSchema.$defs?.capabilityModel).toEqual(modelSchema);
+      expect(() => new Ajv2020({ strict: true }).compile(publicSchema)).not.toThrow();
+    }
+  });
+
   test("keeps TypeScript, shared schema, and every adapter record aligned", async () => {
     const modelSchema = await json("contracts/capability-model.schema.json") as Record<string, unknown>;
     const recordSchema = await json("contracts/capability-v2.schema.json") as object;
     const ajv = new Ajv2020({ strict: true });
-    ajv.addSchema(modelSchema);
     const validate = ajv.compile(recordSchema);
 
     expect([...(modelSchema as { required: readonly string[] }).required]).toEqual([...CAPABILITY_NAMES]);
