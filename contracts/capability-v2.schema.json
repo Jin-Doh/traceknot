@@ -10,9 +10,28 @@
     "host": { "type": "string", "minLength": 1 },
     "adapterVersion": { "type": "string", "minLength": 1 },
     "capabilities": {
+      "$ref": "#/$defs/capabilityModel"
+    },
+    "limitations": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+  },
+  "$defs": {
+    "capabilityModel": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://traceknot.kyungho.info/schemas/capability-model.v1.json",
+      "title": "Traceknot shared host capability set",
       "type": "object",
       "additionalProperties": false,
-      "required": ["executeCommands", "executeBrowser", "captureArtifacts", "bindSnapshot", "provideIndependentEvidence", "persistEvidence", "approveExceptions", "isolatedReadOnlyReview", "enforcedStructuredOutput"],
+      "required": [
+        "executeCommands",
+        "executeBrowser",
+        "captureArtifacts",
+        "bindSnapshot",
+        "provideIndependentEvidence",
+        "persistEvidence",
+        "approveExceptions",
+        "isolatedReadOnlyReview",
+        "enforcedStructuredOutput"
+      ],
       "properties": {
         "executeCommands": { "type": "boolean" },
         "executeBrowser": { "type": "boolean" },
@@ -24,7 +43,6 @@
         "isolatedReadOnlyReview": { "type": "boolean" },
         "enforcedStructuredOutput": { "type": "boolean" }
       }
-    },
-    "limitations": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+    }
   }
 }

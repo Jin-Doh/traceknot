@@ -137,7 +137,7 @@ FAIL → BLOCKED → INCOMPLETE → PASS_WITH_ACCEPTED_RISK → PASS
 | 표준 QA record schema | **사용 가능.** JSON Schema Draft 2020-12 폐쇄형 계약 |
 | Proof-carrying evidence record | **사용 가능.** Observation, claim, evaluation, success criterion, traceability, verification run 계약 |
 | 호스트 중립 verdict core | **사용 가능.** 항상 `authoritative: false` 출력 |
-| Capability manifest | **사용 가능.** 정적 manifest는 보수적이며 runtime capability를 부여하지 않음 |
+| 공통 capability model과 manifest | **사용 가능.** 하나의 닫힌 9-field model이 v2 manifest와 runtime discovery를 함께 규율하며, 정적 host 이름은 capability를 부여하지 않음 |
 | 사용자 영역 전체 Toolkit installer와 updater | **사용 가능.** GitHub release artifact, digest, provenance 검증 |
 | End-to-end `traceknot verify` CLI | **사용 가능.** 검증된 명시적 명령 manifest, snapshot-bound evidence, 내구성 있는 resume/report, JSON 또는 Markdown 출력 |
 | OMP, Codex, Claude Code, OpenCode, GajaeCode native adapter | **미구현.** 호스트 이름만으로 capability가 생기지 않음 |

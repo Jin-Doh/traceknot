@@ -137,7 +137,7 @@ Traceknot 适用于实现验证、缺陷修复确认、发布检查、仓库审�
 | 规范 QA record schema | **可用。** 封闭的 JSON Schema Draft 2020-12 契约 |
 | Proof-carrying evidence record | **可用。** Observation、claim、evaluation、success criterion、traceability 和 verification run 契约 |
 | 宿主中立 verdict core | **可用。** 始终输出 `authoritative: false` |
-| Capability manifest | **可用。** 静态 manifest 采用保守声明，不授予运行时能力 |
+| 共享 capability model 和 manifest | **可用。** 一个封闭的九字段 model 同时约束 v2 manifest 与 runtime discovery；静态 host 名称不会授予 capability |
 | 用户本地完整 Toolkit installer 和 updater | **可用。** 验证 GitHub release artifact、digest 和 provenance |
 | OMP、Codex、Claude Code、OpenCode 或 GajaeCode 原生 adapter | **尚未实现。** 仅凭宿主名称不会获得 capability |
 | 运行框架完成权限 | **默认禁用。** 可选 extension，`phase1Authorized: false` |
