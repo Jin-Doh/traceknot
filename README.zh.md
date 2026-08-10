@@ -140,6 +140,7 @@ Traceknot 适用于实现验证、缺陷修复确认、发布检查、仓库审�
 | 共享 capability model 和 manifest | **可用。** 一个封闭的九字段 model 同时约束 v2 manifest 与 runtime discovery；静态 host 名称不会授予 capability |
 | 用户本地完整 Toolkit installer 和 updater | **可用。** 验证 GitHub release artifact、digest 和 provenance |
 | 可复用的 governed GitHub Action | **可用。** 分离 lifecycle 与 verdict check，fail-closed required 汇总，保留 canonical artifact，发布 job summary，并可选上传 SARIF |
+| 确定性的 1.0 release benchmark | **可用。** 对 proof verdict、cache boundary、integrity 和 unavailable usage 诚实性执行零容错 hard gate；不作为 provider 效率证据 |
 | OMP、Codex、Claude Code、OpenCode 或 GajaeCode 原生 adapter | **尚未实现。** 当前提供 Codex 与 Claude Code capability envelope 验证 primitive，但不提供原生 transport 或 invocation；仅凭宿主名称不会获得 capability |
 | 运行框架完成权限 | **默认禁用。** 可选 extension，`phase1Authorized: false` |
 | npm package 或专用 Skill registry 条目 | **暂不提供。** 可以通过 Skills CLI 直接从 GitHub 安装 |
@@ -219,6 +220,7 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
 | 证据、capability、权限和安全边界 | [信任模型](docs/trust-model.md) |
 | 翻译责任和同步规则 | [本地化](docs/localization.md) |
 | 完整 Toolkit updater 策略和恢复 | [自动更新](docs/automatic-updates.md) |
+| 确定性的 1.0 quality、cache 与 token-accounting gate | [Release readiness](docs/release-readiness.md) |
 | 安全分析和剩余风险 | [安全分析](docs/security-analysis.md) |
 | 可执行的 portable workflow | [Skill 规范](skill/SKILL.md) |
 | 命名、文案、配色和视觉资产 | [品牌规范](BRAND.md) |
@@ -236,7 +238,7 @@ bun install --frozen-lockfile --ignore-scripts
 bun run ci
 ```
 
-该 gate 会验证 installer lifecycle、schema、capability record、prompt-injection 风险、发布文案、测试、strict TypeScript 和 whitespace 完整性。最后，`bun run self-verify` 会通过 Traceknot 针对捕获的 repository snapshot 运行 canonical gate，同时避免递归调用自身。输出 report 会证明 content cache 从 cold miss 到 warm hit 的结果一致；当 provider usage 不可用时，它会报告 unavailable，而不会伪造为零 token 或零 cost。`bun run prose-quality` 会为韩文、英文以及显式映射的简体中文发布文案生成 advisory report；它不会根据汉字自动推断 locale，也不会把其他语言套用到错误的规则上。
+该 gate 会验证 installer lifecycle、schema、capability record、prompt-injection 风险、发布文案、确定性的 1.0 release benchmark、测试、strict TypeScript 和 whitespace 完整性。最后，`bun run self-verify` 会通过 Traceknot 针对捕获的 repository snapshot 运行 canonical gate，同时避免递归调用自身。输出 report 会证明 content cache 从 cold miss 到 warm hit 的结果一致；当 provider usage 不可用时，它会报告 unavailable，而不会伪造为零 token 或零 cost。`bun run benchmark:release` 会生成 byte-stable 的 quality/cache/token-accounting conformance report；`bun run prose-quality` 会为韩文、英文以及显式映射的简体中文发布文案生成 advisory report。
 
 安全相关 finding 应包含明确的预期结果、观察结果、复现方法、目标 snapshot 和剩余风险。智能体自己的完成声明不能作为验证证据。
 

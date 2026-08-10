@@ -86,6 +86,12 @@ The root composite `action.yml` supports self-hosting and explicit request/manif
 
 Manifest-mode request, manifest, and optional SARIF inputs are copied directly from one immutable commit resolved from the caller's checked-out `HEAD`; filesystem traversal, symlink substitution, ref movement, and post-validation source swaps cannot change or mix their bytes. The CLI internally requires the snapshot it captures for verification to have that same HEAD and a clean worktree, so configuration from one commit cannot govern another snapshot. Self-hosting mode runs against the checked-out caller Traceknot repository, including when the action implementation is loaded from a remote action archive. Every invocation receives a securely allocated evidence directory and unique artifact name. Optional tracked SARIF is uploaded only when a caller supplies its path and grants `security-events: write` to the job. The self-hosting workflow does neither. Traceknot does not relabel source candidates as confirmed defects, and the GitHub Action does not acquire completion authority.
 
+### Release-readiness gates
+
+The deterministic `traceknot-1.0/v1` suite hard-gates nine proof-carrying verdict cases, all ten cache-key boundaries, cold/warm payload parity, relevant-context semantics, cache integrity rejection, and honest unavailable provider usage. Its closed machine report contains no timing, host, or random fields and is byte-stable across fresh cache roots.
+
+The token-accounting gate rejects fabricated zero values when no provider observation exists and records provider efficiency as `NOT_EVALUATED`. The suite therefore proves resolver, cache, and accounting conformance—not agent quality, avoided work, provider cache effectiveness, token reduction, or cost savings. See [Release-readiness benchmark](release-readiness.md).
+
 ### Completion-authority extension
 
 `system/extensions/harness-completion-authority/` preserves the optional lifecycle, quiescence, lease, receipt, terminal-pair, SQLite, schema, and generated-evidence contracts.
@@ -107,8 +113,10 @@ The extension is disabled by policy and reports `phase1Authorized: false`. Activ
 │   ├── SKILL.md
 │   └── references/
 ├── contracts/
+├── benchmarks/
 ├── adapters/
 ├── system/
+│   ├── benchmarks/
 │   ├── core/
 │   └── extensions/
 ├── scripts/
