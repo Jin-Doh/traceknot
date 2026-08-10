@@ -80,6 +80,12 @@ The Codex adapter exposes a capability-record discovery primitive, not a native 
 
 The Claude Code adapter uses the same canonical envelope and rejection semantics with a distinct `claude-code` host boundary. Hook events such as `Stop`, `TaskCompleted`, or `SubagentStop` remain observations and cannot stand in for a trusted producer or accepted evidence.
 
+### GitHub governance
+
+The root composite `action.yml` supports self-hosting and explicit request/manifest modes. Both modes retain their report; manifest mode also retains durable state and content-addressed artifacts even when verification fails. The governed workflow publishes separate lifecycle and verdict jobs plus an `always()` aggregate job suitable for branch protection; a missing, cancelled, blocked, incomplete, or failed verdict cannot satisfy that aggregate.
+
+Optional SARIF is uploaded only when a caller supplies a path. Traceknot does not relabel source candidates as confirmed defects, and the GitHub Action does not acquire completion authority.
+
 ### Completion-authority extension
 
 `system/extensions/harness-completion-authority/` preserves the optional lifecycle, quiescence, lease, receipt, terminal-pair, SQLite, schema, and generated-evidence contracts.

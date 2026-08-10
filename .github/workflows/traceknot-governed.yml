@@ -1,0 +1,65 @@
+name: Traceknot governed verification
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: traceknot-governed-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lifecycle:
+    name: Traceknot lifecycle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+      - name: Record lifecycle trigger
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action || 'none' }}
+        run: printf 'event=%s action=%s\n' "$EVENT_NAME" "$EVENT_ACTION"
+
+  verdict:
+    name: Traceknot verdict
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Run Traceknot against itself
+        uses: ./
+        with:
+          mode: self-hosting
+          artifact-name: traceknot-governed-${{ github.run_id }}-${{ github.run_attempt }}
+
+  required:
+    name: Traceknot governed
+    if: always()
+    needs:
+      - lifecycle
+      - verdict
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+      - name: Enforce governed results
+        env:
+          LIFECYCLE_RESULT: ${{ needs.lifecycle.result }}
+          VERDICT_RESULT: ${{ needs.verdict.result }}
+        run: |
+          set -euo pipefail
+          test "$LIFECYCLE_RESULT" = success
+          test "$VERDICT_RESULT" = success
