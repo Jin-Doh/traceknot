@@ -8,6 +8,7 @@ export type SelfHostingCommand = Readonly<{
   rootDir: string;
   executable: string;
   argv: readonly string[];
+  expectedHead?: string;
 }>;
 export type SelfHostingManifest = Readonly<{
   schemaVersion: "verification-manifest/v1";
@@ -33,12 +34,33 @@ export type SelfHostingResult = Readonly<{
   reportOnly: SelfHostingReport;
 }>;
 
+export class SelfHostingCliError extends Error {
+  constructor(
+    readonly exitCode: number,
+    readonly report: SelfHostingReport | undefined,
+    message: string,
+  ) {
+    super(message);
+    this.name = "SelfHostingCliError";
+  }
+}
+
+export function resolveSelfHostingRoot(
+  actionRoot: string,
+  workspace: string | undefined,
+): string {
+  const root = workspace ?? actionRoot;
+  if (!isAbsolute(root)) throw new Error("self-hosting root must be absolute");
+  return resolve(root);
+}
+
 const REQUEST_ID = "traceknot-self-hosting";
 
 export function buildCanonicalSelfHostingCommand(
   root: string,
   bunExecutable = process.execPath,
   ghExecutable = Bun.which("gh"),
+  expectedHead?: string,
 ): SelfHostingCommand {
   const rootDir = resolve(root);
   if (!isAbsolute(bunExecutable)) throw Error("self-hosting Bun executable must be absolute");
@@ -59,6 +81,7 @@ export function buildCanonicalSelfHostingCommand(
       join(rootDir, "scripts/ci"),
       "--self-hosted-inner",
     ]),
+    ...(expectedHead === undefined ? {} : { expectedHead }),
   });
 }
 
@@ -133,11 +156,23 @@ async function runCli(
     new Response(child.stderr).text(),
     child.exited,
   ]);
+  let report: SelfHostingReport | undefined;
+  if (stdout.trim().length > 0) {
+    try {
+      report = parseReport(stdout, label);
+    } catch {
+      report = undefined;
+    }
+  }
   if (exitCode !== 0) {
     const details = [stderr.trim(), stdout.trim()].filter(Boolean).join("\n");
-    throw Error(`${label} failed with exit ${exitCode}${details ? `:\n${details}` : ""}`);
+    throw new SelfHostingCliError(
+      exitCode,
+      report,
+      `${label} failed with exit ${exitCode}${details ? `:\n${details}` : ""}`,
+    );
   }
-  return parseReport(stdout, label);
+  return report ?? parseReport(stdout, label);
 }
 
 export async function runSelfHostingVerification(
@@ -156,7 +191,12 @@ export async function runSelfHostingVerification(
       writeFile(requestPath, `${JSON.stringify(inputs.request)}\n`, { mode: 0o600 }),
       writeFile(manifestPath, `${JSON.stringify(inputs.manifest)}\n`, { mode: 0o600 }),
     ]);
-    const common = ["--root", resolve(command.rootDir), "--state-dir", stateDir, "--artifact-dir", artifactDir];
+    const common = [
+      "--root", resolve(command.rootDir),
+      "--state-dir", stateDir,
+      "--artifact-dir", artifactDir,
+      ...(command.expectedHead === undefined ? [] : ["--expected-head", command.expectedHead]),
+    ];
     const executed = await runCli(traceknotExecutable, command.rootDir, [
       ...common,
       "--request", requestPath,

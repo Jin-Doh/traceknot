@@ -7,6 +7,8 @@ import { describe, expect, test } from "bun:test";
 import {
   buildSelfHostingInputs,
   buildCanonicalSelfHostingCommand,
+  SelfHostingCliError,
+  resolveSelfHostingRoot,
   runSelfHostingVerification,
 } from "./self-hosting-verification";
 
@@ -27,6 +29,16 @@ async function git(root: string, ...args: string[]): Promise<void> {
 }
 
 describe("canonical self-hosting verification", () => {
+  test("uses the caller checkout for remote action self-hosting", () => {
+    expect(resolveSelfHostingRoot("/action/archive", "/caller/checkout")).toBe(
+      "/caller/checkout",
+    );
+    expect(resolveSelfHostingRoot("/action/archive", undefined)).toBe("/action/archive");
+    expect(() => resolveSelfHostingRoot("/action/archive", "relative/workspace")).toThrow(
+      "self-hosting root must be absolute",
+    );
+  });
+
   test("pins Bun, GitHub CLI, and system paths without manifest environment authority", () => {
     const root = resolve(".");
     const ghExecutable = Bun.which("gh");
@@ -136,11 +148,20 @@ describe("canonical self-hosting verification", () => {
       await writeFile(join(root, "input.txt"), "self host failure\n");
       await git(root, "add", "input.txt");
       await git(root, "commit", "-qm", "fixture");
-      await expect(runSelfHostingVerification({
-        rootDir: root,
-        executable: process.execPath,
-        argv: ["-e", "process.exit(1)"],
-      })).rejects.toThrow('"qaVerdict": "FAIL"');
+      try {
+        await runSelfHostingVerification({
+          rootDir: root,
+          executable: process.execPath,
+          argv: ["-e", "process.exit(1)"],
+        });
+        throw new Error("expected self-hosting verification to fail");
+      } catch (error) {
+        expect(error).toBeInstanceOf(SelfHostingCliError);
+        expect((error as SelfHostingCliError).exitCode).toBe(1);
+        expect((error as SelfHostingCliError).report?.verdict).toMatchObject({
+          qaVerdict: "FAIL",
+        });
+      }
     } finally {
       await rm(root, { recursive: true, force: true });
     }

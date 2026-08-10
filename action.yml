@@ -1,0 +1,215 @@
+name: Traceknot governed verification
+description: Run Traceknot with fail-closed GitHub checks and retained canonical evidence.
+inputs:
+  mode:
+    description: self-hosting verifies the checked-out caller Traceknot repository; manifest verifies the caller repository.
+    required: false
+    default: manifest
+  request:
+    description: Tracked verification request path in the caller HEAD in manifest mode.
+    required: false
+    default: ''
+  manifest:
+    description: Tracked verification manifest path in the caller HEAD in manifest mode.
+    required: false
+    default: ''
+  run-id:
+    description: Optional durable run identifier.
+    required: false
+    default: ''
+  format:
+    description: json or markdown report format in manifest mode.
+    required: false
+    default: markdown
+  artifact-name:
+    description: Prefix for the invocation-unique retained canonical evidence artifact.
+    required: false
+    default: traceknot-evidence
+  sarif-path:
+    description: Optional tracked SARIF file path in the caller HEAD.
+    required: false
+    default: ''
+outputs:
+  report-path:
+    description: Absolute report path on the runner.
+    value: ${{ steps.prepare.outputs.report-path }}
+  evidence-path:
+    description: Absolute retained evidence directory on the runner.
+    value: ${{ steps.prepare.outputs.evidence-path }}
+runs:
+  using: composite
+  steps:
+    - id: setup
+      name: Set up Bun
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      with:
+        bun-version: 1.3.14
+        no-cache: true
+
+    - id: install
+      name: Install locked Traceknot dependencies
+      shell: bash
+      env:
+        TRACEKNOT_MODE: ${{ inputs.mode }}
+      run: |
+        set -euo pipefail
+        case "$TRACEKNOT_MODE" in
+          self-hosting) cd "$GITHUB_WORKSPACE" ;;
+          manifest) cd "$GITHUB_ACTION_PATH" ;;
+          *) printf 'mode must be self-hosting or manifest\n' >&2; exit 64 ;;
+        esac
+        bun install --frozen-lockfile --ignore-scripts
+
+    - id: prepare
+      name: Prepare governed evidence paths
+      shell: bash
+      env:
+        TRACEKNOT_MODE: ${{ inputs.mode }}
+        TRACEKNOT_REQUEST: ${{ inputs.request }}
+        TRACEKNOT_MANIFEST: ${{ inputs.manifest }}
+        TRACEKNOT_FORMAT: ${{ inputs.format }}
+        TRACEKNOT_SARIF: ${{ inputs.sarif-path }}
+      run: |
+        set -euo pipefail
+        umask 077
+        evidence_path="$(mktemp -d "${RUNNER_TEMP}/traceknot-governed.XXXXXX")"
+        invocation_id="${evidence_path##*.}"
+        state_path="${evidence_path}/state"
+        artifact_path="${evidence_path}/artifacts"
+        input_path="${evidence_path}/inputs"
+        head_oid="$(git -C "$GITHUB_WORKSPACE" rev-parse --verify 'HEAD^{commit}')" || {
+          printf 'caller HEAD must resolve to a commit\n' >&2
+          exit 64
+        }
+        mkdir -p "$state_path" "$artifact_path" "$input_path"
+
+        tracked_file() {
+          relative_path="$1"
+          destination="$2"
+          case "$relative_path" in
+            ''|/*|../*|*/../*|*/..) printf 'tracked path must stay beneath HEAD\n' >&2; return 64 ;;
+          esac
+          if ! git -C "$GITHUB_WORKSPACE" cat-file blob "$head_oid:$relative_path" > "$destination"; then
+            rm -f "$destination"
+            printf 'tracked path is not a blob in HEAD: %s\n' "$relative_path" >&2
+            return 64
+          fi
+          chmod 600 "$destination"
+        }
+
+        case "$TRACEKNOT_MODE" in
+          self-hosting)
+            report_path="${evidence_path}/report.json"
+            request_path=''
+            manifest_path=''
+            ;;
+          manifest)
+            case "$TRACEKNOT_FORMAT" in
+              json|markdown) ;;
+              *) printf 'format must be json or markdown\n' >&2; exit 64 ;;
+            esac
+            request_path="${input_path}/request.json"
+            manifest_path="${input_path}/manifest.json"
+            tracked_file "$TRACEKNOT_REQUEST" "$request_path"
+            tracked_file "$TRACEKNOT_MANIFEST" "$manifest_path"
+            report_path="${evidence_path}/report.${TRACEKNOT_FORMAT}"
+            ;;
+          *) printf 'mode must be self-hosting or manifest\n' >&2; exit 64 ;;
+        esac
+
+        sarif_path=''
+        if test -n "$TRACEKNOT_SARIF"; then
+          sarif_path="${input_path}/report.sarif"
+          tracked_file "$TRACEKNOT_SARIF" "$sarif_path"
+        fi
+        printf 'state=started\n' > "${evidence_path}/status.txt"
+        {
+          printf 'report-path=%s\n' "$report_path"
+          printf 'evidence-path=%s\n' "$evidence_path"
+          printf 'state-path=%s\n' "$state_path"
+          printf 'artifact-path=%s\n' "$artifact_path"
+          printf 'request-path=%s\n' "$request_path"
+          printf 'manifest-path=%s\n' "$manifest_path"
+          printf 'sarif-path=%s\n' "$sarif_path"
+          printf 'invocation-id=%s\n' "$invocation_id"
+          printf 'head-oid=%s\n' "$head_oid"
+        } >> "$GITHUB_OUTPUT"
+
+    - id: verify
+      name: Run governed verification
+      shell: bash
+      env:
+        TRACEKNOT_MODE: ${{ inputs.mode }}
+        TRACEKNOT_RUN_ID: ${{ inputs.run-id }}
+        TRACEKNOT_FORMAT: ${{ inputs.format }}
+        TRACEKNOT_REPORT: ${{ steps.prepare.outputs.report-path }}
+        TRACEKNOT_EVIDENCE: ${{ steps.prepare.outputs.evidence-path }}
+        TRACEKNOT_STATE: ${{ steps.prepare.outputs.state-path }}
+        TRACEKNOT_ARTIFACTS: ${{ steps.prepare.outputs.artifact-path }}
+        TRACEKNOT_REQUEST: ${{ steps.prepare.outputs.request-path }}
+        TRACEKNOT_MANIFEST: ${{ steps.prepare.outputs.manifest-path }}
+        TRACEKNOT_EXPECTED_HEAD: ${{ steps.prepare.outputs.head-oid }}
+      run: |
+        set -euo pipefail
+        trap 'status=$?; printf "exit=%s\n" "$status" > "${TRACEKNOT_EVIDENCE}/status.txt"; chmod -R go-rwx "$TRACEKNOT_EVIDENCE"' EXIT
+        case "$TRACEKNOT_MODE" in
+          self-hosting)
+            bun "$GITHUB_ACTION_PATH/scripts/self-verify.ts" | tee "$TRACEKNOT_REPORT"
+            ;;
+          manifest)
+            args=(
+              --root "$GITHUB_WORKSPACE"
+              --state-dir "$TRACEKNOT_STATE"
+              --artifact-dir "$TRACEKNOT_ARTIFACTS"
+              --request "$TRACEKNOT_REQUEST"
+              --manifest "$TRACEKNOT_MANIFEST"
+              --format "$TRACEKNOT_FORMAT"
+              --expected-head "$TRACEKNOT_EXPECTED_HEAD"
+            )
+            if test -n "$TRACEKNOT_RUN_ID"; then
+              args+=(--run-id "$TRACEKNOT_RUN_ID")
+            fi
+            bun "$GITHUB_ACTION_PATH/bin/traceknot" verify "${args[@]}" | tee "$TRACEKNOT_REPORT"
+            ;;
+        esac
+
+    - id: summary
+      name: Publish verification summary
+      if: always()
+      shell: bash
+      env:
+        TRACEKNOT_REPORT: ${{ steps.prepare.outputs.report-path }}
+      run: |
+        set -euo pipefail
+        if test -s "$TRACEKNOT_REPORT"; then
+          case "$TRACEKNOT_REPORT" in
+            *.md) cat "$TRACEKNOT_REPORT" >> "$GITHUB_STEP_SUMMARY" ;;
+            *)
+              {
+                printf '## Traceknot governed verification\n\n```json\n'
+                cat "$TRACEKNOT_REPORT"
+                printf '\n```\n'
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+          esac
+        else
+          printf '## Traceknot governed verification\n\nNo report was produced.\n' >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - id: artifact
+      name: Retain canonical evidence
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ inputs.artifact-name }}-${{ steps.prepare.outputs.invocation-id }}
+        path: ${{ steps.prepare.outputs.evidence-path }}
+        if-no-files-found: error
+        include-hidden-files: true
+        retention-days: 30
+
+    - id: sarif
+      name: Upload optional SARIF
+      if: ${{ always() && inputs.sarif-path != '' }}
+      uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
+      with:
+        sarif_file: ${{ steps.prepare.outputs.sarif-path }}

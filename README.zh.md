@@ -139,6 +139,7 @@ Traceknot 适用于实现验证、缺陷修复确认、发布检查、仓库审�
 | 宿主中立 verdict core | **可用。** 始终输出 `authoritative: false` |
 | 共享 capability model 和 manifest | **可用。** 一个封闭的九字段 model 同时约束 v2 manifest 与 runtime discovery；静态 host 名称不会授予 capability |
 | 用户本地完整 Toolkit installer 和 updater | **可用。** 验证 GitHub release artifact、digest 和 provenance |
+| 可复用的 governed GitHub Action | **可用。** 分离 lifecycle 与 verdict check，fail-closed required 汇总，保留 canonical artifact，发布 job summary，并可选上传 SARIF |
 | OMP、Codex、Claude Code、OpenCode 或 GajaeCode 原生 adapter | **尚未实现。** 当前提供 Codex 与 Claude Code capability envelope 验证 primitive，但不提供原生 transport 或 invocation；仅凭宿主名称不会获得 capability |
 | 运行框架完成权限 | **默认禁用。** 可选 extension，`phase1Authorized: false` |
 | npm package 或专用 Skill registry 条目 | **暂不提供。** 可以通过 Skills CLI 直接从 GitHub 安装 |

@@ -7,7 +7,7 @@ import { runVerify } from "../cli/verify";
 
 type RepoFixture = Readonly<{ root: string; config: string; state: string; request: string; manifest: string; cleanup: () => Promise<void> }>;
 const gitEnv = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", GIT_AUTHOR_NAME: "Traceknot Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Traceknot Test", GIT_COMMITTER_EMAIL: "test@example.com" };
-function git(root: string, args: readonly string[]): void { const result = Bun.spawnSync(["git", "-C", root, ...args], { env: gitEnv, stdout: "ignore", stderr: "pipe" }); if (result.exitCode !== 0) throw new Error(new TextDecoder().decode(result.stderr)); }
+function git(root: string, args: readonly string[]): string { const result = Bun.spawnSync(["git", "-C", root, ...args], { env: gitEnv, stdout: "pipe", stderr: "pipe" }); if (result.exitCode !== 0) throw new Error(new TextDecoder().decode(result.stderr)); return new TextDecoder().decode(result.stdout).trim(); }
 async function fixture(executable = "/usr/bin/true"): Promise<RepoFixture> {
   const root = await mkdtemp(join(tmpdir(), "traceknot-cli-e2e-repo-"));
   const config = await mkdtemp(join(tmpdir(), "traceknot-cli-e2e-config-"));
@@ -23,6 +23,43 @@ async function fixture(executable = "/usr/bin/true"): Promise<RepoFixture> {
 }
 
 describe("traceknot verify CLI", () => {
+  test("requires the internally captured snapshot to match one clean expected HEAD", async () => {
+    const fixtureValue = await fixture();
+    try {
+      const expectedHead = git(fixtureValue.root, ["rev-parse", "HEAD"]);
+      const matching = await runVerify(
+        ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--expected-head", expectedHead],
+        () => undefined,
+        () => undefined,
+      );
+      expect(matching).toBe(0);
+
+      await writeFile(join(fixtureValue.root, "dirty.txt"), "untracked\n");
+      const stderr: string[] = [];
+      const dirty = await runVerify(
+        ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--expected-head", expectedHead],
+        () => undefined,
+        text => stderr.push(text),
+      );
+      expect(dirty).toBe(64);
+      expect(stderr.join("")).toContain("expected clean Git HEAD");
+
+      await rm(join(fixtureValue.root, "dirty.txt"));
+      await writeFile(join(fixtureValue.root, "input.txt"), "next commit\n");
+      git(fixtureValue.root, ["add", "input.txt"]);
+      git(fixtureValue.root, ["commit", "-qm", "next"]);
+      const moved = await runVerify(
+        ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--expected-head", expectedHead],
+        () => undefined,
+        text => stderr.push(text),
+      );
+      expect(moved).toBe(64);
+      expect(stderr.join("")).toContain("expected clean Git HEAD");
+    } finally {
+      await fixtureValue.cleanup();
+    }
+  });
+
   test("runs a real Git repository command, persists, and supports report-only", async () => {
     const fixtureValue = await fixture();
     try {
