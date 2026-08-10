@@ -68,6 +68,10 @@ runs:
         state_path="${evidence_path}/state"
         artifact_path="${evidence_path}/artifacts"
         input_path="${evidence_path}/inputs"
+        head_oid="$(git -C "$GITHUB_WORKSPACE" rev-parse --verify 'HEAD^{commit}')" || {
+          printf 'caller HEAD must resolve to a commit\n' >&2
+          exit 64
+        }
         mkdir -p "$state_path" "$artifact_path" "$input_path"
 
         tracked_file() {
@@ -76,7 +80,7 @@ runs:
           case "$relative_path" in
             ''|/*|../*|*/../*|*/..) printf 'tracked path must stay beneath HEAD\n' >&2; return 64 ;;
           esac
-          if ! git -C "$GITHUB_WORKSPACE" cat-file blob "HEAD:$relative_path" > "$destination"; then
+          if ! git -C "$GITHUB_WORKSPACE" cat-file blob "$head_oid:$relative_path" > "$destination"; then
             rm -f "$destination"
             printf 'tracked path is not a blob in HEAD: %s\n' "$relative_path" >&2
             return 64

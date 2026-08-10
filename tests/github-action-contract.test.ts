@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -20,7 +20,7 @@ function object(value: unknown, label: string): YamlObject {
   return value as YamlObject;
 }
 
-function git(root: string, args: readonly string[]): void {
+function git(root: string, args: readonly string[]): string {
   const result = Bun.spawnSync(["git", "-C", root, ...args], {
     env: {
       ...process.env,
@@ -32,10 +32,11 @@ function git(root: string, args: readonly string[]): void {
       GIT_COMMITTER_NAME: "Traceknot Test",
       GIT_COMMITTER_EMAIL: "test@example.com",
     },
-    stdout: "ignore",
+    stdout: "pipe",
     stderr: "pipe",
   });
   if (result.exitCode !== 0) throw new Error(new TextDecoder().decode(result.stderr));
+  return new TextDecoder().decode(result.stdout).trim();
 }
 
 describe("reusable governed GitHub Action", () => {
@@ -76,6 +77,91 @@ describe("reusable governed GitHub Action", () => {
     expect(steps[4]?.if).toBe("always()");
     expect(steps[5]?.if).toBe("always()");
     expect(object(steps[5]?.with, "artifact inputs")["include-hidden-files"]).toBe(true);
+  });
+
+  test("binds every governed input to one immutable HEAD commit", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "traceknot-action-snapshot-"));
+    const runner = await mkdtemp(join(tmpdir(), "traceknot-action-runner-"));
+    try {
+      await writeFile(join(workspace, "request.json"), '{"version":"first-request"}\n');
+      await writeFile(join(workspace, "manifest.json"), '{"version":"first-manifest"}\n');
+      git(workspace, ["init", "-q"]);
+      git(workspace, ["add", "."]);
+      git(workspace, ["commit", "-qm", "first"]);
+      const firstHead = git(workspace, ["rev-parse", "HEAD"]);
+
+      await writeFile(join(workspace, "request.json"), '{"version":"second-request"}\n');
+      await writeFile(join(workspace, "manifest.json"), '{"version":"second-manifest"}\n');
+      git(workspace, ["add", "."]);
+      git(workspace, ["commit", "-qm", "second"]);
+      const secondHead = git(workspace, ["rev-parse", "HEAD"]);
+      git(workspace, ["update-ref", "HEAD", firstHead]);
+
+      const shimDir = join(runner, "bin");
+      const gitShim = join(shimDir, "git");
+      const marker = join(runner, "head-switched");
+      await mkdir(shimDir);
+      await writeFile(gitShim, `#!/bin/sh
+"$REAL_GIT" "$@"
+status=$?
+if test "$status" -eq 0 &&
+   test "$1" = "-C" &&
+   test "$3" = "cat-file" &&
+   test ! -e "$GIT_SWITCH_MARKER"; then
+  : > "$GIT_SWITCH_MARKER"
+  "$REAL_GIT" -C "$2" update-ref HEAD "$NEXT_HEAD"
+fi
+exit "$status"
+`);
+      await chmod(gitShim, 0o700);
+
+      const action = await yaml("action.yml");
+      const prepare = (object(action.runs, "action runs").steps as readonly YamlObject[])[2];
+      const outputPath = join(runner, "github-output.txt");
+      const realGit = Bun.which("git");
+      if (realGit === null) throw new Error("git must be available");
+      const preparation = Bun.spawn(["bash", "-c", String(prepare?.run)], {
+        cwd: resolve("."),
+        env: {
+          ...process.env,
+          PATH: `${shimDir}:${process.env.PATH ?? ""}`,
+          REAL_GIT: realGit,
+          NEXT_HEAD: secondHead,
+          GIT_SWITCH_MARKER: marker,
+          RUNNER_TEMP: runner,
+          GITHUB_RUN_ID: "snapshot",
+          GITHUB_RUN_ATTEMPT: "1",
+          GITHUB_ACTION_PATH: resolve("."),
+          GITHUB_WORKSPACE: workspace,
+          GITHUB_OUTPUT: outputPath,
+          TRACEKNOT_MODE: "manifest",
+          TRACEKNOT_RUN_ID: "",
+          TRACEKNOT_FORMAT: "json",
+          TRACEKNOT_REQUEST: "request.json",
+          TRACEKNOT_MANIFEST: "manifest.json",
+          TRACEKNOT_SARIF: "",
+        },
+        stdout: "ignore",
+        stderr: "pipe",
+      });
+      expect(await preparation.exited).toBe(0);
+      const outputs = Object.fromEntries(
+        (await readFile(outputPath, "utf8")).trim().split("\n").map(
+          (line: string) => line.split("=", 2),
+        ),
+      );
+      expect(await readFile(String(outputs["request-path"]), "utf8")).toBe(
+        '{"version":"first-request"}\n',
+      );
+      expect(await readFile(String(outputs["manifest-path"]), "utf8")).toBe(
+        '{"version":"first-manifest"}\n',
+      );
+    } finally {
+      await Promise.all([
+        rm(workspace, { recursive: true, force: true }),
+        rm(runner, { recursive: true, force: true }),
+      ]);
+    }
   });
 
   test("retains report and evidence paths when verification fails", async () => {
