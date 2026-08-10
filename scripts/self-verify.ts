@@ -5,16 +5,27 @@ import { fileURLToPath } from "node:url";
 import { runSelfHostingCacheParity } from "../system/runtime/self-hosting-parity";
 import {
   buildCanonicalSelfHostingCommand,
+  SelfHostingCliError,
 } from "../system/runtime/self-hosting-verification";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const cacheRoot = await mkdtemp(join(tmpdir(), "traceknot-self-hosting-cache."));
 try {
-  const report = await runSelfHostingCacheParity(
-    buildCanonicalSelfHostingCommand(rootDir),
-    cacheRoot,
-  );
-  process.stdout.write(`${JSON.stringify(report)}\n`);
+  try {
+    const report = await runSelfHostingCacheParity(
+      buildCanonicalSelfHostingCommand(rootDir),
+      cacheRoot,
+    );
+    process.stdout.write(`${JSON.stringify(report)}\n`);
+  } catch (error) {
+    if (error instanceof SelfHostingCliError && error.report !== undefined) {
+      process.stdout.write(`${JSON.stringify(error.report)}\n`);
+      process.exitCode = error.exitCode;
+    } else {
+      process.exitCode = 1;
+    }
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  }
 } finally {
   await rm(cacheRoot, { recursive: true, force: true });
 }

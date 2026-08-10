@@ -33,6 +33,17 @@ export type SelfHostingResult = Readonly<{
   reportOnly: SelfHostingReport;
 }>;
 
+export class SelfHostingCliError extends Error {
+  constructor(
+    readonly exitCode: number,
+    readonly report: SelfHostingReport | undefined,
+    message: string,
+  ) {
+    super(message);
+    this.name = "SelfHostingCliError";
+  }
+}
+
 const REQUEST_ID = "traceknot-self-hosting";
 
 export function buildCanonicalSelfHostingCommand(
@@ -133,11 +144,23 @@ async function runCli(
     new Response(child.stderr).text(),
     child.exited,
   ]);
+  let report: SelfHostingReport | undefined;
+  if (stdout.trim().length > 0) {
+    try {
+      report = parseReport(stdout, label);
+    } catch {
+      report = undefined;
+    }
+  }
   if (exitCode !== 0) {
     const details = [stderr.trim(), stdout.trim()].filter(Boolean).join("\n");
-    throw Error(`${label} failed with exit ${exitCode}${details ? `:\n${details}` : ""}`);
+    throw new SelfHostingCliError(
+      exitCode,
+      report,
+      `${label} failed with exit ${exitCode}${details ? `:\n${details}` : ""}`,
+    );
   }
-  return parseReport(stdout, label);
+  return report ?? parseReport(stdout, label);
 }
 
 export async function runSelfHostingVerification(

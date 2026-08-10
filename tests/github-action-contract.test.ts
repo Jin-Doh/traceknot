@@ -68,6 +68,8 @@ describe("reusable governed GitHub Action", () => {
       /^[^@]+@[0-9a-f]{40}$/.test(String(step.uses).split(" #", 1)[0] ?? "")
     )).toBe(true);
     expect(String(steps[2]?.run)).toContain("umask 077");
+    expect(String(steps[2]?.run)).toContain("mktemp -d");
+    expect(String(steps[2]?.run)).toContain("git -C \"$GITHUB_WORKSPACE\" cat-file blob");
     expect(String(steps[2]?.run)).toContain("report-path=");
     expect(String(steps[3]?.run)).toContain("self-verify.ts");
     expect(String(steps[3]?.run)).toContain("status.txt");
@@ -162,7 +164,7 @@ describe("reusable governed GitHub Action", () => {
       expect(await readFile(join(String(outputs["evidence-path"]), "status.txt"), "utf8")).toBe(
         "exit=1\n",
       );
-      expect(outputs["evidence-path"]).toContain("traceknot-governed/1-1");
+      expect(outputs["evidence-path"]).toContain("traceknot-governed.");
       expect((await stat(String(outputs["evidence-path"]))).mode & 0o077).toBe(0);
       expect((await readdir(join(String(outputs["artifact-path"]), ".objects"))).length).toBeGreaterThan(0);
 

@@ -84,7 +84,7 @@ The Claude Code adapter uses the same canonical envelope and rejection semantics
 
 The root composite `action.yml` supports self-hosting and explicit request/manifest modes. Both modes retain their report; manifest mode also retains durable state and content-addressed artifacts even when verification fails. The governed workflow publishes separate lifecycle and verdict jobs plus an `always()` aggregate job suitable for branch protection; a missing, cancelled, blocked, incomplete, or failed verdict cannot satisfy that aggregate.
 
-Optional SARIF is uploaded only when a caller supplies a path and grants `security-events: write` to its job. The self-hosting workflow does neither. Traceknot does not relabel source candidates as confirmed defects, and the GitHub Action does not acquire completion authority.
+Manifest-mode request, manifest, and optional SARIF inputs are copied directly from blobs in the caller's checked-out `HEAD`; filesystem traversal, symlink substitution, and post-validation source swaps cannot change their bytes. Optional tracked SARIF is uploaded only when a caller supplies its path and grants `security-events: write` to the job. The self-hosting workflow does neither. Traceknot does not relabel source candidates as confirmed defects, and the GitHub Action does not acquire completion authority.
 
 ### Completion-authority extension
 

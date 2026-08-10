@@ -7,6 +7,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildSelfHostingInputs,
   buildCanonicalSelfHostingCommand,
+  SelfHostingCliError,
   runSelfHostingVerification,
 } from "./self-hosting-verification";
 
@@ -136,11 +137,20 @@ describe("canonical self-hosting verification", () => {
       await writeFile(join(root, "input.txt"), "self host failure\n");
       await git(root, "add", "input.txt");
       await git(root, "commit", "-qm", "fixture");
-      await expect(runSelfHostingVerification({
-        rootDir: root,
-        executable: process.execPath,
-        argv: ["-e", "process.exit(1)"],
-      })).rejects.toThrow('"qaVerdict": "FAIL"');
+      try {
+        await runSelfHostingVerification({
+          rootDir: root,
+          executable: process.execPath,
+          argv: ["-e", "process.exit(1)"],
+        });
+        throw new Error("expected self-hosting verification to fail");
+      } catch (error) {
+        expect(error).toBeInstanceOf(SelfHostingCliError);
+        expect((error as SelfHostingCliError).exitCode).toBe(1);
+        expect((error as SelfHostingCliError).report?.verdict).toMatchObject({
+          qaVerdict: "FAIL",
+        });
+      }
     } finally {
       await rm(root, { recursive: true, force: true });
     }

@@ -6,11 +6,11 @@ inputs:
     required: false
     default: manifest
   request:
-    description: Verification request path relative to the caller workspace in manifest mode.
+    description: Tracked verification request path in the caller HEAD in manifest mode.
     required: false
     default: ''
   manifest:
-    description: Verification manifest path relative to the caller workspace in manifest mode.
+    description: Tracked verification manifest path in the caller HEAD in manifest mode.
     required: false
     default: ''
   run-id:
@@ -26,7 +26,7 @@ inputs:
     required: false
     default: traceknot-evidence
   sarif-path:
-    description: Optional existing SARIF file path relative to the caller workspace.
+    description: Optional tracked SARIF file path in the caller HEAD.
     required: false
     default: ''
 outputs:
@@ -64,26 +64,24 @@ runs:
       run: |
         set -euo pipefail
         umask 077
-        evidence_path="${RUNNER_TEMP}/traceknot-governed/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+        evidence_path="$(mktemp -d "${RUNNER_TEMP}/traceknot-governed.XXXXXX")"
         state_path="${evidence_path}/state"
         artifact_path="${evidence_path}/artifacts"
         input_path="${evidence_path}/inputs"
         mkdir -p "$state_path" "$artifact_path" "$input_path"
 
-        workspace_file() {
+        tracked_file() {
           relative_path="$1"
+          destination="$2"
           case "$relative_path" in
-            ''|/*) printf 'workspace path must be non-empty and relative\n' >&2; return 64 ;;
+            ''|/*|../*|*/../*|*/..) printf 'tracked path must stay beneath HEAD\n' >&2; return 64 ;;
           esac
-          workspace_root="$(realpath "$GITHUB_WORKSPACE")"
-          candidate="$(realpath "$GITHUB_WORKSPACE/$relative_path")" || {
-            printf 'workspace path does not exist: %s\n' "$relative_path" >&2
+          if ! git -C "$GITHUB_WORKSPACE" cat-file blob "HEAD:$relative_path" > "$destination"; then
+            rm -f "$destination"
+            printf 'tracked path is not a blob in HEAD: %s\n' "$relative_path" >&2
             return 64
-          }
-          case "$candidate" in
-            "$workspace_root"/*) printf '%s\n' "$candidate" ;;
-            *) printf 'workspace path escapes the repository: %s\n' "$relative_path" >&2; return 64 ;;
-          esac
+          fi
+          chmod 600 "$destination"
         }
 
         case "$TRACEKNOT_MODE" in
@@ -97,12 +95,10 @@ runs:
               json|markdown) ;;
               *) printf 'format must be json or markdown\n' >&2; exit 64 ;;
             esac
-            request_source="$(workspace_file "$TRACEKNOT_REQUEST")"
-            manifest_source="$(workspace_file "$TRACEKNOT_MANIFEST")"
             request_path="${input_path}/request.json"
             manifest_path="${input_path}/manifest.json"
-            install -m 600 "$request_source" "$request_path"
-            install -m 600 "$manifest_source" "$manifest_path"
+            tracked_file "$TRACEKNOT_REQUEST" "$request_path"
+            tracked_file "$TRACEKNOT_MANIFEST" "$manifest_path"
             report_path="${evidence_path}/report.${TRACEKNOT_FORMAT}"
             ;;
           *) printf 'mode must be self-hosting or manifest\n' >&2; exit 64 ;;
@@ -110,9 +106,8 @@ runs:
 
         sarif_path=''
         if test -n "$TRACEKNOT_SARIF"; then
-          sarif_source="$(workspace_file "$TRACEKNOT_SARIF")"
           sarif_path="${input_path}/report.sarif"
-          install -m 600 "$sarif_source" "$sarif_path"
+          tracked_file "$TRACEKNOT_SARIF" "$sarif_path"
         fi
         printf 'state=started\n' > "${evidence_path}/status.txt"
         {
