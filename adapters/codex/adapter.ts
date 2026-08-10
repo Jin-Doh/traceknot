@@ -13,10 +13,20 @@ export type CodexCapabilityHandshake = Readonly<{
   snapshotId: string;
   trustedProducerId: string;
   allowedCapabilities: CapabilitySet;
+  maxEnvelopeLifetimeMs: number;
   now: () => string;
-  createNonce: () => string;
   readCapabilityEnvelope: (request: CapabilityHandshakeRequest) => Promise<unknown>;
 }>;
+
+let nonceSequence = 0;
+
+function nextNonce(): string {
+  if (nonceSequence === Number.MAX_SAFE_INTEGER) {
+    throw new Error("Codex capability nonce sequence exhausted");
+  }
+  nonceSequence += 1;
+  return `${nonceSequence}:${crypto.randomUUID()}`;
+}
 
 async function staticCodexCapabilityRecord(): Promise<CapabilityRecord> {
   const value: unknown = JSON.parse(
@@ -34,13 +44,14 @@ export async function discoverCodexCapabilities(
     host: "codex",
     sessionId: handshake.sessionId,
     snapshotId: handshake.snapshotId,
-    nonce: handshake.createNonce(),
+    nonce: nextNonce(),
   } satisfies CapabilityHandshakeRequest);
   const envelope = await handshake.readCapabilityEnvelope(request);
   return parseCapabilityHandshakeEnvelope(envelope, {
     request,
     trustedProducerId: handshake.trustedProducerId,
     allowedCapabilities: handshake.allowedCapabilities,
+    maxEnvelopeLifetimeMs: handshake.maxEnvelopeLifetimeMs,
     now: handshake.now(),
   });
 }

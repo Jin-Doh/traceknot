@@ -1,4 +1,5 @@
 import {
+  addMillisecondsToCanonicalUtcTimestamp,
   compareCanonicalUtcTimestamps,
   isCanonicalUtcTimestamp,
 } from "../core/canonical-time";
@@ -30,6 +31,7 @@ export type CapabilityHandshakeExpectation = Readonly<{
   request: CapabilityHandshakeRequest;
   trustedProducerId: string;
   allowedCapabilities: CapabilitySet;
+  maxEnvelopeLifetimeMs: number;
   now: string;
 }>;
 
@@ -42,6 +44,7 @@ export type CapabilityHandshakeErrorCode =
   | "NONCE_MISMATCH"
   | "NOT_YET_VALID"
   | "EXPIRED"
+  | "LIFETIME_EXCEEDED"
   | "CAPABILITY_ESCALATION";
 
 export class CapabilityHandshakeError extends Error {
@@ -100,6 +103,12 @@ export function parseCapabilityHandshakeEnvelope(
   value: unknown,
   expectation: CapabilityHandshakeExpectation,
 ): CapabilityRecord {
+  if (
+    !Number.isSafeInteger(expectation.maxEnvelopeLifetimeMs)
+    || expectation.maxEnvelopeLifetimeMs <= 0
+  ) {
+    return fail("MALFORMED_ENVELOPE", "maxEnvelopeLifetimeMs must be a positive safe integer");
+  }
   const input = recordInput(value);
   const sessionId = nonEmptyString(input.sessionId, "sessionId");
   const snapshotId = nonEmptyString(input.snapshotId, "snapshotId");
@@ -118,6 +127,13 @@ export function parseCapabilityHandshakeEnvelope(
 
   if (compareCanonicalUtcTimestamps(issuedAt, expiresAt) >= 0) {
     fail("MALFORMED_ENVELOPE", "issuedAt must precede expiresAt");
+  }
+  const maximumExpiry = addMillisecondsToCanonicalUtcTimestamp(
+    issuedAt,
+    expectation.maxEnvelopeLifetimeMs,
+  );
+  if (compareCanonicalUtcTimestamps(expiresAt, maximumExpiry) > 0) {
+    fail("LIFETIME_EXCEEDED", "capability handshake envelope exceeds the trusted lifetime");
   }
   if (compareCanonicalUtcTimestamps(issuedAt, now) > 0) {
     fail("NOT_YET_VALID", "capability handshake envelope is not yet valid");

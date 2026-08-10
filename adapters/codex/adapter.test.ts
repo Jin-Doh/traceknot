@@ -42,8 +42,8 @@ function runtimeHandshake(
     snapshotId: "snapshot-1",
     trustedProducerId: "codex-native-adapter",
     allowedCapabilities: runtimeCapabilities({ executeCommands: true }),
+    maxEnvelopeLifetimeMs: 5 * 60 * 1_000,
     now: () => "2026-08-10T05:00:00Z",
-    createNonce: () => "nonce-1",
     readCapabilityEnvelope,
     ...overrides,
   };
@@ -87,12 +87,12 @@ describe("Codex capability adapter", () => {
           runtimeRecord(runtimeCapabilities({ executeCommands: ++calls === 2 })),
         );
       },
-      { createNonce: () => `nonce-${calls + 1}` },
     );
 
     expect((await discoverCodexCapabilities(handshake)).capabilities.executeCommands).toBe(false);
     expect((await discoverCodexCapabilities(handshake)).capabilities.executeCommands).toBe(true);
-    expect(requests).toEqual(["nonce-1", "nonce-2"]);
+    expect(requests).toHaveLength(2);
+    expect(requests[0]).not.toBe(requests[1]);
   });
 
   test("rejects records for another host", async () => {
@@ -105,11 +105,13 @@ describe("Codex capability adapter", () => {
   });
 
   test("rejects replayed envelopes", async () => {
-    const handshake = runtimeHandshake(async (request) =>
-      envelope(request, runtimeRecord(ALL_FALSE), {
-        nonce: "old-nonce",
-      }));
+    let cached: unknown;
+    const handshake = runtimeHandshake(async (request) => {
+      cached ??= envelope(request, runtimeRecord(ALL_FALSE));
+      return cached;
+    });
 
+    await expect(discoverCodexCapabilities(handshake)).resolves.toMatchObject({ host: "codex" });
     await expect(discoverCodexCapabilities(handshake)).rejects.toMatchObject({
       code: "NONCE_MISMATCH",
     });
@@ -124,6 +126,18 @@ describe("Codex capability adapter", () => {
 
     await expect(discoverCodexCapabilities(handshake)).rejects.toMatchObject({
       code: "EXPIRED",
+    });
+  });
+
+  test("rejects validity windows above the trusted maximum lifetime", async () => {
+    const handshake = runtimeHandshake(async (request) =>
+      envelope(request, runtimeRecord(ALL_FALSE), {
+        issuedAt: "2026-08-10T04:00:00Z",
+        expiresAt: "2026-08-10T06:00:00Z",
+      }));
+
+    await expect(discoverCodexCapabilities(handshake)).rejects.toMatchObject({
+      code: "LIFETIME_EXCEEDED",
     });
   });
 
