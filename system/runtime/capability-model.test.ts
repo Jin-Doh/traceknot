@@ -69,6 +69,12 @@ describe("shared host capability model", () => {
       ...base,
       limitations: ["runtime handshake required", "runtime handshake required"],
     })).toThrow("duplicate limitation");
+    const sparseLimitations = new Array<string>(1);
+    expect(() => parseCapabilityRecord({
+      ...base,
+      capabilities: { ...base.capabilities, executeCommands: true },
+      limitations: sparseLimitations,
+    })).toThrow("limitation");
     expect(() => parseCapabilityRecord({ ...base, extra: true })).toThrow("record keys");
   });
 

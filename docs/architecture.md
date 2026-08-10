@@ -76,6 +76,8 @@ The core always emits `authoritative: false`. It does not orchestrate reviewers,
 
 A host or model name grants no capability. Profile selection follows the handshake, not branding.
 
+The Codex adapter exposes a capability-record discovery primitive, not a native Codex transport. Without a handshake it loads the checked-in all-false manifest. For each discovery the adapter creates a non-repeating challenge. A trusted native integration may answer with an envelope bound to the host, session, snapshot, producer, challenge, validity window, explicit maximum lifetime, and capability ceiling. The portable adapter rejects mismatched, stale, replayed, malformed, overlong, or over-privileged envelopes.
+
 ### Completion-authority extension
 
 `system/extensions/harness-completion-authority/` preserves the optional lifecycle, quiescence, lease, receipt, terminal-pair, SQLite, schema, and generated-evidence contracts.
