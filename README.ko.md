@@ -140,7 +140,7 @@ FAIL → BLOCKED → INCOMPLETE → PASS_WITH_ACCEPTED_RISK → PASS
 | 공통 capability model과 manifest | **사용 가능.** 하나의 닫힌 9-field model이 v2 manifest와 runtime discovery를 함께 규율하며, 정적 host 이름은 capability를 부여하지 않음 |
 | 사용자 영역 전체 Toolkit installer와 updater | **사용 가능.** GitHub release artifact, digest, provenance 검증 |
 | End-to-end `traceknot verify` CLI | **사용 가능.** 검증된 명시적 명령 manifest, snapshot-bound evidence, 내구성 있는 resume/report, JSON 또는 Markdown 출력 |
-| OMP, Codex, Claude Code, OpenCode, GajaeCode native adapter | **미구현.** 호스트 이름만으로 capability가 생기지 않음 |
+| OMP, Codex, Claude Code, OpenCode, GajaeCode native adapter | **미구현.** Codex capability envelope 검증 primitive는 제공하지만 native transport나 invocation은 제공하지 않음. 호스트 이름만으로 capability가 생기지 않음 |
 | 하네스 완료 권한 | **기본 비활성.** 선택적 extension이며 `phase1Authorized: false` |
 | npm package 또는 전용 Skill registry 등록 | **제공하지 않음.** Skills CLI의 GitHub 직접 설치는 사용 가능 |
 

@@ -57,7 +57,11 @@ function parseCapabilities(value: unknown): CapabilitySet {
 function parseLimitations(value: unknown): readonly string[] {
   if (value === undefined) return Object.freeze([]);
   if (!Array.isArray(value)) throw Error("limitations must be an array");
-  const limitations = value.map((entry) => nonemptyString(entry, "limitation"));
+  const limitations: string[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    if (!Object.hasOwn(value, index)) throw Error("limitation entries must not be sparse");
+    limitations.push(nonemptyString(value[index], "limitation"));
+  }
   if (new Set(limitations).size !== limitations.length) throw Error("duplicate limitation");
   return Object.freeze(limitations);
 }

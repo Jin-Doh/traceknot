@@ -1,0 +1,134 @@
+import {
+  compareCanonicalUtcTimestamps,
+  isCanonicalUtcTimestamp,
+} from "../core/canonical-time";
+import {
+  CAPABILITY_NAMES,
+  parseCapabilityRecord,
+  type CapabilityRecord,
+  type CapabilitySet,
+} from "./capability-model";
+
+const ENVELOPE_KEYS = [
+  "record",
+  "sessionId",
+  "snapshotId",
+  "producerId",
+  "nonce",
+  "issuedAt",
+  "expiresAt",
+] as const;
+
+export type CapabilityHandshakeRequest = Readonly<{
+  host: string;
+  sessionId: string;
+  snapshotId: string;
+  nonce: string;
+}>;
+
+export type CapabilityHandshakeExpectation = Readonly<{
+  request: CapabilityHandshakeRequest;
+  trustedProducerId: string;
+  allowedCapabilities: CapabilitySet;
+  now: string;
+}>;
+
+export type CapabilityHandshakeErrorCode =
+  | "MALFORMED_ENVELOPE"
+  | "HOST_MISMATCH"
+  | "SESSION_MISMATCH"
+  | "SNAPSHOT_MISMATCH"
+  | "PRODUCER_MISMATCH"
+  | "NONCE_MISMATCH"
+  | "NOT_YET_VALID"
+  | "EXPIRED"
+  | "CAPABILITY_ESCALATION";
+
+export class CapabilityHandshakeError extends Error {
+  constructor(
+    readonly code: CapabilityHandshakeErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "CapabilityHandshakeError";
+  }
+}
+
+function fail(code: CapabilityHandshakeErrorCode, message: string): never {
+  throw new CapabilityHandshakeError(code, message);
+}
+
+function recordInput(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return fail("MALFORMED_ENVELOPE", "capability handshake envelope must be an object");
+  }
+  const input = value as Record<string, unknown>;
+  const keys = Object.keys(input);
+  if (
+    keys.length !== ENVELOPE_KEYS.length
+    || ENVELOPE_KEYS.some((key) => !Object.hasOwn(input, key))
+  ) {
+    return fail("MALFORMED_ENVELOPE", "capability handshake envelope keys are invalid");
+  }
+  return input;
+}
+
+function nonEmptyString(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.trim().length === 0 || value !== value.trim()) {
+    return fail("MALFORMED_ENVELOPE", `${field} must be a non-empty trimmed string`);
+  }
+  return value;
+}
+
+function canonicalTimestamp(value: unknown, field: string): string {
+  if (!isCanonicalUtcTimestamp(value)) {
+    return fail("MALFORMED_ENVELOPE", `${field} must be a canonical UTC timestamp`);
+  }
+  return value;
+}
+
+function expectEqual(
+  actual: string,
+  expected: string,
+  code: CapabilityHandshakeErrorCode,
+  field: string,
+): void {
+  if (actual !== expected) fail(code, `${field} does not match the trusted request context`);
+}
+
+export function parseCapabilityHandshakeEnvelope(
+  value: unknown,
+  expectation: CapabilityHandshakeExpectation,
+): CapabilityRecord {
+  const input = recordInput(value);
+  const sessionId = nonEmptyString(input.sessionId, "sessionId");
+  const snapshotId = nonEmptyString(input.snapshotId, "snapshotId");
+  const producerId = nonEmptyString(input.producerId, "producerId");
+  const nonce = nonEmptyString(input.nonce, "nonce");
+  const issuedAt = canonicalTimestamp(input.issuedAt, "issuedAt");
+  const expiresAt = canonicalTimestamp(input.expiresAt, "expiresAt");
+  const now = canonicalTimestamp(expectation.now, "now");
+  const record = parseCapabilityRecord(input.record);
+
+  expectEqual(record.host, expectation.request.host, "HOST_MISMATCH", "host");
+  expectEqual(sessionId, expectation.request.sessionId, "SESSION_MISMATCH", "sessionId");
+  expectEqual(snapshotId, expectation.request.snapshotId, "SNAPSHOT_MISMATCH", "snapshotId");
+  expectEqual(producerId, expectation.trustedProducerId, "PRODUCER_MISMATCH", "producerId");
+  expectEqual(nonce, expectation.request.nonce, "NONCE_MISMATCH", "nonce");
+
+  if (compareCanonicalUtcTimestamps(issuedAt, expiresAt) >= 0) {
+    fail("MALFORMED_ENVELOPE", "issuedAt must precede expiresAt");
+  }
+  if (compareCanonicalUtcTimestamps(issuedAt, now) > 0) {
+    fail("NOT_YET_VALID", "capability handshake envelope is not yet valid");
+  }
+  if (compareCanonicalUtcTimestamps(expiresAt, now) <= 0) {
+    fail("EXPIRED", "capability handshake envelope has expired");
+  }
+  for (const name of CAPABILITY_NAMES) {
+    if (record.capabilities[name] && !expectation.allowedCapabilities[name]) {
+      fail("CAPABILITY_ESCALATION", `capability ${name} exceeds the trusted integration ceiling`);
+    }
+  }
+  return record;
+}

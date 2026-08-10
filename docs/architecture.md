@@ -76,7 +76,7 @@ The core always emits `authoritative: false`. It does not orchestrate reviewers,
 
 A host or model name grants no capability. Profile selection follows the handshake, not branding.
 
-The Codex adapter exposes runtime discovery as an explicit dependency. Without a handshake it returns the checked-in all-false manifest. With a handshake it parses a fresh `quality-capability/v2` record on every discovery and rejects records for any other host.
+The Codex adapter exposes a capability-record discovery primitive, not a native Codex transport. Without a handshake it loads the checked-in all-false manifest. A trusted native integration may inject a fresh envelope bound to the host, session, snapshot, producer, nonce, validity window, and an explicit capability ceiling. The portable adapter rejects mismatched, stale, replayed, malformed, or over-privileged envelopes.
 
 ### Completion-authority extension
 
