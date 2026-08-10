@@ -160,13 +160,16 @@ describe("Traceknot 1.0 release-readiness benchmark", () => {
           cases: new Array(first.quality.cases.length) as typeof first.quality.cases,
         },
       },
-      { ...first, cache: { ...first.cache, coldMiss: false } },
-      { ...first, cache: { ...first.cache, idempotentPayloadDigest: false } },
+      { ...first, cache: { ...first.cache, coldMiss: "false" as unknown as boolean } },
+      { ...first, cache: { ...first.cache, payloadEqual: [] as unknown as boolean } },
+      { ...first, cache: { ...first.cache, relevantOrderStable: "false" as unknown as boolean } },
       { ...first, tokens: { ...first.tokens, inputTokens: 0 as const } },
+      { ...first, schemaVersion: "evil/v1" as typeof first.schemaVersion },
+      { ...first, unexpected: true },
+      { ...first, cache: { ...first.cache, keyInvalidations: { expected: 999 as 10, observed: 10 } } },
+      { ...first, tokens: { ...first.tokens, sourceSchemaVersion: "evil/v1" as typeof first.tokens.sourceSchemaVersion } },
     ]) {
-      expect(() => assertReleaseReadiness(forged)).toThrow(
-        "benchmark gate values",
-      );
+      expect(() => assertReleaseReadiness(forged)).toThrow(/benchmark (gate values|report contract)/);
     }
     expect(() => assertReleaseReadiness({
       ...first,
@@ -180,7 +183,7 @@ describe("Traceknot 1.0 release-readiness benchmark", () => {
         : gate),
     ]) {
       expect(() => assertReleaseReadiness({ ...first, gates })).toThrow(
-        "benchmark gate order",
+        /benchmark (gate order|report contract)/,
       );
     }
     expect(canonicalReleaseReadinessReport(first)).not.toMatch(
