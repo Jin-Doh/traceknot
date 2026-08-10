@@ -26,16 +26,16 @@ inputs:
     required: false
     default: traceknot-evidence
   sarif-path:
-    description: Optional SARIF file path relative to the caller workspace.
+    description: Optional existing SARIF file path relative to the caller workspace.
     required: false
     default: ''
 outputs:
   report-path:
     description: Absolute report path on the runner.
-    value: ${{ steps.verify.outputs.report-path }}
+    value: ${{ steps.prepare.outputs.report-path }}
   evidence-path:
     description: Absolute retained evidence directory on the runner.
-    value: ${{ steps.verify.outputs.evidence-path }}
+    value: ${{ steps.prepare.outputs.evidence-path }}
 runs:
   using: composite
   steps:
@@ -52,63 +52,125 @@ runs:
       working-directory: ${{ github.action_path }}
       run: bun install --frozen-lockfile --ignore-scripts
 
-    - id: verify
-      name: Run governed verification
+    - id: prepare
+      name: Prepare governed evidence paths
       shell: bash
       env:
         TRACEKNOT_MODE: ${{ inputs.mode }}
         TRACEKNOT_REQUEST: ${{ inputs.request }}
         TRACEKNOT_MANIFEST: ${{ inputs.manifest }}
-        TRACEKNOT_RUN_ID: ${{ inputs.run-id }}
         TRACEKNOT_FORMAT: ${{ inputs.format }}
+        TRACEKNOT_SARIF: ${{ inputs.sarif-path }}
       run: |
         set -euo pipefail
+        umask 077
         evidence_path="${RUNNER_TEMP}/traceknot-governed/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
         state_path="${evidence_path}/state"
         artifact_path="${evidence_path}/artifacts"
-        mkdir -p "$state_path" "$artifact_path"
+        input_path="${evidence_path}/inputs"
+        mkdir -p "$state_path" "$artifact_path" "$input_path"
+
+        workspace_file() {
+          relative_path="$1"
+          case "$relative_path" in
+            ''|/*) printf 'workspace path must be non-empty and relative\n' >&2; return 64 ;;
+          esac
+          workspace_root="$(realpath "$GITHUB_WORKSPACE")"
+          candidate="$(realpath "$GITHUB_WORKSPACE/$relative_path")" || {
+            printf 'workspace path does not exist: %s\n' "$relative_path" >&2
+            return 64
+          }
+          case "$candidate" in
+            "$workspace_root"/*) printf '%s\n' "$candidate" ;;
+            *) printf 'workspace path escapes the repository: %s\n' "$relative_path" >&2; return 64 ;;
+          esac
+        }
 
         case "$TRACEKNOT_MODE" in
           self-hosting)
             report_path="${evidence_path}/report.json"
-            bun "$GITHUB_ACTION_PATH/scripts/self-verify.ts" | tee "$report_path"
+            request_path=''
+            manifest_path=''
             ;;
           manifest)
             case "$TRACEKNOT_FORMAT" in
               json|markdown) ;;
               *) printf 'format must be json or markdown\n' >&2; exit 64 ;;
             esac
-            test -n "$TRACEKNOT_REQUEST"
-            test -n "$TRACEKNOT_MANIFEST"
+            request_source="$(workspace_file "$TRACEKNOT_REQUEST")"
+            manifest_source="$(workspace_file "$TRACEKNOT_MANIFEST")"
+            request_path="${input_path}/request.json"
+            manifest_path="${input_path}/manifest.json"
+            install -m 600 "$request_source" "$request_path"
+            install -m 600 "$manifest_source" "$manifest_path"
             report_path="${evidence_path}/report.${TRACEKNOT_FORMAT}"
+            ;;
+          *) printf 'mode must be self-hosting or manifest\n' >&2; exit 64 ;;
+        esac
+
+        sarif_path=''
+        if test -n "$TRACEKNOT_SARIF"; then
+          sarif_source="$(workspace_file "$TRACEKNOT_SARIF")"
+          sarif_path="${input_path}/report.sarif"
+          install -m 600 "$sarif_source" "$sarif_path"
+        fi
+        printf 'state=started\n' > "${evidence_path}/status.txt"
+        {
+          printf 'report-path=%s\n' "$report_path"
+          printf 'evidence-path=%s\n' "$evidence_path"
+          printf 'state-path=%s\n' "$state_path"
+          printf 'artifact-path=%s\n' "$artifact_path"
+          printf 'request-path=%s\n' "$request_path"
+          printf 'manifest-path=%s\n' "$manifest_path"
+          printf 'sarif-path=%s\n' "$sarif_path"
+        } >> "$GITHUB_OUTPUT"
+
+    - id: verify
+      name: Run governed verification
+      shell: bash
+      env:
+        TRACEKNOT_MODE: ${{ inputs.mode }}
+        TRACEKNOT_RUN_ID: ${{ inputs.run-id }}
+        TRACEKNOT_FORMAT: ${{ inputs.format }}
+        TRACEKNOT_REPORT: ${{ steps.prepare.outputs.report-path }}
+        TRACEKNOT_EVIDENCE: ${{ steps.prepare.outputs.evidence-path }}
+        TRACEKNOT_STATE: ${{ steps.prepare.outputs.state-path }}
+        TRACEKNOT_ARTIFACTS: ${{ steps.prepare.outputs.artifact-path }}
+        TRACEKNOT_REQUEST: ${{ steps.prepare.outputs.request-path }}
+        TRACEKNOT_MANIFEST: ${{ steps.prepare.outputs.manifest-path }}
+      run: |
+        set -euo pipefail
+        umask 077
+        trap 'status=$?; printf "exit=%s\n" "$status" > "${TRACEKNOT_EVIDENCE}/status.txt"' EXIT
+        case "$TRACEKNOT_MODE" in
+          self-hosting)
+            bun "$GITHUB_ACTION_PATH/scripts/self-verify.ts" | tee "$TRACEKNOT_REPORT"
+            ;;
+          manifest)
             args=(
               --root "$GITHUB_WORKSPACE"
-              --state-dir "$state_path"
-              --artifact-dir "$artifact_path"
-              --request "$GITHUB_WORKSPACE/$TRACEKNOT_REQUEST"
-              --manifest "$GITHUB_WORKSPACE/$TRACEKNOT_MANIFEST"
+              --state-dir "$TRACEKNOT_STATE"
+              --artifact-dir "$TRACEKNOT_ARTIFACTS"
+              --request "$TRACEKNOT_REQUEST"
+              --manifest "$TRACEKNOT_MANIFEST"
               --format "$TRACEKNOT_FORMAT"
             )
             if test -n "$TRACEKNOT_RUN_ID"; then
               args+=(--run-id "$TRACEKNOT_RUN_ID")
             fi
-            bun "$GITHUB_ACTION_PATH/bin/traceknot" verify "${args[@]}" | tee "$report_path"
+            bun "$GITHUB_ACTION_PATH/bin/traceknot" verify "${args[@]}" | tee "$TRACEKNOT_REPORT"
             ;;
-          *) printf 'mode must be self-hosting or manifest\n' >&2; exit 64 ;;
         esac
-
-        printf 'report-path=%s\n' "$report_path" >> "$GITHUB_OUTPUT"
-        printf 'evidence-path=%s\n' "$evidence_path" >> "$GITHUB_OUTPUT"
 
     - id: summary
       name: Publish verification summary
       if: always()
       shell: bash
       env:
-        TRACEKNOT_REPORT: ${{ steps.verify.outputs.report-path }}
+        TRACEKNOT_REPORT: ${{ steps.prepare.outputs.report-path }}
       run: |
         set -euo pipefail
-        if test -f "$TRACEKNOT_REPORT"; then
+        if test -s "$TRACEKNOT_REPORT"; then
           case "$TRACEKNOT_REPORT" in
             *.md) cat "$TRACEKNOT_REPORT" >> "$GITHUB_STEP_SUMMARY" ;;
             *)
@@ -129,8 +191,9 @@ runs:
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: ${{ inputs.artifact-name }}
-        path: ${{ steps.verify.outputs.evidence-path }}
+        path: ${{ steps.prepare.outputs.evidence-path }}
         if-no-files-found: error
+        include-hidden-files: true
         retention-days: 30
 
     - id: sarif
@@ -138,4 +201,4 @@ runs:
       if: ${{ always() && inputs.sarif-path != '' }}
       uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
       with:
-        sarif_file: ${{ github.workspace }}/${{ inputs.sarif-path }}
+        sarif_file: ${{ steps.prepare.outputs.sarif-path }}

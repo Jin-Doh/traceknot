@@ -20,6 +20,7 @@ jobs:
     name: Traceknot lifecycle
     runs-on: ubuntu-24.04
     timeout-minutes: 1
+    permissions: {}
     steps:
       - name: Record lifecycle trigger
         env:
@@ -33,7 +34,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      security-events: write
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -54,6 +54,7 @@ jobs:
       - verdict
     runs-on: ubuntu-24.04
     timeout-minutes: 1
+    permissions: {}
     steps:
       - name: Enforce governed results
         env:
