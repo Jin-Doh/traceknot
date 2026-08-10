@@ -76,6 +76,8 @@ The core always emits `authoritative: false`. It does not orchestrate reviewers,
 
 A host or model name grants no capability. Profile selection follows the handshake, not branding.
 
+The Codex adapter exposes runtime discovery as an explicit dependency. Without a handshake it returns the checked-in all-false manifest. With a handshake it parses a fresh `quality-capability/v2` record on every discovery and rejects records for any other host.
+
 ### Completion-authority extension
 
 `system/extensions/harness-completion-authority/` preserves the optional lifecycle, quiescence, lease, receipt, terminal-pair, SQLite, schema, and generated-evidence contracts.

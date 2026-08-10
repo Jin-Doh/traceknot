@@ -140,7 +140,7 @@ Use Traceknot for implementation verification, bug-fix confirmation, release che
 | Shared capability model and manifests | **Available.** One closed nine-field model governs v2 manifests and runtime discovery; static host names grant no capability |
 | User-local full-toolkit installer and updater | **Available.** GitHub release artifacts, digest, and provenance verification |
 | End-to-end `traceknot verify` CLI | **Available.** Validated explicit-command manifests, snapshot-bound evidence, durable resume/report, JSON or Markdown output |
-| Native OMP, Codex, Claude Code, OpenCode, or GajaeCode adapters | **Not implemented.** A host name alone grants no capability |
+| Native host adapters | **Partial.** Codex runtime capability discovery is available; OMP, Claude Code, OpenCode, and GajaeCode remain manifest-only. A host name alone grants no capability |
 | Harness completion authority | **Disabled by default.** Optional extension; `phase1Authorized: false` |
 | npm package or dedicated Skill-registry listing | **Not available.** Direct GitHub installation through the Skills CLI is available |
 
