@@ -141,6 +141,17 @@ describe("Codex capability adapter", () => {
     });
   });
 
+  test("returns a typed error for an unrepresentable trusted lifetime", async () => {
+    const handshake = runtimeHandshake(
+      async (request) => envelope(request, runtimeRecord(ALL_FALSE)),
+      { maxEnvelopeLifetimeMs: Number.MAX_SAFE_INTEGER },
+    );
+
+    await expect(discoverCodexCapabilities(handshake)).rejects.toMatchObject({
+      code: "MALFORMED_ENVELOPE",
+    });
+  });
+
   test("rejects envelopes from an untrusted producer", async () => {
     const handshake = runtimeHandshake(async (request) =>
       envelope(request, runtimeRecord(ALL_FALSE), {

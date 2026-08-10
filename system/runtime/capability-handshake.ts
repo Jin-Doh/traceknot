@@ -128,10 +128,20 @@ export function parseCapabilityHandshakeEnvelope(
   if (compareCanonicalUtcTimestamps(issuedAt, expiresAt) >= 0) {
     fail("MALFORMED_ENVELOPE", "issuedAt must precede expiresAt");
   }
-  const maximumExpiry = addMillisecondsToCanonicalUtcTimestamp(
-    issuedAt,
-    expectation.maxEnvelopeLifetimeMs,
-  );
+  let maximumExpiry: string;
+  try {
+    maximumExpiry = addMillisecondsToCanonicalUtcTimestamp(
+      issuedAt,
+      expectation.maxEnvelopeLifetimeMs,
+    );
+  } catch (error) {
+    fail(
+      "MALFORMED_ENVELOPE",
+      `maxEnvelopeLifetimeMs is not representable: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
   if (compareCanonicalUtcTimestamps(expiresAt, maximumExpiry) > 0) {
     fail("LIFETIME_EXCEEDED", "capability handshake envelope exceeds the trusted lifetime");
   }
