@@ -60,7 +60,7 @@ Not currently available:
 - native OMP, Codex, Claude Code, OpenCode, or GajaeCode adapters;
 - production signing or receipt authority for harness completion.
 
-The Codex capability-envelope validation primitive is available, but it neither establishes a native Codex transport nor grants capabilities by host name. The adapter creates a non-repeating challenge for every discovery. A trusted native integration must bind every envelope to that challenge and the expected session, snapshot, producer, validity window, maximum lifetime, and capability ceiling.
+The Codex and Claude Code capability-envelope validation primitives are available, but they establish neither native host transport nor capabilities by host name. Each adapter creates a non-repeating challenge for every discovery. A trusted native integration must bind every envelope to that challenge and the expected host, session, snapshot, producer, validity window, maximum lifetime, and capability ceiling.
 
 See [automatic updates](automatic-updates.md) for the release trust chain.
 
