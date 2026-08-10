@@ -64,7 +64,8 @@ bun scripts/audit-prompt-injection.ts --threshold high
 printf '%s\n' '==> published prose quality'
 PROSE_REPORT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-prose.XXXXXX")
 PROSE_REPORT=$PROSE_REPORT_DIR/report.json
-trap 'rm -f "$PROSE_REPORT"; rmdir "$PROSE_REPORT_DIR"' EXIT HUP INT TERM
+BENCHMARK_REPORT=$PROSE_REPORT_DIR/benchmark-report.json
+trap 'rm -f "$PROSE_REPORT" "$BENCHMARK_REPORT"; rmdir "$PROSE_REPORT_DIR"' EXIT HUP INT TERM
 bun x --no-install ajv validate --spec=draft2020 \
     -s contracts/prose-quality-config.schema.json \
     -d prose-quality.config.json
@@ -101,6 +102,12 @@ bun x --no-install ajv validate --spec=draft2020 \
     -s contracts/capability-v2.schema.json \
     -r contracts/capability-model.schema.json \
     -d 'adapters/*/capability.json'
+
+printf '%s\n' '==> deterministic 1.0 release benchmark'
+bun scripts/check-release-readiness.ts --report "$BENCHMARK_REPORT"
+bun x --no-install ajv validate --spec=draft2020 \
+    -s contracts/benchmark-report.schema.json \
+    -d "$BENCHMARK_REPORT"
 
 printf '%s\n' '==> whitespace integrity'
 git diff --check

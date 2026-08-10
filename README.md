@@ -141,6 +141,7 @@ Use Traceknot for implementation verification, bug-fix confirmation, release che
 | User-local full-toolkit installer and updater | **Available.** GitHub release artifacts, digest, and provenance verification |
 | End-to-end `traceknot verify` CLI | **Available.** Validated explicit-command manifests, snapshot-bound evidence, durable resume/report, JSON or Markdown output |
 | Reusable governed GitHub Action | **Available.** Separate lifecycle and verdict checks, fail-closed required aggregation, retained canonical artifacts, job summary, and optional SARIF upload |
+| Deterministic 1.0 release benchmark | **Available.** Zero-tolerance proof-verdict, cache-boundary, integrity, and honest unavailable-usage gates; not provider-efficiency evidence |
 | Native OMP, Codex, Claude Code, OpenCode, or GajaeCode adapters | **Not implemented.** Codex and Claude Code capability-envelope validation primitives are available, but they do not provide native transport or invocation. A host name alone grants no capability |
 | Harness completion authority | **Disabled by default.** Optional extension; `phase1Authorized: false` |
 | npm package or dedicated Skill-registry listing | **Not available.** Direct GitHub installation through the Skills CLI is available |
@@ -232,6 +233,7 @@ Runnable updater commands, including active-layout and legacy-layout path select
 | Evidence, capability, authority, and security boundaries | [Trust model](docs/trust-model.md) |
 | Translation ownership and synchronization | [Localization](docs/localization.md) |
 | Full-toolkit updater policy and recovery | [Automatic updates](docs/automatic-updates.md) |
+| Deterministic 1.0 quality, cache, and token-accounting gates | [Release readiness](docs/release-readiness.md) |
 | Security analysis and residual risks | [Security analysis](docs/security-analysis.md) |
 | Portable executable workflow | [Skill specification](skill/SKILL.md) |
 | Naming, voice, palette, and artwork | [Brand system](BRAND.md) |
@@ -249,7 +251,7 @@ bun install --frozen-lockfile --ignore-scripts
 bun run ci
 ```
 
-The gate validates installer lifecycle, schemas, capability records, prompt-injection risk, published prose, tests, strict TypeScript, and whitespace integrity. It finishes with `bun run self-verify`, which runs the canonical gate through Traceknot against the captured repository snapshot without recursively invoking itself. The emitted report proves cold-miss to warm-hit content-cache parity and reports unavailable provider usage without fabricating zero token or cost values. Run `bun run prose-quality` for the advisory Korean, English, and explicitly mapped Simplified Chinese publication-prose report.
+The gate validates installer lifecycle, schemas, capability records, prompt-injection risk, published prose, the deterministic 1.0 release benchmark, tests, strict TypeScript, and whitespace integrity. It finishes with `bun run self-verify`, which runs the canonical gate through Traceknot against the captured repository snapshot without recursively invoking itself. The emitted report proves cold-miss to warm-hit content-cache parity and reports unavailable provider usage without fabricating zero token or cost values. Run `bun run benchmark:release` for the byte-stable quality/cache/token-accounting conformance report, and `bun run prose-quality` for the advisory Korean, English, and explicitly mapped Simplified Chinese publication-prose report.
 
 Security-sensitive findings should include a concrete expected result, observed result, reproduction, affected snapshot, and residual risk. Do not report an agent's own completion claim as verification evidence.
 

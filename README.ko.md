@@ -141,6 +141,7 @@ FAIL → BLOCKED → INCOMPLETE → PASS_WITH_ACCEPTED_RISK → PASS
 | 사용자 영역 전체 Toolkit installer와 updater | **사용 가능.** GitHub release artifact, digest, provenance 검증 |
 | End-to-end `traceknot verify` CLI | **사용 가능.** 검증된 명시적 명령 manifest, snapshot-bound evidence, 내구성 있는 resume/report, JSON 또는 Markdown 출력 |
 | 재사용 가능한 governed GitHub Action | **사용 가능.** 분리된 lifecycle/verdict check, fail-closed required 집계, canonical artifact 보존, job summary, 선택적 SARIF 업로드 |
+| 결정론적 1.0 release benchmark | **사용 가능.** Proof verdict, cache boundary·integrity, unavailable usage 정직성을 오차 없이 hard gate로 검증하며 provider 효율 증거로 사용하지 않습니다 |
 | OMP, Codex, Claude Code, OpenCode, GajaeCode native adapter | **미구현.** Codex와 Claude Code capability envelope 검증 primitive는 제공하지만 native transport나 invocation은 제공하지 않음. 호스트 이름만으로 capability가 생기지 않음 |
 | 하네스 완료 권한 | **기본 비활성.** 선택적 extension이며 `phase1Authorized: false` |
 | npm package 또는 전용 Skill registry 등록 | **제공하지 않음.** Skills CLI의 GitHub 직접 설치는 사용 가능 |
@@ -232,6 +233,7 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
 | 증거, capability, 권한, 보안 경계 | [Trust model](docs/trust-model.md) |
 | 번역 책임과 동기화 규칙 | [다국어 문서 관리](docs/localization.md) |
 | 전체 Toolkit updater 정책과 복구 | [자동 업데이트](docs/automatic-updates.md) |
+| 결정론적 1.0 quality, cache, token-accounting gate | [Release readiness](docs/release-readiness.md) |
 | 보안 분석과 잔여 위험 | [보안 분석](docs/security-analysis.md) |
 | 실행 가능한 portable workflow | [Skill 명세](skill/SKILL.md) |
 | 이름, 목소리, 색상, artwork | [브랜드 시스템](BRAND.ko.md) |
@@ -249,7 +251,7 @@ bun install --frozen-lockfile --ignore-scripts
 bun run ci
 ```
 
-이 gate는 installer lifecycle, schema, capability record, prompt-injection 위험, 게시 산문, 테스트, strict TypeScript, whitespace를 검증합니다. 마지막에는 `bun run self-verify`가 실행되어, 재귀 호출 없이 캡처한 저장소 snapshot을 대상으로 Traceknot 자체를 통해 canonical gate를 검증합니다. 출력 report는 content cache의 cold miss와 warm hit 결과가 동일함을 증명하며, provider usage가 없을 때 token이나 cost를 0으로 꾸며내지 않고 unavailable로 보고합니다. 한국어, 영어, 명시적으로 매핑한 간체 중국어 게시 산문의 advisory report는 `bun run prose-quality`로 확인할 수 있습니다.
+이 gate는 installer lifecycle, schema, capability record, prompt-injection 위험, 게시 산문, 결정론적 1.0 release benchmark, 테스트, strict TypeScript, whitespace를 검증합니다. 마지막에는 `bun run self-verify`가 실행되어, 재귀 호출 없이 캡처한 저장소 snapshot을 대상으로 Traceknot 자체를 통해 canonical gate를 검증합니다. 출력 report는 content cache의 cold miss와 warm hit 결과가 동일함을 증명하며, provider usage가 없을 때 token이나 cost를 0으로 꾸며내지 않고 unavailable로 보고합니다. Byte-stable quality/cache/token-accounting conformance report는 `bun run benchmark:release`로, 한국어·영어·명시적으로 매핑한 간체 중국어 게시 산문의 advisory report는 `bun run prose-quality`로 확인할 수 있습니다.
 
 보안 관련 finding에는 구체적인 예상 결과와 관찰 결과, 재현 방법, 대상 snapshot, 잔여 위험을 포함해야 합니다. 에이전트가 스스로 완료했다고 보고한 내용은 검증 증거로 취급하지 않습니다.
 
