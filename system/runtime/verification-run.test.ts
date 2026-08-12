@@ -188,6 +188,8 @@ function makeCompositionRequest(requestId = "request-visual-composition"): Verif
 const TOKEN_RESOLUTION_DIGEST = new Bun.CryptoHasher("sha256")
   .update(JSON.stringify({ schemaVersion: "design-token-resolution/v1", systemId: "synthetic-design-system", token: "layout.sectionGap", unit: "css-px", value: 32 }))
   .digest("hex");
+const compositionScreenshotDigest = (role: string, viewportId: string) => new Bun.CryptoHasher("sha256").update(`${role}:${viewportId}:populated`).digest("hex");
+
 
 function makeCompositionOracle(request: VerificationExecutionRequest, producer: VisualCompositionOracle["producer"], options: FakeOptions = {}): VisualCompositionOracle {
   const conditionId = request.obligation.visualCompositionRequirement?.conditionId;
@@ -205,8 +207,8 @@ function makeCompositionOracle(request: VerificationExecutionRequest, producer: 
       stateId: "populated",
       viewportId,
       viewport: viewportId === "desktop" ? { id: "desktop", width: 1440, height: 900 } : { id: "mobile", width: 390, height: 844, devicePixelRatio: 3 },
-      fullPageScreenshotDigest: "c".repeat(64),
-      focusedRegionScreenshotDigests: ["d".repeat(64)],
+      fullPageScreenshotDigest: compositionScreenshotDigest("full-page", viewportId),
+      focusedRegionScreenshotDigests: [compositionScreenshotDigest("focused-region", viewportId)],
       regions: [
         { regionId: "main", role: "primary", x: 0, y: 0, width: viewportId === "desktop" ? 900 : 390, height: 500 },
         { regionId: "supporting", role: "supporting", x: 0, y: 532, width: viewportId === "desktop" ? 900 : 390, height: 200 },
@@ -246,9 +248,10 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
       if (options.missingBrowserOutput) return undefined;
       const producer = { kind: options.producerKind ?? "deterministic-verifier", identity: "fixture-browser", independence: options.producerIndependence ?? "independent-producer" } as const;
       const visualCompositionOracle = options.visualCompositionOracle && request.obligation.visualCompositionRequirement ? makeCompositionOracle(request, producer, options) : undefined;
-      const screenshotArtifacts = visualCompositionOracle
-        ? [{ type: "screenshot" as const, digest: "c".repeat(64) }, ...(options.omitStoredScreenshot ? [] : [{ type: "screenshot" as const, digest: "d".repeat(64) }]), { type: "design-token-resolution" as const, digest: TOKEN_RESOLUTION_DIGEST }]
+      const screenshotArtifacts: Artifact[] = visualCompositionOracle
+        ? visualCompositionOracle.captures.flatMap(capture => [{ type: "screenshot" as const, digest: capture.fullPageScreenshotDigest }, ...(options.omitStoredScreenshot ? [] : capture.focusedRegionScreenshotDigests.map(digest => ({ type: "screenshot" as const, digest })))])
         : [];
+      if (visualCompositionOracle) screenshotArtifacts.push({ type: "design-token-resolution", digest: TOKEN_RESOLUTION_DIGEST });
       return {
         status: options.browserStatus ?? "PASS",
         runId: request.runId,
@@ -1496,8 +1499,8 @@ describe("verification run orchestration", () => {
     expect(result.verdict.qaVerdict).toBe("PASS");
     const compositionObservation = result.documents.execution?.observations.find(item => item.observationId.includes("visual-composition"));
     expect(compositionObservation?.artifacts).toEqual(expect.arrayContaining([
-      { type: "screenshot", digest: "c".repeat(64) },
-      { type: "screenshot", digest: "d".repeat(64) },
+      { type: "screenshot", digest: compositionScreenshotDigest("full-page", "desktop") },
+      { type: "screenshot", digest: compositionScreenshotDigest("focused-region", "desktop") },
     ]));
     const compositionEvidence = result.documents.execution?.evidence.find(item => item.obligationId.includes("visual-composition"));
     const compositionAuthority = result.documents.execution?.authorities.find(item => item.binding.obligationId.includes("visual-composition"));

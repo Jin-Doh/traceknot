@@ -215,7 +215,8 @@ export function isVisualCompositionRequirement(value: unknown): value is VisualC
 export function isVisualCompositionOracle(value: unknown): value is VisualCompositionOracle {
   if (!isRecord(value) || !exactKeys(value, ["schemaVersion", "oracleId", "requestId", "snapshotId", "conditionId", "producer", "captures", "representativeStateLimitations", "blockingReasons"]) || value.schemaVersion !== "visual-composition-oracle/v1" || !nonEmptyString(value.oracleId) || !nonEmptyString(value.requestId) || !nonEmptyString(value.snapshotId) || !nonEmptyString(value.conditionId) || !validProducer(value.producer) || !Array.isArray(value.captures) || value.captures.some(capture => !validCapture(capture)) || !uniqueNonEmptyStrings(value.representativeStateLimitations, true) || !uniqueNonEmptyStrings(value.blockingReasons, true)) return false;
   const captures = value.captures as readonly VisualCompositionCapture[];
-  return new Set(captures.map(capture => capture.captureId)).size === captures.length && new Set(captures.map(captureKey)).size === captures.length;
+  const screenshotDigests = captures.flatMap(capture => [capture.fullPageScreenshotDigest, ...capture.focusedRegionScreenshotDigests]);
+  return new Set(captures.map(capture => capture.captureId)).size === captures.length && new Set(captures.map(captureKey)).size === captures.length && new Set(screenshotDigests).size === screenshotDigests.length;
 }
 
 export function requirementFromVisualCompositionScope(requestId: string, snapshotId: string, conditionId: string, scope: VisualCompositionScope, minimumIndependence: IndependenceLevel): VisualCompositionRequirement | undefined {

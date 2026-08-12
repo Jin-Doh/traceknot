@@ -158,6 +158,8 @@ traceknot verify --request request.json --manifest manifest.json --root .
 
 The request must identify the current Git `rootIdentity` and `snapshotId`; either field may use the literal `auto`. A `verification-manifest/v1` manifest assigns one absolute executable plus an argument array to each generated obligation. Shell-string interpolation is rejected.
 
+For a visual-composition obligation, set its absolute `visualCompositionOraclePath` and declare every screenshot or design-token-resolution artifact with its original `type`, `digest`, and `path`. The CLI validates the oracle, securely ingests the declared artifacts, and preserves their evidence types.
+
 JSON is the default machine-readable report. Use `--format markdown` for a human-readable report, or `--report-only --run-id ID` to read a terminal run without re-executing commands. Exit codes are `0` for `PASS` or `PASS_WITH_ACCEPTED_RISK`, `1` for `FAIL`, `2` for `BLOCKED`, `3` for `INCOMPLETE`, `64` for invalid input, and `70` for internal failure.
 
 <!-- readme-section:install -->

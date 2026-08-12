@@ -37,7 +37,8 @@
                 "path": { "type": "string", "minLength": 1 }
               }
             }
-          }
+          },
+          "visualCompositionOraclePath": { "type": "string", "minLength": 1 }
         }
       }
     }

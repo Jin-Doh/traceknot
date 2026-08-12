@@ -47,6 +47,8 @@ A `visual-composition-oracle/v1` record binds the request, snapshot, condition, 
 
 Screenshot digests in the oracle MUST identify canonical stored artifacts with type `screenshot`. A well-formed digest without a matching stored artifact is not evidence. Whole-page and focused-region roles require different screenshot digests.
 
+Across an oracle, every whole-page and focused-region screenshot digest must be unique to one capture tuple. The signed oracle digest binds each stored screenshot to its surface, state, viewport, and evidence role. The shipped CLI accepts the oracle through an absolute manifest `visualCompositionOraclePath`; screenshot and design-token-resolution files must also be listed in `declaredArtifacts` with their original evidence types.
+
 For R2/R3 visual acceptance, the producer must satisfy `independent-producer`. A self-check, missing capture, unresolved scope, unlinked basis, snapshot mismatch, or missing stored screenshot cannot establish PASS. An observed relation violation is `FAIL`; unavailable prerequisites are `BLOCKED`; incomplete or insufficiently independent evidence is non-PASS under the existing verdict rules.
 
 ## Synthetic example

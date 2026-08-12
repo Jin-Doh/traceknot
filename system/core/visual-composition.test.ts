@@ -38,6 +38,8 @@ const requirement = (decision: "required" | "unknown" = "required"): VisualCompo
 const tokenResolutionDigest = (systemId: string, value = 32) => new Bun.CryptoHasher("sha256")
   .update(JSON.stringify({ schemaVersion: "design-token-resolution/v1", systemId, token: "layout.sectionGap", unit: "css-px", value }))
   .digest("hex");
+const screenshotDigest = (role: string, viewportId: string, stateId: string) => new Bun.CryptoHasher("sha256").update(`${role}:${viewportId}:${stateId}`).digest("hex");
+
 
 const assertion = (systemId = "synthetic-system", actual = 32): VisualCompositionAssertion => ({
   assertionId: `section-gap-${systemId}`,
@@ -63,8 +65,8 @@ const oracle = (overrides: Partial<VisualCompositionOracle> = {}, systemId = "sy
     stateId,
     viewportId,
     viewport: viewportId === "desktop" ? { id: "desktop", width: 1440, height: 900, label: "wide" } : { id: "mobile", width: 390, height: 844, devicePixelRatio: 3, label: "narrow" },
-    fullPageScreenshotDigest: SCREENSHOT,
-    focusedRegionScreenshotDigests: [FOCUSED_SCREENSHOT],
+    fullPageScreenshotDigest: screenshotDigest("full-page", viewportId, stateId),
+    focusedRegionScreenshotDigests: [screenshotDigest("focused-region", viewportId, stateId)],
     regions: [
       { regionId: "main", role: "primary", x: 0, y: 0, width: viewportId === "desktop" ? 900 : 390, height: 500 },
       { regionId: "secondary", role: "supporting", x: 0, y: 532, width: viewportId === "desktop" ? 900 : 390, height: 200 },
@@ -76,14 +78,14 @@ const oracle = (overrides: Partial<VisualCompositionOracle> = {}, systemId = "sy
   ...overrides,
 });
 
-const STORED_SCREENSHOTS = [
-  { type: "screenshot", digest: SCREENSHOT },
-  { type: "screenshot", digest: FOCUSED_SCREENSHOT },
-] as const;
+const screenshotArtifacts = (candidateOracle: VisualCompositionOracle) => candidateOracle.captures.flatMap(capture => [
+  { type: "screenshot", digest: capture.fullPageScreenshotDigest },
+  ...capture.focusedRegionScreenshotDigests.map(digest => ({ type: "screenshot", digest })),
+]);
 
 const evaluateWithStoredScreenshots = (candidateRequirement: VisualCompositionRequirement, candidateOracle: VisualCompositionOracle) => {
   const tokenArtifacts = candidateOracle.captures.flatMap(capture => capture.assertions.flatMap(item => item.source.kind === "design-token" ? [{ type: "design-token-resolution", digest: item.source.resolutionArtifactDigest }] : []));
-  return evaluateVisualComposition(candidateRequirement, candidateOracle, [...STORED_SCREENSHOTS, ...tokenArtifacts]);
+  return evaluateVisualComposition(candidateRequirement, candidateOracle, [...screenshotArtifacts(candidateOracle), ...tokenArtifacts]);
 };
 
 describe("visual composition contracts", () => {
@@ -129,6 +131,14 @@ describe("visual composition contracts", () => {
     const aliased = { ...candidate, captures: candidate.captures.map((capture, index) => index === 0 ? { ...capture, focusedRegionScreenshotDigests: [capture.fullPageScreenshotDigest] } : capture) };
     expect(isVisualCompositionOracle(aliased)).toBe(false);
     expect(evaluateWithStoredScreenshots(requirement(), aliased as VisualCompositionOracle).status).toBe("INCOMPLETE");
+  });
+
+  test("rejects screenshot evidence reused across capture tuples", () => {
+    const candidate = oracle();
+    const first = candidate.captures[0]!;
+    const reused = { ...candidate, captures: candidate.captures.map((capture, index) => index === 1 ? { ...capture, fullPageScreenshotDigest: first.fullPageScreenshotDigest, focusedRegionScreenshotDigests: first.focusedRegionScreenshotDigests } : capture) };
+    expect(isVisualCompositionOracle(reused)).toBe(false);
+    expect(evaluateWithStoredScreenshots(requirement(), reused).status).toBe("INCOMPLETE");
   });
 
   test("requires every screenshot digest to identify a stored screenshot artifact", () => {
@@ -231,7 +241,7 @@ describe("visual composition contracts", () => {
     const missing = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
     expect(missing.status).toBe("INCOMPLETE");
     expect(missing.reasons).toContain(`APPROVED_REFERENCE_ARTIFACT_MISSING:${captures[0]!.assertions[0]!.assertionId}`);
-    const stored = evaluateVisualComposition(requirement(), { ...candidate, captures }, [...STORED_SCREENSHOTS, { type: "verification-result", digest: referenceDigest }]);
+    const stored = evaluateVisualComposition(requirement(), { ...candidate, captures }, [...screenshotArtifacts(candidate), { type: "verification-result", digest: referenceDigest }]);
     expect(stored.status).toBe("PASS");
   });
 

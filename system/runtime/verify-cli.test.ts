@@ -135,4 +135,89 @@ describe("traceknot verify CLI", () => {
       await Promise.all([fixtureValue.cleanup(), rm(aliasRoot, { recursive: true, force: true })]);
     }
   });
+
+  test("ingests a visual oracle and distinct screenshot artifacts for significant UI verification", async () => {
+    const root = await mkdtemp(join(tmpdir(), "traceknot-cli-visual-repo-"));
+    const config = await mkdtemp(join(tmpdir(), "traceknot-cli-visual-config-"));
+    const state = await mkdtemp(join(tmpdir(), "traceknot-cli-visual-state-"));
+    try {
+      const fullPath = join(root, "full-page.png");
+      const focusedPath = join(root, "focused-region.png");
+      const fullBytes = new TextEncoder().encode("synthetic full-page screenshot\n");
+      const focusedBytes = new TextEncoder().encode("synthetic focused-region screenshot\n");
+      const fullDigest = new Bun.CryptoHasher("sha256").update(fullBytes).digest("hex");
+      const focusedDigest = new Bun.CryptoHasher("sha256").update(focusedBytes).digest("hex");
+      await writeFile(join(root, "input.txt"), "clean\n");
+      await writeFile(fullPath, fullBytes);
+      await writeFile(focusedPath, focusedBytes);
+      git(root, ["init", "-q"]); git(root, ["add", "."]); git(root, ["commit", "-qm", "visual fixture"]);
+      const snapshot = await captureGitSnapshotIdentity(root);
+      const request = {
+        schemaVersion: "verification-request/v1",
+        requestId: "cli-visual-e2e",
+        project: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId },
+        change: { summary: "Adjust responsive frontend layout spacing.", paths: ["input.txt"], uiImpact: "significant" },
+        testBasis: [{ id: "basis-layout", kind: "acceptance-criterion", origin: "explicit", text: "The responsive layout preserves section spacing." }],
+        visualComposition: {
+          schemaVersion: "visual-composition-scope/v1",
+          decision: "required",
+          basisIds: ["basis-layout"],
+          rationale: "The responsive layout geometry changes.",
+          surfaces: [{ surfaceId: "surface-catalog", stateIds: ["populated"], viewportIds: ["desktop"] }],
+          viewports: [{ id: "desktop", width: 1440, height: 900 }],
+        },
+      };
+      const oracle = {
+        schemaVersion: "visual-composition-oracle/v1",
+        oracleId: "oracle:cli-visual-e2e",
+        requestId: request.requestId,
+        snapshotId: snapshot.snapshotId,
+        conditionId: "condition:request-visual-composition",
+        producer: { kind: "ci", identity: "traceknot-cli", independence: "independent-producer" },
+        captures: [{
+          captureId: "capture:catalog:populated:desktop",
+          surfaceId: "surface-catalog",
+          stateId: "populated",
+          viewportId: "desktop",
+          viewport: { id: "desktop", width: 1440, height: 900 },
+          fullPageScreenshotDigest: fullDigest,
+          focusedRegionScreenshotDigests: [focusedDigest],
+          regions: [
+            { regionId: "main", role: "primary", x: 0, y: 0, width: 900, height: 500 },
+            { regionId: "supporting", role: "supporting", x: 0, y: 532, width: 900, height: 200 },
+          ],
+          assertions: [{ assertionId: "section-gap", relation: "separation", regionIds: ["main", "supporting"], operator: "greater-than-or-equal", expected: 32, actual: 32, unit: "css-px", source: { kind: "explicit-basis", basisId: "basis-layout" } }],
+        }],
+        representativeStateLimitations: [],
+        blockingReasons: [],
+      };
+      const requestPath = join(config, "request.json");
+      const oraclePath = join(config, "oracle.json");
+      const manifestPath = join(config, "manifest.json");
+      const command = (id: string) => ({ id, executable: "/usr/bin/true" });
+      const visualCommand = {
+        ...command("obligation:condition:request-visual-composition"),
+        visualCompositionOraclePath: oraclePath,
+        declaredArtifacts: [
+          { type: "screenshot", digest: fullDigest, path: "full-page.png" },
+          { type: "screenshot", digest: focusedDigest, path: "focused-region.png" },
+        ],
+      };
+      const manifest = { schemaVersion: "verification-manifest/v1", obligations: [command("obligation:condition:basis-layout"), command("obligation:condition:request-browser"), visualCommand] };
+      await writeFile(requestPath, JSON.stringify(request));
+      await writeFile(oraclePath, JSON.stringify(oracle));
+      await writeFile(manifestPath, JSON.stringify(manifest));
+      const stdout: string[] = [];
+      const stderr: string[] = [];
+      const status = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], text => stdout.push(text), text => stderr.push(text));
+      expect({ status, stderr }).toEqual({ status: 0, stderr: [] });
+      const report = JSON.parse(stdout.join("")) as { verdict: { qaVerdict: string }; documents: { execution: { observations: Array<{ observationId: string; artifacts: Array<{ type: string; digest: string; path?: string }> }>; evidence: Array<{ obligationId: string; visualCompositionOracleDigest?: string }> } } };
+      expect(report.verdict.qaVerdict).toBe("PASS");
+      const visualObservation = report.documents.execution.observations.find(item => item.observationId.includes("visual-composition"));
+      expect(visualObservation?.artifacts).toEqual(expect.arrayContaining([expect.objectContaining({ type: "screenshot", digest: fullDigest }), expect.objectContaining({ type: "screenshot", digest: focusedDigest })]));
+      expect(report.documents.execution.evidence.find(item => item.obligationId.includes("visual-composition"))?.visualCompositionOracleDigest).toMatch(/^[a-f0-9]{64}$/);
+    } finally {
+      await Promise.all([rm(root, { recursive: true, force: true }), rm(config, { recursive: true, force: true }), rm(state, { recursive: true, force: true })]);
+    }
+  });
 });

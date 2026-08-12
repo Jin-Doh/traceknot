@@ -3,6 +3,7 @@ import { mkdir, lstat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { Artifact, Producer } from "../core/qa-core";
+import { isVisualCompositionOracle, type VisualCompositionOracle } from "../core/visual-composition";
 import {
   buildVerificationPlan,
   canonicalizeJson,
@@ -39,6 +40,7 @@ type ManifestCommand = Readonly<{
   maxOutputBytes?: number;
   maxArtifactBytes?: number;
   declaredArtifacts?: readonly ShellArtifactDeclaration[];
+  visualCompositionOraclePath?: string;
   toolVersion?: string;
 }>;
 type VerifyManifest = Readonly<{ schemaVersion: "verification-manifest/v1"; obligations: readonly ManifestCommand[] }>;
@@ -165,7 +167,9 @@ function validateManifest(value: unknown): VerifyManifest {
         return { type, digest, path: requireString(declaration.path, "declared artifact path") };
       });
     }
-    obligations.push({ id, executable, ...(argv ? { argv } : {}), ...(cwd ? { cwd } : {}), ...(env ? { env } : {}), ...(bounded("timeoutMs", 600_000) ? { timeoutMs: bounded("timeoutMs", 600_000) } : {}), ...(bounded("maxOutputBytes", 256 * 1024 * 1024) ? { maxOutputBytes: bounded("maxOutputBytes", 256 * 1024 * 1024) } : {}), ...(bounded("maxArtifactBytes", 256 * 1024 * 1024) ? { maxArtifactBytes: bounded("maxArtifactBytes", 256 * 1024 * 1024) } : {}), ...(declaredArtifacts ? { declaredArtifacts } : {}), ...(item.toolVersion === undefined ? {} : { toolVersion: requireString(item.toolVersion, "manifest toolVersion") }) });
+    const visualCompositionOraclePath = item.visualCompositionOraclePath === undefined ? undefined : requireString(item.visualCompositionOraclePath, "manifest visualCompositionOraclePath");
+    if (visualCompositionOraclePath !== undefined && !isAbsolute(visualCompositionOraclePath)) fail("manifest visualCompositionOraclePath must be absolute");
+    obligations.push({ id, executable, ...(argv ? { argv } : {}), ...(cwd ? { cwd } : {}), ...(env ? { env } : {}), ...(bounded("timeoutMs", 600_000) ? { timeoutMs: bounded("timeoutMs", 600_000) } : {}), ...(bounded("maxOutputBytes", 256 * 1024 * 1024) ? { maxOutputBytes: bounded("maxOutputBytes", 256 * 1024 * 1024) } : {}), ...(bounded("maxArtifactBytes", 256 * 1024 * 1024) ? { maxArtifactBytes: bounded("maxArtifactBytes", 256 * 1024 * 1024) } : {}), ...(declaredArtifacts ? { declaredArtifacts } : {}), ...(visualCompositionOraclePath ? { visualCompositionOraclePath } : {}), ...(item.toolVersion === undefined ? {} : { toolVersion: requireString(item.toolVersion, "manifest toolVersion") }) });
   }
   obligations.sort((left, right) => left.id.localeCompare(right.id));
   return { schemaVersion: "verification-manifest/v1", obligations };
@@ -224,20 +228,33 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
   const commands = new Map((manifest?.obligations ?? []).map(command => [command.id, command]));
   const executionAuthority = { atomicCanonicalBindingIdempotency: true as const, issueExecutionAuthority: async (binding: Parameters<NonNullable<VerificationRunDependencies["executionAuthority"]["issueExecutionAuthority"]>>[0]) => authorityFor(binding), verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: Parameters<NonNullable<VerificationRunDependencies["executionAuthority"]["verifyExecutionAuthority"]>>[1]) => authority.issuer === "traceknot-cli" && canonicalizeJson(authority.binding) === canonicalizeJson(binding) };
   const freshnessAuthority = { atomicSameKeyIdempotency: true as const, issueFreshnessAuthority: async (binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["issueFreshnessAuthority"]>>[0]) => freshnessAuthorityFor(binding), verifyFreshnessAuthority: async (authority: FreshnessAuthority, binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["verifyFreshnessAuthority"]>>[1]) => authority.issuer === "traceknot-cli" && canonicalizeJson(authority.binding) === canonicalizeJson(binding) };
-  const executor = { atomicSameKeyIdempotency: true as const, executeObligation: async (input: Parameters<NonNullable<VerificationRunDependencies["executor"]["executeObligation"]>>[0]): Promise<VerificationExecutionOutput> => {
+  type ManifestExecutionInput = Parameters<NonNullable<VerificationRunDependencies["executor"]["executeObligation"]>>[0];
+  const executeManifestCommand = async (input: ManifestExecutionInput, executionKind: "command" | "browser"): Promise<VerificationExecutionOutput> => {
     const command = commands.get(input.obligation.id);
     if (!command) throw new Error(`manifest has no command for obligation ${input.obligation.id}`);
     const observation = await collector.collect({ requestId: input.requestId, snapshotId: input.snapshotId, rootIdentity: input.rootIdentity, observationId: `observation:${input.obligation.id}`, executable: command.executable, ...(command.argv ? { argv: command.argv } : {}), ...(command.cwd ? { cwd: command.cwd } : {}), ...(command.env ? { env: command.env } : {}), ...(command.timeoutMs ? { timeoutMs: command.timeoutMs } : {}), ...(command.maxOutputBytes ? { maxOutputBytes: command.maxOutputBytes } : {}), ...(command.declaredArtifacts ? { declaredArtifacts: command.declaredArtifacts } : {}), ...(command.toolVersion ? { toolVersion: command.toolVersion } : {}), producer: producer() });
     const artifacts: Artifact[] = [];
     for (const artifact of observation.artifacts) {
       const bytes = await collectorStore.readArtifact(artifact.digest);
-      artifacts.push(await mainStore.storeArtifact({ type: "verification-result", digest: artifact.digest, path: artifact.path, bytes } as Artifact & { bytes: Uint8Array }, input));
+      const type = artifact.type === "screenshot" || artifact.type === "design-token-resolution" ? artifact.type : "verification-result";
+      artifacts.push(await mainStore.storeArtifact({ type, digest: artifact.digest, path: artifact.path, bytes } as Artifact & { bytes: Uint8Array }, input));
+    }
+    let visualCompositionOracle: VisualCompositionOracle | undefined;
+    if (input.obligation.visualCompositionRequirement) {
+      if (!command.visualCompositionOraclePath) throw new Error(`manifest obligation ${command.id} requires visualCompositionOraclePath`);
+      const candidate = await readBoundedJson(command.visualCompositionOraclePath);
+      if (!isVisualCompositionOracle(candidate)) throw new Error(`manifest obligation ${command.id} visual composition oracle is invalid`);
+      visualCompositionOracle = candidate;
+    } else if (command.visualCompositionOraclePath) {
+      throw new Error(`manifest obligation ${command.id} supplies a visual oracle for a non-visual obligation`);
     }
     const status = observation.execution.exitStatus === "passed" ? "passed" : observation.execution.exitStatus === "blocked" ? "blocked" : observation.execution.exitStatus === "timed-out" ? "failed" : "failed";
-    return { status, runId: input.runId, requestId: input.requestId, snapshotId: input.snapshotId, idempotencyKey: input.idempotencyKey, producer: observation.producer, summary: `Command ${command.executable} completed with ${observation.execution.exitStatus}.`, artifacts, executionKind: "command", identity: observation.execution.identity, ...(observation.execution.exitCode === undefined ? {} : { exitCode: observation.execution.exitCode }) };
-  }};
-  const artifactStore = { atomicSameKeyIdempotency: true as const, storeArtifact: async (artifact: Artifact, input: Parameters<NonNullable<VerificationRunDependencies["executor"]["executeObligation"]>>[0]) => { const content = (artifact as Artifact & { bytes?: Uint8Array }).bytes; if (!content) { if (!await mainStore.hasArtifact(artifact.digest)) throw new Error(`artifact ${artifact.digest} was not published`); return artifact; } return mainStore.storeArtifact(artifact as Artifact & { bytes: Uint8Array }, input); } };
-  const dependencies: VerificationRunDependencies = { repository, executor, artifactStore, capabilityProvider: { has: () => true }, executionAuthority, freshnessPolicy: { evaluateFreshness: () => "fresh" }, freshnessAuthority, snapshotVerifier: async () => { const current = await captureGitSnapshotIdentity(options.rootDir); return current.rootIdentity === request.project.rootIdentity && current.snapshotId === request.project.snapshotId; }, now: () => new Date() };
+    return { status, runId: input.runId, requestId: input.requestId, snapshotId: input.snapshotId, idempotencyKey: input.idempotencyKey, producer: observation.producer, summary: `Command ${command.executable} completed with ${observation.execution.exitStatus}.`, artifacts, executionKind, identity: observation.execution.identity, ...(observation.execution.exitCode === undefined ? {} : { exitCode: observation.execution.exitCode }), ...(visualCompositionOracle ? { visualCompositionOracle } : {}) };
+  };
+  const executor = { atomicSameKeyIdempotency: true as const, executeObligation: (input: ManifestExecutionInput) => executeManifestCommand(input, "command") };
+  const browserExecutor = { atomicSameKeyIdempotency: true as const, executeBrowser: (input: ManifestExecutionInput) => executeManifestCommand(input, "browser") };
+  const artifactStore = { atomicSameKeyIdempotency: true as const, storeArtifact: async (artifact: Artifact, input: ManifestExecutionInput) => { const content = (artifact as Artifact & { bytes?: Uint8Array }).bytes; if (!content) { if (!await mainStore.hasArtifact(artifact.digest)) throw new Error(`artifact ${artifact.digest} was not published`); return artifact; } return mainStore.storeArtifact(artifact as Artifact & { bytes: Uint8Array }, input); } };
+  const dependencies: VerificationRunDependencies = { repository, executor, browserExecutor, artifactStore, capabilityProvider: { has: () => true }, executionAuthority, freshnessPolicy: { evaluateFreshness: () => "fresh" }, freshnessAuthority, snapshotVerifier: async () => { const current = await captureGitSnapshotIdentity(options.rootDir); return current.rootIdentity === request.project.rootIdentity && current.snapshotId === request.project.snapshotId; }, now: () => new Date() };
   return { dependencies, close: async () => { await collectorStore.close(); await mainStore.close(); await repository.close(); } };
 }
 
@@ -297,7 +314,7 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
     if (existingRun) {
       if (!existingMetadata || existingMetadata.rootIdentity !== snapshot.rootIdentity || existingMetadata.snapshotId !== snapshot.snapshotId || existingMetadata.manifestDigest !== manifestDigest) fail("resume configuration or Git snapshot does not match the persisted run");
     } else {
-      await repository.writeMetadata(runId, { schemaVersion: "traceknot-cli-state/v1", rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, manifestDigest, capabilities: ["command", "test-result", "experiment", "review", "static-analysis", "build-result", "scenario-result"] });
+      await repository.writeMetadata(runId, { schemaVersion: "traceknot-cli-state/v1", rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, manifestDigest, capabilities: ["command", "browser-execution", "visual-composition", "test-result", "experiment", "review", "static-analysis", "build-result", "scenario-result"] });
     }
     const dependenciesResult = await makeDependencies(options, request, manifest, repository, snapshot.snapshotId); stores = dependenciesResult;
     const result = await runVerification({ runId, request, dependencies: dependenciesResult.dependencies });
