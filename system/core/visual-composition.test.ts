@@ -256,6 +256,27 @@ describe("visual composition contracts", () => {
     const stored = evaluateVisualComposition(requirement(), { ...candidate, captures }, [...screenshotArtifacts(candidate), { type: "verification-result", digest: referenceDigest }]);
     expect(stored.status).toBe("PASS");
   });
+  test("does not evaluate assertions from a cross-context oracle", () => {
+    const candidate = oracle({ requestId: "other-request", snapshotId: "other-snapshot", conditionId: "other-condition" });
+    const captures = candidate.captures.map((capture, index) => index === 0 ? { ...capture, assertions: [assertion("cross-context-failure", 0)] } : capture);
+    const result = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
+    expect(result.status).toBe("INCOMPLETE");
+    expect(result.reasons).toEqual(["REQUEST_MISMATCH", "SNAPSHOT_MISMATCH", "CONDITION_MISMATCH"]);
+    expect(result.failedAssertionIds).toEqual([]);
+  });
+
+  test("does not evaluate assertions sourced from an unrelated basis", () => {
+    const candidate = oracle();
+    const captures = candidate.captures.map((capture, index) => index === 0 ? {
+      ...capture,
+      assertions: [{ ...assertion("unlinked-basis-failure", 0), source: { kind: "explicit-basis" as const, basisId: "other-basis" } }],
+    } : capture);
+    const result = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
+    expect(result.status).toBe("INCOMPLETE");
+    expect(result.reasons).toContain(`UNLINKED_ORACLE_SOURCE:${captures[0]!.assertions[0]!.assertionId}`);
+    expect(result.failedAssertionIds).toEqual([]);
+  });
+
 
   test("requires assertions to cover every visual composition basis", () => {
     const candidateRequirement = { ...requirement(), basisIds: ["basis-layout", "basis-secondary"] };

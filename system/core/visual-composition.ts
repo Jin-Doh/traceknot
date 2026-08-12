@@ -325,6 +325,7 @@ export function evaluateVisualComposition(requirement: VisualCompositionRequirem
   if (oracle.requestId !== requirement.requestId) reasons.push("REQUEST_MISMATCH");
   if (oracle.snapshotId !== requirement.snapshotId) reasons.push("SNAPSHOT_MISMATCH");
   if (oracle.conditionId !== requirement.conditionId) reasons.push("CONDITION_MISMATCH");
+  if (reasons.length > 0) return { schemaVersion: "visual-composition-evaluation/v1", status: "INCOMPLETE", reasons, failedAssertionIds, missingCaptureKeys };
   if (requirement.scopeDecision === "unknown") reasons.push("SCOPE_DECISION_UNKNOWN");
   if (independenceRank[oracle.producer.independence] < independenceRank[requirement.minimumIndependence]) reasons.push("INDEPENDENCE_NOT_MET");
   if (oracle.blockingReasons.length > 0) reasons.push(...oracle.blockingReasons.map(reason => `BLOCKED:${reason}`));
@@ -346,7 +347,7 @@ export function evaluateVisualComposition(requirement: VisualCompositionRequirem
     const regions = new Map(capture.regions.map(region => [region.regionId, region]));
     for (const assertion of capture.assertions) {
       const linkedSource = sourceUsesBasis(assertion.source, basisIds);
-      let expectedValueAuthenticated = true;
+      let expectedValueAuthenticated = linkedSource;
       if (!linkedSource) reasons.push(`UNLINKED_ORACLE_SOURCE:${assertion.assertionId}`);
       if (assertion.source.kind === "approved-reference" && !storedArtifacts.has(assertion.source.artifactDigest)) {
         reasons.push(`APPROVED_REFERENCE_ARTIFACT_MISSING:${assertion.assertionId}`);

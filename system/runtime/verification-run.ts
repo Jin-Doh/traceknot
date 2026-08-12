@@ -581,7 +581,7 @@ function enforceVisualCompositionOutput(obligation: VerificationObligationPlan, 
   const producerMatches = Boolean(oracle && structurallyEqual(oracle.producer, output.producer));
   const reasons = producerMatches ? result.reasons : [...result.reasons, "ORACLE_PRODUCER_MISMATCH"].sort();
   const rank = { PASS: 0, INCOMPLETE: 1, BLOCKED: 2, FAIL: 3 } as const;
-  const evaluatedStatus = result.status === "PASS" && !producerMatches ? "INCOMPLETE" : result.status;
+  const evaluatedStatus = producerMatches ? result.status : "INCOMPLETE";
   const finalStatus = rank[evaluatedStatus] > rank[executorStatus] ? evaluatedStatus : executorStatus;
   if (finalStatus === executorStatus && result.status === "PASS" && producerMatches) return output;
   const { exitCode: _exitCode, ...rest } = output;

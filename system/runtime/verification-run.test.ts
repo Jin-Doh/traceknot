@@ -42,7 +42,7 @@ const SNAPSHOT_ID = "snapshot-001";
 
 type RunInput = Parameters<typeof runVerification>[0];
 type RunStateValue = CanonicalRunState["state"];
-type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerKind?: "self" | "harness-managed" | "deterministic-verifier" | "ci" | "human" | "external-system"; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean; rejectedAuthority?: boolean; invalidProducer?: boolean; visualCompositionOracle?: boolean; omitStoredScreenshot?: boolean; browserStatus?: "PASS" | "BLOCKED" | "INCOMPLETE"; failedVisualAssertion?: boolean; visualBlocking?: boolean };
+type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerKind?: "self" | "harness-managed" | "deterministic-verifier" | "ci" | "human" | "external-system"; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean; rejectedAuthority?: boolean; invalidProducer?: boolean; visualCompositionOracle?: boolean; mismatchedOracleProducer?: boolean; omitStoredScreenshot?: boolean; browserStatus?: "PASS" | "BLOCKED" | "INCOMPLETE"; failedVisualAssertion?: boolean; visualBlocking?: boolean };
 
 type FakeDispatchClaimResult = { claimed: boolean; status: "CLAIMED" | "COMPLETED"; claim: DispatchClaim; outputStored: boolean; completion?: VerificationExecutionCompletionEnvelope };
 type FakeRepositoryStore = {
@@ -249,7 +249,7 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
       browserCalls++;
       if (options.missingBrowserOutput) return undefined;
       const producer = { kind: options.producerKind ?? "deterministic-verifier", identity: "fixture-browser", independence: options.producerIndependence ?? "independent-producer" } as const;
-      const visualCompositionOracle = options.visualCompositionOracle && request.obligation.visualCompositionRequirement ? makeCompositionOracle(request, producer, options) : undefined;
+      const visualCompositionOracle = options.visualCompositionOracle && request.obligation.visualCompositionRequirement ? makeCompositionOracle(request, options.mismatchedOracleProducer ? { ...producer, identity: "other-browser" } : producer, options) : undefined;
       const screenshotArtifacts: Artifact[] = visualCompositionOracle
         ? visualCompositionOracle.captures.flatMap(capture => capture.screenshots.filter(screenshot => !options.omitStoredScreenshot || screenshot.role === "full-page").map(screenshot => ({ type: "screenshot" as const, digest: screenshot.digest })))
         : [];
@@ -1517,6 +1517,14 @@ describe("verification run orchestration", () => {
     expect(compositionEvidence?.result.verdict).toBe("FAIL");
     expect(compositionEvidence?.result.summary).toContain("COMPOSITION_ASSERTION_FAILED");
   });
+  test("does not attribute a mismatched oracle failure to the executor producer", async () => {
+    const fakes = makeDependencies({ visualCompositionOracle: true, mismatchedOracleProducer: true, failedVisualAssertion: true });
+    const result = await runVerification({ runId: "composition-producer-mismatch", request: makeCompositionRequest("composition-producer-mismatch"), dependencies: fakes.dependencies });
+    const compositionEvidence = result.documents.execution?.evidence.find(item => item.obligationId.includes("visual-composition"));
+    expect(compositionEvidence?.result.verdict).toBe("INCOMPLETE");
+    expect(compositionEvidence?.result.summary).toContain("ORACLE_PRODUCER_MISMATCH");
+  });
+
 
   test("rejects a persisted passing composition result with both oracle digests removed", async () => {
     const runId = "composition-oracle-digest-removed";
