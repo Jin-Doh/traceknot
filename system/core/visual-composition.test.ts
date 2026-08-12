@@ -164,6 +164,18 @@ describe("visual composition contracts", () => {
     expect(result.failedAssertionIds).toEqual(["section-gap-custom-product"]);
   });
 
+  test("fails reported separation that contradicts overlapping captured regions", () => {
+    const candidate = oracle();
+    const captures = candidate.captures.map((capture, index) => index === 0 ? {
+      ...capture,
+      regions: capture.regions.map(region => region.regionId === "secondary" ? { ...region, y: 400 } : region),
+    } : capture);
+    const result = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
+    expect(result.status).toBe("FAIL");
+    expect(result.reasons).toContain("COMPOSITION_ASSERTION_FAILED");
+    expect(result.failedAssertionIds).toContain(candidate.captures[0]!.assertions[0]!.assertionId);
+  });
+
   test("rejects assertions that reference absent regions or unrelated basis", () => {
     const candidate = oracle();
     const invalidRegion = { ...candidate, captures: candidate.captures.map((capture, index) => index === 0 ? { ...capture, assertions: [{ ...capture.assertions[0]!, regionIds: ["missing"] }] } : capture) };

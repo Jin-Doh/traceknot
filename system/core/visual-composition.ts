@@ -234,14 +234,45 @@ function captureKey(value: VisualCompositionCaptureRequirement | VisualCompositi
   return `${value.surfaceId}\u0000${value.stateId}\u0000${value.viewportId}`;
 }
 
-function assertionPasses(assertion: VisualCompositionAssertion): boolean {
+function assertionPasses(assertion: VisualCompositionAssertion, actual: string | number | boolean = assertion.actual): boolean {
   switch (assertion.operator) {
-    case "equals": return assertion.actual === assertion.expected;
-    case "not-equals": return assertion.actual !== assertion.expected;
-    case "less-than-or-equal": return (assertion.actual as number) <= (assertion.expected as number);
-    case "greater-than-or-equal": return (assertion.actual as number) >= (assertion.expected as number);
-    case "contains": return (assertion.actual as string).includes(assertion.expected as string);
+    case "equals": return actual === assertion.expected;
+    case "not-equals": return actual !== assertion.expected;
+    case "less-than-or-equal": return (actual as number) <= (assertion.expected as number);
+    case "greater-than-or-equal": return (actual as number) >= (assertion.expected as number);
+    case "contains": return (actual as string).includes(assertion.expected as string);
   }
+}
+
+const GEOMETRIC_RELATIONS = new Set<VisualCompositionRelation>(["separation", "inset", "alignment", "containment", "non-overlap", "ordering", "size-ratio", "density"]);
+
+function derivedGeometryActual(assertion: VisualCompositionAssertion, regions: ReadonlyMap<string, VisualCompositionRegion>, viewport: VisualCompositionViewport): number | boolean | undefined {
+  const selected = assertion.regionIds.map(regionId => regions.get(regionId)).filter((region): region is VisualCompositionRegion => region !== undefined);
+  if (selected.length !== assertion.regionIds.length || selected.length < 1) return undefined;
+  const first = selected[0]!;
+  if (assertion.relation === "separation" || assertion.relation === "non-overlap") {
+    if (selected.length < 2) return undefined;
+    let minimumGap = Number.POSITIVE_INFINITY;
+    let nonOverlapping = true;
+    for (let leftIndex = 0; leftIndex < selected.length - 1; leftIndex++) {
+      const left = selected[leftIndex]!;
+      for (let rightIndex = leftIndex + 1; rightIndex < selected.length; rightIndex++) {
+        const right = selected[rightIndex]!;
+        const separated = left.x + left.width <= right.x || right.x + right.width <= left.x || left.y + left.height <= right.y || right.y + right.height <= left.y;
+        nonOverlapping &&= separated;
+        minimumGap = Math.min(minimumGap, Math.max(left.x - (right.x + right.width), right.x - (left.x + left.width), left.y - (right.y + right.height), right.y - (left.y + left.height), 0));
+      }
+    }
+    return assertion.relation === "separation" ? minimumGap : nonOverlapping;
+  }
+  const rest = selected.slice(1);
+  if (assertion.relation === "containment") return rest.length > 0 && rest.every(region => first.x <= region.x && first.y <= region.y && first.x + first.width >= region.x + region.width && first.y + first.height >= region.y + region.height);
+  if (assertion.relation === "inset") return rest.length > 0 ? Math.min(...rest.flatMap(region => [region.x - first.x, region.y - first.y, first.x + first.width - (region.x + region.width), first.y + first.height - (region.y + region.height)])) : undefined;
+  if (assertion.relation === "alignment") return rest.length > 0 ? Math.max(...rest.map(region => Math.min(Math.abs(first.x - region.x), Math.abs(first.x + first.width - region.x - region.width), Math.abs(first.x + first.width / 2 - region.x - region.width / 2), Math.abs(first.y - region.y), Math.abs(first.y + first.height - region.y - region.height), Math.abs(first.y + first.height / 2 - region.y - region.height / 2)))) : undefined;
+  if (assertion.relation === "ordering") return selected.every((region, index) => index === 0 || selected[index - 1]!.y < region.y || selected[index - 1]!.y === region.y && selected[index - 1]!.x <= region.x);
+  if (assertion.relation === "size-ratio") return selected.length === 2 ? first.width * first.height / (selected[1]!.width * selected[1]!.height) : undefined;
+  if (assertion.relation === "density") return selected.reduce((area, region) => area + region.width * region.height, 0) / (viewport.width * viewport.height);
+  return undefined;
 }
 
 function sourceUsesBasis(source: VisualOracleSource, basisIds: ReadonlySet<string>): boolean {
@@ -276,9 +307,12 @@ export function evaluateVisualComposition(requirement: VisualCompositionRequirem
   if (missingCaptureKeys.length > 0) reasons.push("REQUIRED_CAPTURE_MISSING");
   const basisIds = new Set(requirement.basisIds);
   for (const capture of oracle.captures) {
+    const regions = new Map(capture.regions.map(region => [region.regionId, region]));
     for (const assertion of capture.assertions) {
       if (!sourceUsesBasis(assertion.source, basisIds)) reasons.push(`UNLINKED_ORACLE_SOURCE:${assertion.assertionId}`);
-      if (!assertionPasses(assertion)) failedAssertionIds.push(assertion.assertionId);
+      const derivedActual = derivedGeometryActual(assertion, regions, capture.viewport);
+      const missingDerivation = GEOMETRIC_RELATIONS.has(assertion.relation) && derivedActual === undefined;
+      if (missingDerivation || (derivedActual !== undefined && derivedActual !== assertion.actual) || !assertionPasses(assertion, derivedActual ?? assertion.actual)) failedAssertionIds.push(assertion.assertionId);
     }
   }
   if (failedAssertionIds.length > 0) reasons.push("COMPOSITION_ASSERTION_FAILED");

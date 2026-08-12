@@ -1536,6 +1536,20 @@ describe("verification run orchestration", () => {
     expect(validatePlan(plan), validatePlan.errors ? JSON.stringify(validatePlan.errors) : undefined).toBe(true);
   });
 
+  test("requires independent composition evidence for explicitly significant UI with neutral basis text", async () => {
+    const request = {
+      ...makeCompositionRequest("composition-significant-neutral"),
+      testBasis: [{ id: "basis-layout", kind: "request" as const, origin: "explicit" as const, text: "Keep the approved spacing." }],
+    } satisfies VerificationRequest;
+    const dependencies = makeDependencies().dependencies;
+    const basis = await establishTestBasis({ request, dependencies });
+    const discovery = await performRiskDiscovery({ request, basis, dependencies });
+    const plan = await buildVerificationPlan({ request, basis, discovery, dependencies });
+    const compositionObligation = plan.obligations.find(item => item.visualCompositionRequirement);
+    expect(compositionObligation?.independence).toBe("independent-producer");
+    expect(compositionObligation?.visualCompositionRequirement?.minimumIndependence).toBe("independent-producer");
+  });
+
   test("cannot pass when a focused screenshot digest is not backed by stored screenshot evidence", async () => {
     const fakes = makeDependencies({ visualCompositionOracle: true, omitStoredScreenshot: true });
     const result = await runVerification({ runId: "composition-focused-missing", request: makeCompositionRequest("composition-focused-missing"), dependencies: fakes.dependencies });

@@ -295,7 +295,8 @@ export async function buildVerificationPlan(input: BuildVerificationPlanInput): 
   const conditions = [...input.discovery.conditions].sort((a, b) => compareCodeUnits(a.id, b.id));
   const obligations = conditions.map(item => {
     const levels = item.riskIds.map(id => risks.find(risk => risk.id === id)?.level);
-    const materialRisk = levels.some(level => level === "R2" || level === "R3");
+    const significantComposition = input.request.change.uiImpact === "significant" && item.techniques.includes("visual-composition");
+    const materialRisk = significantComposition || levels.some(level => level === "R2" || level === "R3");
     const independence = materialRisk ? "independent-producer" as const : "separate-verification-context" as const;
     const id = `obligation:${item.id}`;
     const visualCompositionRequirement = item.techniques.includes("visual-composition") && input.request.visualComposition
