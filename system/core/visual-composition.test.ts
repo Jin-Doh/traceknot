@@ -176,6 +176,29 @@ describe("visual composition contracts", () => {
     expect(result.failedAssertionIds).toContain(candidate.captures[0]!.assertions[0]!.assertionId);
   });
 
+  test("preserves assertion failure precedence when the oracle also reports a blocker", () => {
+    const candidate = oracle({ blockingReasons: ["reference service unavailable"] });
+    const captures = candidate.captures.map((capture, index) => index === 0 ? { ...capture, assertions: [assertion("blocked-with-failure", 12)] } : capture);
+    const result = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
+    expect(result.status).toBe("FAIL");
+    expect(result.reasons).toContain("COMPOSITION_ASSERTION_FAILED");
+    expect(result.reasons).toContain("BLOCKED:reference service unavailable");
+  });
+
+  test("requires approved-reference provenance to identify a stored artifact", () => {
+    const referenceDigest = "e".repeat(64);
+    const candidate = oracle();
+    const captures = candidate.captures.map(capture => ({
+      ...capture,
+      assertions: capture.assertions.map(item => ({ ...item, source: { kind: "approved-reference" as const, artifactDigest: referenceDigest } })),
+    }));
+    const missing = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
+    expect(missing.status).toBe("INCOMPLETE");
+    expect(missing.reasons).toContain(`APPROVED_REFERENCE_ARTIFACT_MISSING:${captures[0]!.assertions[0]!.assertionId}`);
+    const stored = evaluateVisualComposition(requirement(), { ...candidate, captures }, [...STORED_SCREENSHOTS, { type: "verification-result", digest: referenceDigest }]);
+    expect(stored.status).toBe("PASS");
+  });
+
   test("requires one shared alignment guide across every referenced region", () => {
     const candidate = oracle();
     const captures = candidate.captures.map((capture, index) => index === 0 ? {

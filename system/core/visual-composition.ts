@@ -307,7 +307,8 @@ export function evaluateVisualComposition(requirement: VisualCompositionRequirem
   if (oracle.conditionId !== requirement.conditionId) reasons.push("CONDITION_MISMATCH");
   if (requirement.scopeDecision === "unknown") reasons.push("SCOPE_DECISION_UNKNOWN");
   if (independenceRank[oracle.producer.independence] < independenceRank[requirement.minimumIndependence]) reasons.push("INDEPENDENCE_NOT_MET");
-  if (oracle.blockingReasons.length > 0) return { schemaVersion: "visual-composition-evaluation/v1", status: "BLOCKED", reasons: [...reasons, ...oracle.blockingReasons.map(reason => `BLOCKED:${reason}`)].sort(), failedAssertionIds, missingCaptureKeys };
+  if (oracle.blockingReasons.length > 0) reasons.push(...oracle.blockingReasons.map(reason => `BLOCKED:${reason}`));
+  const storedArtifacts = new Set(artifacts.filter(artifact => DIGEST.test(artifact.digest)).map(artifact => artifact.digest));
   const storedScreenshots = new Set(artifacts.filter(artifact => artifact.type === "screenshot" && DIGEST.test(artifact.digest)).map(artifact => artifact.digest));
   const requiredScreenshotDigests = oracle.captures.flatMap(capture => [capture.fullPageScreenshotDigest, ...capture.focusedRegionScreenshotDigests]);
   if (requiredScreenshotDigests.some(digest => !storedScreenshots.has(digest))) reasons.push("SCREENSHOT_ARTIFACT_MISSING");
@@ -324,13 +325,14 @@ export function evaluateVisualComposition(requirement: VisualCompositionRequirem
     const regions = new Map(capture.regions.map(region => [region.regionId, region]));
     for (const assertion of capture.assertions) {
       if (!sourceUsesBasis(assertion.source, basisIds)) reasons.push(`UNLINKED_ORACLE_SOURCE:${assertion.assertionId}`);
+      if (assertion.source.kind === "approved-reference" && !storedArtifacts.has(assertion.source.artifactDigest)) reasons.push(`APPROVED_REFERENCE_ARTIFACT_MISSING:${assertion.assertionId}`);
       const derivedActual = derivedGeometryActual(assertion, regions, capture.viewport);
       const missingDerivation = GEOMETRIC_RELATIONS.has(assertion.relation) && derivedActual === undefined;
       if (missingDerivation || (derivedActual !== undefined && derivedActual !== assertion.actual) || !assertionPasses(assertion, derivedActual ?? assertion.actual)) failedAssertionIds.push(assertion.assertionId);
     }
   }
   if (failedAssertionIds.length > 0) reasons.push("COMPOSITION_ASSERTION_FAILED");
-  const status = failedAssertionIds.length > 0 ? "FAIL" : reasons.length > 0 ? "INCOMPLETE" : "PASS";
+  const status = failedAssertionIds.length > 0 ? "FAIL" : oracle.blockingReasons.length > 0 ? "BLOCKED" : reasons.length > 0 ? "INCOMPLETE" : "PASS";
   return {
     schemaVersion: "visual-composition-evaluation/v1",
     status,
