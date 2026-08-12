@@ -98,14 +98,14 @@ Before execution confirm the target snapshot, environment, dependencies, test da
 ### 7. Execute and capture evidence
 
 - Investigation: run the experiment and preserve its observed output.
-- **Material UI change:** exercise the changed flow in a real browser and inspect the rendered result. Explicitly decide whether each affected surface needs composition-level visual obligations. When composition is in scope, derive at least one observable condition from the test basis and keep these obligations separate from reachability, overflow, accessibility, and interaction checks:
+- **Significant UI change:** exercise the changed flow in a real browser and inspect the rendered result. Explicitly decide whether each affected surface needs composition-level visual obligations. When composition is in scope, derive at least one observable condition from the test basis and keep these obligations separate from reachability, overflow, accessibility, and interaction checks:
   - top-level section separation and ownership of vertical or horizontal gaps;
   - nested card or panel hierarchy and internal density;
   - full-page context and focused-region inspection;
   - representative populated, empty, loading, and error states when materially different;
   - desktop and mobile composition at each affected breakpoint;
   - measured geometry or a documented visual oracle when objective thresholds are appropriate.
-  Record the viewport, state, region, expected relation or threshold, actual geometry or observation, screenshot artifact, and evidence producer. For R2/R3 visual acceptance, require `independent-producer` evidence, or disclose the independence limitation and resolve the result as `INCOMPLETE`, `BLOCKED`, or accepted risk under the existing verdict rules. Passing reachability, overflow, accessibility, and interaction checks alone MUST NOT establish visual-composition coverage or `PASS`.
+  Record the viewport, state, region, expected relation or threshold, actual geometry or observation, screenshot artifact, and evidence producer. For R2/R3 visual acceptance, require `independent-producer` evidence, or disclose the independence limitation and resolve the result as `INCOMPLETE`, `BLOCKED`, or accepted risk under the existing verdict rules. Passing reachability, overflow, accessibility, and interaction checks alone MUST NOT establish visual-composition coverage or `PASS`. Use the design-system-neutral contract in `references/visual-composition.md`.
 - Bug fix: reproduce the defect first, then rerun the same reproduction after the fix.
 - Feature or API: execute tests covering the observable contract; add a test only for a new contract not already covered.
 - Persistence or concurrency: test transaction boundaries, rollback, recovery, races, and stale operations as applicable.

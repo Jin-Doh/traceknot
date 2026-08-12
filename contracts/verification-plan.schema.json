@@ -50,7 +50,51 @@
           "mandatory": { "type": "boolean" },
           "independence": { "enum": ["self-check", "separate-verification-context", "independent-producer", "external-approval"] },
           "entryCriteria": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-          "completionCriteria": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+          "completionCriteria": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "visualCompositionRequirement": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["schemaVersion", "requestId", "snapshotId", "conditionId", "scopeDecision", "basisIds", "requiredCaptures", "viewports", "minimumIndependence"],
+            "properties": {
+              "schemaVersion": { "const": "visual-composition-requirement/v1" },
+              "requestId": { "type": "string", "minLength": 1 },
+              "snapshotId": { "type": "string", "minLength": 1 },
+              "conditionId": { "type": "string", "minLength": 1 },
+              "scopeDecision": { "enum": ["required", "unknown"] },
+              "basisIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+              "requiredCaptures": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["surfaceId", "stateId", "viewportId"],
+                  "properties": {
+                    "surfaceId": { "type": "string", "minLength": 1 },
+                    "stateId": { "type": "string", "minLength": 1 },
+                    "viewportId": { "type": "string", "minLength": 1 }
+                  }
+                }
+              },
+              "viewports": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "width", "height"],
+                  "properties": {
+                    "id": { "type": "string", "minLength": 1 },
+                    "width": { "type": "number", "exclusiveMinimum": 0 },
+                    "height": { "type": "number", "exclusiveMinimum": 0 },
+                    "devicePixelRatio": { "type": "number", "exclusiveMinimum": 0 },
+                    "label": { "type": "string", "minLength": 1 }
+                  }
+                }
+              },
+              "minimumIndependence": { "enum": ["self-check", "separate-verification-context", "independent-producer", "external-approval"] }
+            }
+          }
         }
       }
     }

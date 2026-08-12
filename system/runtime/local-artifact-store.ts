@@ -4,7 +4,7 @@ import { open, type FileHandle } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { dlopen, FFIType, read as ffiRead } from "bun:ffi";
 import type { Artifact } from "../core/qa-core";
-import type { ArtifactStore, CanonicalVerificationResultArtifact, VerificationExecutionRequest } from "./verification-run";
+import type { ArtifactStore, CanonicalStoredArtifact, VerificationExecutionRequest } from "./verification-run";
 
 const DIGEST = /^[0-9a-f]{64}$/;
 const O_NOFOLLOW = constants.O_NOFOLLOW ?? 0;
@@ -510,7 +510,7 @@ export class LocalArtifactStore implements ArtifactStore {
     if (!published || published.type !== artifact.type || !compareBytes(published.bytes, bytes)) throw new ArtifactCollisionError("artifact readback verification failed");
     return outputArtifact(artifact);
   }
-  async storeVerificationResultArtifact(artifact: CanonicalVerificationResultArtifact, _input: VerificationExecutionRequest): Promise<Artifact> { return this.persist(artifact as ArtifactLike); }
+  async storeVerificationResultArtifact(artifact: CanonicalStoredArtifact, _input: VerificationExecutionRequest): Promise<Artifact> { return this.persist(artifact as ArtifactLike); }
   async storeArtifact(artifact: Artifact, _input: VerificationExecutionRequest): Promise<Artifact> { return this.persist(artifact as ArtifactLike); }
   async putArtifact(artifact: Artifact, _input: VerificationExecutionRequest): Promise<Artifact> { return this.persist(artifact as ArtifactLike); }
   async store(artifact: Artifact, _input: VerificationExecutionRequest): Promise<Artifact> { return this.persist(artifact as ArtifactLike); }

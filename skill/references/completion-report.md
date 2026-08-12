@@ -21,7 +21,7 @@ Report the QA decision independently from harness task completion.
 15. Final QA verdict and rationale.
 16. Separate harness completion status when the host supplies it.
 
-For a material UI change, include a separate **Visual-composition coverage** subsection in the conditions, evidence, and coverage portions of the report. It MUST state:
+For a significant UI change, include a separate **Visual-composition coverage** subsection in the conditions, evidence, and coverage portions of the report. It MUST state:
 
 - whether composition-level obligations were in scope for each affected surface and the basis for that decision;
 - the section separation, gap ownership, nested hierarchy, and density conditions exercised;

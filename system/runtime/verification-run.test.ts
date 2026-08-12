@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import Ajv2020 from "ajv/dist/2020.js";
 import type { Artifact } from "../core/qa-core";
+import type { VisualCompositionOracle } from "../core/visual-composition";
 import {
   buildVerificationPlan,
   DispatchClaimAcquisitionError,
@@ -41,7 +42,7 @@ const SNAPSHOT_ID = "snapshot-001";
 
 type RunInput = Parameters<typeof runVerification>[0];
 type RunStateValue = CanonicalRunState["state"];
-type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerKind?: "self" | "harness-managed" | "deterministic-verifier" | "ci" | "human" | "external-system"; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean; rejectedAuthority?: boolean; invalidProducer?: boolean };
+type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerKind?: "self" | "harness-managed" | "deterministic-verifier" | "ci" | "human" | "external-system"; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean; rejectedAuthority?: boolean; invalidProducer?: boolean; visualCompositionOracle?: boolean; omitStoredScreenshot?: boolean };
 
 type FakeDispatchClaimResult = { claimed: boolean; status: "CLAIMED" | "COMPLETED"; claim: DispatchClaim; outputStored: boolean; completion?: VerificationExecutionCompletionEnvelope };
 type FakeRepositoryStore = {
@@ -165,6 +166,63 @@ function makeRequest(requestId = REQUEST_ID): VerificationRequest {
   };
 }
 
+function makeCompositionRequest(requestId = "request-visual-composition"): VerificationRequest {
+  return {
+    ...makeRequest(requestId),
+    change: { summary: "Adjust responsive section spacing and panel hierarchy.", paths: ["frontend/catalog.tsx"], uiImpact: "significant" },
+    testBasis: [{ id: "basis-layout", kind: "acceptance-criterion", origin: "explicit", text: "Primary and supporting regions preserve the approved layout spacing." }],
+    visualComposition: {
+      schemaVersion: "visual-composition-scope/v1",
+      decision: "required",
+      basisIds: ["basis-layout"],
+      rationale: "Responsive section spacing changes at the affected desktop and mobile breakpoints.",
+      surfaces: [{ surfaceId: "surface-catalog", stateIds: ["populated"], viewportIds: ["desktop", "mobile"] }],
+      viewports: [
+        { id: "desktop", width: 1440, height: 900 },
+        { id: "mobile", width: 390, height: 844, devicePixelRatio: 3 },
+      ],
+    },
+  };
+}
+
+function makeCompositionOracle(request: VerificationExecutionRequest, producer: VisualCompositionOracle["producer"]): VisualCompositionOracle {
+  const conditionId = request.obligation.visualCompositionRequirement?.conditionId;
+  if (!conditionId) throw new Error("composition fixture received a non-composition obligation");
+  return {
+    schemaVersion: "visual-composition-oracle/v1",
+    oracleId: `oracle:${request.runId}`,
+    requestId: request.requestId,
+    snapshotId: request.snapshotId,
+    conditionId,
+    producer,
+    captures: ["desktop", "mobile"].map(viewportId => ({
+      captureId: `capture-${viewportId}`,
+      surfaceId: "surface-catalog",
+      stateId: "populated",
+      viewportId,
+      viewport: viewportId === "desktop" ? { id: "desktop", width: 1440, height: 900 } : { id: "mobile", width: 390, height: 844, devicePixelRatio: 3 },
+      fullPageScreenshotDigest: "c".repeat(64),
+      focusedRegionScreenshotDigests: ["d".repeat(64)],
+      regions: [
+        { regionId: "main", role: "primary", x: 0, y: 0, width: viewportId === "desktop" ? 900 : 390, height: 500 },
+        { regionId: "supporting", role: "supporting", x: 0, y: 532, width: viewportId === "desktop" ? 900 : 390, height: 200 },
+      ],
+      assertions: [{
+        assertionId: `section-separation-${viewportId}`,
+        relation: "separation",
+        regionIds: ["main", "supporting"],
+        operator: "greater-than-or-equal",
+        expected: 32,
+        actual: 32,
+        unit: "css-px",
+        source: { kind: "design-token", systemId: "synthetic-design-system", token: "layout.sectionGap" },
+      }],
+    })),
+    representativeStateLimitations: ["Loading and error states use the unchanged shared shell."],
+    blockingReasons: [],
+  };
+}
+
 function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRepository): FakeDependencies {
   const repository = repositoryOverride ?? new FakeRepository();
   let executorCalls = 0;
@@ -182,7 +240,21 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
     executeBrowser: async (request: VerificationExecutionRequest) => {
       browserCalls++;
       if (options.missingBrowserOutput) return undefined;
-      return { status: "PASS" as const, runId: request.runId, requestId: request.requestId, snapshotId: request.snapshotId, idempotencyKey: request.idempotencyKey, producer: { kind: options.producerKind ?? "deterministic-verifier", identity: "fixture-browser", independence: options.producerIndependence ?? "independent-producer" }, artifacts: [{ type: "verification-result", digest: "b".repeat(64) }] };
+      const producer = { kind: options.producerKind ?? "deterministic-verifier", identity: "fixture-browser", independence: options.producerIndependence ?? "independent-producer" } as const;
+      const visualCompositionOracle = options.visualCompositionOracle && request.obligation.visualCompositionRequirement ? makeCompositionOracle(request, producer) : undefined;
+      const screenshotArtifacts = visualCompositionOracle
+        ? [{ type: "screenshot" as const, digest: "c".repeat(64) }, ...(options.omitStoredScreenshot ? [] : [{ type: "screenshot" as const, digest: "d".repeat(64) }])]
+        : [];
+      return {
+        status: "PASS" as const,
+        runId: request.runId,
+        requestId: request.requestId,
+        snapshotId: request.snapshotId,
+        idempotencyKey: request.idempotencyKey,
+        producer,
+        artifacts: [{ type: "verification-result", digest: "b".repeat(64) }, ...screenshotArtifacts],
+        ...(visualCompositionOracle ? { visualCompositionOracle } : {}),
+      };
     },
   } as unknown as BrowserExecutor;
   let authorityCalls = 0;
@@ -1374,6 +1446,84 @@ describe("verification run orchestration", () => {
     expect(execution.observations.filter(item => item.execution.kind === "browser")).toHaveLength(1);
     expect(fakes.browserCalls).toBe(1);
     expect(fakes.executorCalls).toBeGreaterThan(0);
+  });
+
+  test("requires an explicit scope decision for significant UI requests", async () => {
+    const request = {
+      ...makeRequest("composition-scope-required"),
+      change: { summary: "Adjust section spacing.", paths: ["frontend/catalog.tsx"], uiImpact: "significant" },
+    } satisfies VerificationRequest;
+    await expect(establishTestBasis({ request, dependencies: makeDependencies().dependencies })).rejects.toThrow("must declare visual composition scope");
+    const schema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verification-request.schema.json`).text()) as object;
+    const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
+    expect(validate(request)).toBe(false);
+  });
+
+  test("keeps browser-only verification separate when composition is explicitly out of scope", async () => {
+    const request = {
+      ...makeRequest("composition-not-required"),
+      change: { summary: "Refresh the UI copy without changing layout.", paths: ["frontend/catalog.tsx"], uiImpact: "functional-only" },
+      visualComposition: {
+        schemaVersion: "visual-composition-scope/v1",
+        decision: "not-required",
+        basisIds: ["basis-001"],
+        rationale: "The rendered geometry and responsive composition are unchanged.",
+        surfaces: [],
+        viewports: [],
+      },
+    } satisfies VerificationRequest;
+    const dependencies = makeDependencies().dependencies;
+    const basis = await establishTestBasis({ request, dependencies });
+    const discovery = await performRiskDiscovery({ request, basis, dependencies });
+    expect(discovery.conditions.some(item => item.techniques.includes("visual-composition"))).toBe(false);
+  });
+
+  test("cannot pass composition scope with functional browser success but no composition oracle", async () => {
+    const result = await runVerification({ runId: "composition-oracle-missing", request: makeCompositionRequest("composition-oracle-missing"), dependencies: makeDependencies().dependencies });
+    expect(result.verdict.qaVerdict).toBe("INCOMPLETE");
+    const compositionEvidence = result.documents.execution?.evidence.find(item => item.obligationId.includes("visual-composition"));
+    expect(compositionEvidence?.result.verdict).toBe("INCOMPLETE");
+    expect(compositionEvidence?.result.summary).toContain("VISUAL_COMPOSITION_ORACLE_MISSING");
+  });
+
+  test("passes composition scope only with independent oracle and stored whole-page and focused screenshots", async () => {
+    const fakes = makeDependencies({ visualCompositionOracle: true });
+    const result = await runVerification({ runId: "composition-oracle-pass", request: makeCompositionRequest("composition-oracle-pass"), dependencies: fakes.dependencies });
+    expect(result.verdict.qaVerdict).toBe("PASS");
+    const compositionObservation = result.documents.execution?.observations.find(item => item.observationId.includes("visual-composition"));
+    expect(compositionObservation?.artifacts).toEqual(expect.arrayContaining([
+      { type: "screenshot", digest: "c".repeat(64) },
+      { type: "screenshot", digest: "d".repeat(64) },
+    ]));
+  });
+
+  test("validates composition request and emitted plan with canonical AJV schemas", async () => {
+    const request = makeCompositionRequest("composition-ajv-contract");
+    const dependencies = makeDependencies().dependencies;
+    const basis = await establishTestBasis({ request, dependencies });
+    const discovery = await performRiskDiscovery({ request, basis, dependencies });
+    const plan = await buildVerificationPlan({ request, basis, discovery, dependencies });
+    const requestSchema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verification-request.schema.json`).text()) as object;
+    const planSchema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verification-plan.schema.json`).text()) as object;
+    const ajv = new Ajv2020({ allErrors: true, strict: true });
+    const validateRequest = ajv.compile(requestSchema);
+    const validatePlan = ajv.compile(planSchema);
+    expect(validateRequest(request), validateRequest.errors ? JSON.stringify(validateRequest.errors) : undefined).toBe(true);
+    expect(validatePlan(plan), validatePlan.errors ? JSON.stringify(validatePlan.errors) : undefined).toBe(true);
+  });
+
+  test("cannot pass when a focused screenshot digest is not backed by stored screenshot evidence", async () => {
+    const fakes = makeDependencies({ visualCompositionOracle: true, omitStoredScreenshot: true });
+    const result = await runVerification({ runId: "composition-focused-missing", request: makeCompositionRequest("composition-focused-missing"), dependencies: fakes.dependencies });
+    expect(result.verdict.qaVerdict).toBe("INCOMPLETE");
+    expect(result.documents.execution?.evidence.find(item => item.obligationId.includes("visual-composition"))?.result.summary).toContain("SCREENSHOT_ARTIFACT_MISSING");
+  });
+
+  test("cannot pass R2 composition approval from the implementer's self-check", async () => {
+    const fakes = makeDependencies({ visualCompositionOracle: true, producerKind: "self", producerIndependence: "self-check" });
+    const result = await runVerification({ runId: "composition-self-check", request: makeCompositionRequest("composition-self-check"), dependencies: fakes.dependencies });
+    expect(result.verdict.qaVerdict).not.toBe("PASS");
+    expect(result.documents.execution?.evidence.find(item => item.obligationId.includes("visual-composition"))?.result.summary).toContain("INDEPENDENCE_NOT_MET");
   });
   test("keeps explicit UI and backend basis conditions as one browser and one generic obligation", async () => {
     const request = { ...makeRequest("mixed-explicit-ui-backend"), change: { summary: "Verify the backend endpoint.", paths: ["server/api.ts"] }, testBasis: [
