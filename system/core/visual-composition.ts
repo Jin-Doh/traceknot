@@ -142,6 +142,8 @@ function nonEmptyString(value: unknown): value is string {
 }
 
 const MULTI_REGION_RELATIONS = new Set<VisualCompositionRelation>(["separation", "inset", "alignment", "containment", "non-overlap", "ordering"]);
+const NUMERIC_GEOMETRIC_RELATIONS = new Set<VisualCompositionRelation>(["separation", "inset", "alignment", "size-ratio", "density"]);
+const BOOLEAN_GEOMETRIC_RELATIONS = new Set<VisualCompositionRelation>(["containment", "non-overlap", "ordering"]);
 
 function uniqueNonEmptyStrings(value: unknown, allowEmpty = false): value is readonly string[] {
   return Array.isArray(value) && (allowEmpty || value.length > 0) && value.every(nonEmptyString) && new Set(value).size === value.length;
@@ -182,6 +184,9 @@ function validScalar(value: unknown): value is string | number | boolean {
 
 function validAssertion(value: unknown): value is VisualCompositionAssertion {
   if (!isRecord(value) || !exactKeys(value, ["assertionId", "relation", "regionIds", "operator", "expected", "actual", "source"], ["unit"]) || !nonEmptyString(value.assertionId) || !RELATIONS.includes(value.relation as VisualCompositionRelation) || !uniqueNonEmptyStrings(value.regionIds) || !OPERATORS.includes(value.operator as VisualCompositionAssertion["operator"]) || !validScalar(value.expected) || !validScalar(value.actual) || !validOracleSource(value.source) || (value.unit !== undefined && !nonEmptyString(value.unit))) return false;
+  const relation = value.relation as VisualCompositionRelation;
+  if (NUMERIC_GEOMETRIC_RELATIONS.has(relation) && (typeof value.expected !== "number" || typeof value.actual !== "number")) return false;
+  if (BOOLEAN_GEOMETRIC_RELATIONS.has(relation) && (typeof value.expected !== "boolean" || typeof value.actual !== "boolean")) return false;
   if ((value.operator === "less-than-or-equal" || value.operator === "greater-than-or-equal") && (typeof value.expected !== "number" || typeof value.actual !== "number")) return false;
   if (value.operator === "contains" && (typeof value.expected !== "string" || typeof value.actual !== "string")) return false;
   if ((typeof value.expected === "number" || typeof value.actual === "number") && typeof value.unit !== "string") return false;
@@ -343,7 +348,10 @@ export function evaluateVisualComposition(requirement: VisualCompositionRequirem
   if (oracle.captures.some(capture => {
     const expected = expectedViewports.get(capture.viewportId);
     return !expected || capture.viewport.width !== expected.width || capture.viewport.height !== expected.height || (capture.viewport.devicePixelRatio ?? 1) !== (expected.devicePixelRatio ?? 1);
-  })) reasons.push("VIEWPORT_MISMATCH");
+  })) {
+    reasons.push("VIEWPORT_MISMATCH");
+    return { schemaVersion: "visual-composition-evaluation/v1", status: "INCOMPLETE", reasons, failedAssertionIds, missingCaptureKeys };
+  }
   const captures = new Map(oracle.captures.map(capture => [captureKey(capture), capture]));
   const requiredCaptureKeys = new Set(requirement.requiredCaptures.map(captureKey));
   for (const required of requirement.requiredCaptures) if (!captures.has(captureKey(required))) missingCaptureKeys.push(captureKey(required));

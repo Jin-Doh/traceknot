@@ -131,6 +131,19 @@ describe("visual composition contracts", () => {
     const explicitRequirement = { ...candidateRequirement, viewports: candidateRequirement.viewports.map(viewport => viewport.id === "desktop" ? { ...viewport, devicePixelRatio: 1 } : viewport) };
     expect(evaluateWithStoredScreenshots(explicitRequirement, candidate).status).toBe("PASS");
   });
+  test("does not evaluate assertions from a mismatched viewport", () => {
+    const candidate = oracle();
+    const captures = candidate.captures.map((capture, index) => index === 0 ? {
+      ...capture,
+      viewport: { ...capture.viewport, width: capture.viewport.width + 1 },
+      assertions: capture.assertions.map(item => ({ ...item, actual: 0 })),
+    } : capture);
+    const result = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
+    expect(result.status).toBe("INCOMPLETE");
+    expect(result.reasons).toContain("VIEWPORT_MISMATCH");
+    expect(result.failedAssertionIds).toEqual([]);
+  });
+
 
   test("requires whole-page and focused-region screenshot evidence", () => {
     const candidate = oracle();
@@ -346,6 +359,24 @@ describe("visual composition contracts", () => {
     expect(isVisualCompositionOracle(vacuous)).toBe(false);
     expect(evaluateWithStoredScreenshots(requirement(), vacuous).status).toBe("INCOMPLETE");
   });
+  test.each([
+    ["separation", true],
+    ["containment", "contained"],
+    ["non-overlap", "separate"],
+    ["ordering", "ordered"],
+  ] as const)("rejects %s assertions with an incompatible scalar type", (relation, scalar) => {
+    const candidate = oracle();
+    const invalid = {
+      ...candidate,
+      captures: candidate.captures.map((capture, index) => index === 0 ? {
+        ...capture,
+        assertions: [{ ...capture.assertions[0]!, relation, expected: scalar, actual: scalar, operator: "equals" as const, unit: undefined }],
+      } : capture),
+    };
+    expect(isVisualCompositionOracle(invalid)).toBe(false);
+    expect(evaluateWithStoredScreenshots(requirement(), invalid as VisualCompositionOracle).status).toBe("INCOMPLETE");
+  });
+
   test("rejects zero-area regions before evaluating geometry", () => {
     const candidate = oracle();
     const captures = candidate.captures.map((capture, index) => index === 0 ? {
