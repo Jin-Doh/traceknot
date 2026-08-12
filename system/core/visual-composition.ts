@@ -85,6 +85,7 @@ export type VisualCompositionScreenshotEvidence = Readonly<{
   evidenceId: string;
   role: "full-page" | "focused-region";
   digest: string;
+  regionId?: string;
 }>;
 
 
@@ -192,11 +193,11 @@ function validAssertion(value: unknown): value is VisualCompositionAssertion {
 function validCapture(value: unknown): value is VisualCompositionCapture {
   if (!isRecord(value) || !exactKeys(value, ["captureId", "surfaceId", "stateId", "viewportId", "viewport", "screenshots", "regions", "assertions"]) || !nonEmptyString(value.captureId) || !nonEmptyString(value.surfaceId) || !nonEmptyString(value.stateId) || !nonEmptyString(value.viewportId) || !validViewport(value.viewport) || value.viewport.id !== value.viewportId || !Array.isArray(value.screenshots) || !Array.isArray(value.regions) || value.regions.length === 0 || value.regions.some(region => !validRegion(region)) || !Array.isArray(value.assertions) || value.assertions.length === 0 || value.assertions.some(assertion => !validAssertion(assertion))) return false;
   const screenshots = value.screenshots as readonly VisualCompositionScreenshotEvidence[];
-  if (!screenshots.every(screenshot => isRecord(screenshot) && exactKeys(screenshot, ["evidenceId", "role", "digest"]) && nonEmptyString(screenshot.evidenceId) && ["full-page", "focused-region"].includes(screenshot.role as string) && typeof screenshot.digest === "string" && DIGEST.test(screenshot.digest)) || screenshots.filter(screenshot => screenshot.role === "full-page").length !== 1 || screenshots.filter(screenshot => screenshot.role === "focused-region").length === 0 || new Set(screenshots.map(screenshot => screenshot.evidenceId)).size !== screenshots.length || new Set(screenshots.map(screenshot => screenshot.digest)).size !== screenshots.length) return false;
+  if (!screenshots.every(screenshot => isRecord(screenshot) && exactKeys(screenshot, ["evidenceId", "role", "digest"], ["regionId"]) && nonEmptyString(screenshot.evidenceId) && ["full-page", "focused-region"].includes(screenshot.role as string) && typeof screenshot.digest === "string" && DIGEST.test(screenshot.digest) && (screenshot.role === "focused-region" ? nonEmptyString(screenshot.regionId) : screenshot.regionId === undefined)) || screenshots.filter(screenshot => screenshot.role === "full-page").length !== 1 || screenshots.filter(screenshot => screenshot.role === "focused-region").length === 0 || new Set(screenshots.map(screenshot => screenshot.evidenceId)).size !== screenshots.length || new Set(screenshots.map(screenshot => screenshot.digest)).size !== screenshots.length) return false;
   const regions = value.regions as readonly VisualCompositionRegion[];
   const assertions = value.assertions as readonly VisualCompositionAssertion[];
   const regionIds = new Set(regions.map(region => region.regionId));
-  return regionIds.size === regions.length && new Set(assertions.map(assertion => assertion.assertionId)).size === assertions.length && assertions.every(assertion => assertion.regionIds.every(regionId => regionIds.has(regionId)));
+  return regionIds.size === regions.length && screenshots.every(screenshot => screenshot.role !== "focused-region" || regionIds.has(screenshot.regionId!)) && new Set(assertions.map(assertion => assertion.assertionId)).size === assertions.length && assertions.every(assertion => assertion.regionIds.every(regionId => regionIds.has(regionId)));
 }
 
 export function isVisualCompositionScope(value: unknown): value is VisualCompositionScope {
@@ -314,6 +315,11 @@ function designTokenResolutionDigest(source: Extract<VisualOracleSource, { kind:
   hasher.update(JSON.stringify({ schemaVersion: "design-token-resolution/v1", systemId: source.systemId ?? null, token: source.token, unit: source.unit, value: source.resolvedValue }));
   return hasher.digest("hex");
 }
+function approvedReferenceDigest(assertion: VisualCompositionAssertion, source: Extract<VisualOracleSource, { kind: "approved-reference" }>): string {
+  const hasher = new Bun.CryptoHasher("sha256");
+  hasher.update(JSON.stringify({ schemaVersion: "approved-visual-reference/v1", relation: assertion.relation, operator: assertion.operator, expected: assertion.expected, unit: assertion.unit ?? null, regionIds: assertion.regionIds, basisIds: [...source.basisIds].sort() }));
+  return hasher.digest("hex");
+}
 
 export function evaluateVisualComposition(requirement: VisualCompositionRequirement, oracle: VisualCompositionOracle, artifacts: readonly Artifact[] = []): VisualCompositionEvaluation {
   const reasons: string[] = [];
@@ -329,7 +335,7 @@ export function evaluateVisualComposition(requirement: VisualCompositionRequirem
   if (requirement.scopeDecision === "unknown") reasons.push("SCOPE_DECISION_UNKNOWN");
   if (independenceRank[oracle.producer.independence] < independenceRank[requirement.minimumIndependence]) reasons.push("INDEPENDENCE_NOT_MET");
   if (oracle.blockingReasons.length > 0) reasons.push(...oracle.blockingReasons.map(reason => `BLOCKED:${reason}`));
-  const storedArtifacts = new Set(artifacts.filter(artifact => DIGEST.test(artifact.digest)).map(artifact => artifact.digest));
+  const storedApprovedReferences = new Set(artifacts.filter(artifact => artifact.type === "approved-visual-reference" && DIGEST.test(artifact.digest)).map(artifact => artifact.digest));
   const storedScreenshots = new Set(artifacts.filter(artifact => artifact.type === "screenshot" && DIGEST.test(artifact.digest)).map(artifact => artifact.digest));
   const requiredScreenshotDigests = oracle.captures.flatMap(capture => capture.screenshots.map(screenshot => screenshot.digest));
   if (requiredScreenshotDigests.some(digest => !storedScreenshots.has(digest))) reasons.push("SCREENSHOT_ARTIFACT_MISSING");
@@ -339,8 +345,14 @@ export function evaluateVisualComposition(requirement: VisualCompositionRequirem
     return !expected || capture.viewport.width !== expected.width || capture.viewport.height !== expected.height || (capture.viewport.devicePixelRatio ?? 1) !== (expected.devicePixelRatio ?? 1);
   })) reasons.push("VIEWPORT_MISMATCH");
   const captures = new Map(oracle.captures.map(capture => [captureKey(capture), capture]));
+  const requiredCaptureKeys = new Set(requirement.requiredCaptures.map(captureKey));
   for (const required of requirement.requiredCaptures) if (!captures.has(captureKey(required))) missingCaptureKeys.push(captureKey(required));
   if (missingCaptureKeys.length > 0) reasons.push("REQUIRED_CAPTURE_MISSING");
+  const unexpectedCaptureKeys = oracle.captures.map(captureKey).filter(key => !requiredCaptureKeys.has(key));
+  if (unexpectedCaptureKeys.length > 0) {
+    reasons.push(...unexpectedCaptureKeys.map(key => `UNEXPECTED_CAPTURE:${key}`));
+    return { schemaVersion: "visual-composition-evaluation/v1", status: "INCOMPLETE", reasons, failedAssertionIds, missingCaptureKeys };
+  }
   const basisIds = new Set(requirement.basisIds);
   const coveredBasisIds = new Set<string>();
   for (const capture of oracle.captures) {
@@ -349,8 +361,8 @@ export function evaluateVisualComposition(requirement: VisualCompositionRequirem
       const linkedSource = sourceUsesBasis(assertion.source, basisIds);
       let expectedValueAuthenticated = linkedSource;
       if (!linkedSource) reasons.push(`UNLINKED_ORACLE_SOURCE:${assertion.assertionId}`);
-      if (assertion.source.kind === "approved-reference" && !storedArtifacts.has(assertion.source.artifactDigest)) {
-        reasons.push(`APPROVED_REFERENCE_ARTIFACT_MISSING:${assertion.assertionId}`);
+      if (assertion.source.kind === "approved-reference" && (!storedApprovedReferences.has(assertion.source.artifactDigest) || assertion.source.artifactDigest !== approvedReferenceDigest(assertion, assertion.source))) {
+        reasons.push(`APPROVED_REFERENCE_ARTIFACT_INVALID:${assertion.assertionId}`);
         expectedValueAuthenticated = false;
       }
       if (assertion.source.kind === "design-token") {

@@ -39,6 +39,9 @@ const tokenResolutionDigest = (systemId: string, value = 32) => new Bun.CryptoHa
   .update(JSON.stringify({ schemaVersion: "design-token-resolution/v1", systemId, token: "layout.sectionGap", unit: "css-px", value }))
   .digest("hex");
 const screenshotDigest = (role: string, viewportId: string, stateId: string) => new Bun.CryptoHasher("sha256").update(`${role}:${viewportId}:${stateId}`).digest("hex");
+const approvedReferenceDigest = (item: VisualCompositionAssertion, basisIds = ["basis-layout"]) => new Bun.CryptoHasher("sha256")
+  .update(JSON.stringify({ schemaVersion: "approved-visual-reference/v1", relation: item.relation, operator: item.operator, expected: item.expected, unit: item.unit ?? null, regionIds: item.regionIds, basisIds: [...basisIds].sort() }))
+  .digest("hex");
 
 
 const assertion = (systemId = "synthetic-system", actual = 32): VisualCompositionAssertion => ({
@@ -67,7 +70,7 @@ const oracle = (overrides: Partial<VisualCompositionOracle> = {}, systemId = "sy
     viewport: viewportId === "desktop" ? { id: "desktop", width: 1440, height: 900, label: "wide" } : { id: "mobile", width: 390, height: 844, devicePixelRatio: 3, label: "narrow" },
     screenshots: [
       { evidenceId: `evidence-full-page-${viewportId}-${stateId}`, role: "full-page", digest: screenshotDigest("full-page", viewportId, stateId) },
-      { evidenceId: `evidence-focused-region-${viewportId}-${stateId}`, role: "focused-region", digest: screenshotDigest("focused-region", viewportId, stateId) },
+      { evidenceId: `evidence-focused-region-${viewportId}-${stateId}`, role: "focused-region", regionId: "main", digest: screenshotDigest("focused-region", viewportId, stateId) },
     ],
     regions: [
       { regionId: "main", role: "primary", x: 0, y: 0, width: viewportId === "desktop" ? 900 : 390, height: 500 },
@@ -243,18 +246,22 @@ describe("visual composition contracts", () => {
     expect(result.reasons).toContain("BLOCKED:reference service unavailable");
   });
 
-  test("requires approved-reference provenance to identify a stored artifact", () => {
-    const referenceDigest = "e".repeat(64);
+  test("binds approved-reference expected values to canonical stored artifacts", () => {
     const candidate = oracle();
     const captures = candidate.captures.map(capture => ({
       ...capture,
-      assertions: capture.assertions.map(item => ({ ...item, source: { kind: "approved-reference" as const, artifactDigest: referenceDigest, basisIds: ["basis-layout"] } })),
+      assertions: capture.assertions.map(item => ({ ...item, source: { kind: "approved-reference" as const, artifactDigest: approvedReferenceDigest(item), basisIds: ["basis-layout"] } })),
     }));
-    const missing = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
-    expect(missing.status).toBe("INCOMPLETE");
-    expect(missing.reasons).toContain(`APPROVED_REFERENCE_ARTIFACT_MISSING:${captures[0]!.assertions[0]!.assertionId}`);
-    const stored = evaluateVisualComposition(requirement(), { ...candidate, captures }, [...screenshotArtifacts(candidate), { type: "verification-result", digest: referenceDigest }]);
+    const referenceDigest = captures[0]!.assertions[0]!.source.kind === "approved-reference" ? captures[0]!.assertions[0]!.source.artifactDigest : "";
+    const unrelated = evaluateVisualComposition(requirement(), { ...candidate, captures }, [...screenshotArtifacts(candidate), { type: "verification-result", digest: referenceDigest }]);
+    expect(unrelated.status).toBe("INCOMPLETE");
+    expect(unrelated.reasons).toContain(`APPROVED_REFERENCE_ARTIFACT_INVALID:${captures[0]!.assertions[0]!.assertionId}`);
+    const stored = evaluateVisualComposition(requirement(), { ...candidate, captures }, [...screenshotArtifacts(candidate), { type: "approved-visual-reference", digest: referenceDigest }]);
     expect(stored.status).toBe("PASS");
+    const changedExpected = captures.map((capture, index) => index === 0 ? { ...capture, assertions: capture.assertions.map(item => ({ ...item, expected: 33 })) } : capture);
+    const tampered = evaluateVisualComposition(requirement(), { ...candidate, captures: changedExpected }, [...screenshotArtifacts(candidate), { type: "approved-visual-reference", digest: referenceDigest }]);
+    expect(tampered.status).toBe("INCOMPLETE");
+    expect(tampered.failedAssertionIds).toEqual([]);
   });
   test("does not evaluate assertions from a cross-context oracle", () => {
     const candidate = oracle({ requestId: "other-request", snapshotId: "other-snapshot", conditionId: "other-condition" });
@@ -286,8 +293,25 @@ describe("visual composition contracts", () => {
     expect(result.reasons).not.toContain("UNCOVERED_VISUAL_BASIS:basis-layout");
   });
 
+  test("does not evaluate captures outside the required scope", () => {
+    const candidate = oracle();
+    const base = candidate.captures[0]!;
+    const unexpected = {
+      ...base,
+      captureId: "capture-unexpected",
+      stateId: "unexpected",
+      screenshots: base.screenshots.map(screenshot => ({ ...screenshot, evidenceId: `${screenshot.evidenceId}-unexpected`, digest: screenshotDigest(screenshot.role, base.viewportId, "unexpected") })),
+      assertions: base.assertions.map(item => ({ ...item, actual: 0 })),
+    };
+    const expanded = { ...candidate, captures: [...candidate.captures, unexpected] };
+    const result = evaluateWithStoredScreenshots(requirement(), expanded);
+    expect(result.status).toBe("INCOMPLETE");
+    expect(result.reasons).toContain("UNEXPECTED_CAPTURE:surface-catalog\u0000unexpected\u0000desktop");
+    expect(result.failedAssertionIds).toEqual([]);
+  });
   test("requires one shared alignment guide across every referenced region", () => {
     const candidate = oracle();
+
     const captures = candidate.captures.map((capture, index) => index === 0 ? {
       ...capture,
       regions: [...capture.regions, { regionId: "third", role: "supporting", x: 1000, y: 0, width: 100, height: 100 }],

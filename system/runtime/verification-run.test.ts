@@ -209,7 +209,7 @@ function makeCompositionOracle(request: VerificationExecutionRequest, producer: 
       viewport: viewportId === "desktop" ? { id: "desktop", width: 1440, height: 900 } : { id: "mobile", width: 390, height: 844, devicePixelRatio: 3 },
       screenshots: [
         { evidenceId: `evidence-full-page-${viewportId}`, role: "full-page", digest: compositionScreenshotDigest("full-page", viewportId) },
-        { evidenceId: `evidence-focused-region-${viewportId}`, role: "focused-region", digest: compositionScreenshotDigest("focused-region", viewportId) },
+        { evidenceId: `evidence-focused-region-${viewportId}`, role: "focused-region", regionId: "main", digest: compositionScreenshotDigest("focused-region", viewportId) },
       ],
       regions: [
         { regionId: "main", role: "primary", x: 0, y: 0, width: viewportId === "desktop" ? 900 : 390, height: 500 },
@@ -637,16 +637,17 @@ test("canonicalizes executor and artifact-store artifacts before authority and p
     snapshotId: request.snapshotId,
     idempotencyKey: request.idempotencyKey,
     producer: { kind: "deterministic-verifier", identity: "uppercase-executor", independence: "independent-producer" },
-    artifacts: [{ type: "verification-result", digest }, { type: "verification-result", digest: digest.toLowerCase(), path: "/tmp/result" }] as unknown as Artifact[],
+    artifacts: [{ type: "verification-result", digest }, { type: "verification-result", digest: digest.toLowerCase(), path: "/tmp/result" }, { type: "approved-visual-reference", digest }] as unknown as Artifact[],
   }), }
   const artifactStore: ArtifactStore = {
     atomicSameKeyIdempotency: true,
     storeVerificationResultArtifact: async artifact => ({ ...artifact, digest: artifact.digest.toUpperCase(), extra: "discard" } as unknown as Artifact),
+    storeArtifact: async artifact => ({ ...artifact, digest: artifact.digest.toUpperCase(), extra: "discard" } as unknown as Artifact),
   };
   const result = await runOnce({ ...fakes.dependencies, executor, artifactStore }, "artifact-normalization");
   const execution = result.documents.execution;
   expect(result.verdict.qaVerdict).toBe("PASS");
-  expect(execution?.observations[0]?.artifacts).toEqual([{ type: "verification-result", digest: digest.toLowerCase() }, { type: "verification-result", digest: digest.toLowerCase(), path: "/tmp/result" }]);
+  expect(execution?.observations[0]?.artifacts).toEqual([{ type: "verification-result", digest: digest.toLowerCase() }, { type: "verification-result", digest: digest.toLowerCase(), path: "/tmp/result" }, { type: "approved-visual-reference", digest: digest.toLowerCase() }]);
   expect(execution?.evidence[0]?.result.artifacts).toEqual([digest.toLowerCase()]);
   const resultDigests = execution?.evidence[0]?.result.artifacts ?? [];
   expect(new Set(resultDigests).size).toBe(resultDigests.length);

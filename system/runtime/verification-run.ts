@@ -12,7 +12,7 @@ export type VerificationCondition=Readonly<{id:string;basisIds:readonly string[]
 export type EvidenceType="experiment"|"test-result"|"browser-result"|"build-result"|"static-analysis"|"review"|"approval"|"scenario-result";
 export type VerificationObligationPlan=Readonly<{id:string;conditionIds:readonly string[];evidenceType:EvidenceType;mandatory:boolean;independence:IndependenceLevel;entryCriteria:readonly string[];completionCriteria:readonly string[];visualCompositionRequirement?:VisualCompositionRequirement}>;
 export type VerificationPlan=Readonly<{schemaVersion:"verification-plan/v1";requestId:string;snapshotId:string;risks:readonly VerificationRisk[];conditions:readonly VerificationCondition[];obligations:readonly VerificationObligationPlan[]}>;
-export type CanonicalStoredArtifact=Readonly<{type:"verification-result"|"screenshot"|"design-token-resolution";digest:string;path?:string}>;
+export type CanonicalStoredArtifact=Readonly<{type:"verification-result"|"screenshot"|"design-token-resolution"|"approved-visual-reference";digest:string;path?:string}>;
 export type VerificationEvidence=Readonly<{schemaVersion:"verification-evidence/v1";evidenceId:string;requestId:string;snapshotId:string;obligationId:string;producer:Producer;execution:Execution;result:Readonly<{verdict:"PASS"|"FAIL"|"BLOCKED"|"INCOMPLETE";summary:string;passed?:number;failed?:number;artifacts?:readonly string[]}>;observedAt:string;visualCompositionOracleDigest?:string}>;
 export type VerificationExecutionRequest=Readonly<{runId:string;requestId:string;requestDigest:string;planDigest:string;obligationDigest:string;rootIdentity:string;snapshotId:string;obligation:VerificationObligationPlan;conditionIds:readonly string[];idempotencyKey:string}>;
 export type VerificationExecutionOutput=Readonly<{status:"passed"|"failed"|"blocked"|"incomplete"|"PASS"|"FAIL"|"BLOCKED"|"INCOMPLETE";runId:string;requestId:string;snapshotId:string;idempotencyKey:string;producer:Producer;summary?:string;artifacts?:readonly Artifact[];executionKind?:Execution["kind"];identity?:string;exitCode?:number;visualCompositionOracle?:VisualCompositionOracle}>;
@@ -106,7 +106,7 @@ function validProducer(value: unknown): value is Producer {
   return isRecord(value) && exactOwnKeys(value, ["kind", "identity", "independence"]) && canonicalProducer(value) !== undefined;
 }
 function canonicalArtifact(value: unknown): CanonicalStoredArtifact | undefined {
-  if (!isRecord(value) || !exactOwnKeys(value, ["type", "digest"], ["path"]) || (value.type !== "verification-result" && value.type !== "screenshot" && value.type !== "design-token-resolution") || typeof value.digest !== "string" || !DIGEST.test(value.digest) || (value.path !== undefined && (typeof value.path !== "string" || !value.path))) return undefined;
+  if (!isRecord(value) || !exactOwnKeys(value, ["type", "digest"], ["path"]) || (value.type !== "verification-result" && value.type !== "screenshot" && value.type !== "design-token-resolution" && value.type !== "approved-visual-reference") || typeof value.digest !== "string" || !DIGEST.test(value.digest) || (value.path !== undefined && (typeof value.path !== "string" || !value.path))) return undefined;
   return { type: value.type, digest: value.digest.toLowerCase(), ...(value.path === undefined ? {} : { path: value.path }) };
 }
 function validArtifact(value: unknown): value is CanonicalStoredArtifact {

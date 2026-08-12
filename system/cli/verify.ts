@@ -354,7 +354,7 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
     const artifacts: Artifact[] = [];
     for (const artifact of observation.artifacts) {
       const bytes = await collectorStore.readArtifact(artifact.digest);
-      const type = artifact.type === "screenshot" || artifact.type === "design-token-resolution" ? artifact.type : "verification-result";
+      const type = artifact.type === "screenshot" || artifact.type === "design-token-resolution" || artifact.type === "approved-visual-reference" ? artifact.type : "verification-result";
       if (type === "screenshot") {
         let dimensions: Readonly<{ width: number; height: number }>;
         try {
@@ -366,11 +366,17 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
           const bindings = visualCompositionOracle.captures.flatMap(capture => capture.screenshots.filter(screenshot => screenshot.digest === artifact.digest).map(screenshot => ({ capture, screenshot })));
           if (bindings.length === 0) throw new Error(`invalid screenshot artifact ${artifact.digest}: not bound to a visual composition capture`);
           for (const { capture, screenshot } of bindings) {
-            if (screenshot.role !== "full-page") continue;
             const scale = capture.viewport.devicePixelRatio ?? 1;
-            const expectedWidth = Math.round(capture.viewport.width * scale);
-            const minimumHeight = Math.round(capture.viewport.height * scale);
-            if (dimensions.width !== expectedWidth || dimensions.height < minimumHeight) throw new Error(`invalid screenshot artifact ${artifact.digest}: dimensions do not match capture ${capture.captureId}`);
+            if (screenshot.role === "full-page") {
+              const expectedWidth = Math.round(capture.viewport.width * scale);
+              const minimumHeight = Math.round(capture.viewport.height * scale);
+              if (dimensions.width !== expectedWidth || dimensions.height < minimumHeight) throw new Error(`invalid screenshot artifact ${artifact.digest}: dimensions do not match capture ${capture.captureId}`);
+              continue;
+            }
+            const region = capture.regions.find(candidate => candidate.regionId === screenshot.regionId)!;
+            const minimumWidth = Math.ceil(region.width * scale);
+            const minimumHeight = Math.ceil(region.height * scale);
+            if (dimensions.width < minimumWidth || dimensions.height < minimumHeight) throw new Error(`invalid screenshot artifact ${artifact.digest}: dimensions do not cover focused region ${screenshot.regionId}`);
           }
         }
       }

@@ -181,7 +181,7 @@ describe("traceknot verify CLI", () => {
       const fullPath = join(root, "full-page.png");
       const focusedPath = join(root, "focused-region.png");
       const fullBytes = png(1440, 900);
-      const focusedBytes = png(600, 400);
+      const focusedBytes = png(900, 500);
       const fullDigest = new Bun.CryptoHasher("sha256").update(fullBytes).digest("hex");
       const focusedDigest = new Bun.CryptoHasher("sha256").update(focusedBytes).digest("hex");
       await writeFile(join(root, "input.txt"), "clean\n");
@@ -219,7 +219,7 @@ describe("traceknot verify CLI", () => {
           viewport: { id: "desktop", width: 1440, height: 900 },
           screenshots: [
             { evidenceId: "evidence:catalog:populated:desktop:full-page", role: "full-page", digest: fullDigest },
-            { evidenceId: "evidence:catalog:populated:desktop:focused-region", role: "focused-region", digest: focusedDigest },
+            { evidenceId: "evidence:catalog:populated:desktop:focused-region", role: "focused-region", regionId: "main", digest: focusedDigest },
           ],
           regions: [
             { regionId: "main", role: "primary", x: 0, y: 0, width: 900, height: 500 },
@@ -255,6 +255,30 @@ describe("traceknot verify CLI", () => {
       const visualObservation = report.documents.execution.observations.find(item => item.observationId.includes("visual-composition"));
       expect(visualObservation?.artifacts).toEqual(expect.arrayContaining([expect.objectContaining({ type: "screenshot", digest: fullDigest }), expect.objectContaining({ type: "screenshot", digest: focusedDigest })]));
       expect(report.documents.execution.evidence.find(item => item.obligationId.includes("visual-composition"))?.visualCompositionOracleDigest).toMatch(/^[a-f0-9]{64}$/);
+      const undersizedBytes = png(900, 501);
+      const undersizedDigest = new Bun.CryptoHasher("sha256").update(undersizedBytes).digest("hex");
+      await writeFile(focusedPath, undersizedBytes);
+      git(root, ["add", "focused-region.png"]);
+      git(root, ["commit", "-qm", "undersized focused screenshot"]);
+      const undersizedSnapshot = await captureGitSnapshotIdentity(root);
+      const undersizedRequest = { ...request, requestId: "cli-visual-undersized-focus", project: { rootIdentity: undersizedSnapshot.rootIdentity, snapshotId: undersizedSnapshot.snapshotId } };
+      const undersizedOracle = {
+        ...oracle,
+        oracleId: "oracle:cli-visual-undersized-focus",
+        requestId: undersizedRequest.requestId,
+        snapshotId: undersizedSnapshot.snapshotId,
+        captures: oracle.captures.map(capture => ({ ...capture, screenshots: capture.screenshots.map(screenshot => screenshot.role === "focused-region" ? { ...screenshot, digest: undersizedDigest } : screenshot), regions: capture.regions.map(region => region.regionId === "main" ? { ...region, width: 900.1 } : region) })),
+      };
+      const undersizedManifest = {
+        ...manifest,
+        obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { ...visualCommand, declaredArtifacts: [{ type: "screenshot", digest: fullDigest, path: "full-page.png" }, { type: "screenshot", digest: undersizedDigest, path: "focused-region.png" }] } : obligation),
+      };
+      await writeFile(requestPath, JSON.stringify(undersizedRequest));
+      await writeFile(oraclePath, JSON.stringify(undersizedOracle));
+      await writeFile(manifestPath, JSON.stringify(undersizedManifest));
+      const undersizedStderr: string[] = [];
+      const undersizedStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], () => undefined, text => undersizedStderr.push(text));
+      expect({ status: undersizedStatus, stderr: undersizedStderr }).toEqual({ status: 64, stderr: [`invalid screenshot artifact ${undersizedDigest}: dimensions do not cover focused region main\n`] });
       const invalidBytes = new TextEncoder().encode("not an image\n");
       const invalidDigest = new Bun.CryptoHasher("sha256").update(invalidBytes).digest("hex");
       await writeFile(focusedPath, invalidBytes);
@@ -351,6 +375,7 @@ describe("traceknot verify CLI", () => {
           ...capture,
           viewport: { id: "desktop", width: 390, height: 844, devicePixelRatio: 1.25 },
           screenshots: capture.screenshots.map(screenshot => screenshot.role === "full-page" ? { ...screenshot, digest: fractionalDigest } : screenshot),
+          regions: capture.regions.map(region => region.regionId === "main" ? { ...region, width: 390, height: 400 } : { ...region, y: 432, width: 390, height: 160 }),
         })),
       };
       const fractionalManifest = {
