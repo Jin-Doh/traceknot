@@ -268,9 +268,23 @@ function derivedGeometryActual(assertion: VisualCompositionAssertion, regions: R
   const rest = selected.slice(1);
   if (assertion.relation === "containment") return rest.length > 0 && rest.every(region => first.x <= region.x && first.y <= region.y && first.x + first.width >= region.x + region.width && first.y + first.height >= region.y + region.height);
   if (assertion.relation === "inset") return rest.length > 0 ? Math.min(...rest.flatMap(region => [region.x - first.x, region.y - first.y, first.x + first.width - (region.x + region.width), first.y + first.height - (region.y + region.height)])) : undefined;
-  if (assertion.relation === "alignment") return rest.length > 0 ? Math.max(...rest.map(region => Math.min(Math.abs(first.x - region.x), Math.abs(first.x + first.width - region.x - region.width), Math.abs(first.x + first.width / 2 - region.x - region.width / 2), Math.abs(first.y - region.y), Math.abs(first.y + first.height - region.y - region.height), Math.abs(first.y + first.height / 2 - region.y - region.height / 2)))) : undefined;
+  if (assertion.relation === "alignment") {
+    const guides = [
+      selected.map(region => region.x),
+      selected.map(region => region.x + region.width),
+      selected.map(region => region.x + region.width / 2),
+      selected.map(region => region.y),
+      selected.map(region => region.y + region.height),
+      selected.map(region => region.y + region.height / 2),
+    ];
+    return Math.min(...guides.map(values => Math.max(...values) - Math.min(...values)));
+  }
   if (assertion.relation === "ordering") return selected.every((region, index) => index === 0 || selected[index - 1]!.y < region.y || selected[index - 1]!.y === region.y && selected[index - 1]!.x <= region.x);
-  if (assertion.relation === "size-ratio") return selected.length === 2 ? first.width * first.height / (selected[1]!.width * selected[1]!.height) : undefined;
+  if (assertion.relation === "size-ratio") {
+    if (selected.length !== 2) return undefined;
+    const denominator = selected[1]!.width * selected[1]!.height;
+    return denominator > 0 ? first.width * first.height / denominator : undefined;
+  }
   if (assertion.relation === "density") return selected.reduce((area, region) => area + region.width * region.height, 0) / (viewport.width * viewport.height);
   return undefined;
 }

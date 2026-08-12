@@ -176,6 +176,45 @@ describe("visual composition contracts", () => {
     expect(result.failedAssertionIds).toContain(candidate.captures[0]!.assertions[0]!.assertionId);
   });
 
+  test("requires one shared alignment guide across every referenced region", () => {
+    const candidate = oracle();
+    const captures = candidate.captures.map((capture, index) => index === 0 ? {
+      ...capture,
+      regions: [...capture.regions, { regionId: "third", role: "supporting", x: 1000, y: 0, width: 100, height: 100 }],
+      assertions: [{
+        ...capture.assertions[0]!,
+        assertionId: "shared-alignment",
+        relation: "alignment" as const,
+        regionIds: ["main", "secondary", "third"],
+        operator: "equals" as const,
+        expected: 0,
+        actual: 0,
+      }],
+    } : capture);
+    const result = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
+    expect(result.status).toBe("FAIL");
+    expect(result.failedAssertionIds).toContain("shared-alignment");
+  });
+
+  test("rejects a size ratio with a zero-area denominator", () => {
+    const candidate = oracle();
+    const captures = candidate.captures.map((capture, index) => index === 0 ? {
+      ...capture,
+      regions: capture.regions.map(region => region.regionId === "secondary" ? { ...region, width: 0 } : region),
+      assertions: [{
+        ...capture.assertions[0]!,
+        assertionId: "zero-size-ratio",
+        relation: "size-ratio" as const,
+        operator: "equals" as const,
+        expected: 1,
+        actual: 1,
+      }],
+    } : capture);
+    const result = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
+    expect(result.status).toBe("FAIL");
+    expect(result.failedAssertionIds).toContain("zero-size-ratio");
+  });
+
   test("rejects assertions that reference absent regions or unrelated basis", () => {
     const candidate = oracle();
     const invalidRegion = { ...candidate, captures: candidate.captures.map((capture, index) => index === 0 ? { ...capture, assertions: [{ ...capture.assertions[0]!, regionIds: ["missing"] }] } : capture) };
