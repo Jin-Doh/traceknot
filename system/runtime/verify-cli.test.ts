@@ -392,7 +392,7 @@ describe("traceknot verify CLI", () => {
       const failedRequest = { ...request, requestId: "cli-visual-command-failed", project: { rootIdentity: fractionalSnapshot.rootIdentity, snapshotId: fractionalSnapshot.snapshotId } };
       const failedManifest = {
         ...manifest,
-        obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { id: visualCommand.id, executable: "/usr/bin/false" } : obligation),
+        obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { id: visualCommand.id, executable: "/usr/bin/false", visualCompositionOraclePath: join(config, "missing-oracle.json") } : obligation),
       };
       await writeFile(requestPath, JSON.stringify(failedRequest));
       await writeFile(manifestPath, JSON.stringify(failedManifest));

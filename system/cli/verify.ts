@@ -341,12 +341,11 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
     const status = observation.execution.exitStatus === "passed" ? "passed" : observation.execution.exitStatus === "blocked" ? "blocked" : "failed";
     let visualCompositionOracle: VisualCompositionOracle | undefined;
     if (input.obligation.visualCompositionRequirement) {
-      if (command.visualCompositionOraclePath) {
+      if (status === "passed") {
+        if (!command.visualCompositionOraclePath) throw new Error(`manifest obligation ${command.id} requires visualCompositionOraclePath`);
         const candidate = await readBoundedJson(command.visualCompositionOraclePath);
         if (!isVisualCompositionOracle(candidate)) throw new Error(`manifest obligation ${command.id} visual composition oracle is invalid`);
         visualCompositionOracle = candidate;
-      } else if (status === "passed") {
-        throw new Error(`manifest obligation ${command.id} requires visualCompositionOraclePath`);
       }
     } else if (command.visualCompositionOraclePath) {
       throw new Error(`manifest obligation ${command.id} supplies a visual oracle for a non-visual obligation`);
