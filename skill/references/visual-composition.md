@@ -39,13 +39,13 @@ Design-token sources bind the token, system identifier, unit, and resolved value
 A `visual-composition-oracle/v1` record binds the request, snapshot, condition, producer, captures, regions, and assertions. Each required surface-state-viewport tuple needs:
 
 - a stored whole-page screenshot artifact;
-- at least one stored focused-region screenshot artifact;
+- at least one distinct stored focused-region screenshot artifact whose digest does not alias the whole-page capture;
 - measured regions;
-- at least one basis-linked assertion;
+- at least one basis-linked assertion with enough distinct regions for its relation;
 - expected and actual results;
 - representative-state limitations, including an empty list when none remain.
 
-Screenshot digests in the oracle MUST identify canonical stored artifacts with type `screenshot`. A well-formed digest without a matching stored artifact is not evidence.
+Screenshot digests in the oracle MUST identify canonical stored artifacts with type `screenshot`. A well-formed digest without a matching stored artifact is not evidence. Whole-page and focused-region roles require different screenshot digests.
 
 For R2/R3 visual acceptance, the producer must satisfy `independent-producer`. A self-check, missing capture, unresolved scope, unlinked basis, snapshot mismatch, or missing stored screenshot cannot establish PASS. An observed relation violation is `FAIL`; unavailable prerequisites are `BLOCKED`; incomplete or insufficiently independent evidence is non-PASS under the existing verdict rules.
 

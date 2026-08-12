@@ -134,6 +134,8 @@ function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
+const MULTI_REGION_RELATIONS = new Set<VisualCompositionRelation>(["separation", "inset", "alignment", "containment", "non-overlap", "ordering"]);
+
 function uniqueNonEmptyStrings(value: unknown, allowEmpty = false): value is readonly string[] {
   return Array.isArray(value) && (allowEmpty || value.length > 0) && value.every(nonEmptyString) && new Set(value).size === value.length;
 }
@@ -176,11 +178,13 @@ function validAssertion(value: unknown): value is VisualCompositionAssertion {
   if ((value.operator === "less-than-or-equal" || value.operator === "greater-than-or-equal") && (typeof value.expected !== "number" || typeof value.actual !== "number")) return false;
   if (value.operator === "contains" && (typeof value.expected !== "string" || typeof value.actual !== "string")) return false;
   if ((typeof value.expected === "number" || typeof value.actual === "number") && typeof value.unit !== "string") return false;
+  if (MULTI_REGION_RELATIONS.has(value.relation as VisualCompositionRelation) && value.regionIds.length < 2) return false;
+  if (value.relation === "size-ratio" && value.regionIds.length !== 2) return false;
   return typeof value.expected === typeof value.actual;
 }
 
 function validCapture(value: unknown): value is VisualCompositionCapture {
-  if (!isRecord(value) || !exactKeys(value, ["captureId", "surfaceId", "stateId", "viewportId", "viewport", "fullPageScreenshotDigest", "focusedRegionScreenshotDigests", "regions", "assertions"]) || !nonEmptyString(value.captureId) || !nonEmptyString(value.surfaceId) || !nonEmptyString(value.stateId) || !nonEmptyString(value.viewportId) || !validViewport(value.viewport) || value.viewport.id !== value.viewportId || typeof value.fullPageScreenshotDigest !== "string" || !DIGEST.test(value.fullPageScreenshotDigest) || !uniqueNonEmptyStrings(value.focusedRegionScreenshotDigests) || !Array.isArray(value.regions) || value.regions.length === 0 || value.regions.some(region => !validRegion(region)) || !Array.isArray(value.assertions) || value.assertions.length === 0 || value.assertions.some(assertion => !validAssertion(assertion))) return false;
+  if (!isRecord(value) || !exactKeys(value, ["captureId", "surfaceId", "stateId", "viewportId", "viewport", "fullPageScreenshotDigest", "focusedRegionScreenshotDigests", "regions", "assertions"]) || !nonEmptyString(value.captureId) || !nonEmptyString(value.surfaceId) || !nonEmptyString(value.stateId) || !nonEmptyString(value.viewportId) || !validViewport(value.viewport) || value.viewport.id !== value.viewportId || typeof value.fullPageScreenshotDigest !== "string" || !DIGEST.test(value.fullPageScreenshotDigest) || !uniqueNonEmptyStrings(value.focusedRegionScreenshotDigests) || value.focusedRegionScreenshotDigests.includes(value.fullPageScreenshotDigest) || !Array.isArray(value.regions) || value.regions.length === 0 || value.regions.some(region => !validRegion(region)) || !Array.isArray(value.assertions) || value.assertions.length === 0 || value.assertions.some(assertion => !validAssertion(assertion))) return false;
   const regions = value.regions as readonly VisualCompositionRegion[];
   const assertions = value.assertions as readonly VisualCompositionAssertion[];
   const regionIds = new Set(regions.map(region => region.regionId));

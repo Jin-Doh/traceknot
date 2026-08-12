@@ -124,6 +124,13 @@ describe("visual composition contracts", () => {
     expect(evaluateWithStoredScreenshots(requirement(), missingFocused as VisualCompositionOracle).status).toBe("INCOMPLETE");
   });
 
+  test("rejects a focused screenshot that aliases the whole-page artifact", () => {
+    const candidate = oracle();
+    const aliased = { ...candidate, captures: candidate.captures.map((capture, index) => index === 0 ? { ...capture, focusedRegionScreenshotDigests: [capture.fullPageScreenshotDigest] } : capture) };
+    expect(isVisualCompositionOracle(aliased)).toBe(false);
+    expect(evaluateWithStoredScreenshots(requirement(), aliased as VisualCompositionOracle).status).toBe("INCOMPLETE");
+  });
+
   test("requires every screenshot digest to identify a stored screenshot artifact", () => {
     const candidate = oracle();
     const result = evaluateVisualComposition(requirement(), candidate, [
@@ -254,6 +261,22 @@ describe("visual composition contracts", () => {
     const result = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
     expect(result.status).toBe("FAIL");
     expect(result.failedAssertionIds).toContain("shared-alignment");
+  });
+
+  test.each(["alignment", "ordering"] as const)("rejects vacuous one-region %s assertions", relation => {
+    const candidate = oracle();
+    const common = { assertionId: `vacuous-${relation}`, relation, regionIds: ["main"], operator: "equals" as const, source: { kind: "explicit-basis" as const, basisId: "basis-layout" } };
+    const vacuousAssertion: VisualCompositionAssertion = relation === "alignment"
+      ? { ...common, expected: 0, actual: 0, unit: "css-px" }
+      : { ...common, expected: true, actual: true };
+    const vacuous = {
+      ...candidate,
+      captures: candidate.captures.map((capture, index) => index === 0 ? { ...capture, assertions: [vacuousAssertion] } : capture),
+    };
+    const nonVacuous = { ...vacuous, captures: vacuous.captures.map((capture, index) => index === 0 ? { ...capture, assertions: [{ ...vacuousAssertion, regionIds: ["main", "secondary"] }] } : capture) };
+    expect(isVisualCompositionOracle(nonVacuous)).toBe(true);
+    expect(isVisualCompositionOracle(vacuous)).toBe(false);
+    expect(evaluateWithStoredScreenshots(requirement(), vacuous).status).toBe("INCOMPLETE");
   });
 
   test("rejects a size ratio with a zero-area denominator", () => {
