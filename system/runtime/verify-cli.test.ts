@@ -389,18 +389,26 @@ describe("traceknot verify CLI", () => {
       const fractionalStderr: string[] = [];
       const fractionalStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], text => fractionalStdout.push(text), text => fractionalStderr.push(text));
       expect({ status: fractionalStatus, stderr: fractionalStderr, verdict: JSON.parse(fractionalStdout.join("")).verdict.qaVerdict }).toEqual({ status: 0, stderr: [], verdict: "PASS" });
-      const failedRequest = { ...request, requestId: "cli-visual-command-failed", project: { rootIdentity: fractionalSnapshot.rootIdentity, snapshotId: fractionalSnapshot.snapshotId } };
+      const failedArtifactBytes = new TextEncoder().encode("not a screenshot\n");
+      const failedArtifactDigest = new Bun.CryptoHasher("sha256").update(failedArtifactBytes).digest("hex");
+      await writeFile(join(root, "failed-artifact.bin"), failedArtifactBytes);
+      git(root, ["add", "failed-artifact.bin"]);
+      git(root, ["commit", "-qm", "failed command diagnostic artifact"]);
+      const failedSnapshot = await captureGitSnapshotIdentity(root);
+      const failedRequest = { ...request, requestId: "cli-visual-command-failed", project: { rootIdentity: failedSnapshot.rootIdentity, snapshotId: failedSnapshot.snapshotId } };
       const failedManifest = {
         ...manifest,
-        obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { id: visualCommand.id, executable: "/usr/bin/false", visualCompositionOraclePath: join(config, "missing-oracle.json") } : obligation),
+        obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { id: visualCommand.id, executable: "/usr/bin/false", visualCompositionOraclePath: join(config, "missing-oracle.json"), declaredArtifacts: [{ type: "screenshot", digest: failedArtifactDigest, path: "failed-artifact.bin" }] } : obligation),
       };
       await writeFile(requestPath, JSON.stringify(failedRequest));
       await writeFile(manifestPath, JSON.stringify(failedManifest));
       const failedStdout: string[] = [];
       const failedStderr: string[] = [];
       const failedStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], text => failedStdout.push(text), text => failedStderr.push(text));
-      const failedReport = JSON.parse(failedStdout.join("")) as { verdict: { qaVerdict: string } };
+      const failedReport = JSON.parse(failedStdout.join("")) as { verdict: { qaVerdict: string }; documents: { execution: { observations: Array<{ observationId: string; artifacts: Array<{ type: string; digest: string }> }> } } };
+      const failedVisualObservation = failedReport.documents.execution.observations.find(item => item.observationId.includes("visual-composition"));
       expect({ status: failedStatus, stderr: failedStderr, verdict: failedReport.verdict.qaVerdict }).toEqual({ status: 1, stderr: [], verdict: "FAIL" });
+      expect(failedVisualObservation?.artifacts).toEqual(expect.arrayContaining([expect.objectContaining({ type: "verification-result", digest: failedArtifactDigest })]));
     } finally {
       await Promise.all([rm(root, { recursive: true, force: true }), rm(config, { recursive: true, force: true }), rm(state, { recursive: true, force: true })]);
     }

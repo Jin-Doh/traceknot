@@ -353,7 +353,7 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
     const artifacts: Artifact[] = [];
     for (const artifact of observation.artifacts) {
       const bytes = await collectorStore.readArtifact(artifact.digest);
-      const type = artifact.type === "screenshot" || artifact.type === "design-token-resolution" || artifact.type === "approved-visual-reference" ? artifact.type : "verification-result";
+      const type = status === "passed" && (artifact.type === "screenshot" || artifact.type === "design-token-resolution" || artifact.type === "approved-visual-reference") ? artifact.type : "verification-result";
       if (type === "screenshot") {
         let dimensions: Readonly<{ width: number; height: number }>;
         try {
