@@ -54,8 +54,8 @@ export type VisualCompositionRegion = Readonly<{
 
 export type VisualOracleSource =
   | Readonly<{ kind: "explicit-basis"; basisId: string }>
-  | Readonly<{ kind: "design-token"; token: string; systemId?: string }>
-  | Readonly<{ kind: "approved-reference"; artifactDigest: string }>
+  | Readonly<{ kind: "design-token"; token: string; systemId?: string; basisIds: readonly string[] }>
+  | Readonly<{ kind: "approved-reference"; artifactDigest: string; basisIds: readonly string[] }>
   | Readonly<{ kind: "derived-relation"; basisIds: readonly string[] }>;
 
 export type VisualCompositionRelation =
@@ -161,8 +161,8 @@ function validRegion(value: unknown): value is VisualCompositionRegion {
 function validOracleSource(value: unknown): value is VisualOracleSource {
   if (!isRecord(value) || !nonEmptyString(value.kind)) return false;
   if (value.kind === "explicit-basis") return exactKeys(value, ["kind", "basisId"]) && nonEmptyString(value.basisId);
-  if (value.kind === "design-token") return exactKeys(value, ["kind", "token"], ["systemId"]) && nonEmptyString(value.token) && (value.systemId === undefined || nonEmptyString(value.systemId));
-  if (value.kind === "approved-reference") return exactKeys(value, ["kind", "artifactDigest"]) && typeof value.artifactDigest === "string" && DIGEST.test(value.artifactDigest);
+  if (value.kind === "design-token") return exactKeys(value, ["kind", "token", "basisIds"], ["systemId"]) && nonEmptyString(value.token) && uniqueNonEmptyStrings(value.basisIds) && (value.systemId === undefined || nonEmptyString(value.systemId));
+  if (value.kind === "approved-reference") return exactKeys(value, ["kind", "artifactDigest", "basisIds"]) && typeof value.artifactDigest === "string" && DIGEST.test(value.artifactDigest) && uniqueNonEmptyStrings(value.basisIds);
   if (value.kind === "derived-relation") return exactKeys(value, ["kind", "basisIds"]) && uniqueNonEmptyStrings(value.basisIds);
   return false;
 }
@@ -289,10 +289,12 @@ function derivedGeometryActual(assertion: VisualCompositionAssertion, regions: R
   return undefined;
 }
 
+function sourceBasisIds(source: VisualOracleSource): readonly string[] {
+  return source.kind === "explicit-basis" ? [source.basisId] : source.basisIds;
+}
+
 function sourceUsesBasis(source: VisualOracleSource, basisIds: ReadonlySet<string>): boolean {
-  if (source.kind === "explicit-basis") return basisIds.has(source.basisId);
-  if (source.kind === "derived-relation") return source.basisIds.every(basisId => basisIds.has(basisId));
-  return true;
+  return sourceBasisIds(source).every(basisId => basisIds.has(basisId));
 }
 
 export function evaluateVisualComposition(requirement: VisualCompositionRequirement, oracle: VisualCompositionOracle, artifacts: readonly Artifact[] = []): VisualCompositionEvaluation {
@@ -321,10 +323,12 @@ export function evaluateVisualComposition(requirement: VisualCompositionRequirem
   for (const required of requirement.requiredCaptures) if (!captures.has(captureKey(required))) missingCaptureKeys.push(captureKey(required));
   if (missingCaptureKeys.length > 0) reasons.push("REQUIRED_CAPTURE_MISSING");
   const basisIds = new Set(requirement.basisIds);
+  const coveredBasisIds = new Set<string>();
   for (const capture of oracle.captures) {
     const regions = new Map(capture.regions.map(region => [region.regionId, region]));
     for (const assertion of capture.assertions) {
       if (!sourceUsesBasis(assertion.source, basisIds)) reasons.push(`UNLINKED_ORACLE_SOURCE:${assertion.assertionId}`);
+      for (const basisId of sourceBasisIds(assertion.source)) if (basisIds.has(basisId)) coveredBasisIds.add(basisId);
       if (assertion.source.kind === "approved-reference" && !storedArtifacts.has(assertion.source.artifactDigest)) reasons.push(`APPROVED_REFERENCE_ARTIFACT_MISSING:${assertion.assertionId}`);
       const derivedActual = derivedGeometryActual(assertion, regions, capture.viewport);
       const missingDerivation = GEOMETRIC_RELATIONS.has(assertion.relation) && derivedActual === undefined;
@@ -332,6 +336,7 @@ export function evaluateVisualComposition(requirement: VisualCompositionRequirem
     }
   }
   if (failedAssertionIds.length > 0) reasons.push("COMPOSITION_ASSERTION_FAILED");
+  for (const basisId of requirement.basisIds) if (!coveredBasisIds.has(basisId)) reasons.push(`UNCOVERED_VISUAL_BASIS:${basisId}`);
   const status = failedAssertionIds.length > 0 ? "FAIL" : oracle.blockingReasons.length > 0 ? "BLOCKED" : reasons.length > 0 ? "INCOMPLETE" : "PASS";
   return {
     schemaVersion: "visual-composition-evaluation/v1",

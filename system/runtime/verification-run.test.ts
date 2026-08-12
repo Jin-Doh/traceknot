@@ -215,7 +215,7 @@ function makeCompositionOracle(request: VerificationExecutionRequest, producer: 
         expected: 32,
         actual: 32,
         unit: "css-px",
-        source: { kind: "design-token", systemId: "synthetic-design-system", token: "layout.sectionGap" },
+        source: { kind: "design-token", systemId: "synthetic-design-system", token: "layout.sectionGap", basisIds: ["basis-layout"] },
       }],
     })),
     representativeStateLimitations: ["Loading and error states use the unchanged shared shell."],

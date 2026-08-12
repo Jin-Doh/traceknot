@@ -43,7 +43,7 @@ const assertion = (systemId = "synthetic-system", actual = 32): VisualCompositio
   expected: 32,
   actual,
   unit: "css-px",
-  source: { kind: "design-token", systemId, token: "layout.sectionGap" },
+  source: { kind: "design-token", systemId, token: "layout.sectionGap", basisIds: ["basis-layout"] },
 });
 
 const oracle = (overrides: Partial<VisualCompositionOracle> = {}, systemId = "synthetic-system"): VisualCompositionOracle => ({
@@ -190,13 +190,21 @@ describe("visual composition contracts", () => {
     const candidate = oracle();
     const captures = candidate.captures.map(capture => ({
       ...capture,
-      assertions: capture.assertions.map(item => ({ ...item, source: { kind: "approved-reference" as const, artifactDigest: referenceDigest } })),
+      assertions: capture.assertions.map(item => ({ ...item, source: { kind: "approved-reference" as const, artifactDigest: referenceDigest, basisIds: ["basis-layout"] } })),
     }));
     const missing = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
     expect(missing.status).toBe("INCOMPLETE");
     expect(missing.reasons).toContain(`APPROVED_REFERENCE_ARTIFACT_MISSING:${captures[0]!.assertions[0]!.assertionId}`);
     const stored = evaluateVisualComposition(requirement(), { ...candidate, captures }, [...STORED_SCREENSHOTS, { type: "verification-result", digest: referenceDigest }]);
     expect(stored.status).toBe("PASS");
+  });
+
+  test("requires assertions to cover every visual composition basis", () => {
+    const candidateRequirement = { ...requirement(), basisIds: ["basis-layout", "basis-secondary"] };
+    const result = evaluateWithStoredScreenshots(candidateRequirement, oracle());
+    expect(result.status).toBe("INCOMPLETE");
+    expect(result.reasons).toContain("UNCOVERED_VISUAL_BASIS:basis-secondary");
+    expect(result.reasons).not.toContain("UNCOVERED_VISUAL_BASIS:basis-layout");
   });
 
   test("requires one shared alignment guide across every referenced region", () => {
