@@ -1495,6 +1495,10 @@ describe("verification run orchestration", () => {
       { type: "screenshot", digest: "c".repeat(64) },
       { type: "screenshot", digest: "d".repeat(64) },
     ]));
+    const compositionEvidence = result.documents.execution?.evidence.find(item => item.obligationId.includes("visual-composition"));
+    const compositionAuthority = result.documents.execution?.authorities.find(item => item.binding.obligationId.includes("visual-composition"));
+    expect(compositionEvidence?.visualCompositionOracleDigest).toMatch(/^[a-f0-9]{64}$/);
+    expect(compositionAuthority?.binding.visualCompositionOracleDigest).toBe(compositionEvidence?.visualCompositionOracleDigest);
   });
 
   test("validates composition request and emitted plan with canonical AJV schemas", async () => {
@@ -2988,6 +2992,44 @@ describe("verification run orchestration", () => {
     store.dispatchClaims.set(entry.claim.claimKey, { ...entry, completion: tampered });
     await expect(runVerification({ runId, dependencies })).rejects.toThrow("invalid persisted dispatch completion");
     expect(requests).toHaveLength(1);
+  });
+  test("rejects a substituted passing visual oracle before durable completion replay", async () => {
+    const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
+    class CrashAfterCompositionCompleteRepository extends FakeRepository {
+      crash = true;
+      override async completeExecutionDispatch(claim: DispatchClaim, completion: VerificationExecutionCompletionEnvelope | undefined, now = FIXED_NOW) {
+        const completed = await super.completeExecutionDispatch(claim, completion, now);
+        if (this.crash && completion?.output.visualCompositionOracle) {
+          this.crash = false;
+          throw new Error("simulated composition completion crash");
+        }
+        return completed;
+      }
+    }
+    const runId = "composition-oracle-substitution";
+    const request = makeCompositionRequest(runId);
+    const fakes = makeDependencies({ visualCompositionOracle: true }, new CrashAfterCompositionCompleteRepository(store));
+    await expect(runVerification({ runId, request, dependencies: fakes.dependencies })).rejects.toThrow("simulated composition completion crash");
+    const entry = [...store.dispatchClaims.values()].find(candidate => candidate.completion?.output.visualCompositionOracle);
+    if (!entry?.completion?.output.visualCompositionOracle) throw new Error("missing persisted visual composition completion");
+    const oracle = entry.completion.output.visualCompositionOracle;
+    const tampered = {
+      ...entry.completion,
+      output: {
+        ...entry.completion.output,
+        visualCompositionOracle: {
+          ...oracle,
+          captures: oracle.captures.map((capture, captureIndex) => captureIndex === 0 ? {
+            ...capture,
+            assertions: capture.assertions.map((assertion, assertionIndex) => assertionIndex === 0 ? { ...assertion, expected: 40, actual: 40 } : assertion),
+          } : capture),
+        },
+      },
+    };
+    const browserCallsBeforeResume = fakes.browserCalls;
+    store.dispatchClaims.set(entry.claim.claimKey, { ...entry, completion: tampered });
+    await expect(runVerification({ runId, dependencies: fakes.dependencies })).rejects.toThrow("invalid persisted dispatch completion");
+    expect(fakes.browserCalls).toBe(browserCallsBeforeResume);
   });
 
   test("fixed-clock adapters atomically claim and dispatch one shared obligation", async () => {
