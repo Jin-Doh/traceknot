@@ -44,6 +44,7 @@ function indexedPng(width: number, height: number, palette: Uint8Array, pixelInd
   for (let row = 0; row < height; row++) pixels[row * (width + 1) + 1] = pixelIndex;
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk("IHDR", header), pngChunk("PLTE", palette), pngChunk("IDAT", deflateSync(pixels)), pngChunk("IEND", new Uint8Array())]);
 }
+function fractionalViewportPng(): Uint8Array { return png(Math.round(390 * 1.25), Math.round(844 * 1.25)); }
 async function fixture(executable = "/usr/bin/true"): Promise<RepoFixture> {
   const root = await mkdtemp(join(tmpdir(), "traceknot-cli-e2e-repo-"));
   const config = await mkdtemp(join(tmpdir(), "traceknot-cli-e2e-config-"));
@@ -329,7 +330,41 @@ describe("traceknot verify CLI", () => {
       const paletteStderr: string[] = [];
       const paletteStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], () => undefined, text => paletteStderr.push(text));
       expect({ status: paletteStatus, stderr: paletteStderr }).toEqual({ status: 64, stderr: ["invalid screenshot PNG has an invalid palette\n"] });
-      const failedRequest = { ...request, requestId: "cli-visual-command-failed", project: { rootIdentity: paletteSnapshot.rootIdentity, snapshotId: paletteSnapshot.snapshotId } };
+      const fractionalBytes = fractionalViewportPng();
+      const fractionalDigest = new Bun.CryptoHasher("sha256").update(fractionalBytes).digest("hex");
+      await writeFile(fullPath, fractionalBytes);
+      git(root, ["add", "full-page.png"]);
+      git(root, ["commit", "-qm", "fractional viewport screenshot"]);
+      const fractionalSnapshot = await captureGitSnapshotIdentity(root);
+      const fractionalRequest = {
+        ...request,
+        requestId: "cli-visual-fractional-viewport",
+        project: { rootIdentity: fractionalSnapshot.rootIdentity, snapshotId: fractionalSnapshot.snapshotId },
+        visualComposition: { ...request.visualComposition, viewports: [{ id: "desktop", width: 390, height: 844, devicePixelRatio: 1.25 }] },
+      };
+      const fractionalOracle = {
+        ...oracle,
+        oracleId: "oracle:cli-visual-fractional-viewport",
+        requestId: fractionalRequest.requestId,
+        snapshotId: fractionalSnapshot.snapshotId,
+        captures: oracle.captures.map(capture => ({
+          ...capture,
+          viewport: { id: "desktop", width: 390, height: 844, devicePixelRatio: 1.25 },
+          screenshots: capture.screenshots.map(screenshot => screenshot.role === "full-page" ? { ...screenshot, digest: fractionalDigest } : screenshot),
+        })),
+      };
+      const fractionalManifest = {
+        ...manifest,
+        obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { ...visualCommand, declaredArtifacts: [{ type: "screenshot", digest: fractionalDigest, path: "full-page.png" }, { type: "screenshot", digest: focusedDigest, path: "focused-region.png" }] } : obligation),
+      };
+      await writeFile(requestPath, JSON.stringify(fractionalRequest));
+      await writeFile(oraclePath, JSON.stringify(fractionalOracle));
+      await writeFile(manifestPath, JSON.stringify(fractionalManifest));
+      const fractionalStdout: string[] = [];
+      const fractionalStderr: string[] = [];
+      const fractionalStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], text => fractionalStdout.push(text), text => fractionalStderr.push(text));
+      expect({ status: fractionalStatus, stderr: fractionalStderr, verdict: JSON.parse(fractionalStdout.join("")).verdict.qaVerdict }).toEqual({ status: 0, stderr: [], verdict: "PASS" });
+      const failedRequest = { ...request, requestId: "cli-visual-command-failed", project: { rootIdentity: fractionalSnapshot.rootIdentity, snapshotId: fractionalSnapshot.snapshotId } };
       const failedManifest = {
         ...manifest,
         obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { id: visualCommand.id, executable: "/usr/bin/false" } : obligation),

@@ -368,9 +368,9 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
           for (const { capture, screenshot } of bindings) {
             if (screenshot.role !== "full-page") continue;
             const scale = capture.viewport.devicePixelRatio ?? 1;
-            const expectedWidth = capture.viewport.width * scale;
-            const minimumHeight = capture.viewport.height * scale;
-            if (!Number.isInteger(expectedWidth) || !Number.isInteger(minimumHeight) || dimensions.width !== expectedWidth || dimensions.height < minimumHeight) throw new Error(`invalid screenshot artifact ${artifact.digest}: dimensions do not match capture ${capture.captureId}`);
+            const expectedWidth = Math.round(capture.viewport.width * scale);
+            const minimumHeight = Math.round(capture.viewport.height * scale);
+            if (dimensions.width !== expectedWidth || dimensions.height < minimumHeight) throw new Error(`invalid screenshot artifact ${artifact.digest}: dimensions do not match capture ${capture.captureId}`);
           }
         }
       }

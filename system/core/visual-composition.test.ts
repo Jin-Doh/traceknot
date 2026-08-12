@@ -301,25 +301,15 @@ describe("visual composition contracts", () => {
     expect(isVisualCompositionOracle(vacuous)).toBe(false);
     expect(evaluateWithStoredScreenshots(requirement(), vacuous).status).toBe("INCOMPLETE");
   });
-
-  test("rejects a size ratio with a zero-area denominator", () => {
+  test("rejects zero-area regions before evaluating geometry", () => {
     const candidate = oracle();
     const captures = candidate.captures.map((capture, index) => index === 0 ? {
       ...capture,
       regions: capture.regions.map(region => region.regionId === "secondary" ? { ...region, width: 0 } : region),
-      assertions: [{
-        ...capture.assertions[0]!,
-        assertionId: "zero-size-ratio",
-        relation: "size-ratio" as const,
-        operator: "equals" as const,
-        expected: 1,
-        actual: 1,
-        source: { kind: "explicit-basis" as const, basisId: "basis-layout" },
-      }],
     } : capture);
-    const result = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
-    expect(result.status).toBe("FAIL");
-    expect(result.failedAssertionIds).toContain("zero-size-ratio");
+    const invalid = { ...candidate, captures };
+    expect(isVisualCompositionOracle(invalid)).toBe(false);
+    expect(evaluateWithStoredScreenshots(requirement(), invalid as VisualCompositionOracle).status).toBe("INCOMPLETE");
   });
 
   test("rejects assertions that reference absent regions or unrelated basis", () => {

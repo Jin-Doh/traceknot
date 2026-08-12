@@ -163,7 +163,7 @@ function validProducer(value: unknown): value is Producer {
 }
 
 function validRegion(value: unknown): value is VisualCompositionRegion {
-  return isRecord(value) && exactKeys(value, ["regionId", "role", "x", "y", "width", "height"]) && nonEmptyString(value.regionId) && nonEmptyString(value.role) && finiteNumber(value.x) && finiteNumber(value.y) && finiteNumber(value.width) && value.width >= 0 && finiteNumber(value.height) && value.height >= 0;
+  return isRecord(value) && exactKeys(value, ["regionId", "role", "x", "y", "width", "height"]) && nonEmptyString(value.regionId) && nonEmptyString(value.role) && finiteNumber(value.x) && finiteNumber(value.y) && positiveNumber(value.width) && positiveNumber(value.height);
 }
 
 function validOracleSource(value: unknown): value is VisualOracleSource {
