@@ -215,7 +215,7 @@ describe("visual composition contracts", () => {
     const captures = candidate.captures.map((capture, index) => index === 0 ? {
       ...capture,
       regions: capture.regions.map(region => region.regionId === "secondary" ? { ...region, y: 400 } : region),
-      assertions: capture.assertions.map(item => ({ ...item, expected: 0, actual: 0 })),
+      assertions: capture.assertions.map(item => ({ ...item, expected: 0, actual: 0, unit: "css-px", source: { kind: "explicit-basis" as const, basisId: "basis-layout" } })),
     } : capture);
     const result = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
     expect(result.status).toBe("FAIL");
@@ -226,11 +226,12 @@ describe("visual composition contracts", () => {
     const candidate = oracle();
     const captures = candidate.captures.map((capture, index) => index === 0 ? {
       ...capture,
-      assertions: capture.assertions.map(item => ({ ...item, expected: 24, actual: 32 })),
+      assertions: capture.assertions.map(item => ({ ...item, expected: 40, actual: 32 })),
     } : capture);
     const result = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
     expect(result.status).toBe("INCOMPLETE");
     expect(result.reasons).toContain(`DESIGN_TOKEN_RESOLUTION_INVALID:${captures[0]!.assertions[0]!.assertionId}`);
+    expect(result.failedAssertionIds).toEqual([]);
   });
 
   test("preserves assertion failure precedence when the oracle also reports a blocker", () => {
@@ -277,6 +278,7 @@ describe("visual composition contracts", () => {
         operator: "equals" as const,
         expected: 0,
         actual: 0,
+        source: { kind: "explicit-basis" as const, basisId: "basis-layout" },
       }],
     } : capture);
     const result = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
@@ -312,6 +314,7 @@ describe("visual composition contracts", () => {
         operator: "equals" as const,
         expected: 1,
         actual: 1,
+        source: { kind: "explicit-basis" as const, basisId: "basis-layout" },
       }],
     } : capture);
     const result = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });

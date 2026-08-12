@@ -85,7 +85,7 @@ function decodePngDimensions(bytes: Uint8Array): Readonly<{ width: number; heigh
   let bitDepth = 0;
   let colorType = -1;
   let sawHeader = false;
-  let sawPalette = false;
+  let paletteEntries = 0;
   let sawEnd = false;
   const compressed: Uint8Array[] = [];
   while (offset < bytes.length) {
@@ -110,7 +110,8 @@ function decodePngDimensions(bytes: Uint8Array): Readonly<{ width: number; heigh
       if (!depths[colorType]?.includes(bitDepth)) fail("screenshot PNG color format is unsupported");
       sawHeader = true;
     } else if (type === "PLTE") {
-      sawPalette = true;
+      if (paletteEntries > 0 || compressed.length > 0 || length === 0 || length % 3 !== 0 || length > 768 || (colorType === 3 && length / 3 > 2 ** bitDepth) || colorType === 0 || colorType === 4) fail("screenshot PNG has an invalid palette");
+      paletteEntries = length / 3;
     } else if (type === "IDAT") {
       compressed.push(data);
     } else if (type === "IEND") {
@@ -123,7 +124,7 @@ function decodePngDimensions(bytes: Uint8Array): Readonly<{ width: number; heigh
     }
     offset = chunkEnd;
   }
-  if (!sawHeader || !sawEnd || offset !== bytes.length || compressed.length === 0 || (colorType === 3 && !sawPalette)) fail("screenshot PNG structure is incomplete");
+  if (!sawHeader || !sawEnd || offset !== bytes.length || compressed.length === 0 || (colorType === 3 && paletteEntries === 0)) fail("screenshot PNG structure is incomplete");
   const channels = colorType === 0 || colorType === 3 ? 1 : colorType === 2 ? 3 : colorType === 4 ? 2 : 4;
   const rowBytes = Math.ceil(width * channels * bitDepth / 8);
   const expectedBytes = (rowBytes + 1) * height;
@@ -135,7 +136,38 @@ function decodePngDimensions(bytes: Uint8Array): Readonly<{ width: number; heigh
     fail("screenshot PNG pixel data cannot be decoded");
   }
   if (decoded.length !== expectedBytes) fail("screenshot PNG pixel dimensions do not match IHDR");
-  for (let row = 0; row < height; row++) if (decoded[row * (rowBytes + 1)]! > 4) fail("screenshot PNG uses an invalid row filter");
+  let previousRow = new Uint8Array(rowBytes);
+  const bytesPerPixel = Math.max(1, Math.ceil(channels * bitDepth / 8));
+  for (let row = 0; row < height; row++) {
+    const rowOffset = row * (rowBytes + 1);
+    const filter = decoded[rowOffset]!;
+    if (filter > 4) fail("screenshot PNG uses an invalid row filter");
+    const reconstructed = new Uint8Array(rowBytes);
+    for (let column = 0; column < rowBytes; column++) {
+      const encoded = decoded[rowOffset + 1 + column]!;
+      const left = column >= bytesPerPixel ? reconstructed[column - bytesPerPixel]! : 0;
+      const above = previousRow[column]!;
+      const upperLeft = column >= bytesPerPixel ? previousRow[column - bytesPerPixel]! : 0;
+      let predictor = 0;
+      if (filter === 1) predictor = left;
+      else if (filter === 2) predictor = above;
+      else if (filter === 3) predictor = Math.floor((left + above) / 2);
+      else if (filter === 4) {
+        const estimate = left + above - upperLeft;
+        const leftDistance = Math.abs(estimate - left);
+        const aboveDistance = Math.abs(estimate - above);
+        const upperLeftDistance = Math.abs(estimate - upperLeft);
+        predictor = leftDistance <= aboveDistance && leftDistance <= upperLeftDistance ? left : aboveDistance <= upperLeftDistance ? above : upperLeft;
+      }
+      reconstructed[column] = (encoded + predictor) & 0xff;
+    }
+    if (colorType === 3) for (let pixel = 0; pixel < width; pixel++) {
+      const byte = reconstructed[Math.floor(pixel * bitDepth / 8)]!;
+      const shift = 8 - bitDepth - (pixel * bitDepth % 8);
+      if (((byte >>> shift) & (2 ** bitDepth - 1)) >= paletteEntries) fail("screenshot PNG references an invalid palette entry");
+    }
+    previousRow = reconstructed;
+  }
   return { width, height };
 }
 function assertPlain(value: unknown, path = "$"): void {

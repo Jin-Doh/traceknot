@@ -345,13 +345,22 @@ export function evaluateVisualComposition(requirement: VisualCompositionRequirem
   for (const capture of oracle.captures) {
     const regions = new Map(capture.regions.map(region => [region.regionId, region]));
     for (const assertion of capture.assertions) {
-      if (!sourceUsesBasis(assertion.source, basisIds)) reasons.push(`UNLINKED_ORACLE_SOURCE:${assertion.assertionId}`);
-      for (const basisId of sourceBasisIds(assertion.source)) if (basisIds.has(basisId)) coveredBasisIds.add(basisId);
-      if (assertion.source.kind === "approved-reference" && !storedArtifacts.has(assertion.source.artifactDigest)) reasons.push(`APPROVED_REFERENCE_ARTIFACT_MISSING:${assertion.assertionId}`);
+      const linkedSource = sourceUsesBasis(assertion.source, basisIds);
+      let expectedValueAuthenticated = true;
+      if (!linkedSource) reasons.push(`UNLINKED_ORACLE_SOURCE:${assertion.assertionId}`);
+      if (assertion.source.kind === "approved-reference" && !storedArtifacts.has(assertion.source.artifactDigest)) {
+        reasons.push(`APPROVED_REFERENCE_ARTIFACT_MISSING:${assertion.assertionId}`);
+        expectedValueAuthenticated = false;
+      }
       if (assertion.source.kind === "design-token") {
         const source = assertion.source;
-        if (source.unit !== assertion.unit || source.resolvedValue !== assertion.expected || source.resolutionArtifactDigest !== designTokenResolutionDigest(source) || !artifacts.some(artifact => artifact.type === "design-token-resolution" && artifact.digest === source.resolutionArtifactDigest)) reasons.push(`DESIGN_TOKEN_RESOLUTION_INVALID:${assertion.assertionId}`);
+        if (source.unit !== assertion.unit || source.resolvedValue !== assertion.expected || source.resolutionArtifactDigest !== designTokenResolutionDigest(source) || !artifacts.some(artifact => artifact.type === "design-token-resolution" && artifact.digest === source.resolutionArtifactDigest)) {
+          reasons.push(`DESIGN_TOKEN_RESOLUTION_INVALID:${assertion.assertionId}`);
+          expectedValueAuthenticated = false;
+        }
       }
+      if (linkedSource && expectedValueAuthenticated) for (const basisId of sourceBasisIds(assertion.source)) if (basisIds.has(basisId)) coveredBasisIds.add(basisId);
+      if (!expectedValueAuthenticated) continue;
       const derivedActual = derivedGeometryActual(assertion, regions, capture.viewport);
       const missingDerivation = GEOMETRIC_RELATIONS.has(assertion.relation) && derivedActual === undefined;
       if (missingDerivation || (derivedActual !== undefined && derivedActual !== assertion.actual) || !assertionPasses(assertion, derivedActual ?? assertion.actual)) failedAssertionIds.push(assertion.assertionId);

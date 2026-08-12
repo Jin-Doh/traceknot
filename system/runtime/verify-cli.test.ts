@@ -34,6 +34,16 @@ function png(width: number, height: number): Uint8Array {
   const pixels = Buffer.alloc((width + 1) * height);
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk("IHDR", header), pngChunk("IDAT", deflateSync(pixels)), pngChunk("IEND", new Uint8Array())]);
 }
+function indexedPng(width: number, height: number, palette: Uint8Array, pixelIndex = 0): Uint8Array {
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 3;
+  const pixels = Buffer.alloc((width + 1) * height);
+  for (let row = 0; row < height; row++) pixels[row * (width + 1) + 1] = pixelIndex;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk("IHDR", header), pngChunk("PLTE", palette), pngChunk("IDAT", deflateSync(pixels)), pngChunk("IEND", new Uint8Array())]);
+}
 async function fixture(executable = "/usr/bin/true"): Promise<RepoFixture> {
   const root = await mkdtemp(join(tmpdir(), "traceknot-cli-e2e-repo-"));
   const config = await mkdtemp(join(tmpdir(), "traceknot-cli-e2e-config-"));
@@ -295,7 +305,31 @@ describe("traceknot verify CLI", () => {
       const mismatchStderr: string[] = [];
       const mismatchStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], text => mismatchStdout.push(text), text => mismatchStderr.push(text));
       expect({ status: mismatchStatus, stdout: mismatchStdout, stderr: mismatchStderr }).toEqual({ status: 64, stdout: [], stderr: [`invalid screenshot artifact ${wrongSizeDigest}: dimensions do not match capture capture:catalog:populated:desktop\n`] });
-      const failedRequest = { ...request, requestId: "cli-visual-command-failed", project: { rootIdentity: mismatchSnapshot.rootIdentity, snapshotId: mismatchSnapshot.snapshotId } };
+      const invalidPaletteBytes = indexedPng(1440, 900, new Uint8Array());
+      const invalidPaletteDigest = new Bun.CryptoHasher("sha256").update(invalidPaletteBytes).digest("hex");
+      await writeFile(fullPath, invalidPaletteBytes);
+      git(root, ["add", "full-page.png"]);
+      git(root, ["commit", "-qm", "invalid indexed PNG palette"]);
+      const paletteSnapshot = await captureGitSnapshotIdentity(root);
+      const paletteRequest = { ...request, requestId: "cli-visual-invalid-palette", project: { rootIdentity: paletteSnapshot.rootIdentity, snapshotId: paletteSnapshot.snapshotId } };
+      const paletteOracle = {
+        ...oracle,
+        oracleId: "oracle:cli-visual-invalid-palette",
+        requestId: paletteRequest.requestId,
+        snapshotId: paletteSnapshot.snapshotId,
+        captures: oracle.captures.map(capture => ({ ...capture, screenshots: capture.screenshots.map(screenshot => screenshot.role === "full-page" ? { ...screenshot, digest: invalidPaletteDigest } : screenshot) })),
+      };
+      const paletteManifest = {
+        ...manifest,
+        obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { ...visualCommand, declaredArtifacts: [{ type: "screenshot", digest: invalidPaletteDigest, path: "full-page.png" }, { type: "screenshot", digest: focusedDigest, path: "focused-region.png" }] } : obligation),
+      };
+      await writeFile(requestPath, JSON.stringify(paletteRequest));
+      await writeFile(oraclePath, JSON.stringify(paletteOracle));
+      await writeFile(manifestPath, JSON.stringify(paletteManifest));
+      const paletteStderr: string[] = [];
+      const paletteStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], () => undefined, text => paletteStderr.push(text));
+      expect({ status: paletteStatus, stderr: paletteStderr }).toEqual({ status: 64, stderr: ["invalid screenshot PNG has an invalid palette\n"] });
+      const failedRequest = { ...request, requestId: "cli-visual-command-failed", project: { rootIdentity: paletteSnapshot.rootIdentity, snapshotId: paletteSnapshot.snapshotId } };
       const failedManifest = {
         ...manifest,
         obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { id: visualCommand.id, executable: "/usr/bin/false" } : obligation),
