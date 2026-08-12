@@ -81,14 +81,20 @@ export type VisualCompositionAssertion = Readonly<{
   source: VisualOracleSource;
 }>;
 
+export type VisualCompositionScreenshotEvidence = Readonly<{
+  evidenceId: string;
+  role: "full-page" | "focused-region";
+  digest: string;
+}>;
+
+
 export type VisualCompositionCapture = Readonly<{
   captureId: string;
   surfaceId: string;
   stateId: string;
   viewportId: string;
   viewport: VisualCompositionViewport;
-  fullPageScreenshotDigest: string;
-  focusedRegionScreenshotDigests: readonly string[];
+  screenshots: readonly VisualCompositionScreenshotEvidence[];
   regions: readonly VisualCompositionRegion[];
   assertions: readonly VisualCompositionAssertion[];
 }>;
@@ -184,7 +190,9 @@ function validAssertion(value: unknown): value is VisualCompositionAssertion {
 }
 
 function validCapture(value: unknown): value is VisualCompositionCapture {
-  if (!isRecord(value) || !exactKeys(value, ["captureId", "surfaceId", "stateId", "viewportId", "viewport", "fullPageScreenshotDigest", "focusedRegionScreenshotDigests", "regions", "assertions"]) || !nonEmptyString(value.captureId) || !nonEmptyString(value.surfaceId) || !nonEmptyString(value.stateId) || !nonEmptyString(value.viewportId) || !validViewport(value.viewport) || value.viewport.id !== value.viewportId || typeof value.fullPageScreenshotDigest !== "string" || !DIGEST.test(value.fullPageScreenshotDigest) || !uniqueNonEmptyStrings(value.focusedRegionScreenshotDigests) || value.focusedRegionScreenshotDigests.includes(value.fullPageScreenshotDigest) || !Array.isArray(value.regions) || value.regions.length === 0 || value.regions.some(region => !validRegion(region)) || !Array.isArray(value.assertions) || value.assertions.length === 0 || value.assertions.some(assertion => !validAssertion(assertion))) return false;
+  if (!isRecord(value) || !exactKeys(value, ["captureId", "surfaceId", "stateId", "viewportId", "viewport", "screenshots", "regions", "assertions"]) || !nonEmptyString(value.captureId) || !nonEmptyString(value.surfaceId) || !nonEmptyString(value.stateId) || !nonEmptyString(value.viewportId) || !validViewport(value.viewport) || value.viewport.id !== value.viewportId || !Array.isArray(value.screenshots) || !Array.isArray(value.regions) || value.regions.length === 0 || value.regions.some(region => !validRegion(region)) || !Array.isArray(value.assertions) || value.assertions.length === 0 || value.assertions.some(assertion => !validAssertion(assertion))) return false;
+  const screenshots = value.screenshots as readonly VisualCompositionScreenshotEvidence[];
+  if (!screenshots.every(screenshot => isRecord(screenshot) && exactKeys(screenshot, ["evidenceId", "role", "digest"]) && nonEmptyString(screenshot.evidenceId) && ["full-page", "focused-region"].includes(screenshot.role as string) && typeof screenshot.digest === "string" && DIGEST.test(screenshot.digest)) || screenshots.filter(screenshot => screenshot.role === "full-page").length !== 1 || screenshots.filter(screenshot => screenshot.role === "focused-region").length === 0 || new Set(screenshots.map(screenshot => screenshot.evidenceId)).size !== screenshots.length || new Set(screenshots.map(screenshot => screenshot.digest)).size !== screenshots.length) return false;
   const regions = value.regions as readonly VisualCompositionRegion[];
   const assertions = value.assertions as readonly VisualCompositionAssertion[];
   const regionIds = new Set(regions.map(region => region.regionId));
@@ -215,8 +223,8 @@ export function isVisualCompositionRequirement(value: unknown): value is VisualC
 export function isVisualCompositionOracle(value: unknown): value is VisualCompositionOracle {
   if (!isRecord(value) || !exactKeys(value, ["schemaVersion", "oracleId", "requestId", "snapshotId", "conditionId", "producer", "captures", "representativeStateLimitations", "blockingReasons"]) || value.schemaVersion !== "visual-composition-oracle/v1" || !nonEmptyString(value.oracleId) || !nonEmptyString(value.requestId) || !nonEmptyString(value.snapshotId) || !nonEmptyString(value.conditionId) || !validProducer(value.producer) || !Array.isArray(value.captures) || value.captures.some(capture => !validCapture(capture)) || !uniqueNonEmptyStrings(value.representativeStateLimitations, true) || !uniqueNonEmptyStrings(value.blockingReasons, true)) return false;
   const captures = value.captures as readonly VisualCompositionCapture[];
-  const screenshotDigests = captures.flatMap(capture => [capture.fullPageScreenshotDigest, ...capture.focusedRegionScreenshotDigests]);
-  return new Set(captures.map(capture => capture.captureId)).size === captures.length && new Set(captures.map(captureKey)).size === captures.length && new Set(screenshotDigests).size === screenshotDigests.length;
+  const evidenceIds = captures.flatMap(capture => capture.screenshots.map(screenshot => screenshot.evidenceId));
+  return new Set(captures.map(capture => capture.captureId)).size === captures.length && new Set(captures.map(captureKey)).size === captures.length && new Set(evidenceIds).size === evidenceIds.length;
 }
 
 export function requirementFromVisualCompositionScope(requestId: string, snapshotId: string, conditionId: string, scope: VisualCompositionScope, minimumIndependence: IndependenceLevel): VisualCompositionRequirement | undefined {
@@ -322,7 +330,7 @@ export function evaluateVisualComposition(requirement: VisualCompositionRequirem
   if (oracle.blockingReasons.length > 0) reasons.push(...oracle.blockingReasons.map(reason => `BLOCKED:${reason}`));
   const storedArtifacts = new Set(artifacts.filter(artifact => DIGEST.test(artifact.digest)).map(artifact => artifact.digest));
   const storedScreenshots = new Set(artifacts.filter(artifact => artifact.type === "screenshot" && DIGEST.test(artifact.digest)).map(artifact => artifact.digest));
-  const requiredScreenshotDigests = oracle.captures.flatMap(capture => [capture.fullPageScreenshotDigest, ...capture.focusedRegionScreenshotDigests]);
+  const requiredScreenshotDigests = oracle.captures.flatMap(capture => capture.screenshots.map(screenshot => screenshot.digest));
   if (requiredScreenshotDigests.some(digest => !storedScreenshots.has(digest))) reasons.push("SCREENSHOT_ARTIFACT_MISSING");
   const expectedViewports = new Map(requirement.viewports.map(viewport => [viewport.id, viewport]));
   if (oracle.captures.some(capture => {

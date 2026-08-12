@@ -158,7 +158,7 @@ traceknot verify --request request.json --manifest manifest.json --root .
 
 요청은 현재 Git의 `rootIdentity`와 `snapshotId`를 지정해야 하며, 두 필드 모두 리터럴 `auto`를 사용할 수 있습니다. `verification-manifest/v1` manifest는 생성된 각 obligation에 절대 경로 executable 하나와 argument 배열을 연결합니다. Shell 문자열 보간은 거부됩니다.
 
-Visual-composition obligation에는 절대 경로 `visualCompositionOraclePath`를 지정하고, 각 screenshot 또는 design-token-resolution artifact의 원래 `type`, `digest`, `path`를 선언해야 합니다. CLI는 oracle을 검증하고 선언된 artifact를 안전하게 수집하며 증거 유형을 보존합니다.
+Visual-composition obligation에는 절대 경로 `visualCompositionOraclePath`를 지정하고, 각 screenshot 또는 design-token-resolution artifact의 원래 `type`, `digest`, `path`를 선언해야 합니다. CLI는 oracle을 검증하고 선언된 artifact를 안전하게 수집하며 증거 유형을 보존합니다. Screenshot 증거는 디코딩 가능한 PNG여야 하고, whole-page 크기는 capture viewport와 device-pixel ratio에 맞아야 합니다.
 
 기본 출력은 기계 판독용 JSON입니다. 사람이 읽는 보고서는 `--format markdown`, 명령을 다시 실행하지 않고 terminal run을 읽으려면 `--report-only --run-id ID`를 사용합니다. Exit code는 `PASS` 또는 `PASS_WITH_ACCEPTED_RISK`일 때 `0`, `FAIL`은 `1`, `BLOCKED`는 `2`, `INCOMPLETE`는 `3`, 잘못된 입력은 `64`, 내부 오류는 `70`입니다.
 

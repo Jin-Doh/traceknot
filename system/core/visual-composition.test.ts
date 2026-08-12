@@ -65,8 +65,10 @@ const oracle = (overrides: Partial<VisualCompositionOracle> = {}, systemId = "sy
     stateId,
     viewportId,
     viewport: viewportId === "desktop" ? { id: "desktop", width: 1440, height: 900, label: "wide" } : { id: "mobile", width: 390, height: 844, devicePixelRatio: 3, label: "narrow" },
-    fullPageScreenshotDigest: screenshotDigest("full-page", viewportId, stateId),
-    focusedRegionScreenshotDigests: [screenshotDigest("focused-region", viewportId, stateId)],
+    screenshots: [
+      { evidenceId: `evidence-full-page-${viewportId}-${stateId}`, role: "full-page", digest: screenshotDigest("full-page", viewportId, stateId) },
+      { evidenceId: `evidence-focused-region-${viewportId}-${stateId}`, role: "focused-region", digest: screenshotDigest("focused-region", viewportId, stateId) },
+    ],
     regions: [
       { regionId: "main", role: "primary", x: 0, y: 0, width: viewportId === "desktop" ? 900 : 390, height: 500 },
       { regionId: "secondary", role: "supporting", x: 0, y: 532, width: viewportId === "desktop" ? 900 : 390, height: 200 },
@@ -78,10 +80,9 @@ const oracle = (overrides: Partial<VisualCompositionOracle> = {}, systemId = "sy
   ...overrides,
 });
 
-const screenshotArtifacts = (candidateOracle: VisualCompositionOracle) => candidateOracle.captures.flatMap(capture => [
-  { type: "screenshot", digest: capture.fullPageScreenshotDigest },
-  ...capture.focusedRegionScreenshotDigests.map(digest => ({ type: "screenshot", digest })),
-]);
+const screenshotArtifacts = (candidateOracle: VisualCompositionOracle) => candidateOracle.captures.flatMap(capture =>
+  capture.screenshots.map(screenshot => ({ type: "screenshot", digest: screenshot.digest })),
+);
 
 const evaluateWithStoredScreenshots = (candidateRequirement: VisualCompositionRequirement, candidateOracle: VisualCompositionOracle) => {
   const tokenArtifacts = candidateOracle.captures.flatMap(capture => capture.assertions.flatMap(item => item.source.kind === "design-token" ? [{ type: "design-token-resolution", digest: item.source.resolutionArtifactDigest }] : []));
@@ -121,24 +122,25 @@ describe("visual composition contracts", () => {
 
   test("requires whole-page and focused-region screenshot evidence", () => {
     const candidate = oracle();
-    const missingFocused = { ...candidate, captures: candidate.captures.map((capture, index) => index === 0 ? { ...capture, focusedRegionScreenshotDigests: [] } : capture) };
+    const missingFocused = { ...candidate, captures: candidate.captures.map((capture, index) => index === 0 ? { ...capture, screenshots: capture.screenshots.filter(screenshot => screenshot.role !== "focused-region") } : capture) };
     expect(isVisualCompositionOracle(missingFocused)).toBe(false);
     expect(evaluateWithStoredScreenshots(requirement(), missingFocused as VisualCompositionOracle).status).toBe("INCOMPLETE");
   });
 
   test("rejects a focused screenshot that aliases the whole-page artifact", () => {
     const candidate = oracle();
-    const aliased = { ...candidate, captures: candidate.captures.map((capture, index) => index === 0 ? { ...capture, focusedRegionScreenshotDigests: [capture.fullPageScreenshotDigest] } : capture) };
+    const aliased = { ...candidate, captures: candidate.captures.map((capture, index) => index === 0 ? { ...capture, screenshots: capture.screenshots.map(screenshot => screenshot.role === "focused-region" ? { ...screenshot, digest: capture.screenshots.find(item => item.role === "full-page")!.digest } : screenshot) } : capture) };
     expect(isVisualCompositionOracle(aliased)).toBe(false);
     expect(evaluateWithStoredScreenshots(requirement(), aliased as VisualCompositionOracle).status).toBe("INCOMPLETE");
   });
 
-  test("rejects screenshot evidence reused across capture tuples", () => {
+  test("allows byte-identical images across distinct capture evidence events", () => {
     const candidate = oracle();
     const first = candidate.captures[0]!;
-    const reused = { ...candidate, captures: candidate.captures.map((capture, index) => index === 1 ? { ...capture, fullPageScreenshotDigest: first.fullPageScreenshotDigest, focusedRegionScreenshotDigests: first.focusedRegionScreenshotDigests } : capture) };
-    expect(isVisualCompositionOracle(reused)).toBe(false);
-    expect(evaluateWithStoredScreenshots(requirement(), reused).status).toBe("INCOMPLETE");
+    const firstDigests = first.screenshots.map(screenshot => screenshot.digest);
+    const reused = { ...candidate, captures: candidate.captures.map((capture, index) => index === 1 ? { ...capture, screenshots: capture.screenshots.map((screenshot, screenshotIndex) => ({ ...screenshot, digest: firstDigests[screenshotIndex]! })) } : capture) };
+    expect(isVisualCompositionOracle(reused)).toBe(true);
+    expect(evaluateWithStoredScreenshots(requirement(), reused).status).toBe("PASS");
   });
 
   test("requires every screenshot digest to identify a stored screenshot artifact", () => {

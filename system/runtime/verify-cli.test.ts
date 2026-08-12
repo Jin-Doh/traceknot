@@ -1,6 +1,7 @@
 import { mkdtemp, writeFile, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { deflateSync } from "node:zlib";
 import { describe, expect, test } from "bun:test";
 import { captureGitSnapshotIdentity } from "./git-snapshot";
 import { runVerify } from "../cli/verify";
@@ -8,6 +9,31 @@ import { runVerify } from "../cli/verify";
 type RepoFixture = Readonly<{ root: string; config: string; state: string; request: string; manifest: string; cleanup: () => Promise<void> }>;
 const gitEnv = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", GIT_AUTHOR_NAME: "Traceknot Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Traceknot Test", GIT_COMMITTER_EMAIL: "test@example.com" };
 function git(root: string, args: readonly string[]): string { const result = Bun.spawnSync(["git", "-C", root, ...args], { env: gitEnv, stdout: "pipe", stderr: "pipe" }); if (result.exitCode !== 0) throw new Error(new TextDecoder().decode(result.stderr)); return new TextDecoder().decode(result.stdout).trim(); }
+function pngCrc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+function pngChunk(type: string, data: Uint8Array): Buffer {
+  const typeBytes = Buffer.from(type, "ascii");
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length);
+  const checksum = Buffer.alloc(4);
+  checksum.writeUInt32BE(pngCrc32(Buffer.concat([typeBytes, data])));
+  return Buffer.concat([length, typeBytes, data, checksum]);
+}
+function png(width: number, height: number): Uint8Array {
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 0;
+  const pixels = Buffer.alloc((width + 1) * height);
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk("IHDR", header), pngChunk("IDAT", deflateSync(pixels)), pngChunk("IEND", new Uint8Array())]);
+}
 async function fixture(executable = "/usr/bin/true"): Promise<RepoFixture> {
   const root = await mkdtemp(join(tmpdir(), "traceknot-cli-e2e-repo-"));
   const config = await mkdtemp(join(tmpdir(), "traceknot-cli-e2e-config-"));
@@ -143,8 +169,8 @@ describe("traceknot verify CLI", () => {
     try {
       const fullPath = join(root, "full-page.png");
       const focusedPath = join(root, "focused-region.png");
-      const fullBytes = new TextEncoder().encode("synthetic full-page screenshot\n");
-      const focusedBytes = new TextEncoder().encode("synthetic focused-region screenshot\n");
+      const fullBytes = png(1440, 900);
+      const focusedBytes = png(600, 400);
       const fullDigest = new Bun.CryptoHasher("sha256").update(fullBytes).digest("hex");
       const focusedDigest = new Bun.CryptoHasher("sha256").update(focusedBytes).digest("hex");
       await writeFile(join(root, "input.txt"), "clean\n");
@@ -180,8 +206,10 @@ describe("traceknot verify CLI", () => {
           stateId: "populated",
           viewportId: "desktop",
           viewport: { id: "desktop", width: 1440, height: 900 },
-          fullPageScreenshotDigest: fullDigest,
-          focusedRegionScreenshotDigests: [focusedDigest],
+          screenshots: [
+            { evidenceId: "evidence:catalog:populated:desktop:full-page", role: "full-page", digest: fullDigest },
+            { evidenceId: "evidence:catalog:populated:desktop:focused-region", role: "focused-region", digest: focusedDigest },
+          ],
           regions: [
             { regionId: "main", role: "primary", x: 0, y: 0, width: 900, height: 500 },
             { regionId: "supporting", role: "supporting", x: 0, y: 532, width: 900, height: 200 },
@@ -216,6 +244,57 @@ describe("traceknot verify CLI", () => {
       const visualObservation = report.documents.execution.observations.find(item => item.observationId.includes("visual-composition"));
       expect(visualObservation?.artifacts).toEqual(expect.arrayContaining([expect.objectContaining({ type: "screenshot", digest: fullDigest }), expect.objectContaining({ type: "screenshot", digest: focusedDigest })]));
       expect(report.documents.execution.evidence.find(item => item.obligationId.includes("visual-composition"))?.visualCompositionOracleDigest).toMatch(/^[a-f0-9]{64}$/);
+      const invalidBytes = new TextEncoder().encode("not an image\n");
+      const invalidDigest = new Bun.CryptoHasher("sha256").update(invalidBytes).digest("hex");
+      await writeFile(focusedPath, invalidBytes);
+      git(root, ["add", "focused-region.png"]);
+      git(root, ["commit", "-qm", "invalid screenshot fixture"]);
+      const invalidSnapshot = await captureGitSnapshotIdentity(root);
+      const invalidRequest = { ...request, requestId: "cli-visual-invalid", project: { rootIdentity: invalidSnapshot.rootIdentity, snapshotId: invalidSnapshot.snapshotId } };
+      const invalidOracle = {
+        ...oracle,
+        oracleId: "oracle:cli-visual-invalid",
+        requestId: invalidRequest.requestId,
+        snapshotId: invalidSnapshot.snapshotId,
+        captures: oracle.captures.map(capture => ({ ...capture, screenshots: capture.screenshots.map(screenshot => screenshot.role === "focused-region" ? { ...screenshot, digest: invalidDigest } : screenshot) })),
+      };
+      const invalidManifest = {
+        ...manifest,
+        obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { ...visualCommand, declaredArtifacts: [{ type: "screenshot", digest: fullDigest, path: "full-page.png" }, { type: "screenshot", digest: invalidDigest, path: "focused-region.png" }] } : obligation),
+      };
+      await writeFile(requestPath, JSON.stringify(invalidRequest));
+      await writeFile(oraclePath, JSON.stringify(invalidOracle));
+      await writeFile(manifestPath, JSON.stringify(invalidManifest));
+      const invalidStdout: string[] = [];
+      const invalidStderr: string[] = [];
+      const invalidStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], text => invalidStdout.push(text), text => invalidStderr.push(text));
+      expect({ status: invalidStatus, stdout: invalidStdout, stderr: invalidStderr }).toEqual({ status: 64, stdout: [], stderr: ["invalid screenshot artifact is not a supported PNG\n"] });
+      const wrongSizeBytes = png(800, 600);
+      const wrongSizeDigest = new Bun.CryptoHasher("sha256").update(wrongSizeBytes).digest("hex");
+      await writeFile(fullPath, wrongSizeBytes);
+      await writeFile(focusedPath, focusedBytes);
+      git(root, ["add", "full-page.png", "focused-region.png"]);
+      git(root, ["commit", "-qm", "wrong screenshot dimensions"]);
+      const mismatchSnapshot = await captureGitSnapshotIdentity(root);
+      const mismatchRequest = { ...request, requestId: "cli-visual-dimension-mismatch", project: { rootIdentity: mismatchSnapshot.rootIdentity, snapshotId: mismatchSnapshot.snapshotId } };
+      const mismatchOracle = {
+        ...oracle,
+        oracleId: "oracle:cli-visual-dimension-mismatch",
+        requestId: mismatchRequest.requestId,
+        snapshotId: mismatchSnapshot.snapshotId,
+        captures: oracle.captures.map(capture => ({ ...capture, screenshots: capture.screenshots.map(screenshot => screenshot.role === "full-page" ? { ...screenshot, digest: wrongSizeDigest } : screenshot) })),
+      };
+      const mismatchManifest = {
+        ...manifest,
+        obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { ...visualCommand, declaredArtifacts: [{ type: "screenshot", digest: wrongSizeDigest, path: "full-page.png" }, { type: "screenshot", digest: focusedDigest, path: "focused-region.png" }] } : obligation),
+      };
+      await writeFile(requestPath, JSON.stringify(mismatchRequest));
+      await writeFile(oraclePath, JSON.stringify(mismatchOracle));
+      await writeFile(manifestPath, JSON.stringify(mismatchManifest));
+      const mismatchStdout: string[] = [];
+      const mismatchStderr: string[] = [];
+      const mismatchStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], text => mismatchStdout.push(text), text => mismatchStderr.push(text));
+      expect({ status: mismatchStatus, stdout: mismatchStdout, stderr: mismatchStderr }).toEqual({ status: 64, stdout: [], stderr: [`invalid screenshot artifact ${wrongSizeDigest}: dimensions do not match capture capture:catalog:populated:desktop\n`] });
     } finally {
       await Promise.all([rm(root, { recursive: true, force: true }), rm(config, { recursive: true, force: true }), rm(state, { recursive: true, force: true })]);
     }

@@ -207,8 +207,10 @@ function makeCompositionOracle(request: VerificationExecutionRequest, producer: 
       stateId: "populated",
       viewportId,
       viewport: viewportId === "desktop" ? { id: "desktop", width: 1440, height: 900 } : { id: "mobile", width: 390, height: 844, devicePixelRatio: 3 },
-      fullPageScreenshotDigest: compositionScreenshotDigest("full-page", viewportId),
-      focusedRegionScreenshotDigests: [compositionScreenshotDigest("focused-region", viewportId)],
+      screenshots: [
+        { evidenceId: `evidence-full-page-${viewportId}`, role: "full-page", digest: compositionScreenshotDigest("full-page", viewportId) },
+        { evidenceId: `evidence-focused-region-${viewportId}`, role: "focused-region", digest: compositionScreenshotDigest("focused-region", viewportId) },
+      ],
       regions: [
         { regionId: "main", role: "primary", x: 0, y: 0, width: viewportId === "desktop" ? 900 : 390, height: 500 },
         { regionId: "supporting", role: "supporting", x: 0, y: 532, width: viewportId === "desktop" ? 900 : 390, height: 200 },
@@ -249,7 +251,7 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
       const producer = { kind: options.producerKind ?? "deterministic-verifier", identity: "fixture-browser", independence: options.producerIndependence ?? "independent-producer" } as const;
       const visualCompositionOracle = options.visualCompositionOracle && request.obligation.visualCompositionRequirement ? makeCompositionOracle(request, producer, options) : undefined;
       const screenshotArtifacts: Artifact[] = visualCompositionOracle
-        ? visualCompositionOracle.captures.flatMap(capture => [{ type: "screenshot" as const, digest: capture.fullPageScreenshotDigest }, ...(options.omitStoredScreenshot ? [] : capture.focusedRegionScreenshotDigests.map(digest => ({ type: "screenshot" as const, digest })))])
+        ? visualCompositionOracle.captures.flatMap(capture => capture.screenshots.filter(screenshot => !options.omitStoredScreenshot || screenshot.role === "full-page").map(screenshot => ({ type: "screenshot" as const, digest: screenshot.digest })))
         : [];
       if (visualCompositionOracle) screenshotArtifacts.push({ type: "design-token-resolution", digest: TOKEN_RESOLUTION_DIGEST });
       return {

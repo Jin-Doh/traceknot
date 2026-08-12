@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, lstat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { inflateSync } from "node:zlib";
 import type { Artifact, Producer } from "../core/qa-core";
 import { isVisualCompositionOracle, type VisualCompositionOracle } from "../core/visual-composition";
 import {
@@ -65,6 +66,78 @@ function usage(): string {
 }
 
 function fail(message: string): never { throw new Error(message); }
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function decodePngDimensions(bytes: Uint8Array): Readonly<{ width: number; height: number }> {
+  const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+  if (bytes.length < 33 || signature.some((byte, index) => bytes[index] !== byte)) fail("screenshot artifact is not a supported PNG");
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let bitDepth = 0;
+  let colorType = -1;
+  let sawHeader = false;
+  let sawPalette = false;
+  let sawEnd = false;
+  const compressed: Uint8Array[] = [];
+  while (offset < bytes.length) {
+    if (offset + 12 > bytes.length) fail("screenshot PNG is truncated");
+    const length = view.getUint32(offset);
+    const chunkEnd = offset + 12 + length;
+    if (chunkEnd > bytes.length) fail("screenshot PNG chunk is truncated");
+    const typeBytes = bytes.subarray(offset + 4, offset + 8);
+    const type = new TextDecoder("ascii", { fatal: true }).decode(typeBytes);
+    const data = bytes.subarray(offset + 8, offset + 8 + length);
+    const crcInput = bytes.subarray(offset + 4, offset + 8 + length);
+    if (crc32(crcInput) !== view.getUint32(offset + 8 + length)) fail("screenshot PNG checksum is invalid");
+    if (!sawHeader && type !== "IHDR") fail("screenshot PNG is missing its leading IHDR");
+    if (type === "IHDR") {
+      if (sawHeader || length !== 13) fail("screenshot PNG has an invalid IHDR");
+      width = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(0);
+      height = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(4);
+      bitDepth = data[8]!;
+      colorType = data[9]!;
+      if (!width || !height || width * height > 50_000_000 || data[10] !== 0 || data[11] !== 0 || data[12] !== 0) fail("screenshot PNG dimensions or encoding are unsupported");
+      const depths: Readonly<Record<number, readonly number[]>> = { 0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8], 4: [8, 16], 6: [8, 16] };
+      if (!depths[colorType]?.includes(bitDepth)) fail("screenshot PNG color format is unsupported");
+      sawHeader = true;
+    } else if (type === "PLTE") {
+      sawPalette = true;
+    } else if (type === "IDAT") {
+      compressed.push(data);
+    } else if (type === "IEND") {
+      if (length !== 0) fail("screenshot PNG has an invalid IEND");
+      sawEnd = true;
+      offset = chunkEnd;
+      break;
+    } else if ((typeBytes[0]! & 0x20) === 0) {
+      fail(`screenshot PNG contains unsupported critical chunk ${type}`);
+    }
+    offset = chunkEnd;
+  }
+  if (!sawHeader || !sawEnd || offset !== bytes.length || compressed.length === 0 || (colorType === 3 && !sawPalette)) fail("screenshot PNG structure is incomplete");
+  const channels = colorType === 0 || colorType === 3 ? 1 : colorType === 2 ? 3 : colorType === 4 ? 2 : 4;
+  const rowBytes = Math.ceil(width * channels * bitDepth / 8);
+  const expectedBytes = (rowBytes + 1) * height;
+  if (expectedBytes > 256 * 1024 * 1024) fail("screenshot PNG decoded payload is too large");
+  let decoded: Uint8Array;
+  try {
+    decoded = inflateSync(Buffer.concat(compressed.map(chunk => Buffer.from(chunk))), { maxOutputLength: expectedBytes });
+  } catch {
+    fail("screenshot PNG pixel data cannot be decoded");
+  }
+  if (decoded.length !== expectedBytes) fail("screenshot PNG pixel dimensions do not match IHDR");
+  for (let row = 0; row < height; row++) if (decoded[row * (rowBytes + 1)]! > 4) fail("screenshot PNG uses an invalid row filter");
+  return { width, height };
+}
 function assertPlain(value: unknown, path = "$"): void {
   if (!value || typeof value !== "object") return;
   if (Array.isArray(value)) { value.forEach((child, index) => assertPlain(child, `${path}[${index}]`)); return; }
@@ -233,12 +306,6 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
     const command = commands.get(input.obligation.id);
     if (!command) throw new Error(`manifest has no command for obligation ${input.obligation.id}`);
     const observation = await collector.collect({ requestId: input.requestId, snapshotId: input.snapshotId, rootIdentity: input.rootIdentity, observationId: `observation:${input.obligation.id}`, executable: command.executable, ...(command.argv ? { argv: command.argv } : {}), ...(command.cwd ? { cwd: command.cwd } : {}), ...(command.env ? { env: command.env } : {}), ...(command.timeoutMs ? { timeoutMs: command.timeoutMs } : {}), ...(command.maxOutputBytes ? { maxOutputBytes: command.maxOutputBytes } : {}), ...(command.declaredArtifacts ? { declaredArtifacts: command.declaredArtifacts } : {}), ...(command.toolVersion ? { toolVersion: command.toolVersion } : {}), producer: producer() });
-    const artifacts: Artifact[] = [];
-    for (const artifact of observation.artifacts) {
-      const bytes = await collectorStore.readArtifact(artifact.digest);
-      const type = artifact.type === "screenshot" || artifact.type === "design-token-resolution" ? artifact.type : "verification-result";
-      artifacts.push(await mainStore.storeArtifact({ type, digest: artifact.digest, path: artifact.path, bytes } as Artifact & { bytes: Uint8Array }, input));
-    }
     let visualCompositionOracle: VisualCompositionOracle | undefined;
     if (input.obligation.visualCompositionRequirement) {
       if (!command.visualCompositionOraclePath) throw new Error(`manifest obligation ${command.id} requires visualCompositionOraclePath`);
@@ -247,6 +314,31 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
       visualCompositionOracle = candidate;
     } else if (command.visualCompositionOraclePath) {
       throw new Error(`manifest obligation ${command.id} supplies a visual oracle for a non-visual obligation`);
+    }
+    const artifacts: Artifact[] = [];
+    for (const artifact of observation.artifacts) {
+      const bytes = await collectorStore.readArtifact(artifact.digest);
+      const type = artifact.type === "screenshot" || artifact.type === "design-token-resolution" ? artifact.type : "verification-result";
+      if (type === "screenshot") {
+        let dimensions: Readonly<{ width: number; height: number }>;
+        try {
+          dimensions = decodePngDimensions(bytes);
+        } catch (error) {
+          throw new Error(`invalid ${error instanceof Error ? error.message : String(error)}`);
+        }
+        if (visualCompositionOracle) {
+          const bindings = visualCompositionOracle.captures.flatMap(capture => capture.screenshots.filter(screenshot => screenshot.digest === artifact.digest).map(screenshot => ({ capture, screenshot })));
+          if (bindings.length === 0) throw new Error(`invalid screenshot artifact ${artifact.digest}: not bound to a visual composition capture`);
+          for (const { capture, screenshot } of bindings) {
+            if (screenshot.role !== "full-page") continue;
+            const scale = capture.viewport.devicePixelRatio ?? 1;
+            const expectedWidth = capture.viewport.width * scale;
+            const minimumHeight = capture.viewport.height * scale;
+            if (!Number.isInteger(expectedWidth) || !Number.isInteger(minimumHeight) || dimensions.width !== expectedWidth || dimensions.height < minimumHeight) throw new Error(`invalid screenshot artifact ${artifact.digest}: dimensions do not match capture ${capture.captureId}`);
+          }
+        }
+      }
+      artifacts.push(await mainStore.storeArtifact({ type, digest: artifact.digest, path: artifact.path, bytes } as Artifact & { bytes: Uint8Array }, input));
     }
     const status = observation.execution.exitStatus === "passed" ? "passed" : observation.execution.exitStatus === "blocked" ? "blocked" : observation.execution.exitStatus === "timed-out" ? "failed" : "failed";
     return { status, runId: input.runId, requestId: input.requestId, snapshotId: input.snapshotId, idempotencyKey: input.idempotencyKey, producer: observation.producer, summary: `Command ${command.executable} completed with ${observation.execution.exitStatus}.`, artifacts, executionKind, identity: observation.execution.identity, ...(observation.execution.exitCode === undefined ? {} : { exitCode: observation.execution.exitCode }), ...(visualCompositionOracle ? { visualCompositionOracle } : {}) };
