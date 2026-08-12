@@ -1501,6 +1501,26 @@ describe("verification run orchestration", () => {
     expect(compositionAuthority?.binding.visualCompositionOracleDigest).toBe(compositionEvidence?.visualCompositionOracleDigest);
   });
 
+  test("rejects a persisted passing composition result with both oracle digests removed", async () => {
+    const runId = "composition-oracle-digest-removed";
+    const fakes = makeDependencies({ visualCompositionOracle: true });
+    const result = await runVerification({ runId, request: makeCompositionRequest(runId), dependencies: fakes.dependencies });
+    expect(result.verdict.qaVerdict).toBe("PASS");
+    const saved = fakes.repository.stageDocuments.get(`${runId}:execution`) as ExecutionDocument;
+    const evidence = saved.evidence.map(item => {
+      if (!item.obligationId.includes("visual-composition")) return item;
+      const { visualCompositionOracleDigest: _removed, ...withoutDigest } = item;
+      return withoutDigest;
+    });
+    const authorities = saved.authorities.map(authority => {
+      if (!authority.binding.obligationId.includes("visual-composition")) return authority;
+      const { visualCompositionOracleDigest: _removed, ...binding } = authority.binding;
+      return { ...authority, binding };
+    });
+    fakes.repository.stageDocuments.set(`${runId}:execution`, { ...saved, evidence, authorities });
+    await expect(runVerification({ runId, dependencies: fakes.dependencies })).rejects.toThrow("invalid execution visual composition evidence binding");
+  });
+
   test("validates composition request and emitted plan with canonical AJV schemas", async () => {
     const request = makeCompositionRequest("composition-ajv-contract");
     const dependencies = makeDependencies().dependencies;
