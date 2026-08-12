@@ -306,12 +306,16 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
     const command = commands.get(input.obligation.id);
     if (!command) throw new Error(`manifest has no command for obligation ${input.obligation.id}`);
     const observation = await collector.collect({ requestId: input.requestId, snapshotId: input.snapshotId, rootIdentity: input.rootIdentity, observationId: `observation:${input.obligation.id}`, executable: command.executable, ...(command.argv ? { argv: command.argv } : {}), ...(command.cwd ? { cwd: command.cwd } : {}), ...(command.env ? { env: command.env } : {}), ...(command.timeoutMs ? { timeoutMs: command.timeoutMs } : {}), ...(command.maxOutputBytes ? { maxOutputBytes: command.maxOutputBytes } : {}), ...(command.declaredArtifacts ? { declaredArtifacts: command.declaredArtifacts } : {}), ...(command.toolVersion ? { toolVersion: command.toolVersion } : {}), producer: producer() });
+    const status = observation.execution.exitStatus === "passed" ? "passed" : observation.execution.exitStatus === "blocked" ? "blocked" : "failed";
     let visualCompositionOracle: VisualCompositionOracle | undefined;
     if (input.obligation.visualCompositionRequirement) {
-      if (!command.visualCompositionOraclePath) throw new Error(`manifest obligation ${command.id} requires visualCompositionOraclePath`);
-      const candidate = await readBoundedJson(command.visualCompositionOraclePath);
-      if (!isVisualCompositionOracle(candidate)) throw new Error(`manifest obligation ${command.id} visual composition oracle is invalid`);
-      visualCompositionOracle = candidate;
+      if (command.visualCompositionOraclePath) {
+        const candidate = await readBoundedJson(command.visualCompositionOraclePath);
+        if (!isVisualCompositionOracle(candidate)) throw new Error(`manifest obligation ${command.id} visual composition oracle is invalid`);
+        visualCompositionOracle = candidate;
+      } else if (status === "passed") {
+        throw new Error(`manifest obligation ${command.id} requires visualCompositionOraclePath`);
+      }
     } else if (command.visualCompositionOraclePath) {
       throw new Error(`manifest obligation ${command.id} supplies a visual oracle for a non-visual obligation`);
     }
@@ -340,7 +344,6 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
       }
       artifacts.push(await mainStore.storeArtifact({ type, digest: artifact.digest, path: artifact.path, bytes } as Artifact & { bytes: Uint8Array }, input));
     }
-    const status = observation.execution.exitStatus === "passed" ? "passed" : observation.execution.exitStatus === "blocked" ? "blocked" : observation.execution.exitStatus === "timed-out" ? "failed" : "failed";
     return { status, runId: input.runId, requestId: input.requestId, snapshotId: input.snapshotId, idempotencyKey: input.idempotencyKey, producer: observation.producer, summary: `Command ${command.executable} completed with ${observation.execution.exitStatus}.`, artifacts, executionKind, identity: observation.execution.identity, ...(observation.execution.exitCode === undefined ? {} : { exitCode: observation.execution.exitCode }), ...(visualCompositionOracle ? { visualCompositionOracle } : {}) };
   };
   const executor = { atomicSameKeyIdempotency: true as const, executeObligation: (input: ManifestExecutionInput) => executeManifestCommand(input, "command") };

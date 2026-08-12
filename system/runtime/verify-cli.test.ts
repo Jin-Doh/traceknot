@@ -295,6 +295,18 @@ describe("traceknot verify CLI", () => {
       const mismatchStderr: string[] = [];
       const mismatchStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], text => mismatchStdout.push(text), text => mismatchStderr.push(text));
       expect({ status: mismatchStatus, stdout: mismatchStdout, stderr: mismatchStderr }).toEqual({ status: 64, stdout: [], stderr: [`invalid screenshot artifact ${wrongSizeDigest}: dimensions do not match capture capture:catalog:populated:desktop\n`] });
+      const failedRequest = { ...request, requestId: "cli-visual-command-failed", project: { rootIdentity: mismatchSnapshot.rootIdentity, snapshotId: mismatchSnapshot.snapshotId } };
+      const failedManifest = {
+        ...manifest,
+        obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { id: visualCommand.id, executable: "/usr/bin/false" } : obligation),
+      };
+      await writeFile(requestPath, JSON.stringify(failedRequest));
+      await writeFile(manifestPath, JSON.stringify(failedManifest));
+      const failedStdout: string[] = [];
+      const failedStderr: string[] = [];
+      const failedStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], text => failedStdout.push(text), text => failedStderr.push(text));
+      const failedReport = JSON.parse(failedStdout.join("")) as { verdict: { qaVerdict: string } };
+      expect({ status: failedStatus, stderr: failedStderr, verdict: failedReport.verdict.qaVerdict }).toEqual({ status: 1, stderr: [], verdict: "FAIL" });
     } finally {
       await Promise.all([rm(root, { recursive: true, force: true }), rm(config, { recursive: true, force: true }), rm(state, { recursive: true, force: true })]);
     }

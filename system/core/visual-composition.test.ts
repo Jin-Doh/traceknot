@@ -120,6 +120,15 @@ describe("visual composition contracts", () => {
     });
   });
 
+  test("normalizes omitted device-pixel ratio to one", () => {
+    const candidate = oracle();
+    const explicitOracle = { ...candidate, captures: candidate.captures.map(capture => capture.viewportId === "desktop" ? { ...capture, viewport: { ...capture.viewport, devicePixelRatio: 1 } } : capture) };
+    expect(evaluateWithStoredScreenshots(requirement(), explicitOracle).status).toBe("PASS");
+    const candidateRequirement = requirement();
+    const explicitRequirement = { ...candidateRequirement, viewports: candidateRequirement.viewports.map(viewport => viewport.id === "desktop" ? { ...viewport, devicePixelRatio: 1 } : viewport) };
+    expect(evaluateWithStoredScreenshots(explicitRequirement, candidate).status).toBe("PASS");
+  });
+
   test("requires whole-page and focused-region screenshot evidence", () => {
     const candidate = oracle();
     const missingFocused = { ...candidate, captures: candidate.captures.map((capture, index) => index === 0 ? { ...capture, screenshots: capture.screenshots.filter(screenshot => screenshot.role !== "focused-region") } : capture) };

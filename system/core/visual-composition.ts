@@ -335,7 +335,7 @@ export function evaluateVisualComposition(requirement: VisualCompositionRequirem
   const expectedViewports = new Map(requirement.viewports.map(viewport => [viewport.id, viewport]));
   if (oracle.captures.some(capture => {
     const expected = expectedViewports.get(capture.viewportId);
-    return !expected || capture.viewport.width !== expected.width || capture.viewport.height !== expected.height || capture.viewport.devicePixelRatio !== expected.devicePixelRatio;
+    return !expected || capture.viewport.width !== expected.width || capture.viewport.height !== expected.height || (capture.viewport.devicePixelRatio ?? 1) !== (expected.devicePixelRatio ?? 1);
   })) reasons.push("VIEWPORT_MISMATCH");
   const captures = new Map(oracle.captures.map(capture => [captureKey(capture), capture]));
   for (const required of requirement.requiredCaptures) if (!captures.has(captureKey(required))) missingCaptureKeys.push(captureKey(required));
