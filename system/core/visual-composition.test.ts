@@ -35,6 +35,10 @@ const requirement = (decision: "required" | "unknown" = "required"): VisualCompo
   return result;
 };
 
+const tokenResolutionDigest = (systemId: string, value = 32) => new Bun.CryptoHasher("sha256")
+  .update(JSON.stringify({ schemaVersion: "design-token-resolution/v1", systemId, token: "layout.sectionGap", unit: "css-px", value }))
+  .digest("hex");
+
 const assertion = (systemId = "synthetic-system", actual = 32): VisualCompositionAssertion => ({
   assertionId: `section-gap-${systemId}`,
   relation: "separation",
@@ -43,7 +47,7 @@ const assertion = (systemId = "synthetic-system", actual = 32): VisualCompositio
   expected: 32,
   actual,
   unit: "css-px",
-  source: { kind: "design-token", systemId, token: "layout.sectionGap", basisIds: ["basis-layout"] },
+  source: { kind: "design-token", systemId, token: "layout.sectionGap", unit: "css-px", resolvedValue: 32, resolutionArtifactDigest: tokenResolutionDigest(systemId), basisIds: ["basis-layout"] },
 });
 
 const oracle = (overrides: Partial<VisualCompositionOracle> = {}, systemId = "synthetic-system"): VisualCompositionOracle => ({
@@ -77,8 +81,10 @@ const STORED_SCREENSHOTS = [
   { type: "screenshot", digest: FOCUSED_SCREENSHOT },
 ] as const;
 
-const evaluateWithStoredScreenshots = (candidateRequirement: VisualCompositionRequirement, candidateOracle: VisualCompositionOracle) =>
-  evaluateVisualComposition(candidateRequirement, candidateOracle, STORED_SCREENSHOTS);
+const evaluateWithStoredScreenshots = (candidateRequirement: VisualCompositionRequirement, candidateOracle: VisualCompositionOracle) => {
+  const tokenArtifacts = candidateOracle.captures.flatMap(capture => capture.assertions.flatMap(item => item.source.kind === "design-token" ? [{ type: "design-token-resolution", digest: item.source.resolutionArtifactDigest }] : []));
+  return evaluateVisualComposition(candidateRequirement, candidateOracle, [...STORED_SCREENSHOTS, ...tokenArtifacts]);
+};
 
 describe("visual composition contracts", () => {
   test("accepts explicit required and not-required scope decisions", () => {
@@ -174,6 +180,29 @@ describe("visual composition contracts", () => {
     expect(result.status).toBe("FAIL");
     expect(result.reasons).toContain("COMPOSITION_ASSERTION_FAILED");
     expect(result.failedAssertionIds).toContain(candidate.captures[0]!.assertions[0]!.assertionId);
+  });
+
+  test("treats overlap as negative separation at the zero threshold", () => {
+    const candidate = oracle();
+    const captures = candidate.captures.map((capture, index) => index === 0 ? {
+      ...capture,
+      regions: capture.regions.map(region => region.regionId === "secondary" ? { ...region, y: 400 } : region),
+      assertions: capture.assertions.map(item => ({ ...item, expected: 0, actual: 0 })),
+    } : capture);
+    const result = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
+    expect(result.status).toBe("FAIL");
+    expect(result.failedAssertionIds).toContain(captures[0]!.assertions[0]!.assertionId);
+  });
+
+  test("rejects a design token expected value not bound to its stored resolution digest", () => {
+    const candidate = oracle();
+    const captures = candidate.captures.map((capture, index) => index === 0 ? {
+      ...capture,
+      assertions: capture.assertions.map(item => ({ ...item, expected: 24, actual: 32 })),
+    } : capture);
+    const result = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
+    expect(result.status).toBe("INCOMPLETE");
+    expect(result.reasons).toContain(`DESIGN_TOKEN_RESOLUTION_INVALID:${captures[0]!.assertions[0]!.assertionId}`);
   });
 
   test("preserves assertion failure precedence when the oracle also reports a blocker", () => {

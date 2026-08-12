@@ -42,7 +42,7 @@ const SNAPSHOT_ID = "snapshot-001";
 
 type RunInput = Parameters<typeof runVerification>[0];
 type RunStateValue = CanonicalRunState["state"];
-type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerKind?: "self" | "harness-managed" | "deterministic-verifier" | "ci" | "human" | "external-system"; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean; rejectedAuthority?: boolean; invalidProducer?: boolean; visualCompositionOracle?: boolean; omitStoredScreenshot?: boolean };
+type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerKind?: "self" | "harness-managed" | "deterministic-verifier" | "ci" | "human" | "external-system"; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean; rejectedAuthority?: boolean; invalidProducer?: boolean; visualCompositionOracle?: boolean; omitStoredScreenshot?: boolean; browserStatus?: "PASS" | "BLOCKED" | "INCOMPLETE"; failedVisualAssertion?: boolean; visualBlocking?: boolean };
 
 type FakeDispatchClaimResult = { claimed: boolean; status: "CLAIMED" | "COMPLETED"; claim: DispatchClaim; outputStored: boolean; completion?: VerificationExecutionCompletionEnvelope };
 type FakeRepositoryStore = {
@@ -185,7 +185,11 @@ function makeCompositionRequest(requestId = "request-visual-composition"): Verif
   };
 }
 
-function makeCompositionOracle(request: VerificationExecutionRequest, producer: VisualCompositionOracle["producer"]): VisualCompositionOracle {
+const TOKEN_RESOLUTION_DIGEST = new Bun.CryptoHasher("sha256")
+  .update(JSON.stringify({ schemaVersion: "design-token-resolution/v1", systemId: "synthetic-design-system", token: "layout.sectionGap", unit: "css-px", value: 32 }))
+  .digest("hex");
+
+function makeCompositionOracle(request: VerificationExecutionRequest, producer: VisualCompositionOracle["producer"], options: FakeOptions = {}): VisualCompositionOracle {
   const conditionId = request.obligation.visualCompositionRequirement?.conditionId;
   if (!conditionId) throw new Error("composition fixture received a non-composition obligation");
   return {
@@ -213,13 +217,13 @@ function makeCompositionOracle(request: VerificationExecutionRequest, producer: 
         regionIds: ["main", "supporting"],
         operator: "greater-than-or-equal",
         expected: 32,
-        actual: 32,
+        actual: options.failedVisualAssertion ? 0 : 32,
         unit: "css-px",
-        source: { kind: "design-token", systemId: "synthetic-design-system", token: "layout.sectionGap", basisIds: ["basis-layout"] },
+        source: { kind: "design-token", systemId: "synthetic-design-system", token: "layout.sectionGap", unit: "css-px", resolvedValue: 32, resolutionArtifactDigest: TOKEN_RESOLUTION_DIGEST, basisIds: ["basis-layout"] },
       }],
     })),
     representativeStateLimitations: ["Loading and error states use the unchanged shared shell."],
-    blockingReasons: [],
+    blockingReasons: options.visualBlocking ? ["token service unavailable"] : [],
   };
 }
 
@@ -241,12 +245,12 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
       browserCalls++;
       if (options.missingBrowserOutput) return undefined;
       const producer = { kind: options.producerKind ?? "deterministic-verifier", identity: "fixture-browser", independence: options.producerIndependence ?? "independent-producer" } as const;
-      const visualCompositionOracle = options.visualCompositionOracle && request.obligation.visualCompositionRequirement ? makeCompositionOracle(request, producer) : undefined;
+      const visualCompositionOracle = options.visualCompositionOracle && request.obligation.visualCompositionRequirement ? makeCompositionOracle(request, producer, options) : undefined;
       const screenshotArtifacts = visualCompositionOracle
-        ? [{ type: "screenshot" as const, digest: "c".repeat(64) }, ...(options.omitStoredScreenshot ? [] : [{ type: "screenshot" as const, digest: "d".repeat(64) }])]
+        ? [{ type: "screenshot" as const, digest: "c".repeat(64) }, ...(options.omitStoredScreenshot ? [] : [{ type: "screenshot" as const, digest: "d".repeat(64) }]), { type: "design-token-resolution" as const, digest: TOKEN_RESOLUTION_DIGEST }]
         : [];
       return {
-        status: "PASS" as const,
+        status: options.browserStatus ?? "PASS",
         runId: request.runId,
         requestId: request.requestId,
         snapshotId: request.snapshotId,
@@ -1499,6 +1503,14 @@ describe("verification run orchestration", () => {
     const compositionAuthority = result.documents.execution?.authorities.find(item => item.binding.obligationId.includes("visual-composition"));
     expect(compositionEvidence?.visualCompositionOracleDigest).toMatch(/^[a-f0-9]{64}$/);
     expect(compositionAuthority?.binding.visualCompositionOracleDigest).toBe(compositionEvidence?.visualCompositionOracleDigest);
+  });
+
+  test("evaluates a blocked executor oracle and preserves assertion failure precedence", async () => {
+    const fakes = makeDependencies({ visualCompositionOracle: true, browserStatus: "BLOCKED", failedVisualAssertion: true, visualBlocking: true });
+    const result = await runVerification({ runId: "composition-blocked-with-failure", request: makeCompositionRequest("composition-blocked-with-failure"), dependencies: fakes.dependencies });
+    const compositionEvidence = result.documents.execution?.evidence.find(item => item.obligationId.includes("visual-composition"));
+    expect(compositionEvidence?.result.verdict).toBe("FAIL");
+    expect(compositionEvidence?.result.summary).toContain("COMPOSITION_ASSERTION_FAILED");
   });
 
   test("rejects a persisted passing composition result with both oracle digests removed", async () => {

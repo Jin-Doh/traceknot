@@ -54,7 +54,7 @@ export type VisualCompositionRegion = Readonly<{
 
 export type VisualOracleSource =
   | Readonly<{ kind: "explicit-basis"; basisId: string }>
-  | Readonly<{ kind: "design-token"; token: string; systemId?: string; basisIds: readonly string[] }>
+  | Readonly<{ kind: "design-token"; token: string; unit: string; resolvedValue: string | number | boolean; systemId?: string; basisIds: readonly string[]; resolutionArtifactDigest: string }>
   | Readonly<{ kind: "approved-reference"; artifactDigest: string; basisIds: readonly string[] }>
   | Readonly<{ kind: "derived-relation"; basisIds: readonly string[] }>;
 
@@ -161,7 +161,7 @@ function validRegion(value: unknown): value is VisualCompositionRegion {
 function validOracleSource(value: unknown): value is VisualOracleSource {
   if (!isRecord(value) || !nonEmptyString(value.kind)) return false;
   if (value.kind === "explicit-basis") return exactKeys(value, ["kind", "basisId"]) && nonEmptyString(value.basisId);
-  if (value.kind === "design-token") return exactKeys(value, ["kind", "token", "basisIds"], ["systemId"]) && nonEmptyString(value.token) && uniqueNonEmptyStrings(value.basisIds) && (value.systemId === undefined || nonEmptyString(value.systemId));
+  if (value.kind === "design-token") return exactKeys(value, ["kind", "token", "unit", "resolvedValue", "basisIds", "resolutionArtifactDigest"], ["systemId"]) && nonEmptyString(value.token) && nonEmptyString(value.unit) && validScalar(value.resolvedValue) && uniqueNonEmptyStrings(value.basisIds) && typeof value.resolutionArtifactDigest === "string" && DIGEST.test(value.resolutionArtifactDigest) && (value.systemId === undefined || nonEmptyString(value.systemId));
   if (value.kind === "approved-reference") return exactKeys(value, ["kind", "artifactDigest", "basisIds"]) && typeof value.artifactDigest === "string" && DIGEST.test(value.artifactDigest) && uniqueNonEmptyStrings(value.basisIds);
   if (value.kind === "derived-relation") return exactKeys(value, ["kind", "basisIds"]) && uniqueNonEmptyStrings(value.basisIds);
   return false;
@@ -260,7 +260,7 @@ function derivedGeometryActual(assertion: VisualCompositionAssertion, regions: R
         const right = selected[rightIndex]!;
         const separated = left.x + left.width <= right.x || right.x + right.width <= left.x || left.y + left.height <= right.y || right.y + right.height <= left.y;
         nonOverlapping &&= separated;
-        minimumGap = Math.min(minimumGap, Math.max(left.x - (right.x + right.width), right.x - (left.x + left.width), left.y - (right.y + right.height), right.y - (left.y + left.height), 0));
+        minimumGap = Math.min(minimumGap, Math.max(left.x - (right.x + right.width), right.x - (left.x + left.width), left.y - (right.y + right.height), right.y - (left.y + left.height)));
       }
     }
     return assertion.relation === "separation" ? minimumGap : nonOverlapping;
@@ -296,6 +296,11 @@ function sourceBasisIds(source: VisualOracleSource): readonly string[] {
 function sourceUsesBasis(source: VisualOracleSource, basisIds: ReadonlySet<string>): boolean {
   return sourceBasisIds(source).every(basisId => basisIds.has(basisId));
 }
+function designTokenResolutionDigest(source: Extract<VisualOracleSource, { kind: "design-token" }>): string {
+  const hasher = new Bun.CryptoHasher("sha256");
+  hasher.update(JSON.stringify({ schemaVersion: "design-token-resolution/v1", systemId: source.systemId ?? null, token: source.token, unit: source.unit, value: source.resolvedValue }));
+  return hasher.digest("hex");
+}
 
 export function evaluateVisualComposition(requirement: VisualCompositionRequirement, oracle: VisualCompositionOracle, artifacts: readonly Artifact[] = []): VisualCompositionEvaluation {
   const reasons: string[] = [];
@@ -330,6 +335,10 @@ export function evaluateVisualComposition(requirement: VisualCompositionRequirem
       if (!sourceUsesBasis(assertion.source, basisIds)) reasons.push(`UNLINKED_ORACLE_SOURCE:${assertion.assertionId}`);
       for (const basisId of sourceBasisIds(assertion.source)) if (basisIds.has(basisId)) coveredBasisIds.add(basisId);
       if (assertion.source.kind === "approved-reference" && !storedArtifacts.has(assertion.source.artifactDigest)) reasons.push(`APPROVED_REFERENCE_ARTIFACT_MISSING:${assertion.assertionId}`);
+      if (assertion.source.kind === "design-token") {
+        const source = assertion.source;
+        if (source.unit !== assertion.unit || source.resolvedValue !== assertion.expected || source.resolutionArtifactDigest !== designTokenResolutionDigest(source) || !artifacts.some(artifact => artifact.type === "design-token-resolution" && artifact.digest === source.resolutionArtifactDigest)) reasons.push(`DESIGN_TOKEN_RESOLUTION_INVALID:${assertion.assertionId}`);
+      }
       const derivedActual = derivedGeometryActual(assertion, regions, capture.viewport);
       const missingDerivation = GEOMETRIC_RELATIONS.has(assertion.relation) && derivedActual === undefined;
       if (missingDerivation || (derivedActual !== undefined && derivedActual !== assertion.actual) || !assertionPasses(assertion, derivedActual ?? assertion.actual)) failedAssertionIds.push(assertion.assertionId);
