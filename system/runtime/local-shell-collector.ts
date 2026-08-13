@@ -410,7 +410,10 @@ export class LocalShellCollector {
         const code = String(error).includes("byte bound") ? "ARTIFACT_TOO_LARGE" : "ARTIFACT_READ_FAILED";
         throw new ShellCollectorError(code, `declared artifact cannot be securely read: ${String(error)}`, { cause: error });
       }
-      if (digest(bytes) !== declaration.digest) throw new ShellCollectorError("DECLARED_ARTIFACT_MISMATCH", `declared artifact digest mismatch for ${declaration.path}`);
+      if (digest(bytes) !== declaration.digest) {
+        if (status !== "passed" && request.bestEffortDeclaredArtifactsOnFailure === true) continue;
+        throw new ShellCollectorError("DECLARED_ARTIFACT_MISMATCH", `declared artifact digest mismatch for ${declaration.path}`);
+      }
       const path = resolve(root.canonical, artifactRelative);
       artifacts.push(await saveArtifact(this.artifactStore, { ...declaration, path, bytes } as Artifact & { bytes: Uint8Array }, request));
     }
