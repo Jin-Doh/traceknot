@@ -224,6 +224,7 @@ function makeCompositionOracle(request: VerificationExecutionRequest, producer: 
         assertionId: `section-separation-${viewportId}`,
         relation: "separation",
         regionIds: ["main", "supporting"],
+        axis: "vertical",
         operator: "greater-than-or-equal",
         expected: 32,
         actual: options.failedVisualAssertion ? 0 : 32,

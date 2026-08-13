@@ -41,7 +41,7 @@ A `visual-composition-oracle/v1` record binds the request, snapshot, condition, 
 - a stored whole-page screenshot artifact;
 - at least one distinct stored focused-region screenshot artifact whose digest does not alias the whole-page capture and whose `regionId` names the measured region it covers;
 - measured regions;
-- at least one basis-linked assertion with enough distinct regions for its relation;
+- at least one basis-linked assertion with enough distinct regions for its relation; every separation assertion also binds `axis` as `horizontal` or `vertical`;
 - expected and actual results;
 - representative-state limitations, including an empty list when none remain.
 
@@ -53,7 +53,7 @@ For R2/R3 visual acceptance, the producer must satisfy `independent-producer`. A
 
 ## Synthetic example
 
-A public example may use `surface-catalog`, states `populated` and `empty`, and viewports `1440x900` and `390x844`. A design token such as `layout.sectionGap` may resolve to a condition that the block-axis separation between `main` and `supporting` is at least `32 css-px`.
+A public example may use `surface-catalog`, states `populated` and `empty`, and viewports `1440x900` and `390x844`. A design token such as `layout.sectionGap` may resolve to a condition that the vertical (block-axis) separation between `main` and `supporting` is at least `32 css-px`; horizontal distance cannot satisfy that assertion.
 
 The same neutral relation applies whether the source token belongs to Material, Fluent, Carbon, Apple, or a private product system. Public examples and evidence must use synthetic identifiers and must not disclose private repositories, revisions, internal routes, customer data, or deployment details.
 

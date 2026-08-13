@@ -74,6 +74,7 @@ export type VisualCompositionAssertion = Readonly<{
   assertionId: string;
   relation: VisualCompositionRelation;
   regionIds: readonly string[];
+  axis?: "horizontal" | "vertical";
   operator: "equals" | "not-equals" | "less-than-or-equal" | "greater-than-or-equal" | "contains";
   expected: string | number | boolean;
   actual: string | number | boolean;
@@ -183,8 +184,9 @@ function validScalar(value: unknown): value is string | number | boolean {
 }
 
 function validAssertion(value: unknown): value is VisualCompositionAssertion {
-  if (!isRecord(value) || !exactKeys(value, ["assertionId", "relation", "regionIds", "operator", "expected", "actual", "source"], ["unit"]) || !nonEmptyString(value.assertionId) || !RELATIONS.includes(value.relation as VisualCompositionRelation) || !uniqueNonEmptyStrings(value.regionIds) || !OPERATORS.includes(value.operator as VisualCompositionAssertion["operator"]) || !validScalar(value.expected) || !validScalar(value.actual) || !validOracleSource(value.source) || (value.unit !== undefined && !nonEmptyString(value.unit))) return false;
+  if (!isRecord(value) || !exactKeys(value, ["assertionId", "relation", "regionIds", "operator", "expected", "actual", "source"], ["axis", "unit"]) || !nonEmptyString(value.assertionId) || !RELATIONS.includes(value.relation as VisualCompositionRelation) || !uniqueNonEmptyStrings(value.regionIds) || !OPERATORS.includes(value.operator as VisualCompositionAssertion["operator"]) || !validScalar(value.expected) || !validScalar(value.actual) || !validOracleSource(value.source) || (value.unit !== undefined && !nonEmptyString(value.unit))) return false;
   const relation = value.relation as VisualCompositionRelation;
+  if (relation === "separation" ? !["horizontal", "vertical"].includes(value.axis as string) : value.axis !== undefined) return false;
   if (NUMERIC_GEOMETRIC_RELATIONS.has(relation) && (typeof value.expected !== "number" || typeof value.actual !== "number")) return false;
   if (BOOLEAN_GEOMETRIC_RELATIONS.has(relation) && (typeof value.expected !== "boolean" || typeof value.actual !== "boolean")) return false;
   if ((value.operator === "less-than-or-equal" || value.operator === "greater-than-or-equal") && (typeof value.expected !== "number" || typeof value.actual !== "number")) return false;
@@ -277,9 +279,10 @@ function derivedGeometryActual(assertion: VisualCompositionAssertion, regions: R
       const left = selected[leftIndex]!;
       for (let rightIndex = leftIndex + 1; rightIndex < selected.length; rightIndex++) {
         const right = selected[rightIndex]!;
-        const separated = left.x + left.width <= right.x || right.x + right.width <= left.x || left.y + left.height <= right.y || right.y + right.height <= left.y;
-        nonOverlapping &&= separated;
-        minimumGap = Math.min(minimumGap, Math.max(left.x - (right.x + right.width), right.x - (left.x + left.width), left.y - (right.y + right.height), right.y - (left.y + left.height)));
+        const horizontalGap = Math.max(left.x - (right.x + right.width), right.x - (left.x + left.width));
+        const verticalGap = Math.max(left.y - (right.y + right.height), right.y - (left.y + left.height));
+        nonOverlapping &&= horizontalGap >= 0 || verticalGap >= 0;
+        if (assertion.relation === "separation") minimumGap = Math.min(minimumGap, assertion.axis === "horizontal" ? horizontalGap : verticalGap);
       }
     }
     return assertion.relation === "separation" ? minimumGap : nonOverlapping;
@@ -322,7 +325,7 @@ function designTokenResolutionDigest(source: Extract<VisualOracleSource, { kind:
 }
 function approvedReferenceDigest(assertion: VisualCompositionAssertion, source: Extract<VisualOracleSource, { kind: "approved-reference" }>): string {
   const hasher = new Bun.CryptoHasher("sha256");
-  hasher.update(JSON.stringify({ schemaVersion: "approved-visual-reference/v1", relation: assertion.relation, operator: assertion.operator, expected: assertion.expected, unit: assertion.unit ?? null, regionIds: assertion.regionIds, basisIds: [...source.basisIds].sort() }));
+  hasher.update(JSON.stringify({ schemaVersion: "approved-visual-reference/v1", relation: assertion.relation, axis: assertion.axis ?? null, operator: assertion.operator, expected: assertion.expected, unit: assertion.unit ?? null, regionIds: assertion.regionIds, basisIds: [...source.basisIds].sort() }));
   return hasher.digest("hex");
 }
 

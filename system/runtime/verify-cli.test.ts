@@ -688,7 +688,7 @@ describe("traceknot verify CLI", () => {
             { regionId: "main", role: "primary", x: 0, y: 0, width: 900, height: 500 },
             { regionId: "supporting", role: "supporting", x: 0, y: 532, width: 900, height: 200 },
           ],
-          assertions: [{ assertionId: "section-gap", relation: "separation", regionIds: ["main", "supporting"], operator: "greater-than-or-equal", expected: 32, actual: 32, unit: "css-px", source: { kind: "explicit-basis", basisId: "basis-layout" } }],
+          assertions: [{ assertionId: "section-gap", relation: "separation", axis: "vertical", regionIds: ["main", "supporting"], operator: "greater-than-or-equal", expected: 32, actual: 32, unit: "css-px", source: { kind: "explicit-basis", basisId: "basis-layout" } }],
         }],
         representativeStateLimitations: [],
         blockingReasons: [],

@@ -40,7 +40,7 @@ const tokenResolutionDigest = (systemId: string, value = 32) => new Bun.CryptoHa
   .digest("hex");
 const screenshotDigest = (role: string, viewportId: string, stateId: string) => new Bun.CryptoHasher("sha256").update(`${role}:${viewportId}:${stateId}`).digest("hex");
 const approvedReferenceDigest = (item: VisualCompositionAssertion, basisIds = ["basis-layout"]) => new Bun.CryptoHasher("sha256")
-  .update(JSON.stringify({ schemaVersion: "approved-visual-reference/v1", relation: item.relation, operator: item.operator, expected: item.expected, unit: item.unit ?? null, regionIds: item.regionIds, basisIds: [...basisIds].sort() }))
+  .update(JSON.stringify({ schemaVersion: "approved-visual-reference/v1", relation: item.relation, axis: item.axis ?? null, operator: item.operator, expected: item.expected, unit: item.unit ?? null, regionIds: item.regionIds, basisIds: [...basisIds].sort() }))
   .digest("hex");
 
 
@@ -48,6 +48,7 @@ const assertion = (systemId = "synthetic-system", actual = 32): VisualCompositio
   assertionId: `section-gap-${systemId}`,
   relation: "separation",
   regionIds: ["main", "secondary"],
+  axis: "vertical",
   operator: "greater-than-or-equal",
   expected: 32,
   actual,
@@ -226,6 +227,17 @@ describe("visual composition contracts", () => {
     expect(result.failedAssertionIds).toContain(candidate.captures[0]!.assertions[0]!.assertionId);
   });
 
+  test("does not use horizontal distance to certify vertical separation", () => {
+    const candidate = oracle();
+    const captures = candidate.captures.map((capture, index) => index === 0 ? {
+      ...capture,
+      regions: capture.regions.map(region => region.regionId === "secondary" ? { ...region, x: 500, y: 0 } : region),
+    } : capture);
+    const result = evaluateWithStoredScreenshots(requirement(), { ...candidate, captures });
+    expect(result.status).toBe("FAIL");
+    expect(result.failedAssertionIds).toContain(captures[0]!.assertions[0]!.assertionId);
+  });
+
   test("treats overlap as negative separation at the zero threshold", () => {
     const candidate = oracle();
     const captures = candidate.captures.map((capture, index) => index === 0 ? {
@@ -332,6 +344,7 @@ describe("visual composition contracts", () => {
         ...capture.assertions[0]!,
         assertionId: "shared-alignment",
         relation: "alignment" as const,
+        axis: undefined,
         regionIds: ["main", "secondary", "third"],
         operator: "equals" as const,
         expected: 0,
