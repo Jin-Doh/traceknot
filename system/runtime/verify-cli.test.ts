@@ -886,25 +886,29 @@ describe("traceknot verify CLI", () => {
       const fractionalStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], text => fractionalStdout.push(text), text => fractionalStderr.push(text));
       expect({ status: fractionalStatus, stderr: fractionalStderr, verdict: JSON.parse(fractionalStdout.join("")).verdict.qaVerdict }).toEqual({ status: 3, stderr: [], verdict: "INCOMPLETE" });
       const failedArtifactBytes = new TextEncoder().encode("not a screenshot\n");
-      const failedArtifactDigest = new Bun.CryptoHasher("sha256").update(failedArtifactBytes).digest("hex");
+      const validDiagnosticBytes = new TextEncoder().encode("complete diagnostic\n");
+      const validDiagnosticDigest = new Bun.CryptoHasher("sha256").update(validDiagnosticBytes).digest("hex");
+      const staleDeclaredDigest = "e".repeat(64);
       await writeFile(join(root, "failed-artifact.bin"), failedArtifactBytes);
-      git(root, ["add", "failed-artifact.bin"]);
+      await writeFile(join(root, "valid-diagnostic.bin"), validDiagnosticBytes);
+      git(root, ["add", "failed-artifact.bin", "valid-diagnostic.bin"]);
       git(root, ["commit", "-qm", "failed command diagnostic artifact"]);
       const failedSnapshot = await captureGitSnapshotIdentity(root);
       const failedRequest = { ...request, requestId: "cli-visual-command-failed", project: { rootIdentity: failedSnapshot.rootIdentity, snapshotId: failedSnapshot.snapshotId } };
       const failedManifest = {
         ...manifest,
-        obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { id: visualCommand.id, executable: "/usr/bin/false", visualCompositionOraclePath: join(config, "missing-oracle.json"), declaredArtifacts: [{ type: "screenshot", digest: failedArtifactDigest, path: "failed-artifact.bin" }, { type: "screenshot", digest: "f".repeat(64), path: "missing-screenshot.png" }] } : obligation),
+        obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { id: visualCommand.id, executable: "/usr/bin/false", visualCompositionOraclePath: join(config, "missing-oracle.json"), declaredArtifacts: [{ type: "verification-result", digest: validDiagnosticDigest, path: "valid-diagnostic.bin" }, { type: "screenshot", digest: staleDeclaredDigest, path: "failed-artifact.bin" }, { type: "screenshot", digest: "f".repeat(64), path: "missing-screenshot.png" }] } : obligation),
       };
       await writeFile(requestPath, JSON.stringify(failedRequest));
       await writeFile(manifestPath, JSON.stringify(failedManifest));
       const failedStdout: string[] = [];
       const failedStderr: string[] = [];
       const failedStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], text => failedStdout.push(text), text => failedStderr.push(text));
-      const failedReport = JSON.parse(failedStdout.join("")) as { verdict: { qaVerdict: string }; documents: { execution: { observations: Array<{ observationId: string; artifacts: Array<{ type: string; digest: string }> }> } } };
+      const failedReport = JSON.parse(failedStdout.join("")) as { verdict: { qaVerdict: string }; documents: { execution: { observations: Array<{ observationId: string; execution: { exitStatus: string }; artifacts: Array<{ type: string; digest: string }> }> } } };
       const failedVisualObservation = failedReport.documents.execution.observations.find(item => item.observationId.includes("visual-composition"));
-      expect({ status: failedStatus, stderr: failedStderr, verdict: failedReport.verdict.qaVerdict }).toEqual({ status: 2, stderr: [], verdict: "BLOCKED" });
-      expect(failedVisualObservation?.artifacts).toEqual(expect.arrayContaining([expect.objectContaining({ type: "verification-result", digest: failedArtifactDigest })]));
+      expect({ status: failedStatus, stderr: failedStderr, verdict: failedReport.verdict.qaVerdict, executionStatus: failedVisualObservation?.execution.exitStatus }).toEqual({ status: 2, stderr: [], verdict: "BLOCKED", executionStatus: "failed" });
+      expect(failedVisualObservation?.artifacts.some(artifact => artifact.digest === staleDeclaredDigest)).toBe(false);
+      expect(failedVisualObservation?.artifacts).toEqual(expect.arrayContaining([expect.objectContaining({ type: "verification-result", digest: validDiagnosticDigest })]));
     } finally {
       await Promise.all([rm(root, { recursive: true, force: true }), rm(config, { recursive: true, force: true }), rm(state, { recursive: true, force: true })]);
     }
