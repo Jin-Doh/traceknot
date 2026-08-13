@@ -150,6 +150,11 @@ test("CLI authenticates full-text access bytes, content, and observation subject
   expect(() => validateFullTextAccessArtifact(bytes, digest, oracle)).not.toThrow();
   const tampered = Buffer.from(JSON.stringify({ ...artifact, text: "Different text" }));
   const tamperedDigest = new Bun.CryptoHasher("sha256").update(tampered).digest("hex");
+  const reversedPayload = Object.fromEntries(Object.entries(artifact.payload).reverse());
+  const reorderedBytes = Buffer.from(JSON.stringify({ ...artifact, payload: reversedPayload }));
+  const reorderedDigest = new Bun.CryptoHasher("sha256").update(reorderedBytes).digest("hex");
+  const reorderedOracle = { ...oracle, runs: oracle.runs.map(run => ({ ...run, observations: run.observations.map(item => ({ ...item, fullTextAccess: { ...item.fullTextAccess!, digest: reorderedDigest } })) })) };
+  expect(() => validateFullTextAccessArtifact(reorderedBytes, reorderedDigest, reorderedOracle)).not.toThrow();
   const tamperedOracle = { ...oracle, runs: oracle.runs.map(run => ({ ...run, observations: run.observations.map(item => ({ ...item, fullTextAccess: { ...item.fullTextAccess!, digest: tamperedDigest } })) })) };
   expect(() => validateFullTextAccessArtifact(tampered, tamperedDigest, tamperedOracle)).toThrow("payload does not match observation");
 });

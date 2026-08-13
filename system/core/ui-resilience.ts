@@ -539,6 +539,12 @@ export type UiFullTextAccessArtifact = Readonly<{
   text: string;
 }>;
 
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (isRecord(value)) return `{${Object.keys(value).sort(compareCodeUnits).map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  return JSON.stringify(value);
+}
+
 export function isUiFullTextAccessArtifact(value: unknown, expected: UiFullTextAccessEvidence): value is UiFullTextAccessArtifact {
   if (!isRecord(value) || !exactKeys(value, ["schemaVersion", "payload", "payloadDigest", "text"]) || value.schemaVersion !== "ui-full-text-access-artifact/v1" || !isRecord(value.payload) || typeof value.text !== "string" || value.text.length === 0 || !validDigest(value.payloadDigest)) return false;
   const hasher = new Bun.CryptoHasher("sha256");
@@ -546,7 +552,7 @@ export function isUiFullTextAccessArtifact(value: unknown, expected: UiFullTextA
   return value.payloadDigest === expected.payloadDigest
     && value.payloadDigest === uiFullTextAccessPayloadDigest(expected)
     && hasher.digest("hex") === expected.contentDigest
-    && JSON.stringify(value.payload) === JSON.stringify(uiFullTextAccessPayload(expected));
+    && canonicalJson(value.payload) === canonicalJson(uiFullTextAccessPayload(expected));
 }
 
 export function uiVisualReviewApprovalPayloadDigest(review: Pick<UiVisualReview, "reviewId" | "requestId" | "snapshotId" | "conditionId" | "observationId" | "surfaceId" | "stateId" | "viewportId" | "profile" | "fixtureId" | "outcome" | "rationale" | "producer" | "screenshotDigest">): string {
