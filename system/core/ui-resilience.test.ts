@@ -199,6 +199,34 @@ describe("UI resilience visual review approval binding", () => {
     expect(result.reasons).toContain("VISUAL_REVIEW_SUBJECT_MISMATCH:observation:catalog-label");
   });
 
+describe("UI resilience scope binding and traceability", () => {
+  test("does not convert a foreign failing oracle into a current-request failure", () => {
+    const foreign = oracle(visualReview("FAIL"));
+    const current = { ...requirement, requestId: "request:current" };
+    expect(evaluateUiResilience(current, foreign, [
+      { type: "screenshot", digest: SCREENSHOT_DIGEST },
+    ])).toEqual({
+      schemaVersion: "ui-resilience-evaluation/v1",
+      status: "INCOMPLETE",
+      reasons: ["REQUEST_MISMATCH"],
+      failedObservationIds: [],
+      missingRunKeys: [],
+    });
+  });
+
+  test("requires every scoped basis to reach a region or approved non-applicability subject", () => {
+    const uncovered = { ...requirement, basisIds: [...requirement.basisIds, "basis:localization"] };
+    const candidate = oracle();
+    const review = candidate.runs[0]!.observations[0]!.visualReview!;
+    const result = evaluateUiResilience(uncovered, candidate, [
+      { type: "screenshot", digest: SCREENSHOT_DIGEST },
+      { type: "ui-visual-review-approval-receipt", digest: review.approvalArtifactDigest },
+    ], [review.approvalArtifactDigest]);
+    expect(result.status).toBe("INCOMPLETE");
+    expect(result.reasons).toContain("BASIS_UNCOVERED:basis:localization");
+  });
+});
+
 const FULL_TEXT_DIGEST = "b".repeat(64);
 const truncationRequirement: UiResilienceRequirement = {
   ...requirement,

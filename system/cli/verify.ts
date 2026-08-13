@@ -461,6 +461,30 @@ function exitForVerdict(value: unknown): number {
   return VERIFY_EXIT_CODES.INCOMPLETE;
 }
 
+function validateVisualScreenshot(bytes: Uint8Array, artifactDigest: string, oracle: VisualCompositionOracle | undefined): void {
+  let dimensions: Readonly<{ width: number; height: number }>;
+  try {
+    dimensions = decodePngDimensions(bytes);
+  } catch (error) {
+    throw new Error(`invalid ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!oracle) return;
+  const bindings = oracle.captures.flatMap(capture => capture.screenshots.filter(screenshot => screenshot.digest === artifactDigest).map(screenshot => ({ capture, screenshot })));
+  if (bindings.length === 0) throw new Error(`invalid screenshot artifact ${artifactDigest}: not bound to a visual composition capture`);
+  for (const { capture, screenshot } of bindings) {
+    const scale = capture.viewport.devicePixelRatio ?? 1;
+    if (screenshot.role === "full-page") {
+      const expectedWidth = Math.round(capture.viewport.width * scale);
+      const minimumHeight = Math.round(capture.viewport.height * scale);
+      if (dimensions.width !== expectedWidth || dimensions.height < minimumHeight) throw new Error(`invalid screenshot artifact ${artifactDigest}: dimensions do not match capture ${capture.captureId}`);
+      continue;
+    }
+    const region = capture.regions.find(candidate => candidate.regionId === screenshot.regionId)!;
+    const minimumWidth = Math.ceil(region.width * scale);
+    const minimumHeight = Math.ceil(region.height * scale);
+    if (dimensions.width < minimumWidth || dimensions.height < minimumHeight) throw new Error(`invalid screenshot artifact ${artifactDigest}: dimensions do not cover focused region ${screenshot.regionId}`);
+  }
+}
 async function makeDependencies(options: CliOptions, request: VerificationRequest, manifest: VerifyManifest | undefined, repository: FileVerificationRepository, snapshotId: string, trustedPolicy: TrustedProducerPolicy | undefined): Promise<{ dependencies: VerificationRunDependencies; close: () => Promise<void> }> {
   const mainStore = new LocalArtifactStore(options.artifactDir);
   const collectorStore = new LocalArtifactStore(join(options.artifactDir, "collector"));
@@ -506,7 +530,7 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
         if (isInside(options.rootDir, resolve(declaration.path))) throw new Error(`execution completion artifact must be outside the Git repository root: ${declaration.path}`);
         const bytes = await readBoundedFile(declaration.path, command.maxArtifactBytes ?? 256 * 1024 * 1024);
         if (createHash("sha256").update(bytes).digest("hex") !== declaration.digest) throw new Error(`execution completion artifact digest does not match: ${declaration.path}`);
-        if (declaration.type === "screenshot") decodePngDimensions(bytes);
+        if (declaration.type === "screenshot") validateVisualScreenshot(bytes, declaration.digest, completion.output.visualCompositionOracle);
         await mainStore.storeArtifact({ type: declaration.type, digest: declaration.digest, bytes } as Artifact & { bytes: Uint8Array }, input);
       }
       return completion;
@@ -544,31 +568,7 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
     for (const artifact of observation.artifacts) {
       const bytes = await collectorStore.readArtifact(artifact.digest);
       const type = status === "passed" && (artifact.type === "screenshot" || artifact.type === "design-token-resolution" || artifact.type === "approved-visual-reference" || artifact.type === "ui-applicability-approval" || artifact.type === "ui-full-text-access" || artifact.type === "ui-visual-review-approval-receipt") ? artifact.type : "verification-result";
-      if (type === "screenshot") {
-        let dimensions: Readonly<{ width: number; height: number }>;
-        try {
-          dimensions = decodePngDimensions(bytes);
-        } catch (error) {
-          throw new Error(`invalid ${error instanceof Error ? error.message : String(error)}`);
-        }
-        if (visualCompositionOracle) {
-          const bindings = visualCompositionOracle.captures.flatMap(capture => capture.screenshots.filter(screenshot => screenshot.digest === artifact.digest).map(screenshot => ({ capture, screenshot })));
-          if (bindings.length === 0) throw new Error(`invalid screenshot artifact ${artifact.digest}: not bound to a visual composition capture`);
-          for (const { capture, screenshot } of bindings) {
-            const scale = capture.viewport.devicePixelRatio ?? 1;
-            if (screenshot.role === "full-page") {
-              const expectedWidth = Math.round(capture.viewport.width * scale);
-              const minimumHeight = Math.round(capture.viewport.height * scale);
-              if (dimensions.width !== expectedWidth || dimensions.height < minimumHeight) throw new Error(`invalid screenshot artifact ${artifact.digest}: dimensions do not match capture ${capture.captureId}`);
-              continue;
-            }
-            const region = capture.regions.find(candidate => candidate.regionId === screenshot.regionId)!;
-            const minimumWidth = Math.ceil(region.width * scale);
-            const minimumHeight = Math.ceil(region.height * scale);
-            if (dimensions.width < minimumWidth || dimensions.height < minimumHeight) throw new Error(`invalid screenshot artifact ${artifact.digest}: dimensions do not cover focused region ${screenshot.regionId}`);
-          }
-        }
-      }
+      if (type === "screenshot") validateVisualScreenshot(bytes, artifact.digest, visualCompositionOracle);
       artifacts.push(await mainStore.storeArtifact({ type, digest: artifact.digest, path: artifact.path, bytes } as Artifact & { bytes: Uint8Array }, input));
     }
     return { status, runId: input.runId, requestId: input.requestId, snapshotId: input.snapshotId, idempotencyKey: input.idempotencyKey, producer: observation.producer, summary: `Command ${command.executable} completed with ${observation.execution.exitStatus}.`, artifacts, executionKind, identity: observation.execution.identity, ...(observation.execution.exitCode === undefined ? {} : { exitCode: observation.execution.exitCode }), ...(visualCompositionOracle ? { visualCompositionOracle } : {}), ...(uiResilienceOracle ? { uiResilienceOracle } : {}) };

@@ -525,9 +525,16 @@ export function evaluateUiResilience(requirement: UiResilienceRequirement, oracl
   if (!isUiResilienceRequirement(requirement)) reasons.push("INVALID_REQUIREMENT");
   if (!isUiResilienceOracle(oracle)) reasons.push("INVALID_ORACLE");
   if (reasons.length > 0) return { schemaVersion: "ui-resilience-evaluation/v1", status: "INCOMPLETE", reasons, failedObservationIds, missingRunKeys };
-  if (oracle.requestId !== requirement.requestId) reasons.push("REQUEST_MISMATCH");
-  if (oracle.snapshotId !== requirement.snapshotId) reasons.push("SNAPSHOT_MISMATCH");
-  if (oracle.conditionId !== requirement.conditionId) reasons.push("CONDITION_MISMATCH");
+  const bindingReasons: string[] = [];
+  if (oracle.requestId !== requirement.requestId) bindingReasons.push("REQUEST_MISMATCH");
+  if (oracle.snapshotId !== requirement.snapshotId) bindingReasons.push("SNAPSHOT_MISMATCH");
+  if (oracle.conditionId !== requirement.conditionId) bindingReasons.push("CONDITION_MISMATCH");
+  if (bindingReasons.length > 0) return { schemaVersion: "ui-resilience-evaluation/v1", status: "INCOMPLETE", reasons: bindingReasons.sort(), failedObservationIds, missingRunKeys };
+  const coveredBasisIds = new Set([
+    ...requirement.requiredRuns.flatMap(run => run.regions.flatMap(region => region.basisIds)),
+    ...requirement.applicabilityApprovals.flatMap(approval => approval.basisIds),
+  ]);
+  for (const basisId of requirement.basisIds) if (!coveredBasisIds.has(basisId)) reasons.push(`BASIS_UNCOVERED:${basisId}`);
   if (independenceRank[oracle.producer.independence] < independenceRank[requirement.minimumIndependence]) reasons.push("INDEPENDENCE_NOT_MET");
   if (requirement.scopeDecision === "unknown") reasons.push("SCOPE_DECISION_UNKNOWN");
   if (requirement.unknownApplicabilityKeys.length > 0) reasons.push(...requirement.unknownApplicabilityKeys.map(key => `APPLICABILITY_UNKNOWN:${key}`));
