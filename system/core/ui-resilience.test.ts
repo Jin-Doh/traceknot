@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   evaluateUiResilience,
   isUiResilienceOracle,
+  isUiResilienceScope,
   uiFullTextAccessPayloadDigest,
   uiVisualReviewApprovalPayloadDigest,
   uiVisualReviewApprovalReceiptDigest,
@@ -192,6 +193,37 @@ describe("UI resilience visual review approval binding", () => {
     ], [observation.visualReview!.approvalArtifactDigest])).toMatchObject({ status: "INCOMPLETE", reasons: ["INVALID_ORACLE"] });
   });
 
+  test("honors an authenticated failing review without paint-risk flags", () => {
+    const candidate = oracle(visualReview("FAIL"));
+    const run = candidate.runs[0]!;
+    const observation = run.observations[0]!;
+    const review = observation.visualReview!;
+    const withoutPaintFlags = { ...candidate, runs: [{ ...run, observations: [{ ...observation, paintFeatures: [] }] }] };
+    const result = evaluateUiResilience(requirement, withoutPaintFlags, [
+      { type: "screenshot", digest: SCREENSHOT_DIGEST },
+      { type: "ui-visual-review-approval-receipt", digest: review.approvalArtifactDigest },
+    ], [review.approvalArtifactDigest]);
+    expect(result.status).toBe("FAIL");
+    expect(result.failedObservationIds).toEqual(["observation:catalog-label"]);
+  });
+
+  test("does not evaluate observations from an insufficiently independent producer", () => {
+    const candidate = oracle();
+    const run = candidate.runs[0]!;
+    const observation = run.observations[0]!;
+    const selfProduced = {
+      ...candidate,
+      producer: { kind: "self" as const, identity: "implementer", independence: "self-check" as const },
+      runs: [{ ...run, observations: [{ ...observation, scrollWidth: 400 }] }],
+    };
+    const result = evaluateUiResilience(requirement, selfProduced, [{ type: "screenshot", digest: SCREENSHOT_DIGEST }]);
+    expect(result).toEqual(expect.objectContaining({
+      status: "INCOMPLETE",
+      reasons: ["INDEPENDENCE_NOT_MET"],
+      failedObservationIds: [],
+    }));
+  });
+
 });
 
   test("rejects an authentic review replayed under a different request subject", () => {
@@ -286,6 +318,58 @@ describe("UI resilience scope binding and traceability", () => {
     ], [review.approvalArtifactDigest]);
     expect(result.status).toBe("INCOMPLETE");
     expect(result.reasons).toContain("BASIS_UNCOVERED:basis:localization");
+  });
+});
+
+describe("UI resilience applicability scope", () => {
+  test("accepts signed applicability basis IDs in a different order", () => {
+    const basisIds = ["basis:first", "basis:second"];
+    const requiredProfiles = new Set(["text-overflow", "resize-text-200", "text-spacing-wcag"]);
+    const profiles = ["text-overflow", "resize-text-200", "reflow-320", "text-spacing-wcag", "pseudo-localization", "rtl", "reduced-motion", "hover-focus-content"] as const;
+    const scope = {
+      schemaVersion: "ui-resilience-scope/v1",
+      decision: "required",
+      basisIds,
+      rationale: "Rendered text must remain usable.",
+      viewports: [{ id: "desktop", width: 1440, height: 900 }],
+      surfaces: [{
+        surfaceId: "catalog",
+        stateIds: ["populated"],
+        viewportIds: ["desktop"],
+        capabilities: ["rendered-text"],
+        fixtures: [
+          { fixtureId: "representative", kind: "representative", contentDigest: "1".repeat(64) },
+          { fixtureId: "natural", kind: "long-natural-language", contentDigest: "2".repeat(64) },
+          { fixtureId: "token", kind: "long-unbroken-token", contentDigest: "3".repeat(64) },
+        ],
+        regions: [{ regionId: "label", policy: "no-overflow", basisIds }],
+        profileApplicability: profiles.map(profile => {
+          const rationale = `${profile} applicability is explicit.`;
+          if (requiredProfiles.has(profile)) return { profile, status: "required", basisIds, rationale };
+          return {
+            profile,
+            status: "not-applicable",
+            basisIds,
+            rationale,
+            approvalReceipt: {
+              schemaVersion: "ui-applicability-approval-receipt/v1",
+              receiptId: `receipt:${profile}`,
+              issuer: "trusted-applicability-service",
+              keyId: "key:1",
+              requestId: requirement.requestId,
+              snapshotId: requirement.snapshotId,
+              conditionId: requirement.conditionId,
+              surfaceId: "catalog",
+              profile,
+              basisIds: [...basisIds].reverse(),
+              rationale,
+              signature: "signed",
+            },
+          };
+        }),
+      }],
+    };
+    expect(isUiResilienceScope(scope)).toBe(true);
   });
 });
 

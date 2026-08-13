@@ -396,10 +396,15 @@ describe("visual composition contracts", () => {
     expect(evaluateWithStoredScreenshots(requirement(), unrelatedBasis).reasons).toContain(`UNLINKED_ORACLE_SOURCE:${unrelatedBasis.captures[0]!.assertions[0]!.assertionId}`);
   });
 
-  test("does not accept unknown scope or insufficient producer independence", () => {
+  test("does not evaluate assertions from an insufficiently independent producer", () => {
     expect(evaluateWithStoredScreenshots(requirement("unknown"), oracle()).status).toBe("INCOMPLETE");
-    const selfProduced = oracle({ producer: { kind: "self", identity: "implementer", independence: "self-check" } });
-    expect(evaluateWithStoredScreenshots(requirement(), selfProduced)).toEqual(expect.objectContaining({ status: "INCOMPLETE", reasons: ["INDEPENDENCE_NOT_MET"] }));
+    const candidate = oracle({ producer: { kind: "self", identity: "implementer", independence: "self-check" } });
+    const failing = { ...candidate, captures: candidate.captures.map(capture => ({ ...capture, assertions: capture.assertions.map(item => ({ ...item, actual: 0 })) })) };
+    expect(evaluateWithStoredScreenshots(requirement(), failing)).toEqual(expect.objectContaining({
+      status: "INCOMPLETE",
+      reasons: ["INDEPENDENCE_NOT_MET"],
+      failedAssertionIds: [],
+    }));
   });
 
   test("reports unavailable token resolution or capture capability as blocked", () => {

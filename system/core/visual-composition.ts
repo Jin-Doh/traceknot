@@ -338,7 +338,9 @@ export function evaluateVisualComposition(requirement: VisualCompositionRequirem
   if (oracle.conditionId !== requirement.conditionId) reasons.push("CONDITION_MISMATCH");
   if (reasons.length > 0) return { schemaVersion: "visual-composition-evaluation/v1", status: "INCOMPLETE", reasons, failedAssertionIds, missingCaptureKeys };
   if (requirement.scopeDecision === "unknown") reasons.push("SCOPE_DECISION_UNKNOWN");
-  if (independenceRank[oracle.producer.independence] < independenceRank[requirement.minimumIndependence]) reasons.push("INDEPENDENCE_NOT_MET");
+  if (independenceRank[oracle.producer.independence] < independenceRank[requirement.minimumIndependence]) {
+    return { schemaVersion: "visual-composition-evaluation/v1", status: "INCOMPLETE", reasons: ["INDEPENDENCE_NOT_MET"], failedAssertionIds, missingCaptureKeys };
+  }
   if (oracle.blockingReasons.length > 0) reasons.push(...oracle.blockingReasons.map(reason => `BLOCKED:${reason}`));
   const storedApprovedReferences = new Set(artifacts.filter(artifact => artifact.type === "approved-visual-reference" && DIGEST.test(artifact.digest)).map(artifact => artifact.digest));
   const storedScreenshots = new Set(artifacts.filter(artifact => artifact.type === "screenshot" && DIGEST.test(artifact.digest)).map(artifact => artifact.digest));

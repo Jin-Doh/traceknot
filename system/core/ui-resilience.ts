@@ -285,7 +285,10 @@ function validRegionPolicy(value: unknown): value is UiRegionPolicy {
   return isRecord(value) && exactKeys(value, ["regionId", "policy", "basisIds"], ["maxLines"]) && nonEmptyString(value.regionId) && POLICIES.includes(value.policy as UiOverflowPolicy) && uniqueStrings(value.basisIds) && (value.maxLines === undefined || (Number.isInteger(value.maxLines) && (value.maxLines as number) > 0)) && (value.policy === "truncate-with-access" ? Number.isInteger(value.maxLines) && (value.maxLines as number) > 0 : value.maxLines === undefined);
 }
 function sameStrings(left: readonly string[], right: unknown): boolean {
-  return Array.isArray(right) && left.length === right.length && left.every((item, index) => item === right[index]);
+  if (!Array.isArray(right) || !right.every(item => typeof item === "string") || left.length !== right.length) return false;
+  const sortedLeft = [...left].sort(compareCodeUnits);
+  const sortedRight = [...right].sort(compareCodeUnits);
+  return sortedLeft.every((item, index) => item === sortedRight[index]);
 }
 function requiredProfiles(capabilities: readonly UiSurfaceCapability[]): Set<UiResilienceProfile> {
   const result = new Set<UiResilienceProfile>();
@@ -601,9 +604,8 @@ function observationDisposition(observation: UiResilienceObservation, expectedPo
   const fragmentClipped = observation.fragmentRects.some(rect => observation.clippingAncestors.some(ancestor => !rectContained(rect, ancestor.clipRect) && (((ancestor.overflowX === "hidden" || ancestor.overflowX === "clip") && (rect.x < ancestor.clipRect.x || rect.x + rect.width > ancestor.clipRect.x + ancestor.clipRect.width)) || ((ancestor.overflowY === "hidden" || ancestor.overflowY === "clip") && (rect.y < ancestor.clipRect.y || rect.y + rect.height > ancestor.clipRect.y + ancestor.clipRect.height)))));
   const geometryRisk = horizontalOverflow || verticalOverflow || fragmentClipped;
   const reviewRequired = observation.paintFeatures.length > 0;
-  if (reviewRequired && !reviewApproved) return "INCOMPLETE";
-  if (reviewRequired && observation.visualReview?.outcome === "FAIL") return "FAIL";
-  if (reviewRequired && observation.visualReview?.outcome !== "PASS") return "INCOMPLETE";
+  if (reviewApproved && observation.visualReview?.outcome === "FAIL") return "FAIL";
+  if (reviewRequired && (!reviewApproved || observation.visualReview?.outcome !== "PASS")) return "INCOMPLETE";
   if (expectedPolicy.policy === "truncate-with-access") {
     const maxLines = expectedPolicy.maxLines!;
     if (observation.renderedLineCount > maxLines || (observation.contentTruncated && observation.renderedLineCount !== maxLines)) return "FAIL";
@@ -638,7 +640,9 @@ export function evaluateUiResilience(requirement: UiResilienceRequirement, oracl
     ...requirement.applicabilityApprovals.flatMap(approval => approval.basisIds),
   ]);
   for (const basisId of requirement.basisIds) if (!coveredBasisIds.has(basisId)) reasons.push(`BASIS_UNCOVERED:${basisId}`);
-  if (independenceRank[oracle.producer.independence] < independenceRank[requirement.minimumIndependence]) reasons.push("INDEPENDENCE_NOT_MET");
+  if (independenceRank[oracle.producer.independence] < independenceRank[requirement.minimumIndependence]) {
+    return { schemaVersion: "ui-resilience-evaluation/v1", status: "INCOMPLETE", reasons: ["INDEPENDENCE_NOT_MET"], failedObservationIds, missingRunKeys };
+  }
   if (requirement.scopeDecision === "unknown") reasons.push("SCOPE_DECISION_UNKNOWN");
   if (requirement.unknownApplicabilityKeys.length > 0) reasons.push(...requirement.unknownApplicabilityKeys.map(key => `APPLICABILITY_UNKNOWN:${key}`));
   const artifactKeys = new Set(artifacts.map(item => `${item.type}\u0000${item.digest}`));
