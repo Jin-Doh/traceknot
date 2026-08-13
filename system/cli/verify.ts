@@ -542,10 +542,10 @@ export function validateScreenshotArtifact(bytes: Uint8Array, artifactDigest: st
     const captureViewport = run.profileEvidence.profile === "reflow-320"
       ? { width: run.profileEvidence.innerWidth, height: run.profileEvidence.innerHeight }
       : run.viewport;
-    const minimumWidth = Math.ceil(captureViewport.width * scale);
-    const minimumHeight = Math.ceil(captureViewport.height * scale);
-    if (dimensions.width < minimumWidth || dimensions.height < minimumHeight) {
-      throw new Error(`invalid UI resilience screenshot artifact ${artifactDigest}: dimensions do not cover observation ${observation.observationId}`);
+    const expectedWidth = Math.round(captureViewport.width * scale);
+    const minimumHeight = Math.round(captureViewport.height * scale);
+    if (dimensions.width !== expectedWidth || dimensions.height < minimumHeight) {
+      throw new Error(`invalid UI resilience screenshot artifact ${artifactDigest}: dimensions do not match observation ${observation.observationId}`);
     }
   }
 }

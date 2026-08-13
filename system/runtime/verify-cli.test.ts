@@ -159,7 +159,7 @@ test("CLI authenticates full-text access bytes, content, and observation subject
   expect(() => validateFullTextAccessArtifact(tampered, tamperedDigest, tamperedOracle)).toThrow("payload does not match observation");
 });
 
-test("CLI screenshot trust boundary rejects cross-run replay and undersized resilience captures", () => {
+test("CLI screenshot trust boundary rejects cross-run replay and mismatched resilience capture widths", () => {
   const bytes = png(900, 500);
   const digest = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
   const observation = {
@@ -193,11 +193,15 @@ test("CLI screenshot trust boundary rejects cross-run replay and undersized resi
   };
   expect(() => validateScreenshotArtifact(bytes, digest, undefined, oracle)).toThrow("reused across distinct runs");
   const singleRunOracle = { ...oracle, runs: [oracle.runs[0]!] };
-  expect(() => validateScreenshotArtifact(bytes, digest, undefined, singleRunOracle)).toThrow("dimensions do not cover observation");
+  expect(() => validateScreenshotArtifact(bytes, digest, undefined, singleRunOracle)).toThrow("dimensions do not match observation");
   const fullBytes = png(1440, 900);
   const fullDigest = new Bun.CryptoHasher("sha256").update(fullBytes).digest("hex");
   const fullOracle = { ...singleRunOracle, runs: singleRunOracle.runs.map(run => ({ ...run, observations: run.observations.map(item => ({ ...item, screenshotDigest: fullDigest })) })) };
   expect(() => validateScreenshotArtifact(fullBytes, fullDigest, undefined, fullOracle)).not.toThrow();
+  const wrongViewportBytes = png(1600, 1000);
+  const wrongViewportDigest = new Bun.CryptoHasher("sha256").update(wrongViewportBytes).digest("hex");
+  const wrongViewportOracle = { ...singleRunOracle, runs: singleRunOracle.runs.map(run => ({ ...run, observations: run.observations.map(item => ({ ...item, screenshotDigest: wrongViewportDigest })) })) };
+  expect(() => validateScreenshotArtifact(wrongViewportBytes, wrongViewportDigest, undefined, wrongViewportOracle)).toThrow("dimensions do not match observation");
   const tinyBytes = png(1, 1);
   const tinyDigest = new Bun.CryptoHasher("sha256").update(tinyBytes).digest("hex");
   const reflowOracle: UiResilienceOracle = {
@@ -209,11 +213,22 @@ test("CLI screenshot trust boundary rejects cross-run replay and undersized resi
       observations: [{ ...observation, clientWidth: 1, clientHeight: 1, scrollWidth: 1, scrollHeight: 1, fragmentRects: [{ x: 0, y: 0, width: 1, height: 1 }], screenshotDigest: tinyDigest }],
     }],
   };
-  expect(() => validateScreenshotArtifact(tinyBytes, tinyDigest, undefined, reflowOracle)).toThrow("dimensions do not cover observation");
+  expect(() => validateScreenshotArtifact(tinyBytes, tinyDigest, undefined, reflowOracle)).toThrow("dimensions do not match observation");
   const reflowBytes = png(320, 900);
   const reflowDigest = new Bun.CryptoHasher("sha256").update(reflowBytes).digest("hex");
   const validReflowOracle = { ...reflowOracle, runs: reflowOracle.runs.map(run => ({ ...run, observations: run.observations.map(item => ({ ...item, screenshotDigest: reflowDigest })) })) };
   expect(() => validateScreenshotArtifact(reflowBytes, reflowDigest, undefined, validReflowOracle)).not.toThrow();
+  const fractionalBytes = png(486, 1055);
+  const fractionalDigest = new Bun.CryptoHasher("sha256").update(fractionalBytes).digest("hex");
+  const fractionalOracle: UiResilienceOracle = {
+    ...singleRunOracle,
+    runs: [{
+      ...singleRunOracle.runs[0]!,
+      viewport: { id: "fractional", width: 389, height: 844, devicePixelRatio: 1.25 },
+      observations: [{ ...observation, screenshotDigest: fractionalDigest }],
+    }],
+  };
+  expect(() => validateScreenshotArtifact(fractionalBytes, fractionalDigest, undefined, fractionalOracle)).not.toThrow();
 });
 
 function fractionalViewportPng(): Uint8Array { return png(Math.round(390 * 1.25), Math.round(844 * 1.25)); }
