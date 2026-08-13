@@ -487,7 +487,7 @@ function exitForVerdict(value: unknown): number {
   return VERIFY_EXIT_CODES.INCOMPLETE;
 }
 
-function validateScreenshotArtifact(bytes: Uint8Array, artifactDigest: string, visualOracle: VisualCompositionOracle | undefined, resilienceOracle: UiResilienceOracle | undefined): void {
+export function validateScreenshotArtifact(bytes: Uint8Array, artifactDigest: string, visualOracle: VisualCompositionOracle | undefined, resilienceOracle: UiResilienceOracle | undefined): void {
   let dimensions: Readonly<{ width: number; height: number }>;
   try {
     dimensions = decodePngDimensions(bytes);

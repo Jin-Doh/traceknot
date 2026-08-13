@@ -6,10 +6,10 @@ import { deflateSync } from "node:zlib";
 import Ajv2020 from "ajv/dist/2020.js";
 import { describe, expect, test } from "bun:test";
 import { captureGitSnapshotIdentity } from "./git-snapshot";
-import { runVerify, verifyTrustedAuthority, verifyTrustedUiApplicabilityApproval, verifyTrustedUiVisualReview, type TrustedProducerPolicy } from "../cli/verify";
+import { runVerify, validateScreenshotArtifact, verifyTrustedAuthority, verifyTrustedUiApplicabilityApproval, verifyTrustedUiVisualReview, type TrustedProducerPolicy } from "../cli/verify";
 import { canonicalizeJson, type VerificationExecutionAuthorityBinding, type VerificationExecutionCompletionEnvelope, type VerificationExecutionOutput } from "./verification-run";
 import { LocalArtifactStore } from "./local-artifact-store";
-import { uiVisualReviewApprovalPayloadDigest, type UiApplicabilityApprovalSubject, type UiResilienceProfile, type UiVisualReview } from "../core/ui-resilience";
+import { uiVisualReviewApprovalPayloadDigest, type UiApplicabilityApprovalSubject, type UiResilienceOracle, type UiResilienceProfile, type UiVisualReview } from "../core/ui-resilience";
 
 type RepoFixture = Readonly<{ root: string; config: string; state: string; request: string; manifest: string; cleanup: () => Promise<void> }>;
 const gitEnv = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", GIT_AUTHOR_NAME: "Traceknot Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Traceknot Test", GIT_COMMITTER_EMAIL: "test@example.com" };
@@ -103,6 +103,41 @@ function indexedPng(width: number, height: number, palette: Uint8Array, pixelInd
   for (let row = 0; row < height; row++) pixels[row * (width + 1) + 1] = pixelIndex;
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk("IHDR", header), pngChunk("PLTE", palette), pngChunk("IDAT", deflateSync(pixels)), pngChunk("IEND", new Uint8Array())]);
 }
+test("CLI screenshot trust boundary rejects one digest reused across resilience runs", () => {
+  const bytes = png(900, 500);
+  const digest = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
+  const observation = {
+    observationId: "observation:one",
+    regionId: "main",
+    policy: "no-overflow" as const,
+    clientWidth: 900,
+    clientHeight: 500,
+    scrollWidth: 900,
+    scrollHeight: 500,
+    fragmentRects: [{ x: 0, y: 0, width: 900, height: 500 }],
+    clippingAncestors: [],
+    paintFeatures: [],
+    renderedLineCount: 1,
+    contentTruncated: false,
+    truncationIndicatorVisible: false,
+    screenshotDigest: digest,
+  };
+  const oracle: UiResilienceOracle = {
+    schemaVersion: "ui-resilience-oracle/v1",
+    oracleId: "oracle",
+    requestId: "request",
+    snapshotId: "snapshot",
+    conditionId: "condition",
+    producer: { kind: "ci", identity: "trusted-ci", independence: "independent-producer" },
+    runs: [
+      { runId: "run:one", surfaceId: "surface", stateId: "state", viewportId: "desktop", viewport: { id: "desktop", width: 1440, height: 900 }, fixtureContentDigest: "a".repeat(64), profile: "text-overflow", fixtureId: "fixture-one", browser: "Chromium", userAgent: "test", profileEvidence: { profile: "text-overflow" }, observations: [observation] },
+      { runId: "run:two", surfaceId: "surface", stateId: "state", viewportId: "desktop", viewport: { id: "desktop", width: 1440, height: 900 }, fixtureContentDigest: "b".repeat(64), profile: "resize-text-200", fixtureId: "fixture-two", browser: "Chromium", userAgent: "test", profileEvidence: { profile: "resize-text-200", textScalePercent: 200 }, observations: [{ ...observation, observationId: "observation:two" }] },
+    ],
+    blockingReasons: [],
+  };
+  expect(() => validateScreenshotArtifact(bytes, digest, undefined, oracle)).toThrow("reused across distinct runs");
+});
+
 function fractionalViewportPng(): Uint8Array { return png(Math.round(390 * 1.25), Math.round(844 * 1.25)); }
 async function fixture(executable = "/usr/bin/true"): Promise<RepoFixture> {
   const root = await mkdtemp(join(tmpdir(), "traceknot-cli-e2e-repo-"));
