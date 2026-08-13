@@ -6,10 +6,10 @@ import { deflateSync } from "node:zlib";
 import Ajv2020 from "ajv/dist/2020.js";
 import { describe, expect, test } from "bun:test";
 import { captureGitSnapshotIdentity } from "./git-snapshot";
-import { runVerify, verifyTrustedAuthority, type TrustedProducerPolicy } from "../cli/verify";
+import { runVerify, verifyTrustedAuthority, verifyTrustedUiApplicabilityApproval, verifyTrustedUiVisualReview, type TrustedProducerPolicy } from "../cli/verify";
 import { canonicalizeJson, type VerificationExecutionAuthorityBinding, type VerificationExecutionCompletionEnvelope, type VerificationExecutionOutput } from "./verification-run";
 import { LocalArtifactStore } from "./local-artifact-store";
-import type { UiResilienceProfile } from "../core/ui-resilience";
+import { uiVisualReviewApprovalPayloadDigest, type UiApplicabilityApprovalSubject, type UiResilienceProfile, type UiVisualReview } from "../core/ui-resilience";
 
 type RepoFixture = Readonly<{ root: string; config: string; state: string; request: string; manifest: string; cleanup: () => Promise<void> }>;
 const gitEnv = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", GIT_AUTHOR_NAME: "Traceknot Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Traceknot Test", GIT_COMMITTER_EMAIL: "test@example.com" };
@@ -22,6 +22,59 @@ function pngCrc32(bytes: Uint8Array): number {
   }
   return (crc ^ 0xffffffff) >>> 0;
 }
+test("trusted UI approval verifiers treat malformed key material as unauthenticated", () => {
+  const digest = "a".repeat(64);
+  const policy: TrustedProducerPolicy = { schemaVersion: "trusted-producer-policy/v1", issuer: "trusted-ui", keyId: digest, publicKeyPem: "not-a-public-key" };
+  const approvalReceipt = {
+    schemaVersion: "ui-applicability-approval-receipt/v1" as const,
+    receiptId: "receipt:applicability",
+    issuer: policy.issuer,
+    keyId: policy.keyId,
+    requestId: "request",
+    snapshotId: "snapshot",
+    conditionId: "condition",
+    surfaceId: "surface",
+    profile: "rtl" as const,
+    basisIds: ["basis"],
+    rationale: "not applicable",
+    signature: "malformed",
+  };
+  const subject: UiApplicabilityApprovalSubject = {
+    requestId: approvalReceipt.requestId,
+    snapshotId: approvalReceipt.snapshotId,
+    conditionId: approvalReceipt.conditionId,
+    surfaceId: approvalReceipt.surfaceId,
+    profile: approvalReceipt.profile,
+    basisIds: approvalReceipt.basisIds,
+    rationale: approvalReceipt.rationale,
+    approvalReceipt,
+    approvalArtifactDigest: digest,
+  };
+  const reviewPayload = {
+    reviewId: "review",
+    requestId: "request",
+    snapshotId: "snapshot",
+    conditionId: "condition",
+    observationId: "observation",
+    surfaceId: "surface",
+    stateId: "state",
+    viewportId: "viewport",
+    profile: "text-overflow" as const,
+    fixtureId: "fixture",
+    outcome: "PASS" as const,
+    rationale: "approved",
+    producer: { kind: "human", identity: "reviewer", independence: "independent-producer" } as const,
+    screenshotDigest: digest,
+  };
+  const review: UiVisualReview = {
+    ...reviewPayload,
+    approvalReceipt: { schemaVersion: "ui-visual-review-approval-receipt/v1", receiptId: "receipt:review", issuer: policy.issuer, keyId: policy.keyId, payloadDigest: uiVisualReviewApprovalPayloadDigest(reviewPayload), signature: "malformed" },
+    approvalArtifactDigest: digest,
+  };
+  expect(verifyTrustedUiApplicabilityApproval(policy, subject)).toBe(false);
+  expect(verifyTrustedUiVisualReview(policy, review)).toBe(false);
+});
+
 function pngChunk(type: string, data: Uint8Array): Buffer {
   const typeBytes = Buffer.from(type, "ascii");
   const length = Buffer.alloc(4);

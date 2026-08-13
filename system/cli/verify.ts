@@ -444,16 +444,24 @@ export function verifyTrustedAuthority(policy: TrustedProducerPolicy, authority:
     return false;
   }
 }
-function verifyTrustedUiApplicabilityApproval(policy: TrustedProducerPolicy, subject: UiApplicabilityApprovalSubject): boolean {
+export function verifyTrustedUiApplicabilityApproval(policy: TrustedProducerPolicy, subject: UiApplicabilityApprovalSubject): boolean {
   const receipt = subject.approvalReceipt;
   if (receipt.issuer !== policy.issuer || receipt.keyId !== policy.keyId) return false;
-  return verifySignature(null, Buffer.from(canonicalizeJson(uiApplicabilityApprovalReceiptPayload(receipt))), createPublicKey(policy.publicKeyPem), Buffer.from(receipt.signature, "base64url"));
+  try {
+    return verifySignature(null, Buffer.from(canonicalizeJson(uiApplicabilityApprovalReceiptPayload(receipt))), createPublicKey(policy.publicKeyPem), Buffer.from(receipt.signature, "base64url"));
+  } catch {
+    return false;
+  }
 }
 
-function verifyTrustedUiVisualReview(policy: TrustedProducerPolicy, review: UiVisualReview): boolean {
+export function verifyTrustedUiVisualReview(policy: TrustedProducerPolicy, review: UiVisualReview): boolean {
   const receipt = review.approvalReceipt;
   if (receipt.issuer !== policy.issuer || receipt.keyId !== policy.keyId || receipt.payloadDigest !== uiVisualReviewApprovalPayloadDigest(review)) return false;
-  return verifySignature(null, Buffer.from(receipt.payloadDigest, "hex"), createPublicKey(policy.publicKeyPem), Buffer.from(receipt.signature, "base64url"));
+  try {
+    return verifySignature(null, Buffer.from(receipt.payloadDigest, "hex"), createPublicKey(policy.publicKeyPem), Buffer.from(receipt.signature, "base64url"));
+  } catch {
+    return false;
+  }
 }
 function validateExecutionCompletion(value: unknown): VerificationExecutionCompletionEnvelope {
   if (!value || typeof value !== "object" || Array.isArray(value)) fail("execution completion must be an object");
