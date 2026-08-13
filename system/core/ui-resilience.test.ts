@@ -293,6 +293,67 @@ describe("UI resilience visual review approval binding", () => {
     expect(result.reasons).toContain(`SCREENSHOT_REUSED_ACROSS_RUNS:${SCREENSHOT_DIGEST}`);
   });
 
+  test("treats scrolling ancestors as clipping except for policy-authorized horizontal scrolling", () => {
+    const candidate = oracle();
+    const review = candidate.runs[0]!.observations[0]!.visualReview!;
+    const artifacts = [
+      { type: "screenshot", digest: SCREENSHOT_DIGEST },
+      { type: "ui-visual-review-approval-receipt", digest: review.approvalArtifactDigest },
+    ];
+    const baseObservation = candidate.runs[0]!.observations[0]!;
+    const horizontalAncestor = {
+      ancestorId: "ancestor:horizontal-scroll",
+      clipRect: { x: 0, y: 0, width: 200, height: 40 },
+      overflowX: "auto" as const,
+      overflowY: "visible" as const,
+    };
+    const clipped = {
+      ...candidate,
+      runs: [{ ...candidate.runs[0]!, observations: [{ ...baseObservation, clippingAncestors: [horizontalAncestor] }] }],
+    };
+    expect(evaluateUiResilience(requirement, clipped, artifacts, [review.approvalArtifactDigest])).toMatchObject({
+      status: "FAIL",
+      failedObservationIds: [baseObservation.observationId],
+    });
+
+    const scrollRequirement = {
+      ...requirement,
+      requiredRuns: [{
+        ...requirement.requiredRuns[0]!,
+        regions: [{ ...requirement.requiredRuns[0]!.regions[0]!, policy: "scroll-x" as const }],
+      }],
+    };
+    const scrollCandidate = {
+      ...candidate,
+      runs: [{
+        ...candidate.runs[0]!,
+        observations: [{ ...baseObservation, policy: "scroll-x" as const, clippingAncestors: [horizontalAncestor] }],
+      }],
+    };
+    expect(evaluateUiResilience(scrollRequirement, scrollCandidate, artifacts, [review.approvalArtifactDigest]).status).toBe("PASS");
+
+    const verticalScrollCandidate = {
+      ...scrollCandidate,
+      runs: [{
+        ...scrollCandidate.runs[0]!,
+        observations: [{
+          ...scrollCandidate.runs[0]!.observations[0]!,
+          fragmentRects: [{ x: 0, y: 0, width: 180, height: 60 }],
+          clippingAncestors: [{
+            ancestorId: "ancestor:vertical-scroll",
+            clipRect: { x: 0, y: 0, width: 200, height: 40 },
+            overflowX: "visible" as const,
+            overflowY: "scroll" as const,
+          }],
+        }],
+      }],
+    };
+    expect(evaluateUiResilience(scrollRequirement, verticalScrollCandidate, artifacts, [review.approvalArtifactDigest])).toMatchObject({
+      status: "FAIL",
+      failedObservationIds: [baseObservation.observationId],
+    });
+  });
+
 describe("UI resilience scope binding and traceability", () => {
   test("does not convert a foreign failing oracle into a current-request failure", () => {
     const foreign = oracle(visualReview("FAIL"));

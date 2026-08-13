@@ -601,7 +601,14 @@ function rectContained(rect: UiFragmentRect, clip: UiFragmentRect): boolean { re
 function observationDisposition(observation: UiResilienceObservation, expectedPolicy: UiRegionPolicy, reviewApproved: boolean): "PASS" | "FAIL" | "INCOMPLETE" {
   const horizontalOverflow = observation.scrollWidth > observation.clientWidth;
   const verticalOverflow = observation.scrollHeight > observation.clientHeight;
-  const fragmentClipped = observation.fragmentRects.some(rect => observation.clippingAncestors.some(ancestor => !rectContained(rect, ancestor.clipRect) && (((ancestor.overflowX === "hidden" || ancestor.overflowX === "clip") && (rect.x < ancestor.clipRect.x || rect.x + rect.width > ancestor.clipRect.x + ancestor.clipRect.width)) || ((ancestor.overflowY === "hidden" || ancestor.overflowY === "clip") && (rect.y < ancestor.clipRect.y || rect.y + rect.height > ancestor.clipRect.y + ancestor.clipRect.height)))));
+  const fragmentClipped = observation.fragmentRects.some(rect => observation.clippingAncestors.some(ancestor => {
+    const outsideX = rect.x < ancestor.clipRect.x || rect.x + rect.width > ancestor.clipRect.x + ancestor.clipRect.width;
+    const outsideY = rect.y < ancestor.clipRect.y || rect.y + rect.height > ancestor.clipRect.y + ancestor.clipRect.height;
+    const clipsX = ancestor.overflowX === "hidden" || ancestor.overflowX === "clip"
+      || (expectedPolicy.policy !== "scroll-x" && (ancestor.overflowX === "scroll" || ancestor.overflowX === "auto"));
+    const clipsY = ancestor.overflowY !== "visible";
+    return (outsideX && clipsX) || (outsideY && clipsY);
+  }));
   const geometryRisk = horizontalOverflow || verticalOverflow || fragmentClipped;
   const reviewRequired = observation.paintFeatures.length > 0;
   if (reviewApproved && observation.visualReview?.outcome === "FAIL") return "FAIL";
