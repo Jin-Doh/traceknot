@@ -173,6 +173,7 @@ function validRequest(request: unknown): void {
     const basisIds = new Set(candidate.testBasis.map(item => item.id));
     if (candidate.uiResilience.basisIds.some(id => !basisIds.has(id))) throw new Error("UI resilience scope references unknown basis");
   }
+  if ((candidate.visualComposition !== undefined || candidate.uiResilience !== undefined) && candidate.change.uiImpact === undefined) throw new Error("visual verification scopes require an explicit UI impact classification");
   if (candidate.change.uiImpact === "significant" && (candidate.visualComposition === undefined || candidate.uiResilience === undefined)) throw new Error("significant UI verification request must declare visual composition and UI resilience scopes");
   if (candidate.change.uiImpact === "functional-only" && candidate.visualComposition?.decision !== "not-required") throw new Error("functional-only UI verification request must declare visual composition not-required");
 }

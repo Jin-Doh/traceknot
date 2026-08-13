@@ -245,8 +245,16 @@ function makeResilienceRequest(requestId = "request-ui-resilience"): Verificatio
   const required = new Set<UiResilienceProfile>(["text-overflow", "resize-text-200", "text-spacing-wcag"]);
   return {
     ...makeRequest(requestId),
-    change: { summary: "Keep catalog labels readable under content stress.", paths: ["frontend/catalog.tsx"] },
+    change: { summary: "Keep catalog labels readable under content stress.", paths: ["frontend/catalog.tsx"], uiImpact: "significant" },
     testBasis: [{ id: "basis-content", kind: "acceptance-criterion", origin: "explicit", text: "Catalog labels remain fully readable without unintended clipping." }],
+    visualComposition: {
+      schemaVersion: "visual-composition-scope/v1",
+      decision: "not-required",
+      basisIds: ["basis-content"],
+      rationale: "The test isolates content resilience without changing composition.",
+      surfaces: [],
+      viewports: [],
+    },
     uiResilience: {
       schemaVersion: "ui-resilience-scope/v1",
       decision: "required",
@@ -1582,6 +1590,16 @@ describe("verification run orchestration", () => {
       change: { summary: "Adjust section spacing.", paths: ["frontend/catalog.tsx"], uiImpact: "significant" },
     } satisfies VerificationRequest;
     await expect(establishTestBasis({ request, dependencies: makeDependencies().dependencies })).rejects.toThrow("must declare visual composition and UI resilience scopes");
+    const schema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verification-request.schema.json`).text()) as object;
+    const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
+    expect(validate(request)).toBe(false);
+  });
+
+  test("rejects visual scopes without an explicit UI impact classification", async () => {
+    const classified = makeCompositionRequest("composition-impact-required");
+    const { uiImpact: _, ...change } = classified.change;
+    const request = { ...classified, change };
+    await expect(establishTestBasis({ request, dependencies: makeDependencies().dependencies })).rejects.toThrow("require an explicit UI impact classification");
     const schema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verification-request.schema.json`).text()) as object;
     const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
     expect(validate(request)).toBe(false);

@@ -209,6 +209,23 @@
   "allOf": [
     {
       "if": {
+        "anyOf": [
+          { "properties": { "visualComposition": true }, "required": ["visualComposition"] },
+          { "properties": { "uiResilience": true }, "required": ["uiResilience"] }
+        ]
+      },
+      "then": {
+        "properties": {
+          "change": {
+            "type": "object",
+            "properties": { "uiImpact": true },
+            "required": ["uiImpact"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
         "properties": {
           "change": {
             "type": "object",
