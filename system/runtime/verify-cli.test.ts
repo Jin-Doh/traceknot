@@ -83,13 +83,14 @@ function pngChunk(type: string, data: Uint8Array): Buffer {
   checksum.writeUInt32BE(pngCrc32(Buffer.concat([typeBytes, data])));
   return Buffer.concat([length, typeBytes, data, checksum]);
 }
-function png(width: number, height: number): Uint8Array {
+function png(width: number, height: number, marker = 0): Uint8Array {
   const header = Buffer.alloc(13);
   header.writeUInt32BE(width, 0);
   header.writeUInt32BE(height, 4);
   header[8] = 8;
   header[9] = 0;
   const pixels = Buffer.alloc((width + 1) * height);
+  pixels[1] = marker;
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk("IHDR", header), pngChunk("IDAT", deflateSync(pixels)), pngChunk("IEND", new Uint8Array())]);
 }
 function indexedPng(width: number, height: number, palette: Uint8Array, pixelIndex = 0): Uint8Array {
@@ -504,10 +505,16 @@ describe("traceknot verify CLI", () => {
         if (profile === "reduced-motion") return { profile, preference: "reduce", nonEssentialMotionDisabled: true };
         return { profile, dismissible: true, hoverable: true, persistent: true };
       };
+      let resilienceMarker = 0;
+      const resilienceScreenshots = new Map(resilienceProfiles.flatMap(profile => resilienceFixtureKinds[profile].map(fixtureKind => {
+        const bytes = png(900, 500, ++resilienceMarker);
+        const digest = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
+        return [`${profile}\u0000${fixtureKind}`, { bytes, digest, path: `ui-resilience-${resilienceMarker}.png` }] as const;
+      })));
       await writeFile(join(root, "input.txt"), "clean\n");
       await writeFile(fullPath, fullBytes);
       await writeFile(focusedPath, focusedBytes);
-      await writeFile(join(root, "ui-resilience.png"), resilienceBytes);
+      await Promise.all([...resilienceScreenshots.values()].map(screenshot => writeFile(join(root, screenshot.path), screenshot.bytes)));
       git(root, ["init", "-q"]); git(root, ["add", "."]); git(root, ["commit", "-qm", "visual fixture"]);
       const snapshot = await captureGitSnapshotIdentity(root);
       const request = {
@@ -592,7 +599,7 @@ describe("traceknot verify CLI", () => {
           browser: "Chromium 140",
           userAgent: "cli-test",
           profileEvidence: profileEvidence(profile),
-          observations: [{ observationId: `observation:catalog:main:${profile}:${index}`, regionId: "main", policy: "no-overflow", clientWidth: 900, clientHeight: 500, scrollWidth: 900, scrollHeight: 500, fragmentRects: [{ x: 0, y: 0, width: 900, height: 500 }], clippingAncestors: [], paintFeatures: [], renderedLineCount: 1, contentTruncated: false, truncationIndicatorVisible: false, screenshotDigest: resilienceDigest }],
+          observations: [{ observationId: `observation:catalog:main:${profile}:${index}`, regionId: "main", policy: "no-overflow", clientWidth: 900, clientHeight: 500, scrollWidth: 900, scrollHeight: 500, fragmentRects: [{ x: 0, y: 0, width: 900, height: 500 }], clippingAncestors: [], paintFeatures: [], renderedLineCount: 1, contentTruncated: false, truncationIndicatorVisible: false, screenshotDigest: resilienceScreenshots.get(`${profile}\u0000${fixtureKind}`)!.digest }],
         }))),
         blockingReasons: [],
       };
@@ -612,9 +619,7 @@ describe("traceknot verify CLI", () => {
       const uiCommand = {
         ...command("obligation:condition:request-ui-resilience"),
         uiResilienceOraclePath: uiOraclePath,
-        declaredArtifacts: [
-          { type: "screenshot", digest: resilienceDigest, path: "ui-resilience.png" },
-        ],
+        declaredArtifacts: [...resilienceScreenshots.values()].map(screenshot => ({ type: "screenshot", digest: screenshot.digest, path: screenshot.path })),
       };
       const manifest = { schemaVersion: "verification-manifest/v1", obligations: [command("obligation:condition:basis-layout"), command("obligation:condition:request-browser"), visualCommand, uiCommand] };
       await writeFile(requestPath, JSON.stringify(request));
