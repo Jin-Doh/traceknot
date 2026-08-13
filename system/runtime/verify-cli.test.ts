@@ -159,7 +159,7 @@ test("CLI authenticates full-text access bytes, content, and observation subject
   expect(() => validateFullTextAccessArtifact(tampered, tamperedDigest, tamperedOracle)).toThrow("payload does not match observation");
 });
 
-test("CLI screenshot trust boundary rejects cross-run replay and mismatched resilience capture widths", () => {
+test("CLI screenshot trust boundary accepts bound byte-identical runs and rejects mismatched capture widths", () => {
   const bytes = png(900, 500);
   const digest = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
   const observation = {
@@ -191,13 +191,14 @@ test("CLI screenshot trust boundary rejects cross-run replay and mismatched resi
     ],
     blockingReasons: [],
   };
-  expect(() => validateScreenshotArtifact(bytes, digest, undefined, oracle)).toThrow("reused across distinct runs");
   const singleRunOracle = { ...oracle, runs: [oracle.runs[0]!] };
   expect(() => validateScreenshotArtifact(bytes, digest, undefined, singleRunOracle)).toThrow("dimensions do not match observation");
   const fullBytes = png(1440, 900);
   const fullDigest = new Bun.CryptoHasher("sha256").update(fullBytes).digest("hex");
   const fullOracle = { ...singleRunOracle, runs: singleRunOracle.runs.map(run => ({ ...run, observations: run.observations.map(item => ({ ...item, screenshotDigest: fullDigest })) })) };
   expect(() => validateScreenshotArtifact(fullBytes, fullDigest, undefined, fullOracle)).not.toThrow();
+  const multiRunFullOracle = { ...oracle, runs: oracle.runs.map(run => ({ ...run, observations: run.observations.map(item => ({ ...item, screenshotDigest: fullDigest })) })) };
+  expect(() => validateScreenshotArtifact(fullBytes, fullDigest, undefined, multiRunFullOracle)).not.toThrow();
   const wrongViewportBytes = png(1600, 1000);
   const wrongViewportDigest = new Bun.CryptoHasher("sha256").update(wrongViewportBytes).digest("hex");
   const wrongViewportOracle = { ...singleRunOracle, runs: singleRunOracle.runs.map(run => ({ ...run, observations: run.observations.map(item => ({ ...item, screenshotDigest: wrongViewportDigest })) })) };

@@ -260,37 +260,40 @@ describe("UI resilience visual review approval binding", () => {
     expect(result.reasons).toContain("VISUAL_REVIEW_SUBJECT_MISMATCH:observation:catalog-label");
   });
 
-  test("rejects one screenshot digest reused across distinct required runs", () => {
+  test("accepts byte-identical screenshots independently bound to distinct required runs", () => {
     const candidate = oracle();
-    const secondRun = {
+    const firstRun = {
       ...candidate.runs[0]!,
-      runId: "run:catalog-label-mobile",
-      viewportId: "viewport:mobile",
-      viewport: { id: "viewport:mobile", width: 320, height: 640 },
-      profile: "reflow-320" as const,
-      fixtureId: "fixture:long-natural",
-      profileEvidence: { profile: "reflow-320" as const, writingMode: "horizontal" as const, innerWidth: 320, innerHeight: 640 },
-      observations: [{ ...candidate.runs[0]!.observations[0]!, observationId: "observation:catalog-mobile" }],
+      observations: candidate.runs[0]!.observations.map(({ visualReview: _visualReview, ...observation }) => ({
+        ...observation,
+        paintFeatures: [],
+      })),
+    };
+    const secondRun = {
+      ...firstRun,
+      runId: "run:catalog-label-second-fixture",
+      fixtureId: "fixture:second",
+      observations: [{
+        ...firstRun.observations[0]!,
+        observationId: "observation:catalog-second-fixture",
+      }],
     };
     const expandedRequirement = {
       ...requirement,
-      viewports: [...requirement.viewports, secondRun.viewport],
-      requiredRuns: [...requirement.requiredRuns, {
-        surfaceId: secondRun.surfaceId,
-        stateId: secondRun.stateId,
-        viewportId: secondRun.viewportId,
-        profile: secondRun.profile,
-        fixtureId: secondRun.fixtureId,
-        fixtureContentDigest: secondRun.fixtureContentDigest,
-        regions: requirement.requiredRuns[0]!.regions,
-      }],
+      requiredRuns: [
+        requirement.requiredRuns[0]!,
+        {
+          ...requirement.requiredRuns[0]!,
+          fixtureId: secondRun.fixtureId,
+        },
+      ],
     };
-    const result = evaluateUiResilience(expandedRequirement, { ...candidate, runs: [...candidate.runs, secondRun] }, [
-      { type: "screenshot", digest: SCREENSHOT_DIGEST },
-      { type: "ui-visual-review-approval-receipt", digest: candidate.runs[0]!.observations[0]!.visualReview!.approvalArtifactDigest },
-    ], [candidate.runs[0]!.observations[0]!.visualReview!.approvalArtifactDigest]);
-    expect(result.status).toBe("INCOMPLETE");
-    expect(result.reasons).toContain(`SCREENSHOT_REUSED_ACROSS_RUNS:${SCREENSHOT_DIGEST}`);
+    const result = evaluateUiResilience(
+      expandedRequirement,
+      { ...candidate, runs: [firstRun, secondRun] },
+      [{ type: "screenshot", digest: SCREENSHOT_DIGEST }],
+    );
+    expect(result).toMatchObject({ status: "PASS", reasons: [] });
   });
 
   test("treats scrolling ancestors as clipping except for policy-authorized horizontal scrolling", () => {

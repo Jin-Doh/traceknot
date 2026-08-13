@@ -517,10 +517,6 @@ export function validateScreenshotArtifact(bytes: Uint8Array, artifactDigest: st
   const resilienceBindings = resilienceOracle?.runs.flatMap(run => run.observations
     .filter(observation => observation.screenshotDigest === artifactDigest)
     .map(observation => ({ run, observation }))) ?? [];
-  const resilienceRunKeys = new Set(resilienceBindings.map(({ run }) => [run.surfaceId, run.stateId, run.viewportId, run.profile, run.fixtureId].join("\u0000")));
-  if (resilienceRunKeys.size > 1) {
-    throw new Error(`invalid UI resilience screenshot artifact ${artifactDigest}: reused across distinct runs`);
-  }
   if (visualBindings.length === 0 && resilienceBindings.length === 0) {
     throw new Error(`invalid screenshot artifact ${artifactDigest}: not bound to a visual oracle`);
   }

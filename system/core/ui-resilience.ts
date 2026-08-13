@@ -662,18 +662,6 @@ export function evaluateUiResilience(requirement: UiResilienceRequirement, oracl
   const expectedViewports = new Map(requirement.viewports.map(item => [item.id, item]));
   const expectedRuns = new Map(requirement.requiredRuns.map(item => [runKey(item), item]));
   const actualRuns = new Map(oracle.runs.map(item => [runKey(item), item]));
-  const screenshotRunKeys = new Map<string, Set<string>>();
-  for (const run of oracle.runs) {
-    const key = runKey(run);
-    for (const observation of run.observations) {
-      const keys = screenshotRunKeys.get(observation.screenshotDigest) ?? new Set<string>();
-      keys.add(key);
-      screenshotRunKeys.set(observation.screenshotDigest, keys);
-    }
-  }
-  for (const [screenshotDigest, keys] of screenshotRunKeys) {
-    if (keys.size > 1) reasons.push(`SCREENSHOT_REUSED_ACROSS_RUNS:${screenshotDigest}`);
-  }
   for (const key of expectedRuns.keys()) if (!actualRuns.has(key)) missingRunKeys.push(key);
   for (const key of actualRuns.keys()) if (!expectedRuns.has(key)) reasons.push(`UNEXPECTED_RUN:${key}`);
   for (const [key, run] of actualRuns) {
