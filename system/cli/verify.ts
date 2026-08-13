@@ -529,8 +529,11 @@ export function validateScreenshotArtifact(bytes: Uint8Array, artifactDigest: st
   }
   for (const { run, observation } of resilienceBindings) {
     const scale = run.viewport.devicePixelRatio ?? 1;
-    const minimumWidth = run.profile === "reflow-320" ? Math.ceil(observation.clientWidth * scale) : Math.ceil(run.viewport.width * scale);
-    const minimumHeight = run.profile === "reflow-320" ? Math.ceil(observation.clientHeight * scale) : Math.ceil(run.viewport.height * scale);
+    const captureViewport = run.profileEvidence.profile === "reflow-320"
+      ? { width: run.profileEvidence.innerWidth, height: run.profileEvidence.innerHeight }
+      : run.viewport;
+    const minimumWidth = Math.ceil(captureViewport.width * scale);
+    const minimumHeight = Math.ceil(captureViewport.height * scale);
     if (dimensions.width < minimumWidth || dimensions.height < minimumHeight) {
       throw new Error(`invalid UI resilience screenshot artifact ${artifactDigest}: dimensions do not cover observation ${observation.observationId}`);
     }

@@ -160,6 +160,22 @@ test("CLI screenshot trust boundary rejects cross-run replay and undersized resi
   const fullDigest = new Bun.CryptoHasher("sha256").update(fullBytes).digest("hex");
   const fullOracle = { ...singleRunOracle, runs: singleRunOracle.runs.map(run => ({ ...run, observations: run.observations.map(item => ({ ...item, screenshotDigest: fullDigest })) })) };
   expect(() => validateScreenshotArtifact(fullBytes, fullDigest, undefined, fullOracle)).not.toThrow();
+  const tinyBytes = png(1, 1);
+  const tinyDigest = new Bun.CryptoHasher("sha256").update(tinyBytes).digest("hex");
+  const reflowOracle: UiResilienceOracle = {
+    ...singleRunOracle,
+    runs: [{
+      ...singleRunOracle.runs[0]!,
+      profile: "reflow-320",
+      profileEvidence: { profile: "reflow-320", innerWidth: 320, innerHeight: 900, writingMode: "horizontal" },
+      observations: [{ ...observation, clientWidth: 1, clientHeight: 1, scrollWidth: 1, scrollHeight: 1, fragmentRects: [{ x: 0, y: 0, width: 1, height: 1 }], screenshotDigest: tinyDigest }],
+    }],
+  };
+  expect(() => validateScreenshotArtifact(tinyBytes, tinyDigest, undefined, reflowOracle)).toThrow("dimensions do not cover observation");
+  const reflowBytes = png(320, 900);
+  const reflowDigest = new Bun.CryptoHasher("sha256").update(reflowBytes).digest("hex");
+  const validReflowOracle = { ...reflowOracle, runs: reflowOracle.runs.map(run => ({ ...run, observations: run.observations.map(item => ({ ...item, screenshotDigest: reflowDigest })) })) };
+  expect(() => validateScreenshotArtifact(reflowBytes, reflowDigest, undefined, validReflowOracle)).not.toThrow();
 });
 
 function fractionalViewportPng(): Uint8Array { return png(Math.round(390 * 1.25), Math.round(844 * 1.25)); }
@@ -566,7 +582,7 @@ describe("traceknot verify CLI", () => {
       };
       let resilienceMarker = 0;
       const resilienceScreenshots = new Map(resilienceProfiles.flatMap(profile => resilienceFixtureKinds[profile].map(fixtureKind => {
-        const bytes = profile === "reflow-320" ? png(900, 500, ++resilienceMarker) : png(1440, 900, ++resilienceMarker);
+        const bytes = profile === "reflow-320" ? png(320, 900, ++resilienceMarker) : png(1440, 900, ++resilienceMarker);
         const digest = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
         return [`${profile}\u0000${fixtureKind}`, { bytes, digest, path: `ui-resilience-${resilienceMarker}.png` }] as const;
       })));
