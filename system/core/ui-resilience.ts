@@ -149,6 +149,11 @@ export type UiVisualReview = Readonly<{
   snapshotId: string;
   conditionId: string;
   observationId: string;
+  surfaceId: string;
+  stateId: string;
+  viewportId: string;
+  profile: UiResilienceProfile;
+  fixtureId: string;
   outcome: "PASS" | "FAIL" | "INDETERMINATE";
   rationale: string;
   producer: Producer;
@@ -372,12 +377,17 @@ function validReviewReceipt(value: unknown): value is UiVisualReviewApprovalRece
 }
 function validReview(value: unknown): value is UiVisualReview {
   return isRecord(value)
-    && exactKeys(value, ["reviewId", "requestId", "snapshotId", "conditionId", "observationId", "outcome", "rationale", "producer", "screenshotDigest", "approvalReceipt", "approvalArtifactDigest"])
+    && exactKeys(value, ["reviewId", "requestId", "snapshotId", "conditionId", "observationId", "surfaceId", "stateId", "viewportId", "profile", "fixtureId", "outcome", "rationale", "producer", "screenshotDigest", "approvalReceipt", "approvalArtifactDigest"])
     && nonEmptyString(value.reviewId)
     && nonEmptyString(value.requestId)
     && nonEmptyString(value.snapshotId)
     && nonEmptyString(value.conditionId)
     && nonEmptyString(value.observationId)
+    && nonEmptyString(value.surfaceId)
+    && nonEmptyString(value.stateId)
+    && nonEmptyString(value.viewportId)
+    && PROFILES.includes(value.profile as UiResilienceProfile)
+    && nonEmptyString(value.fixtureId)
     && ["PASS", "FAIL", "INDETERMINATE"].includes(value.outcome as string)
     && nonEmptyString(value.rationale)
     && validProducer(value.producer)
@@ -457,7 +467,7 @@ export function uiApplicabilityApprovalSubjectDigest(subject: UiApplicabilityApp
   return hasher.digest("hex");
 }
 
-export function uiVisualReviewApprovalPayloadDigest(review: Pick<UiVisualReview, "reviewId" | "requestId" | "snapshotId" | "conditionId" | "observationId" | "outcome" | "rationale" | "producer" | "screenshotDigest">): string {
+export function uiVisualReviewApprovalPayloadDigest(review: Pick<UiVisualReview, "reviewId" | "requestId" | "snapshotId" | "conditionId" | "observationId" | "surfaceId" | "stateId" | "viewportId" | "profile" | "fixtureId" | "outcome" | "rationale" | "producer" | "screenshotDigest">): string {
   const hasher = new Bun.CryptoHasher("sha256");
   hasher.update(JSON.stringify({
     schemaVersion: "ui-visual-review-approval-payload/v1",
@@ -467,6 +477,11 @@ export function uiVisualReviewApprovalPayloadDigest(review: Pick<UiVisualReview,
     conditionId: review.conditionId,
     observationId: review.observationId,
     outcome: review.outcome,
+    surfaceId: review.surfaceId,
+    stateId: review.stateId,
+    viewportId: review.viewportId,
+    profile: review.profile,
+    fixtureId: review.fixtureId,
     rationale: review.rationale,
     producer: {
       kind: review.producer.kind,
@@ -548,6 +563,18 @@ export function evaluateUiResilience(requirement: UiResilienceRequirement, oracl
   const expectedViewports = new Map(requirement.viewports.map(item => [item.id, item]));
   const expectedRuns = new Map(requirement.requiredRuns.map(item => [runKey(item), item]));
   const actualRuns = new Map(oracle.runs.map(item => [runKey(item), item]));
+  const screenshotRunKeys = new Map<string, Set<string>>();
+  for (const run of oracle.runs) {
+    const key = runKey(run);
+    for (const observation of run.observations) {
+      const keys = screenshotRunKeys.get(observation.screenshotDigest) ?? new Set<string>();
+      keys.add(key);
+      screenshotRunKeys.set(observation.screenshotDigest, keys);
+    }
+  }
+  for (const [screenshotDigest, keys] of screenshotRunKeys) {
+    if (keys.size > 1) reasons.push(`SCREENSHOT_REUSED_ACROSS_RUNS:${screenshotDigest}`);
+  }
   for (const key of expectedRuns.keys()) if (!actualRuns.has(key)) missingRunKeys.push(key);
   for (const key of actualRuns.keys()) if (!expectedRuns.has(key)) reasons.push(`UNEXPECTED_RUN:${key}`);
   for (const [key, run] of actualRuns) {
@@ -571,7 +598,13 @@ export function evaluateUiResilience(requirement: UiResilienceRequirement, oracl
         && observation.visualReview.requestId === requirement.requestId
         && observation.visualReview.snapshotId === requirement.snapshotId
         && observation.visualReview.conditionId === requirement.conditionId
-        && observation.visualReview.observationId === observation.observationId;
+        && observation.visualReview.observationId === observation.observationId
+        && observation.visualReview.surfaceId === run.surfaceId
+        && observation.visualReview.stateId === run.stateId
+        && observation.visualReview.viewportId === run.viewportId
+        && observation.visualReview.profile === run.profile
+        && observation.visualReview.fixtureId === run.fixtureId
+        && observation.visualReview.screenshotDigest === observation.screenshotDigest;
       const reviewApproved = reviewMatchesSubject
         && artifactKeys.has(`ui-visual-review-approval-receipt\u0000${observation.visualReview!.approvalArtifactDigest}`)
         && authenticatedReviewApprovals.has(observation.visualReview!.approvalArtifactDigest);

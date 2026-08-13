@@ -6,7 +6,14 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { inflateSync } from "node:zlib";
 import type { Artifact, Producer } from "../core/qa-core";
 import { isVisualCompositionOracle, type VisualCompositionOracle } from "../core/visual-composition";
-import { isUiResilienceOracle, type UiResilienceOracle } from "../core/ui-resilience";
+import {
+  isUiResilienceOracle,
+  uiApplicabilityApprovalReceiptPayload,
+  uiVisualReviewApprovalPayloadDigest,
+  type UiApplicabilityApprovalSubject,
+  type UiResilienceOracle,
+  type UiVisualReview,
+} from "../core/ui-resilience";
 import {
   buildVerificationPlan,
   canonicalizeJson,
@@ -437,6 +444,17 @@ export function verifyTrustedAuthority(policy: TrustedProducerPolicy, authority:
     return false;
   }
 }
+function verifyTrustedUiApplicabilityApproval(policy: TrustedProducerPolicy, subject: UiApplicabilityApprovalSubject): boolean {
+  const receipt = subject.approvalReceipt;
+  if (receipt.issuer !== policy.issuer || receipt.keyId !== policy.keyId) return false;
+  return verifySignature(null, Buffer.from(canonicalizeJson(uiApplicabilityApprovalReceiptPayload(receipt))), createPublicKey(policy.publicKeyPem), Buffer.from(receipt.signature, "base64url"));
+}
+
+function verifyTrustedUiVisualReview(policy: TrustedProducerPolicy, review: UiVisualReview): boolean {
+  const receipt = review.approvalReceipt;
+  if (receipt.issuer !== policy.issuer || receipt.keyId !== policy.keyId || receipt.payloadDigest !== uiVisualReviewApprovalPayloadDigest(review)) return false;
+  return verifySignature(null, Buffer.from(receipt.payloadDigest, "hex"), createPublicKey(policy.publicKeyPem), Buffer.from(receipt.signature, "base64url"));
+}
 function validateExecutionCompletion(value: unknown): VerificationExecutionCompletionEnvelope {
   if (!value || typeof value !== "object" || Array.isArray(value)) fail("execution completion must be an object");
   const completion = value as Record<string, unknown>;
@@ -461,17 +479,23 @@ function exitForVerdict(value: unknown): number {
   return VERIFY_EXIT_CODES.INCOMPLETE;
 }
 
-function validateVisualScreenshot(bytes: Uint8Array, artifactDigest: string, oracle: VisualCompositionOracle | undefined): void {
+function validateScreenshotArtifact(bytes: Uint8Array, artifactDigest: string, visualOracle: VisualCompositionOracle | undefined, resilienceOracle: UiResilienceOracle | undefined): void {
   let dimensions: Readonly<{ width: number; height: number }>;
   try {
     dimensions = decodePngDimensions(bytes);
   } catch (error) {
     throw new Error(`invalid ${error instanceof Error ? error.message : String(error)}`);
   }
-  if (!oracle) return;
-  const bindings = oracle.captures.flatMap(capture => capture.screenshots.filter(screenshot => screenshot.digest === artifactDigest).map(screenshot => ({ capture, screenshot })));
-  if (bindings.length === 0) throw new Error(`invalid screenshot artifact ${artifactDigest}: not bound to a visual composition capture`);
-  for (const { capture, screenshot } of bindings) {
+  const visualBindings = visualOracle?.captures.flatMap(capture => capture.screenshots
+    .filter(screenshot => screenshot.digest === artifactDigest)
+    .map(screenshot => ({ capture, screenshot }))) ?? [];
+  const resilienceBindings = resilienceOracle?.runs.flatMap(run => run.observations
+    .filter(observation => observation.screenshotDigest === artifactDigest)
+    .map(observation => ({ run, observation }))) ?? [];
+  if (visualBindings.length === 0 && resilienceBindings.length === 0) {
+    throw new Error(`invalid screenshot artifact ${artifactDigest}: not bound to a visual oracle`);
+  }
+  for (const { capture, screenshot } of visualBindings) {
     const scale = capture.viewport.devicePixelRatio ?? 1;
     if (screenshot.role === "full-page") {
       const expectedWidth = Math.round(capture.viewport.width * scale);
@@ -483,6 +507,14 @@ function validateVisualScreenshot(bytes: Uint8Array, artifactDigest: string, ora
     const minimumWidth = Math.ceil(region.width * scale);
     const minimumHeight = Math.ceil(region.height * scale);
     if (dimensions.width < minimumWidth || dimensions.height < minimumHeight) throw new Error(`invalid screenshot artifact ${artifactDigest}: dimensions do not cover focused region ${screenshot.regionId}`);
+  }
+  for (const { run, observation } of resilienceBindings) {
+    const scale = run.viewport.devicePixelRatio ?? 1;
+    const minimumWidth = Math.ceil(observation.clientWidth * scale);
+    const minimumHeight = Math.ceil(observation.clientHeight * scale);
+    if (dimensions.width < minimumWidth || dimensions.height < minimumHeight) {
+      throw new Error(`invalid UI resilience screenshot artifact ${artifactDigest}: dimensions do not cover observation ${observation.observationId}`);
+    }
   }
 }
 async function makeDependencies(options: CliOptions, request: VerificationRequest, manifest: VerifyManifest | undefined, repository: FileVerificationRepository, snapshotId: string, trustedPolicy: TrustedProducerPolicy | undefined): Promise<{ dependencies: VerificationRunDependencies; close: () => Promise<void> }> {
@@ -530,7 +562,7 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
         if (isInside(options.rootDir, resolve(declaration.path))) throw new Error(`execution completion artifact must be outside the Git repository root: ${declaration.path}`);
         const bytes = await readBoundedFile(declaration.path, command.maxArtifactBytes ?? 256 * 1024 * 1024);
         if (createHash("sha256").update(bytes).digest("hex") !== declaration.digest) throw new Error(`execution completion artifact digest does not match: ${declaration.path}`);
-        if (declaration.type === "screenshot") validateVisualScreenshot(bytes, declaration.digest, completion.output.visualCompositionOracle);
+        if (declaration.type === "screenshot") validateScreenshotArtifact(bytes, declaration.digest, completion.output.visualCompositionOracle, completion.output.uiResilienceOracle);
         await mainStore.storeArtifact({ type: declaration.type, digest: declaration.digest, bytes } as Artifact & { bytes: Uint8Array }, input);
       }
       return completion;
@@ -568,7 +600,7 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
     for (const artifact of observation.artifacts) {
       const bytes = await collectorStore.readArtifact(artifact.digest);
       const type = status === "passed" && (artifact.type === "screenshot" || artifact.type === "design-token-resolution" || artifact.type === "approved-visual-reference" || artifact.type === "ui-applicability-approval" || artifact.type === "ui-full-text-access" || artifact.type === "ui-visual-review-approval-receipt") ? artifact.type : "verification-result";
-      if (type === "screenshot") validateVisualScreenshot(bytes, artifact.digest, visualCompositionOracle);
+      if (type === "screenshot") validateScreenshotArtifact(bytes, artifact.digest, visualCompositionOracle, uiResilienceOracle);
       artifacts.push(await mainStore.storeArtifact({ type, digest: artifact.digest, path: artifact.path, bytes } as Artifact & { bytes: Uint8Array }, input));
     }
     return { status, runId: input.runId, requestId: input.requestId, snapshotId: input.snapshotId, idempotencyKey: input.idempotencyKey, producer: observation.producer, summary: `Command ${command.executable} completed with ${observation.execution.exitStatus}.`, artifacts, executionKind, identity: observation.execution.identity, ...(observation.execution.exitCode === undefined ? {} : { exitCode: observation.execution.exitCode }), ...(visualCompositionOracle ? { visualCompositionOracle } : {}), ...(uiResilienceOracle ? { uiResilienceOracle } : {}) };
@@ -576,7 +608,26 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
   const executor = { atomicSameKeyIdempotency: true as const, executeObligation: (input: ManifestExecutionInput) => executeManifestCommand(input, "command") };
   const browserExecutor = { atomicSameKeyIdempotency: true as const, executeBrowser: (input: ManifestExecutionInput) => executeManifestCommand(input, "browser") };
   const artifactStore = { atomicSameKeyIdempotency: true as const, storeArtifact: async (artifact: Artifact, input: ManifestExecutionInput) => { const content = (artifact as Artifact & { bytes?: Uint8Array }).bytes; if (!content) { if (!await mainStore.hasArtifact(artifact.digest)) throw new Error(`artifact ${artifact.digest} was not published`); return artifact; } return mainStore.storeArtifact(artifact as Artifact & { bytes: Uint8Array }, input); } };
-  const dependencies: VerificationRunDependencies = { repository, executor, browserExecutor, artifactStore, capabilityProvider: { has: () => true }, executionAuthority, freshnessPolicy: { evaluateFreshness: () => "fresh" }, freshnessAuthority, completionProvider, snapshotVerifier: async () => { const current = await captureGitSnapshotIdentity(options.rootDir); return current.rootIdentity === request.project.rootIdentity && current.snapshotId === request.project.snapshotId; }, now: () => new Date() };
+  const dependencies: VerificationRunDependencies = {
+    repository,
+    executor,
+    browserExecutor,
+    artifactStore,
+    capabilityProvider: { has: () => true },
+    executionAuthority,
+    freshnessPolicy: { evaluateFreshness: () => "fresh" },
+    freshnessAuthority,
+    completionProvider,
+    ...(trustedPolicy ? {
+      uiVisualReviewApprovalVerifier: { independentAuthentication: true as const, verifyApproval: (review: UiVisualReview) => verifyTrustedUiVisualReview(trustedPolicy, review) },
+      uiApplicabilityApprovalVerifier: { independentAuthentication: true as const, verifyApproval: (subject: UiApplicabilityApprovalSubject) => verifyTrustedUiApplicabilityApproval(trustedPolicy, subject) },
+    } : {}),
+    snapshotVerifier: async () => {
+      const current = await captureGitSnapshotIdentity(options.rootDir);
+      return current.rootIdentity === request.project.rootIdentity && current.snapshotId === request.project.snapshotId;
+    },
+    now: () => new Date(),
+  };
   return { dependencies, close: async () => { await collectorStore.close(); await mainStore.close(); await repository.close(); } };
 }
 

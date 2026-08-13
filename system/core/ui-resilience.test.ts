@@ -51,6 +51,11 @@ function visualReview(outcome: UiVisualReview["outcome"] = "PASS"): UiVisualRevi
     snapshotId: requirement.snapshotId,
     conditionId: requirement.conditionId,
     observationId: "observation:catalog-label",
+    surfaceId: "surface:catalog",
+    stateId: "state:populated",
+    viewportId: "viewport:desktop",
+    profile: "text-overflow",
+    fixtureId: "fixture:long-token",
     outcome,
     rationale: "The screenshot shows the complete label without paint clipping.",
     producer,
@@ -197,6 +202,61 @@ describe("UI resilience visual review approval binding", () => {
     ], [review.approvalArtifactDigest]);
     expect(result.status).toBe("INCOMPLETE");
     expect(result.reasons).toContain("VISUAL_REVIEW_SUBJECT_MISMATCH:observation:catalog-label");
+  });
+
+  test("rejects a signed review whose run subject differs from the enclosing run", () => {
+    const candidate = oracle();
+    const review = candidate.runs[0]!.observations[0]!.visualReview!;
+    const changedPayload = { ...review, surfaceId: "surface:other" };
+    const changedReceipt = {
+      ...review.approvalReceipt,
+      payloadDigest: uiVisualReviewApprovalPayloadDigest(changedPayload),
+    };
+    const changedReview = {
+      ...changedPayload,
+      approvalReceipt: changedReceipt,
+      approvalArtifactDigest: uiVisualReviewApprovalReceiptDigest(changedReceipt),
+    };
+    const mismatched = oracle(changedReview);
+    const result = evaluateUiResilience(requirement, mismatched, [
+      { type: "screenshot", digest: SCREENSHOT_DIGEST },
+      { type: "ui-visual-review-approval-receipt", digest: changedReview.approvalArtifactDigest },
+    ], [changedReview.approvalArtifactDigest]);
+    expect(result.status).toBe("INCOMPLETE");
+    expect(result.reasons).toContain("VISUAL_REVIEW_SUBJECT_MISMATCH:observation:catalog-label");
+  });
+
+  test("rejects one screenshot digest reused across distinct required runs", () => {
+    const candidate = oracle();
+    const secondRun = {
+      ...candidate.runs[0]!,
+      runId: "run:catalog-label-mobile",
+      viewportId: "viewport:mobile",
+      viewport: { id: "viewport:mobile", width: 320, height: 640 },
+      profile: "reflow-320" as const,
+      fixtureId: "fixture:long-natural",
+      profileEvidence: { profile: "reflow-320" as const, writingMode: "horizontal" as const, innerWidth: 320, innerHeight: 640 },
+      observations: [{ ...candidate.runs[0]!.observations[0]!, observationId: "observation:catalog-mobile" }],
+    };
+    const expandedRequirement = {
+      ...requirement,
+      viewports: [...requirement.viewports, secondRun.viewport],
+      requiredRuns: [...requirement.requiredRuns, {
+        surfaceId: secondRun.surfaceId,
+        stateId: secondRun.stateId,
+        viewportId: secondRun.viewportId,
+        profile: secondRun.profile,
+        fixtureId: secondRun.fixtureId,
+        fixtureContentDigest: secondRun.fixtureContentDigest,
+        regions: requirement.requiredRuns[0]!.regions,
+      }],
+    };
+    const result = evaluateUiResilience(expandedRequirement, { ...candidate, runs: [...candidate.runs, secondRun] }, [
+      { type: "screenshot", digest: SCREENSHOT_DIGEST },
+      { type: "ui-visual-review-approval-receipt", digest: candidate.runs[0]!.observations[0]!.visualReview!.approvalArtifactDigest },
+    ], [candidate.runs[0]!.observations[0]!.visualReview!.approvalArtifactDigest]);
+    expect(result.status).toBe("INCOMPLETE");
+    expect(result.reasons).toContain(`SCREENSHOT_REUSED_ACROSS_RUNS:${SCREENSHOT_DIGEST}`);
   });
 
 describe("UI resilience scope binding and traceability", () => {
