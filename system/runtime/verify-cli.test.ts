@@ -1,10 +1,15 @@
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { mkdtemp, writeFile, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
+import Ajv2020 from "ajv/dist/2020.js";
 import { describe, expect, test } from "bun:test";
 import { captureGitSnapshotIdentity } from "./git-snapshot";
 import { runVerify } from "../cli/verify";
+import { canonicalizeJson, type VerificationExecutionAuthorityBinding, type VerificationExecutionCompletionEnvelope, type VerificationExecutionOutput } from "./verification-run";
+import { LocalArtifactStore } from "./local-artifact-store";
+import type { UiResilienceProfile } from "../core/ui-resilience";
 
 type RepoFixture = Readonly<{ root: string; config: string; state: string; request: string; manifest: string; cleanup: () => Promise<void> }>;
 const gitEnv = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", GIT_AUTHOR_NAME: "Traceknot Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Traceknot Test", GIT_COMMITTER_EMAIL: "test@example.com" };
@@ -60,6 +65,213 @@ async function fixture(executable = "/usr/bin/true"): Promise<RepoFixture> {
 }
 
 describe("traceknot verify CLI", () => {
+  test("publishes manifest completion and trusted producer policy schema fields", async () => {
+    const ajv = new Ajv2020({ strict: true });
+    const manifestSchema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verification-manifest.schema.json`).text()) as object;
+    const policySchema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/trusted-producer-policy.schema.json`).text()) as object;
+    const planSchema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verification-plan.schema.json`).text()) as object;
+    const validateManifest = ajv.compile(manifestSchema);
+    const validatePolicy = ajv.compile(policySchema);
+    expect(validateManifest({
+      schemaVersion: "verification-manifest/v1",
+      obligations: [{ id: "obligation:condition:command", executionCompletionPath: "/secure/completion.json" }],
+    })).toBe(true);
+    expect(validateManifest({
+      schemaVersion: "verification-manifest/v1",
+      obligations: [{ id: "obligation:condition:command", executable: "/usr/bin/true", executionCompletionPath: "relative.json" }],
+    })).toBe(false);
+    expect(validateManifest({
+      schemaVersion: "verification-manifest/v1",
+      obligations: [{ id: "obligation:condition:command" }],
+    })).toBe(false);
+    expect(validateManifest({
+      schemaVersion: "verification-manifest/v1",
+      obligations: [{ id: "obligation:condition:command", executionCompletionPath: "/secure/completion.json", argv: ["--caller-local"] }],
+    })).toBe(false);
+    expect(validateManifest({
+      schemaVersion: "verification-manifest/v1",
+      obligations: [{ id: "obligation:condition:command", executable: "/usr/bin/true", executionCompletionArtifacts: [] }],
+    })).toBe(false);
+    expect(validateManifest({
+      schemaVersion: "verification-manifest/v1",
+      obligations: [{ id: "obligation:condition:command", executable: "/usr/bin/true", unknownField: true }],
+    })).toBe(false);
+    const policy = { schemaVersion: "trusted-producer-policy/v1", issuer: "trusted-ci", keyId: "a".repeat(64), publicKeyPem: "PUBLIC KEY" };
+    expect(validatePolicy(policy)).toBe(true);
+    expect(validatePolicy({ ...policy, signer: "/tmp/caller-controlled" })).toBe(false);
+    const regionSchema = (planSchema as { properties: { obligations: { items: { properties: { uiResilienceRequirement: { properties: { requiredRuns: { items: { properties: { regions: { items: object } } } } } } } } } } }).properties.obligations.items.properties.uiResilienceRequirement.properties.requiredRuns.items.properties.regions.items;
+    const validateRegion = ajv.compile(regionSchema);
+    expect(validateRegion({ regionId: "region:label", policy: "truncate-with-access", basisIds: ["basis:layout"], maxLines: 2 })).toBe(true);
+    expect(validateRegion({ regionId: "region:label", policy: "truncate-with-access", basisIds: ["basis:layout"] })).toBe(false);
+    expect(validateRegion({ regionId: "region:label", policy: "wrap", basisIds: ["basis:layout"], maxLines: 2 })).toBe(false);
+  });
+  test("rejects unknown and contradictory manifest field combinations", async () => {
+    const fixtureValue = await fixture();
+    try {
+      const original = JSON.parse(await readFile(fixtureValue.manifest, "utf8")) as { schemaVersion: string; obligations: Array<Record<string, unknown>> };
+      const command = original.obligations[0]!;
+      const variants = [
+        { ...command, unknownField: true },
+        { id: command.id, executionCompletionPath: join(fixtureValue.config, "completion.json"), argv: ["--local-only"] },
+        { ...command, executionCompletionArtifacts: [] },
+      ];
+      for (const obligation of variants) {
+        await writeFile(fixtureValue.manifest, JSON.stringify({ ...original, obligations: [obligation] }));
+        const stderr: string[] = [];
+        expect(await runVerify(
+          ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest],
+          () => undefined,
+          text => stderr.push(text),
+        )).toBe(64);
+        expect(stderr.join("")).toMatch(/unknown fields|local execution fields require executable|executionCompletionArtifacts require executionCompletionPath/);
+      }
+    } finally {
+      await fixtureValue.cleanup();
+    }
+  });
+  test("falls back to a configured executable when an optional completion is absent", async () => {
+    const fixtureValue = await fixture();
+    try {
+      const manifest = JSON.parse(await readFile(fixtureValue.manifest, "utf8")) as { schemaVersion: string; obligations: Array<Record<string, unknown>> };
+      manifest.obligations[0]!.executionCompletionPath = join(fixtureValue.config, "not-published.json");
+      manifest.obligations[0]!.executionCompletionArtifacts = [];
+      await writeFile(fixtureValue.manifest, JSON.stringify(manifest));
+      const stderr: string[] = [];
+      expect(await runVerify(
+        ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest],
+        () => undefined,
+        text => stderr.push(text),
+      )).toBe(0);
+      expect(stderr).toEqual([]);
+    } finally {
+      await fixtureValue.cleanup();
+    }
+  });
+
+
+  test("imports a real Ed25519 completion without an unused executable", async () => {
+    const fixtureValue = await fixture();
+    const tamperedState = await mkdtemp(join(tmpdir(), "traceknot-cli-tampered-state-"));
+    const externalState = await mkdtemp(join(tmpdir(), "traceknot-cli-external-state-"));
+    try {
+      const baselineStdout: string[] = [];
+      expect(await runVerify(
+        ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest],
+        text => baselineStdout.push(text),
+        () => undefined,
+      )).toBe(0);
+      const baseline = JSON.parse(baselineStdout.join("")) as {
+        documents: { execution: { authorities: Array<{ binding: VerificationExecutionAuthorityBinding }> } };
+      };
+      const localBinding = baseline.documents.execution.authorities[0]?.binding;
+      if (!localBinding) throw new Error("missing baseline authority binding");
+      const baselineArtifactStore = new LocalArtifactStore(join(fixtureValue.state, "artifacts"));
+      const executionCompletionArtifacts: Array<{ type: string; digest: string; path: string }> = [];
+      try {
+        const seen = new Set<string>();
+        for (const [index, artifact] of localBinding.artifacts.entries()) {
+          const key = `${artifact.type}\u0000${artifact.digest}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const bytes = await baselineArtifactStore.readArtifact(artifact.digest);
+          if (!bytes) throw new Error(`missing baseline artifact ${artifact.digest}`);
+          const path = join(fixtureValue.config, `external-artifact-${index}.bin`);
+          await writeFile(path, bytes);
+          executionCompletionArtifacts.push({ type: artifact.type, digest: artifact.digest, path });
+        }
+      } finally {
+        await baselineArtifactStore.close();
+      }
+      const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+      const publicKeyPem = publicKey.export({ type: "spki", format: "pem" }).toString();
+      const keyId = createHash("sha256").update(publicKey.export({ type: "spki", format: "der" })).digest("hex");
+      const producer = { kind: "external-system", identity: "trusted-ci", independence: "independent-producer" } as const;
+      const execution: VerificationExecutionAuthorityBinding["execution"] = { ...localBinding.execution, identity: producer.identity };
+      const binding: VerificationExecutionAuthorityBinding = { ...localBinding, producer, execution };
+      const signature = sign(null, Buffer.from(canonicalizeJson(binding)), privateKey).toString("base64url");
+      const authority = {
+        schemaVersion: "verification-execution-authority/v1" as const,
+        authorityId: `ed25519:${keyId}:${createHash("sha256").update(signature).digest("hex")}`,
+        issuer: producer.identity,
+        binding,
+        keyId,
+        signature,
+      };
+      const output: VerificationExecutionOutput = {
+        status: "PASS",
+        runId: binding.runId,
+        requestId: binding.requestId,
+        snapshotId: binding.snapshotId,
+        idempotencyKey: binding.idempotencyKey,
+        producer,
+        summary: binding.result.summary,
+        artifacts: binding.artifacts,
+        executionKind: execution.kind,
+        identity: execution.identity,
+        ...(execution.exitCode === undefined ? {} : { exitCode: execution.exitCode }),
+      };
+      const completion: VerificationExecutionCompletionEnvelope = {
+        schemaVersion: "verification-execution-completion/v1",
+        runId: binding.runId,
+        requestId: binding.requestId,
+        rootIdentity: binding.rootIdentity,
+        snapshotId: binding.snapshotId,
+        planDigest: binding.planDigest,
+        obligationId: binding.obligationId,
+        idempotencyKey: binding.idempotencyKey,
+        output,
+        authority,
+      };
+      const completionPath = join(fixtureValue.config, "completion.json");
+      const externalManifestPath = join(fixtureValue.config, "external-manifest.json");
+      await writeFile(completionPath, JSON.stringify(completion));
+      await writeFile(externalManifestPath, JSON.stringify({
+        schemaVersion: "verification-manifest/v1",
+        obligations: [{ id: binding.obligationId, executionCompletionPath: completionPath, executionCompletionArtifacts }],
+      }));
+      const tamperedCompletionPath = join(fixtureValue.config, "tampered-completion.json");
+      const tamperedManifestPath = join(fixtureValue.config, "tampered-manifest.json");
+      await writeFile(tamperedCompletionPath, JSON.stringify({ ...completion, authority: { ...authority, signature: `${signature[0] === "A" ? "B" : "A"}${signature.slice(1)}` } }));
+      await writeFile(tamperedManifestPath, JSON.stringify({
+        schemaVersion: "verification-manifest/v1",
+        obligations: [{
+          id: binding.obligationId,
+          executionCompletionPath: tamperedCompletionPath,
+          executionCompletionArtifacts: executionCompletionArtifacts.map(artifact => ({ ...artifact, path: join(fixtureValue.config, "must-not-be-read.bin") })),
+        }],
+      }));
+      const tamperedErrors: string[] = [];
+      expect(await runVerify(
+        ["--root", fixtureValue.root, "--state-dir", tamperedState, "--request", fixtureValue.request, "--manifest", tamperedManifestPath],
+        () => undefined,
+        text => tamperedErrors.push(text),
+        { readTrustedProducerPolicy: async () => ({ schemaVersion: "trusted-producer-policy/v1", issuer: producer.identity, keyId, publicKeyPem }) },
+      )).toBe(64);
+      expect(tamperedErrors.join("")).toContain("invalid execution completion authentication");
+      expect(tamperedErrors.join("")).not.toContain("must-not-be-read");
+      const stdout: string[] = [];
+      const stderr: string[] = [];
+      const status = await runVerify(
+        ["--root", fixtureValue.root, "--state-dir", externalState, "--request", fixtureValue.request, "--manifest", externalManifestPath],
+        text => stdout.push(text),
+        text => stderr.push(text),
+        { readTrustedProducerPolicy: async () => ({ schemaVersion: "trusted-producer-policy/v1", issuer: producer.identity, keyId, publicKeyPem }) },
+      );
+      expect(status, stderr.join("")).toBe(0);
+      expect(JSON.parse(stdout.join("")).verdict.qaVerdict).toBe("PASS");
+      expect(stdout.join("")).toContain(signature);
+      const importedArtifactStore = new LocalArtifactStore(join(externalState, "artifacts"));
+      try {
+        for (const artifact of binding.artifacts) expect(await importedArtifactStore.hasArtifact(artifact.digest)).toBe(true);
+      } finally {
+        await importedArtifactStore.close();
+      }
+    } finally {
+      await Promise.all([fixtureValue.cleanup(), rm(externalState, { recursive: true, force: true }), rm(tamperedState, { recursive: true, force: true })]);
+    }
+  });
+
+
   test("requires the internally captured snapshot to match one clean expected HEAD", async () => {
     const fixtureValue = await fixture();
     try {
@@ -116,7 +328,9 @@ describe("traceknot verify CLI", () => {
     try {
       const stdout: string[] = []; const stderr: string[] = [];
       const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest], text => stdout.push(text), text => stderr.push(text));
-      expect(status).toBe(1); expect((JSON.parse(stdout.join("")) as { verdict: { qaVerdict: string } }).verdict.qaVerdict).toBe("FAIL");
+      expect(status).toBe(1);
+      const failedCommandReport = JSON.parse(stdout.join("")) as { verdict: { qaVerdict: string } };
+      expect(failedCommandReport.verdict.qaVerdict).toBe("FAIL");
       await writeFile(join(fixtureValue.root, "new.txt"), "dirty\n");
       const reportStatus = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only"], () => undefined, text => stderr.push(text));
       expect(reportStatus).toBe(64); expect(stderr.join("")).toContain("snapshot");
@@ -173,7 +387,7 @@ describe("traceknot verify CLI", () => {
     }
   });
 
-  test("ingests a visual oracle and distinct screenshot artifacts for significant UI verification", async () => {
+  test("ingests self-authored visual evidence without elevating it to independent-producer PASS", async () => {
     const root = await mkdtemp(join(tmpdir(), "traceknot-cli-visual-repo-"));
     const config = await mkdtemp(join(tmpdir(), "traceknot-cli-visual-config-"));
     const state = await mkdtemp(join(tmpdir(), "traceknot-cli-visual-state-"));
@@ -182,11 +396,35 @@ describe("traceknot verify CLI", () => {
       const focusedPath = join(root, "focused-region.png");
       const fullBytes = png(1440, 900);
       const focusedBytes = png(900, 500);
+      const resilienceBytes = png(900, 500);
+      const resilienceDigest = new Bun.CryptoHasher("sha256").update(resilienceBytes).digest("hex");
       const fullDigest = new Bun.CryptoHasher("sha256").update(fullBytes).digest("hex");
       const focusedDigest = new Bun.CryptoHasher("sha256").update(focusedBytes).digest("hex");
+      const resilienceFixtureKinds = {
+        "text-overflow": ["representative", "long-natural-language", "long-unbroken-token"],
+        "resize-text-200": ["representative", "long-natural-language"],
+        "reflow-320": ["representative", "long-natural-language", "long-unbroken-token"],
+        "text-spacing-wcag": ["representative", "long-natural-language"],
+        "pseudo-localization": ["pseudo-expanded"],
+        rtl: ["rtl"],
+        "reduced-motion": ["representative"],
+        "hover-focus-content": ["representative"],
+      } as const satisfies Readonly<Record<UiResilienceProfile, readonly string[]>>;
+      const resilienceProfiles = Object.keys(resilienceFixtureKinds) as UiResilienceProfile[];
+      const profileEvidence = (profile: UiResilienceProfile) => {
+        if (profile === "text-overflow") return { profile };
+        if (profile === "resize-text-200") return { profile, textScalePercent: 200 };
+        if (profile === "reflow-320") return { profile, innerWidth: 320, innerHeight: 900, writingMode: "horizontal" };
+        if (profile === "text-spacing-wcag") return { profile, lineHeightRatio: 1.5, paragraphSpacingRatio: 2, letterSpacingRatio: 0.12, wordSpacingRatio: 0.16, onlySpacingPropertiesChanged: true };
+        if (profile === "pseudo-localization") return { profile, locale: "en-XA", expansionRatio: 1.4, pseudoLocale: true };
+        if (profile === "rtl") return { profile, direction: "rtl", locale: "ar" };
+        if (profile === "reduced-motion") return { profile, preference: "reduce", nonEssentialMotionDisabled: true };
+        return { profile, dismissible: true, hoverable: true, persistent: true };
+      };
       await writeFile(join(root, "input.txt"), "clean\n");
       await writeFile(fullPath, fullBytes);
       await writeFile(focusedPath, focusedBytes);
+      await writeFile(join(root, "ui-resilience.png"), resilienceBytes);
       git(root, ["init", "-q"]); git(root, ["add", "."]); git(root, ["commit", "-qm", "visual fixture"]);
       const snapshot = await captureGitSnapshotIdentity(root);
       const request = {
@@ -202,6 +440,28 @@ describe("traceknot verify CLI", () => {
           rationale: "The responsive layout geometry changes.",
           surfaces: [{ surfaceId: "surface-catalog", stateIds: ["populated"], viewportIds: ["desktop"] }],
           viewports: [{ id: "desktop", width: 1440, height: 900 }],
+        },
+        uiResilience: {
+          schemaVersion: "ui-resilience-scope/v1",
+          decision: "required",
+          basisIds: ["basis-layout"],
+          rationale: "The responsive surface exercises every adaptive UI profile.",
+          viewports: [{ id: "desktop", width: 1440, height: 900 }],
+          surfaces: [{
+            surfaceId: "surface-catalog",
+            stateIds: ["populated"],
+            viewportIds: ["desktop"],
+            capabilities: ["rendered-text", "responsive-layout", "localized-content", "rtl-content", "animation", "hover-focus-content"],
+            fixtures: [
+              { fixtureId: "representative", kind: "representative", contentDigest: resilienceDigest },
+              { fixtureId: "natural", kind: "long-natural-language", contentDigest: resilienceDigest },
+              { fixtureId: "token", kind: "long-unbroken-token", contentDigest: resilienceDigest },
+              { fixtureId: "pseudo", kind: "pseudo-expanded", contentDigest: resilienceDigest },
+              { fixtureId: "rtl", kind: "rtl", contentDigest: resilienceDigest },
+            ],
+            regions: [{ regionId: "main", policy: "no-overflow", basisIds: ["basis-layout"] }],
+            profileApplicability: resilienceProfiles.map(profile => ({ profile, status: "required" as const, basisIds: ["basis-layout"], rationale: `${profile} applies to the exercised surface.` })),
+          }],
         },
       };
       const oracle = {
@@ -230,9 +490,33 @@ describe("traceknot verify CLI", () => {
         representativeStateLimitations: [],
         blockingReasons: [],
       };
+      const uiOracle = {
+        schemaVersion: "ui-resilience-oracle/v1",
+        oracleId: "oracle:cli-ui-resilience",
+        requestId: request.requestId,
+        snapshotId: snapshot.snapshotId,
+        conditionId: "condition:request-ui-resilience",
+        producer: { kind: "ci", identity: "traceknot-cli", independence: "independent-producer" },
+        runs: resilienceProfiles.flatMap(profile => resilienceFixtureKinds[profile].map((fixtureKind, index) => ({
+          runId: `run:catalog:${profile}:${fixtureKind}`,
+          surfaceId: "surface-catalog",
+          stateId: "populated",
+          viewportId: "desktop",
+          viewport: { id: "desktop", width: 1440, height: 900 },
+          profile,
+          fixtureId: fixtureKind === "long-natural-language" ? "natural" : fixtureKind === "long-unbroken-token" ? "token" : fixtureKind === "pseudo-expanded" ? "pseudo" : fixtureKind,
+          fixtureContentDigest: resilienceDigest,
+          browser: "Chromium 140",
+          userAgent: "cli-test",
+          profileEvidence: profileEvidence(profile),
+          observations: [{ observationId: `observation:catalog:main:${profile}:${index}`, regionId: "main", policy: "no-overflow", clientWidth: 900, clientHeight: 500, scrollWidth: 900, scrollHeight: 500, fragmentRects: [{ x: 0, y: 0, width: 900, height: 500 }], clippingAncestors: [], paintFeatures: [], renderedLineCount: 1, contentTruncated: false, truncationIndicatorVisible: false, screenshotDigest: resilienceDigest }],
+        }))),
+        blockingReasons: [],
+      };
       const requestPath = join(config, "request.json");
       const oraclePath = join(config, "oracle.json");
       const manifestPath = join(config, "manifest.json");
+      const uiOraclePath = join(config, "ui-oracle.json");
       const command = (id: string) => ({ id, executable: "/usr/bin/true" });
       const visualCommand = {
         ...command("obligation:condition:request-visual-composition"),
@@ -242,19 +526,28 @@ describe("traceknot verify CLI", () => {
           { type: "screenshot", digest: focusedDigest, path: "focused-region.png" },
         ],
       };
-      const manifest = { schemaVersion: "verification-manifest/v1", obligations: [command("obligation:condition:basis-layout"), command("obligation:condition:request-browser"), visualCommand] };
+      const uiCommand = {
+        ...command("obligation:condition:request-ui-resilience"),
+        uiResilienceOraclePath: uiOraclePath,
+        declaredArtifacts: [
+          { type: "screenshot", digest: resilienceDigest, path: "ui-resilience.png" },
+        ],
+      };
+      const manifest = { schemaVersion: "verification-manifest/v1", obligations: [command("obligation:condition:basis-layout"), command("obligation:condition:request-browser"), visualCommand, uiCommand] };
       await writeFile(requestPath, JSON.stringify(request));
       await writeFile(oraclePath, JSON.stringify(oracle));
+      await writeFile(uiOraclePath, JSON.stringify(uiOracle));
       await writeFile(manifestPath, JSON.stringify(manifest));
       const stdout: string[] = [];
       const stderr: string[] = [];
       const status = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], text => stdout.push(text), text => stderr.push(text));
-      expect({ status, stderr }).toEqual({ status: 0, stderr: [] });
+      expect({ status, stderr }).toEqual({ status: 3, stderr: [] });
       const report = JSON.parse(stdout.join("")) as { verdict: { qaVerdict: string }; documents: { execution: { observations: Array<{ observationId: string; artifacts: Array<{ type: string; digest: string; path?: string }> }>; evidence: Array<{ obligationId: string; visualCompositionOracleDigest?: string }> } } };
-      expect(report.verdict.qaVerdict).toBe("PASS");
+      expect(report.verdict.qaVerdict).toBe("INCOMPLETE");
       const visualObservation = report.documents.execution.observations.find(item => item.observationId.includes("visual-composition"));
       expect(visualObservation?.artifacts).toEqual(expect.arrayContaining([expect.objectContaining({ type: "screenshot", digest: fullDigest }), expect.objectContaining({ type: "screenshot", digest: focusedDigest })]));
       expect(report.documents.execution.evidence.find(item => item.obligationId.includes("visual-composition"))?.visualCompositionOracleDigest).toMatch(/^[a-f0-9]{64}$/);
+      expect(stdout.join("")).toContain("ORACLE_PRODUCER_MISMATCH");
       const undersizedBytes = png(900, 501);
       const undersizedDigest = new Bun.CryptoHasher("sha256").update(undersizedBytes).digest("hex");
       await writeFile(focusedPath, undersizedBytes);
@@ -378,17 +671,19 @@ describe("traceknot verify CLI", () => {
           regions: capture.regions.map(region => region.regionId === "main" ? { ...region, width: 390, height: 400 } : { ...region, y: 432, width: 390, height: 160 }),
         })),
       };
+      const fractionalUiOracle = { ...uiOracle, oracleId: "oracle:cli-ui-resilience-fractional", requestId: fractionalRequest.requestId, snapshotId: fractionalSnapshot.snapshotId };
       const fractionalManifest = {
         ...manifest,
         obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { ...visualCommand, declaredArtifacts: [{ type: "screenshot", digest: fractionalDigest, path: "full-page.png" }, { type: "screenshot", digest: focusedDigest, path: "focused-region.png" }] } : obligation),
       };
       await writeFile(requestPath, JSON.stringify(fractionalRequest));
       await writeFile(oraclePath, JSON.stringify(fractionalOracle));
+      await writeFile(uiOraclePath, JSON.stringify(fractionalUiOracle));
       await writeFile(manifestPath, JSON.stringify(fractionalManifest));
       const fractionalStdout: string[] = [];
       const fractionalStderr: string[] = [];
       const fractionalStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], text => fractionalStdout.push(text), text => fractionalStderr.push(text));
-      expect({ status: fractionalStatus, stderr: fractionalStderr, verdict: JSON.parse(fractionalStdout.join("")).verdict.qaVerdict }).toEqual({ status: 0, stderr: [], verdict: "PASS" });
+      expect({ status: fractionalStatus, stderr: fractionalStderr, verdict: JSON.parse(fractionalStdout.join("")).verdict.qaVerdict }).toEqual({ status: 3, stderr: [], verdict: "INCOMPLETE" });
       const failedArtifactBytes = new TextEncoder().encode("not a screenshot\n");
       const failedArtifactDigest = new Bun.CryptoHasher("sha256").update(failedArtifactBytes).digest("hex");
       await writeFile(join(root, "failed-artifact.bin"), failedArtifactBytes);
@@ -398,7 +693,7 @@ describe("traceknot verify CLI", () => {
       const failedRequest = { ...request, requestId: "cli-visual-command-failed", project: { rootIdentity: failedSnapshot.rootIdentity, snapshotId: failedSnapshot.snapshotId } };
       const failedManifest = {
         ...manifest,
-        obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { id: visualCommand.id, executable: "/usr/bin/false", visualCompositionOraclePath: join(config, "missing-oracle.json"), declaredArtifacts: [{ type: "screenshot", digest: failedArtifactDigest, path: "failed-artifact.bin" }] } : obligation),
+        obligations: manifest.obligations.map(obligation => obligation.id === visualCommand.id ? { id: visualCommand.id, executable: "/usr/bin/false", visualCompositionOraclePath: join(config, "missing-oracle.json"), declaredArtifacts: [{ type: "screenshot", digest: failedArtifactDigest, path: "failed-artifact.bin" }, { type: "screenshot", digest: "f".repeat(64), path: "missing-screenshot.png" }] } : obligation),
       };
       await writeFile(requestPath, JSON.stringify(failedRequest));
       await writeFile(manifestPath, JSON.stringify(failedManifest));
@@ -407,10 +702,10 @@ describe("traceknot verify CLI", () => {
       const failedStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath], text => failedStdout.push(text), text => failedStderr.push(text));
       const failedReport = JSON.parse(failedStdout.join("")) as { verdict: { qaVerdict: string }; documents: { execution: { observations: Array<{ observationId: string; artifacts: Array<{ type: string; digest: string }> }> } } };
       const failedVisualObservation = failedReport.documents.execution.observations.find(item => item.observationId.includes("visual-composition"));
-      expect({ status: failedStatus, stderr: failedStderr, verdict: failedReport.verdict.qaVerdict }).toEqual({ status: 1, stderr: [], verdict: "FAIL" });
+      expect({ status: failedStatus, stderr: failedStderr, verdict: failedReport.verdict.qaVerdict }).toEqual({ status: 2, stderr: [], verdict: "BLOCKED" });
       expect(failedVisualObservation?.artifacts).toEqual(expect.arrayContaining([expect.objectContaining({ type: "verification-result", digest: failedArtifactDigest })]));
     } finally {
       await Promise.all([rm(root, { recursive: true, force: true }), rm(config, { recursive: true, force: true }), rm(state, { recursive: true, force: true })]);
     }
-  });
+  }, 30_000);
 });

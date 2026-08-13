@@ -1,20 +1,24 @@
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey, verify as verifySignature } from "node:crypto";
 import { mkdir, lstat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { inflateSync } from "node:zlib";
 import type { Artifact, Producer } from "../core/qa-core";
 import { isVisualCompositionOracle, type VisualCompositionOracle } from "../core/visual-composition";
+import { isUiResilienceOracle, type UiResilienceOracle } from "../core/ui-resilience";
 import {
   buildVerificationPlan,
   canonicalizeJson,
   type ExecutionAuthority,
   type FreshnessAuthority,
+  type VerificationExecutionAuthorityBinding,
+  type VerificationExecutionCompletionEnvelope,
   type VerificationExecutionOutput,
   type VerificationRequest,
   type VerificationRunDependencies,
   runVerification,
   establishTestBasis,
+  validatePersistedVerificationRun,
   performRiskDiscovery,
 } from "../runtime/verification-run";
 import { captureGitSnapshotIdentity } from "../runtime/git-snapshot";
@@ -30,10 +34,12 @@ const DIGEST = /^[0-9a-f]{64}$/;
 const GIT_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const DANGEROUS_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const SAFE_ENV = new Set(["HOME", "TMPDIR", "LANG", "LC_ALL"]);
+const SAFE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
+const TRUSTED_PRODUCER_POLICY_PATH = "/etc/traceknot/trusted-producer.json";
 
 type ManifestCommand = Readonly<{
   id: string;
-  executable: string;
+  executable?: string;
   argv?: readonly string[];
   cwd?: string;
   env?: Readonly<Record<string, string>>;
@@ -42,11 +48,20 @@ type ManifestCommand = Readonly<{
   maxArtifactBytes?: number;
   declaredArtifacts?: readonly ShellArtifactDeclaration[];
   visualCompositionOraclePath?: string;
+  uiResilienceOraclePath?: string;
+  executionCompletionPath?: string;
+  executionCompletionArtifacts?: readonly ShellArtifactDeclaration[];
   toolVersion?: string;
 }>;
 type VerifyManifest = Readonly<{ schemaVersion: "verification-manifest/v1"; obligations: readonly ManifestCommand[] }>;
 type CliOptions = Readonly<{ requestPath?: string; manifestPath?: string; rootDir: string; stateDir: string; artifactDir: string; runId?: string; expectedHead?: string; format: "json" | "markdown"; reportOnly: boolean; help: boolean }>;
 type CliReport = Readonly<{ schemaVersion: "traceknot-cli-report/v1"; run: unknown; verdict: unknown; snapshot: Readonly<{ rootIdentity: string; snapshotId: string; head: string; dirty: boolean }>; documents?: unknown }>;
+type TrustedProducerPolicy = Readonly<{
+  schemaVersion: "trusted-producer-policy/v1";
+  issuer: string;
+  keyId: string;
+  publicKeyPem: string;
+}>;
 
 function usage(): string {
   return [
@@ -178,7 +193,9 @@ function assertPlain(value: unknown, path = "$"): void {
     assertPlain(child, `${path}.${key}`);
   }
 }
-async function readBoundedJson(path: string): Promise<unknown> {
+async function readBoundedJson(path: string): Promise<unknown>;
+async function readBoundedJson(path: string, allowMissing: true): Promise<unknown | undefined>;
+async function readBoundedJson(path: string, allowMissing = false): Promise<unknown | undefined> {
   let root;
   try {
     const absolute = resolve(path);
@@ -188,11 +205,54 @@ async function readBoundedJson(path: string): Promise<unknown> {
     assertPlain(value);
     return value;
   } catch (error) {
+    if (allowMissing && error && typeof error === "object" && "code" in error && error.code === "ENOENT") return undefined;
     if (error instanceof Error && /^(invalid input file|unsafe input key)/.test(error.message)) throw error;
     throw new Error(`invalid input file ${path}: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
     if (root) await closeSecureRoot(root);
   }
+}
+async function readBoundedFile(path: string, maxBytes: number): Promise<Uint8Array> {
+  const absolute = resolve(path);
+  let root;
+  try {
+    root = await openSecureRoot(dirname(absolute));
+    return await readSecureRegularFile(root.fd, basename(absolute), maxBytes);
+  } finally {
+    if (root) await closeSecureRoot(root);
+  }
+}
+function validateTrustedProducerPolicy(value: unknown): TrustedProducerPolicy {
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail("trusted producer policy must be an object");
+  const policy = value as Record<string, unknown>;
+  if (Object.keys(policy).sort().join(",") !== ["issuer", "keyId", "publicKeyPem", "schemaVersion"].sort().join(",") || policy.schemaVersion !== "trusted-producer-policy/v1") fail("trusted producer policy fields are invalid");
+  const issuer = requireString(policy.issuer, "trusted producer issuer");
+  const keyId = requireString(policy.keyId, "trusted producer keyId");
+  if (!DIGEST.test(keyId)) fail("trusted producer keyId must be a lowercase SHA-256 digest");
+  const publicKeyPem = requireString(policy.publicKeyPem, "trusted producer public key");
+  const publicKey = (() => {
+    try {
+      return createPublicKey(publicKeyPem);
+    } catch {
+      return fail("trusted producer public key is invalid");
+    }
+  })();
+  if (publicKey.asymmetricKeyType !== "ed25519") fail("trusted producer public key must be Ed25519");
+  const actualKeyId = createHash("sha256").update(publicKey.export({ type: "spki", format: "der" })).digest("hex");
+  if (actualKeyId !== keyId) fail("trusted producer keyId does not match public key");
+  return { schemaVersion: "trusted-producer-policy/v1", issuer, keyId, publicKeyPem };
+}
+async function loadTrustedProducerPolicy(readOverride?: () => Promise<unknown>): Promise<TrustedProducerPolicy | undefined> {
+  if (readOverride) return validateTrustedProducerPolicy(await readOverride());
+  let info;
+  try {
+    info = await lstat(TRUSTED_PRODUCER_POLICY_PATH);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return undefined;
+    throw error;
+  }
+  if (!info.isFile() || info.isSymbolicLink() || info.uid !== 0 || (info.mode & 0o022) !== 0) fail("trusted producer policy must be a root-owned, non-writable regular file");
+  return validateTrustedProducerPolicy(await readBoundedJson(TRUSTED_PRODUCER_POLICY_PATH));
 }
 function parseArgs(argv: readonly string[]): CliOptions {
   let rootDir = process.cwd();
@@ -237,10 +297,13 @@ function validateManifest(value: unknown): VerifyManifest {
   for (const [index, raw] of input.obligations.entries()) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) fail(`manifest obligations[${index}] must be an object`);
     const item = raw as Record<string, unknown>;
+    const allowedKeys = new Set(["id", "executable", "argv", "cwd", "env", "timeoutMs", "maxOutputBytes", "maxArtifactBytes", "declaredArtifacts", "visualCompositionOraclePath", "uiResilienceOraclePath", "executionCompletionPath", "executionCompletionArtifacts", "toolVersion"]);
+    const unknownKeys = Object.keys(item).filter(key => !allowedKeys.has(key));
+    if (unknownKeys.length > 0) fail(`manifest obligations[${index}] has unknown fields: ${unknownKeys.sort().join(", ")}`);
     const id = requireString(item.id, `manifest obligations[${index}].id`);
     if (ids.has(id)) fail(`manifest has duplicate obligation: ${id}`); ids.add(id);
-    const executable = requireString(item.executable, `manifest obligations[${index}].executable`);
-    if (!isAbsolute(executable)) fail(`manifest executable must be absolute: ${executable}`);
+    const executable = item.executable === undefined ? undefined : requireString(item.executable, `manifest obligations[${index}].executable`);
+    if (executable !== undefined && !isAbsolute(executable)) fail(`manifest executable must be absolute: ${executable}`);
     const argv = item.argv === undefined ? undefined : Array.isArray(item.argv) ? item.argv.map((arg, n) => requireString(arg, `manifest argv[${n}]`)) : fail("manifest argv must be an array");
     const cwd = item.cwd === undefined ? undefined : requireString(item.cwd, "manifest cwd");
     const envValue = item.env;
@@ -274,7 +337,30 @@ function validateManifest(value: unknown): VerifyManifest {
     }
     const visualCompositionOraclePath = item.visualCompositionOraclePath === undefined ? undefined : requireString(item.visualCompositionOraclePath, "manifest visualCompositionOraclePath");
     if (visualCompositionOraclePath !== undefined && !isAbsolute(visualCompositionOraclePath)) fail("manifest visualCompositionOraclePath must be absolute");
-    obligations.push({ id, executable, ...(argv ? { argv } : {}), ...(cwd ? { cwd } : {}), ...(env ? { env } : {}), ...(bounded("timeoutMs", 600_000) ? { timeoutMs: bounded("timeoutMs", 600_000) } : {}), ...(bounded("maxOutputBytes", 256 * 1024 * 1024) ? { maxOutputBytes: bounded("maxOutputBytes", 256 * 1024 * 1024) } : {}), ...(bounded("maxArtifactBytes", 256 * 1024 * 1024) ? { maxArtifactBytes: bounded("maxArtifactBytes", 256 * 1024 * 1024) } : {}), ...(declaredArtifacts ? { declaredArtifacts } : {}), ...(visualCompositionOraclePath ? { visualCompositionOraclePath } : {}), ...(item.toolVersion === undefined ? {} : { toolVersion: requireString(item.toolVersion, "manifest toolVersion") }) });
+    const uiResilienceOraclePath = item.uiResilienceOraclePath === undefined ? undefined : requireString(item.uiResilienceOraclePath, "manifest uiResilienceOraclePath");
+    if (uiResilienceOraclePath !== undefined && !isAbsolute(uiResilienceOraclePath)) fail("manifest uiResilienceOraclePath must be absolute");
+    const executionCompletionPath = item.executionCompletionPath === undefined ? undefined : requireString(item.executionCompletionPath, "manifest executionCompletionPath");
+    const completionArtifactValue = item.executionCompletionArtifacts;
+    let executionCompletionArtifacts: ShellArtifactDeclaration[] | undefined;
+    if (completionArtifactValue !== undefined) {
+      if (!Array.isArray(completionArtifactValue)) fail("manifest executionCompletionArtifacts must be an array");
+      executionCompletionArtifacts = completionArtifactValue.map((rawDeclaration, n) => {
+        if (!rawDeclaration || typeof rawDeclaration !== "object" || Array.isArray(rawDeclaration)) fail(`executionCompletionArtifacts[${n}] must be an object`);
+        const declaration = rawDeclaration as Record<string, unknown>;
+        const type = requireString(declaration.type, "execution completion artifact type");
+        const digest = requireString(declaration.digest, "execution completion artifact digest");
+        const path = requireString(declaration.path, "execution completion artifact path");
+        if (!DIGEST.test(digest)) fail("execution completion artifact digest must be lowercase SHA-256");
+        if (!isAbsolute(path)) fail("execution completion artifact path must be absolute");
+        return { type, digest, path };
+      });
+    }
+    if (executionCompletionPath !== undefined && !isAbsolute(executionCompletionPath)) fail("manifest executionCompletionPath must be absolute");
+    if (executable === undefined && executionCompletionPath === undefined) fail(`manifest obligations[${index}] requires executable or executionCompletionPath`);
+    const localOnlyKeys = ["argv", "cwd", "env", "timeoutMs", "maxOutputBytes", "declaredArtifacts", "visualCompositionOraclePath", "uiResilienceOraclePath", "toolVersion"];
+    if (executable === undefined && localOnlyKeys.some(key => item[key] !== undefined)) fail(`manifest obligations[${index}] local execution fields require executable`);
+    if (executionCompletionPath === undefined && executionCompletionArtifacts !== undefined) fail(`manifest obligations[${index}] executionCompletionArtifacts require executionCompletionPath`);
+    obligations.push({ id, ...(executable ? { executable } : {}), ...(argv ? { argv } : {}), ...(cwd ? { cwd } : {}), ...(env ? { env } : {}), ...(bounded("timeoutMs", 600_000) ? { timeoutMs: bounded("timeoutMs", 600_000) } : {}), ...(bounded("maxOutputBytes", 256 * 1024 * 1024) ? { maxOutputBytes: bounded("maxOutputBytes", 256 * 1024 * 1024) } : {}), ...(bounded("maxArtifactBytes", 256 * 1024 * 1024) ? { maxArtifactBytes: bounded("maxArtifactBytes", 256 * 1024 * 1024) } : {}), ...(declaredArtifacts ? { declaredArtifacts } : {}), ...(visualCompositionOraclePath ? { visualCompositionOraclePath } : {}), ...(uiResilienceOraclePath ? { uiResilienceOraclePath } : {}), ...(executionCompletionPath ? { executionCompletionPath } : {}), ...(executionCompletionArtifacts ? { executionCompletionArtifacts } : {}), ...(item.toolVersion === undefined ? {} : { toolVersion: requireString(item.toolVersion, "manifest toolVersion") }) });
   }
   obligations.sort((left, right) => left.id.localeCompare(right.id));
   return { schemaVersion: "verification-manifest/v1", obligations };
@@ -304,9 +390,28 @@ async function assertExistingExternalDirectory(rootDir: string, directory: strin
   const info = await lstat(directory); if (!info.isDirectory() || info.isSymbolicLink()) fail(`${label} must be a real directory`);
 }
 function digest(value: unknown): string { return createHash("sha256").update(canonicalizeJson(value)).digest("hex"); }
-function producer(): Producer { return { kind: "ci", identity: "traceknot-cli", independence: "independent-producer" }; }
+function localProducerFor(obligation: Parameters<NonNullable<VerificationRunDependencies["executor"]["executeObligation"]>>[0]["obligation"]): Producer {
+  if (obligation.visualCompositionRequirement || obligation.uiResilienceRequirement) return { kind: "harness-managed", identity: "traceknot-cli", independence: "separate-verification-context" };
+  return { kind: "deterministic-verifier", identity: "traceknot-cli", independence: "independent-producer" };
+}
 function authorityFor(binding: Parameters<NonNullable<VerificationRunDependencies["executionAuthority"]["issueExecutionAuthority"]>>[0]): ExecutionAuthority {
   return { schemaVersion: "verification-execution-authority/v1", authorityId: `authority:${digest(binding).slice(0, 48)}`, issuer: "traceknot-cli", binding };
+}
+function verifyTrustedAuthority(policy: TrustedProducerPolicy, authority: ExecutionAuthority, binding: VerificationExecutionAuthorityBinding): boolean {
+  if (authority.issuer !== policy.issuer || authority.keyId !== policy.keyId || typeof authority.signature !== "string" || !/^[A-Za-z0-9_-]{86}$/.test(authority.signature) || canonicalizeJson(authority.binding) !== canonicalizeJson(binding)) return false;
+  const expectedId = `ed25519:${policy.keyId}:${createHash("sha256").update(authority.signature).digest("hex")}`;
+  if (authority.authorityId !== expectedId) return false;
+  try {
+    return verifySignature(null, Buffer.from(canonicalizeJson(binding)), createPublicKey(policy.publicKeyPem), Buffer.from(authority.signature, "base64url"));
+  } catch {
+    return false;
+  }
+}
+function validateExecutionCompletion(value: unknown): VerificationExecutionCompletionEnvelope {
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail("execution completion must be an object");
+  const completion = value as Record<string, unknown>;
+  if (completion.schemaVersion !== "verification-execution-completion/v1" || !completion.output || typeof completion.output !== "object" || Array.isArray(completion.output) || !completion.authority || typeof completion.authority !== "object" || Array.isArray(completion.authority)) fail("execution completion fields are invalid");
+  return completion as VerificationExecutionCompletionEnvelope;
 }
 function freshnessAuthorityFor(binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["issueFreshnessAuthority"]>>[0]): FreshnessAuthority {
   return { schemaVersion: "verification-freshness-authority/v1", authorityId: `freshness:${digest(binding).slice(0, 48)}`, issuer: "traceknot-cli", binding };
@@ -326,18 +431,75 @@ function exitForVerdict(value: unknown): number {
   return VERIFY_EXIT_CODES.INCOMPLETE;
 }
 
-async function makeDependencies(options: CliOptions, request: VerificationRequest, manifest: VerifyManifest | undefined, repository: FileVerificationRepository, snapshotId: string): Promise<{ dependencies: VerificationRunDependencies; close: () => Promise<void> }> {
+async function loadLegacyReport(repository: FileVerificationRepository, runId: string, snapshot: Awaited<ReturnType<typeof captureGitSnapshotIdentity>>): Promise<CliReport> {
+  const run = await repository.loadRun(runId);
+  if (!run) fail(`run does not exist: ${runId}`);
+  const metadata = await repository.readMetadata(runId);
+  const request = await repository.loadStageDocument(runId, "request");
+  const verdict = await repository.loadStageDocument(runId, "verdict");
+  if (!request || !verdict) fail("run is missing persisted request or verdict");
+  const project = request && typeof request === "object" && "project" in request ? request.project : undefined;
+  if (!project || typeof project !== "object" || !("rootIdentity" in project) || !("snapshotId" in project) || project.rootIdentity !== snapshot.rootIdentity || project.snapshotId !== snapshot.snapshotId) fail("persisted request does not match the current Git snapshot");
+  if (!metadata || metadata.rootIdentity !== snapshot.rootIdentity || metadata.snapshotId !== snapshot.snapshotId || run.rootIdentity !== snapshot.rootIdentity || run.snapshotId !== snapshot.snapshotId) fail("current Git snapshot or persisted run metadata does not match the persisted run");
+  return { schemaVersion: "traceknot-cli-report/v1", run, verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: { request, basis: await repository.loadStageDocument(runId, "basis"), discovery: await repository.loadStageDocument(runId, "discovery"), plan: await repository.loadStageDocument(runId, "plan"), execution: await repository.loadStageDocument(runId, "execution"), evidence: await repository.loadStageDocument(runId, "evidence"), residualRisk: await repository.loadStageDocument(runId, "residual-risk"), verdict } };
+}
+async function makeDependencies(options: CliOptions, request: VerificationRequest, manifest: VerifyManifest | undefined, repository: FileVerificationRepository, snapshotId: string, trustedPolicy: TrustedProducerPolicy | undefined): Promise<{ dependencies: VerificationRunDependencies; close: () => Promise<void> }> {
   const mainStore = new LocalArtifactStore(options.artifactDir);
   const collectorStore = new LocalArtifactStore(join(options.artifactDir, "collector"));
   const collector = new LocalShellCollector({ rootDir: options.rootDir, rootIdentity: request.project.rootIdentity, snapshotId, artifactStore: collectorStore, toolVersion: "traceknot-cli", envAllowlist: ["HOME", "TMPDIR", "LANG", "LC_ALL"] });
   const commands = new Map((manifest?.obligations ?? []).map(command => [command.id, command]));
-  const executionAuthority = { atomicCanonicalBindingIdempotency: true as const, issueExecutionAuthority: async (binding: Parameters<NonNullable<VerificationRunDependencies["executionAuthority"]["issueExecutionAuthority"]>>[0]) => authorityFor(binding), verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: Parameters<NonNullable<VerificationRunDependencies["executionAuthority"]["verifyExecutionAuthority"]>>[1]) => authority.issuer === "traceknot-cli" && canonicalizeJson(authority.binding) === canonicalizeJson(binding) };
+  const executionAuthority = {
+    atomicCanonicalBindingIdempotency: true as const,
+    issueExecutionAuthority: async (binding: VerificationExecutionAuthorityBinding) => authorityFor(binding),
+    verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: VerificationExecutionAuthorityBinding) => {
+      if (authority.keyId !== undefined || authority.signature !== undefined || authority.issuer !== "traceknot-cli") return trustedPolicy !== undefined && verifyTrustedAuthority(trustedPolicy, authority, binding);
+      return canonicalizeJson(authority.binding) === canonicalizeJson(binding) && binding.producer.identity === "traceknot-cli" && (binding.producer.kind === "deterministic-verifier" || binding.producer.independence !== "independent-producer");
+    },
+  };
   const freshnessAuthority = { atomicSameKeyIdempotency: true as const, issueFreshnessAuthority: async (binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["issueFreshnessAuthority"]>>[0]) => freshnessAuthorityFor(binding), verifyFreshnessAuthority: async (authority: FreshnessAuthority, binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["verifyFreshnessAuthority"]>>[1]) => authority.issuer === "traceknot-cli" && canonicalizeJson(authority.binding) === canonicalizeJson(binding) };
   type ManifestExecutionInput = Parameters<NonNullable<VerificationRunDependencies["executor"]["executeObligation"]>>[0];
+  const completionProvider = {
+    loadExecutionCompletion: async (input: ManifestExecutionInput): Promise<VerificationExecutionCompletionEnvelope | undefined> => {
+      const command = commands.get(input.obligation.id);
+      if (!command?.executionCompletionPath) return undefined;
+      if (command.executable && !trustedPolicy) return undefined;
+      const rawCompletion = await readBoundedJson(command.executionCompletionPath, true);
+      if (rawCompletion === undefined) return undefined;
+      if (!trustedPolicy) throw new Error(`manifest obligation ${input.obligation.id} requires the administrator-installed trusted producer policy`);
+      const completion = validateExecutionCompletion(rawCompletion);
+      const signedBinding = completion.authority.binding;
+      if (!verifyTrustedAuthority(trustedPolicy, completion.authority, signedBinding)
+        || signedBinding.producer.kind !== "external-system"
+        || signedBinding.producer.identity !== trustedPolicy.issuer
+        || signedBinding.producer.independence !== "independent-producer"
+        || canonicalizeJson(completion.output.artifacts ?? []) !== canonicalizeJson(signedBinding.artifacts)) {
+        throw new Error(`manifest obligation ${input.obligation.id} has invalid execution completion authentication`);
+      }
+      if (completion.runId !== input.runId || completion.requestId !== input.requestId || completion.rootIdentity !== input.rootIdentity || completion.snapshotId !== input.snapshotId || completion.planDigest !== input.planDigest || completion.obligationId !== input.obligation.id || completion.idempotencyKey !== input.idempotencyKey
+        || signedBinding.runId !== input.runId || signedBinding.requestId !== input.requestId || signedBinding.requestDigest !== input.requestDigest || signedBinding.planDigest !== input.planDigest || signedBinding.obligationDigest !== input.obligationDigest || signedBinding.rootIdentity !== input.rootIdentity || signedBinding.snapshotId !== input.snapshotId || signedBinding.obligationId !== input.obligation.id || signedBinding.idempotencyKey !== input.idempotencyKey
+        || completion.output.runId !== input.runId || completion.output.requestId !== input.requestId || completion.output.snapshotId !== input.snapshotId || completion.output.idempotencyKey !== input.idempotencyKey) {
+        throw new Error(`manifest obligation ${input.obligation.id} execution completion does not match the current request`);
+      }
+      const artifacts = signedBinding.artifacts;
+      const declarations = command.executionCompletionArtifacts ?? [];
+      const artifactKeys = [...new Set(artifacts.map(artifact => `${artifact.type}\u0000${artifact.digest}`))].sort();
+      const declarationKeys = declarations.map(artifact => `${artifact.type}\u0000${artifact.digest}`).sort();
+      if (canonicalizeJson(artifactKeys) !== canonicalizeJson(declarationKeys) || new Set(declarationKeys).size !== declarationKeys.length) throw new Error(`manifest obligation ${input.obligation.id} execution completion artifacts do not match the signed output: signed=${canonicalizeJson(artifactKeys)} declared=${canonicalizeJson(declarationKeys)}`);
+      for (const declaration of declarations) {
+        if (isInside(options.rootDir, resolve(declaration.path))) throw new Error(`execution completion artifact must be outside the Git repository root: ${declaration.path}`);
+        const bytes = await readBoundedFile(declaration.path, command.maxArtifactBytes ?? 256 * 1024 * 1024);
+        if (createHash("sha256").update(bytes).digest("hex") !== declaration.digest) throw new Error(`execution completion artifact digest does not match: ${declaration.path}`);
+        if (declaration.type === "screenshot") decodePngDimensions(bytes);
+        await mainStore.storeArtifact({ type: declaration.type, digest: declaration.digest, bytes } as Artifact & { bytes: Uint8Array }, input);
+      }
+      return completion;
+    },
+  };
   const executeManifestCommand = async (input: ManifestExecutionInput, executionKind: "command" | "browser"): Promise<VerificationExecutionOutput> => {
     const command = commands.get(input.obligation.id);
     if (!command) throw new Error(`manifest has no command for obligation ${input.obligation.id}`);
-    const observation = await collector.collect({ requestId: input.requestId, snapshotId: input.snapshotId, rootIdentity: input.rootIdentity, observationId: `observation:${input.obligation.id}`, executable: command.executable, ...(command.argv ? { argv: command.argv } : {}), ...(command.cwd ? { cwd: command.cwd } : {}), ...(command.env ? { env: command.env } : {}), ...(command.timeoutMs ? { timeoutMs: command.timeoutMs } : {}), ...(command.maxOutputBytes ? { maxOutputBytes: command.maxOutputBytes } : {}), ...(command.declaredArtifacts ? { declaredArtifacts: command.declaredArtifacts } : {}), ...(command.toolVersion ? { toolVersion: command.toolVersion } : {}), producer: producer() });
+    if (!command.executable) throw new Error(`manifest obligation ${command.id} external completion is unavailable and no executable fallback is configured`);
+    const observation = await collector.collect({ requestId: input.requestId, snapshotId: input.snapshotId, rootIdentity: input.rootIdentity, observationId: `observation:${input.obligation.id}`, executable: command.executable, ...(command.argv ? { argv: command.argv } : {}), ...(command.cwd ? { cwd: command.cwd } : {}), ...(command.env ? { env: command.env } : {}), ...(command.timeoutMs ? { timeoutMs: command.timeoutMs } : {}), ...(command.maxOutputBytes ? { maxOutputBytes: command.maxOutputBytes } : {}), ...(command.maxArtifactBytes ? { maxArtifactBytes: command.maxArtifactBytes } : {}), ...(command.declaredArtifacts ? { declaredArtifacts: command.declaredArtifacts, bestEffortDeclaredArtifactsOnFailure: true } : {}), ...(command.toolVersion ? { toolVersion: command.toolVersion } : {}), producer: localProducerFor(input.obligation) });
     const status = observation.execution.exitStatus === "passed" ? "passed" : observation.execution.exitStatus === "blocked" ? "blocked" : "failed";
     let visualCompositionOracle: VisualCompositionOracle | undefined;
     if (input.obligation.visualCompositionRequirement) {
@@ -350,10 +512,21 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
     } else if (command.visualCompositionOraclePath) {
       throw new Error(`manifest obligation ${command.id} supplies a visual oracle for a non-visual obligation`);
     }
+    let uiResilienceOracle: UiResilienceOracle | undefined;
+    if (input.obligation.uiResilienceRequirement) {
+      if (status === "passed") {
+        if (!command.uiResilienceOraclePath) throw new Error(`manifest obligation ${command.id} requires uiResilienceOraclePath`);
+        const candidate = await readBoundedJson(command.uiResilienceOraclePath);
+        if (!isUiResilienceOracle(candidate)) throw new Error(`manifest obligation ${command.id} UI resilience oracle is invalid`);
+        uiResilienceOracle = candidate;
+      }
+    } else if (command.uiResilienceOraclePath) {
+      throw new Error(`manifest obligation ${command.id} supplies a UI resilience oracle for a non-resilience obligation`);
+    }
     const artifacts: Artifact[] = [];
     for (const artifact of observation.artifacts) {
       const bytes = await collectorStore.readArtifact(artifact.digest);
-      const type = status === "passed" && (artifact.type === "screenshot" || artifact.type === "design-token-resolution" || artifact.type === "approved-visual-reference") ? artifact.type : "verification-result";
+      const type = status === "passed" && (artifact.type === "screenshot" || artifact.type === "design-token-resolution" || artifact.type === "approved-visual-reference" || artifact.type === "ui-applicability-approval" || artifact.type === "ui-full-text-access" || artifact.type === "ui-visual-review-approval-receipt") ? artifact.type : "verification-result";
       if (type === "screenshot") {
         let dimensions: Readonly<{ width: number; height: number }>;
         try {
@@ -381,12 +554,12 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
       }
       artifacts.push(await mainStore.storeArtifact({ type, digest: artifact.digest, path: artifact.path, bytes } as Artifact & { bytes: Uint8Array }, input));
     }
-    return { status, runId: input.runId, requestId: input.requestId, snapshotId: input.snapshotId, idempotencyKey: input.idempotencyKey, producer: observation.producer, summary: `Command ${command.executable} completed with ${observation.execution.exitStatus}.`, artifacts, executionKind, identity: observation.execution.identity, ...(observation.execution.exitCode === undefined ? {} : { exitCode: observation.execution.exitCode }), ...(visualCompositionOracle ? { visualCompositionOracle } : {}) };
+    return { status, runId: input.runId, requestId: input.requestId, snapshotId: input.snapshotId, idempotencyKey: input.idempotencyKey, producer: observation.producer, summary: `Command ${command.executable} completed with ${observation.execution.exitStatus}.`, artifacts, executionKind, identity: observation.execution.identity, ...(observation.execution.exitCode === undefined ? {} : { exitCode: observation.execution.exitCode }), ...(visualCompositionOracle ? { visualCompositionOracle } : {}), ...(uiResilienceOracle ? { uiResilienceOracle } : {}) };
   };
   const executor = { atomicSameKeyIdempotency: true as const, executeObligation: (input: ManifestExecutionInput) => executeManifestCommand(input, "command") };
   const browserExecutor = { atomicSameKeyIdempotency: true as const, executeBrowser: (input: ManifestExecutionInput) => executeManifestCommand(input, "browser") };
   const artifactStore = { atomicSameKeyIdempotency: true as const, storeArtifact: async (artifact: Artifact, input: ManifestExecutionInput) => { const content = (artifact as Artifact & { bytes?: Uint8Array }).bytes; if (!content) { if (!await mainStore.hasArtifact(artifact.digest)) throw new Error(`artifact ${artifact.digest} was not published`); return artifact; } return mainStore.storeArtifact(artifact as Artifact & { bytes: Uint8Array }, input); } };
-  const dependencies: VerificationRunDependencies = { repository, executor, browserExecutor, artifactStore, capabilityProvider: { has: () => true }, executionAuthority, freshnessPolicy: { evaluateFreshness: () => "fresh" }, freshnessAuthority, snapshotVerifier: async () => { const current = await captureGitSnapshotIdentity(options.rootDir); return current.rootIdentity === request.project.rootIdentity && current.snapshotId === request.project.snapshotId; }, now: () => new Date() };
+  const dependencies: VerificationRunDependencies = { repository, executor, browserExecutor, artifactStore, capabilityProvider: { has: () => true }, executionAuthority, freshnessPolicy: { evaluateFreshness: () => "fresh" }, freshnessAuthority, completionProvider, snapshotVerifier: async () => { const current = await captureGitSnapshotIdentity(options.rootDir); return current.rootIdentity === request.project.rootIdentity && current.snapshotId === request.project.snapshotId; }, now: () => new Date() };
   return { dependencies, close: async () => { await collectorStore.close(); await mainStore.close(); await repository.close(); } };
 }
 
@@ -400,7 +573,7 @@ async function loadReport(repository: FileVerificationRepository, runId: string,
   return { schemaVersion: "traceknot-cli-report/v1", run, verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: { request, basis: await repository.loadStageDocument(runId, "basis"), discovery: await repository.loadStageDocument(runId, "discovery"), plan: await repository.loadStageDocument(runId, "plan"), execution: await repository.loadStageDocument(runId, "execution"), evidence: await repository.loadStageDocument(runId, "evidence"), residualRisk: await repository.loadStageDocument(runId, "residual-risk"), verdict } };
 }
 
-export async function runVerify(argv: readonly string[], stdout: (text: string) => void = text => process.stdout.write(text), stderr: (text: string) => void = text => process.stderr.write(text)): Promise<number> {
+export async function runVerify(argv: readonly string[], stdout: (text: string) => void = text => process.stdout.write(text), stderr: (text: string) => void = text => process.stderr.write(text), system: Readonly<{ readTrustedProducerPolicy?: () => Promise<unknown> }> = {}): Promise<number> {
   let options: CliOptions;
   try { options = parseArgs(argv); } catch (error) { stderr(`${String(error instanceof Error ? error.message : error)}\n${usage()}\n`); return VERIFY_EXIT_CODES.USAGE; }
   if (options.help) { stdout(`${usage()}\n`); return VERIFY_EXIT_CODES.PASS; }
@@ -421,13 +594,35 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
     }
     const repository = new FileVerificationRepository(options.stateDir);
     const requestInput = options.requestPath ? validateRequest(await readBoundedJson(options.requestPath)) : undefined;
+    const trustedPolicy = await loadTrustedProducerPolicy(system.readTrustedProducerPolicy);
     const runId = options.runId ?? requestInput?.requestId;
     if (!runId || !SAFE_ID.test(runId)) fail("--run-id or request.requestId is required");
     if (options.reportOnly) {
       if (requestInput || options.manifestPath) fail("--report-only cannot be combined with --request or --manifest");
-      const report = await loadReport(repository, runId, snapshot);
+      const persistedRequestValue = await repository.loadStageDocument(runId, "request");
+      if (persistedRequestValue === undefined) fail("run is missing persisted request");
+      const metadata = await repository.readMetadata(runId);
+      if (!metadata?.capabilities.includes("authenticated-execution-authority")) {
+        const report = await loadLegacyReport(repository, runId, snapshot);
+        stdout(reportOutput(report, options.format));
+        return exitForVerdict(report.verdict);
+      }
+      const persistedRequest = validateRequest(persistedRequestValue);
+      if (metadata.rootIdentity !== snapshot.rootIdentity || metadata.snapshotId !== snapshot.snapshotId || persistedRequest.project.rootIdentity !== snapshot.rootIdentity || persistedRequest.project.snapshotId !== snapshot.snapshotId) fail("current Git snapshot or persisted run metadata does not match the persisted run");
+      const executionAuthority = {
+        atomicCanonicalBindingIdempotency: true as const,
+        issueExecutionAuthority: async (binding: VerificationExecutionAuthorityBinding) => authorityFor(binding),
+        verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: VerificationExecutionAuthorityBinding) => {
+          if (authority.keyId !== undefined || authority.signature !== undefined || authority.issuer !== "traceknot-cli") return trustedPolicy !== undefined && verifyTrustedAuthority(trustedPolicy, authority, binding);
+          return canonicalizeJson(authority.binding) === canonicalizeJson(binding) && binding.producer.identity === "traceknot-cli" && (binding.producer.kind === "deterministic-verifier" || binding.producer.independence !== "independent-producer");
+        },
+      };
+      const freshnessAuthority = { atomicSameKeyIdempotency: true as const, issueFreshnessAuthority: async (binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["issueFreshnessAuthority"]>>[0]) => freshnessAuthorityFor(binding), verifyFreshnessAuthority: async (authority: FreshnessAuthority, binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["verifyFreshnessAuthority"]>>[1]) => authority.issuer === "traceknot-cli" && canonicalizeJson(authority.binding) === canonicalizeJson(binding) };
+      const dependencies: VerificationRunDependencies = { repository, executor: {}, artifactStore: {}, capabilityProvider: { has: () => false }, executionAuthority, freshnessPolicy: { evaluateFreshness: () => "unknown" }, freshnessAuthority, snapshotVerifier: async () => { const current = await captureGitSnapshotIdentity(options.rootDir); return current.rootIdentity === persistedRequest.project.rootIdentity && current.snapshotId === persistedRequest.project.snapshotId; }, now: () => new Date() };
+      const result = await validatePersistedVerificationRun({ runId, request: persistedRequest, dependencies });
+      const report: CliReport = { schemaVersion: "traceknot-cli-report/v1", run: result.run, verdict: result.verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: result.documents };
       stdout(reportOutput(report, options.format));
-      return exitForVerdict(report.verdict);
+      return exitForVerdict(result.verdict);
     }
     if (!requestInput || !options.manifestPath) fail("--request and --manifest are required unless --report-only is used");
     const request = { ...requestInput, project: { ...requestInput.project, rootIdentity: requestInput.project.rootIdentity === "auto" ? snapshot.rootIdentity : requestInput.project.rootIdentity, snapshotId: requestInput.project.snapshotId === "auto" ? snapshot.snapshotId : requestInput.project.snapshotId } } satisfies VerificationRequest;
@@ -446,9 +641,9 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
     if (existingRun) {
       if (!existingMetadata || existingMetadata.rootIdentity !== snapshot.rootIdentity || existingMetadata.snapshotId !== snapshot.snapshotId || existingMetadata.manifestDigest !== manifestDigest) fail("resume configuration or Git snapshot does not match the persisted run");
     } else {
-      await repository.writeMetadata(runId, { schemaVersion: "traceknot-cli-state/v1", rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, manifestDigest, capabilities: ["command", "browser-execution", "visual-composition", "test-result", "experiment", "review", "static-analysis", "build-result", "scenario-result"] });
+      await repository.writeMetadata(runId, { schemaVersion: "traceknot-cli-state/v1", rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, manifestDigest, capabilities: ["authenticated-execution-authority", "command", "browser-execution", "visual-composition", "test-result", "experiment", "review", "static-analysis", "build-result", "scenario-result"] });
     }
-    const dependenciesResult = await makeDependencies(options, request, manifest, repository, snapshot.snapshotId); stores = dependenciesResult;
+    const dependenciesResult = await makeDependencies(options, request, manifest, repository, snapshot.snapshotId, trustedPolicy); stores = dependenciesResult;
     const result = await runVerification({ runId, request, dependencies: dependenciesResult.dependencies });
     const report: CliReport = { schemaVersion: "traceknot-cli-report/v1", run: result.run, verdict: result.verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: result.documents };
     stdout(reportOutput(report, options.format));

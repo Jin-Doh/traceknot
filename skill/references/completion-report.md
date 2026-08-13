@@ -32,6 +32,17 @@ For a significant UI change, include a separate **Visual-composition coverage** 
 
 Functional, accessibility, overflow, interaction, and route-reachability coverage MUST be reported separately. Those checks alone do not establish visual-composition coverage.
 
+For a significant UI change, also include a separate **UI content-resilience coverage** subsection. It MUST state:
+
+- the affected surface capability inventory and resulting profile applicability decisions;
+- required, unknown, and approved not-applicable profiles, with approval artifact digests;
+- the surface, state, viewport, profile, fixture, and region overflow policy for each required run;
+- geometry, clipping-ancestor, paint-feature, screenshot, and full-text-access evidence;
+- any human visual review outcome, producer, and independently authenticated approval-receipt artifact;
+- missing runs or artifacts and the resulting non-PASS disposition.
+
+Visual composition, content resilience, functional behavior, accessibility, interaction, and route reachability are separate coverage families. Passing one MUST NOT imply another.
+
 ## Verdict precedence
 
 1. `FAIL`: failed mandatory obligation or unaccepted material defect.

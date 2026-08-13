@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import Ajv2020 from "ajv/dist/2020.js";
 import type { Artifact } from "../core/qa-core";
 import type { VisualCompositionOracle } from "../core/visual-composition";
+import { type UiApplicabilityApprovalReceipt, type UiApplicabilityApprovalSubject, type UiProfileEvidence, type UiResilienceOracle, type UiResilienceProfile } from "../core/ui-resilience";
 import {
   buildVerificationPlan,
   DispatchClaimAcquisitionError,
@@ -182,6 +183,10 @@ function makeCompositionRequest(requestId = "request-visual-composition"): Verif
         { id: "mobile", width: 390, height: 844, devicePixelRatio: 3 },
       ],
     },
+    uiResilience: (() => {
+      const scope = makeResilienceRequest(requestId).uiResilience!;
+      return { ...scope, basisIds: ["basis-layout"], surfaces: scope.surfaces.map(surface => ({ ...surface, regions: surface.regions.map(region => ({ ...region, basisIds: ["basis-layout"] })), profileApplicability: surface.profileApplicability.map(profile => ({ ...profile, basisIds: ["basis-layout"], ...(profile.approvalReceipt === undefined ? {} : { approvalReceipt: { ...profile.approvalReceipt, basisIds: ["basis-layout"] } }) })) })) };
+    })(),
   };
 }
 
@@ -230,6 +235,91 @@ function makeCompositionOracle(request: VerificationExecutionRequest, producer: 
     blockingReasons: options.visualBlocking ? ["token service unavailable"] : [],
   };
 }
+const resilienceProfiles: readonly UiResilienceProfile[] = ["text-overflow", "resize-text-200", "reflow-320", "text-spacing-wcag", "pseudo-localization", "rtl", "reduced-motion", "hover-focus-content"];
+function resilienceApprovalReceipt(requestId: string, profile: UiResilienceProfile, basisId = "basis-content"): UiApplicabilityApprovalReceipt {
+  const rationale = `${profile} capability is absent.`;
+  return { schemaVersion: "ui-applicability-approval-receipt/v1", receiptId: `receipt:${profile}`, issuer: "fixture-applicability-authority", keyId: "fixture-key", requestId, snapshotId: SNAPSHOT_ID, conditionId: "condition:request-ui-resilience", surfaceId: "catalog", profile, basisIds: [basisId], rationale, signature: `signed:${profile}` };
+}
+function makeResilienceRequest(requestId = "request-ui-resilience"): VerificationRequest {
+  const required = new Set<UiResilienceProfile>(["text-overflow", "resize-text-200", "text-spacing-wcag"]);
+  return {
+    ...makeRequest(requestId),
+    change: { summary: "Keep catalog labels readable under content stress.", paths: ["frontend/catalog.tsx"] },
+    testBasis: [{ id: "basis-content", kind: "acceptance-criterion", origin: "explicit", text: "Catalog labels remain fully readable without unintended clipping." }],
+    uiResilience: {
+      schemaVersion: "ui-resilience-scope/v1",
+      decision: "required",
+      basisIds: ["basis-content"],
+      rationale: "The rendered text surface accepts variable user and localized content.",
+      viewports: [{ id: "desktop", width: 1440, height: 900 }],
+      surfaces: [{
+        surfaceId: "catalog",
+        stateIds: ["populated"],
+        viewportIds: ["desktop"],
+        capabilities: ["rendered-text"],
+        fixtures: [
+          { fixtureId: "representative", kind: "representative", contentDigest: "1".repeat(64) },
+          { fixtureId: "natural", kind: "long-natural-language", contentDigest: "2".repeat(64) },
+          { fixtureId: "token", kind: "long-unbroken-token", contentDigest: "3".repeat(64) },
+        ],
+        regions: [{ regionId: "label", policy: "no-overflow", basisIds: ["basis-content"] }],
+        profileApplicability: resilienceProfiles.map(profile => {
+          if (required.has(profile)) return { profile, status: "required" as const, basisIds: ["basis-content"], rationale: `${profile} applies to rendered text.` };
+          const approvalReceipt = resilienceApprovalReceipt(requestId, profile);
+          return { profile, status: "not-applicable" as const, basisIds: ["basis-content"], rationale: approvalReceipt.rationale, approvalReceipt };
+        }),
+      }],
+    },
+  };
+}
+function resilienceProfileEvidence(profile: UiResilienceProfile): UiProfileEvidence {
+  if (profile === "text-overflow") return { profile };
+  if (profile === "resize-text-200") return { profile, textScalePercent: 200 };
+  if (profile === "text-spacing-wcag") return { profile, lineHeightRatio: 1.5, paragraphSpacingRatio: 2, letterSpacingRatio: 0.12, wordSpacingRatio: 0.16, onlySpacingPropertiesChanged: true };
+  throw new Error(`unexpected resilience profile ${profile}`);
+}
+function makeResilienceOracle(request: VerificationExecutionRequest, producer: UiResilienceOracle["producer"]): UiResilienceOracle {
+  const requirement = request.obligation.uiResilienceRequirement;
+  if (!requirement) throw new Error("resilience fixture received a non-resilience obligation");
+  return {
+    schemaVersion: "ui-resilience-oracle/v1",
+    oracleId: `oracle:${request.runId}`,
+    requestId: request.requestId,
+    snapshotId: request.snapshotId,
+    conditionId: requirement.conditionId,
+    producer,
+    runs: requirement.requiredRuns.map((run, index) => ({
+      runId: `resilience-run-${index}`,
+      surfaceId: run.surfaceId,
+      stateId: run.stateId,
+      viewportId: run.viewportId,
+      viewport: requirement.viewports.find(viewport => viewport.id === run.viewportId)!,
+      profile: run.profile,
+      fixtureId: run.fixtureId,
+      fixtureContentDigest: run.fixtureContentDigest,
+      browser: "Chromium 140",
+      userAgent: "fixture-browser",
+      profileEvidence: resilienceProfileEvidence(run.profile),
+      observations: run.regions.map(region => ({
+        observationId: `resilience-observation-${index}-${region.regionId}`,
+        regionId: region.regionId,
+        policy: region.policy,
+        clientWidth: 320,
+        clientHeight: 40,
+        scrollWidth: 320,
+        scrollHeight: 40,
+        fragmentRects: [{ x: 0, y: 0, width: 300, height: 20 }],
+        clippingAncestors: [],
+        paintFeatures: [],
+        renderedLineCount: 1,
+        contentTruncated: false,
+        truncationIndicatorVisible: false,
+        screenshotDigest: new Bun.CryptoHasher("sha256").update(`resilience:${index}:${region.regionId}`).digest("hex"),
+      })),
+    })),
+    blockingReasons: [],
+  };
+}
 
 function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRepository): FakeDependencies {
   const repository = repositoryOverride ?? new FakeRepository();
@@ -250,10 +340,15 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
       if (options.missingBrowserOutput) return undefined;
       const producer = { kind: options.producerKind ?? "deterministic-verifier", identity: "fixture-browser", independence: options.producerIndependence ?? "independent-producer" } as const;
       const visualCompositionOracle = options.visualCompositionOracle && request.obligation.visualCompositionRequirement ? makeCompositionOracle(request, options.mismatchedOracleProducer ? { ...producer, identity: "other-browser" } : producer, options) : undefined;
+      const uiResilienceOracle = request.obligation.uiResilienceRequirement ? makeResilienceOracle(request, producer) : undefined;
       const screenshotArtifacts: Artifact[] = visualCompositionOracle
         ? visualCompositionOracle.captures.flatMap(capture => capture.screenshots.filter(screenshot => !options.omitStoredScreenshot || screenshot.role === "full-page").map(screenshot => ({ type: "screenshot" as const, digest: screenshot.digest })))
         : [];
       if (visualCompositionOracle) screenshotArtifacts.push({ type: "design-token-resolution", digest: TOKEN_RESOLUTION_DIGEST });
+      if (uiResilienceOracle) {
+        screenshotArtifacts.push(...uiResilienceOracle.runs.flatMap(run => run.observations.map(observation => ({ type: "screenshot" as const, digest: observation.screenshotDigest }))));
+        screenshotArtifacts.push(...request.obligation.uiResilienceRequirement!.applicabilityApprovals.map(approval => ({ type: "ui-applicability-approval" as const, digest: approval.approvalArtifactDigest })));
+      }
       return {
         status: options.browserStatus ?? "PASS",
         runId: request.runId,
@@ -263,6 +358,7 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
         producer,
         artifacts: [{ type: "verification-result", digest: "b".repeat(64) }, ...screenshotArtifacts],
         ...(visualCompositionOracle ? { visualCompositionOracle } : {}),
+        ...(uiResilienceOracle ? { uiResilienceOracle } : {}),
       };
     },
   } as unknown as BrowserExecutor;
@@ -319,6 +415,7 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
     freshnessPolicy: { evaluateFreshness: async () => "fresh" as const },
     repository: repository as unknown as RepositoryPort,
     executor,
+    uiApplicabilityApprovalVerifier: { independentAuthentication: true, verifyApproval: async () => true },
     artifactStore,
     capabilityProvider,
     browserExecutor: browser,
@@ -333,6 +430,26 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
 async function runOnce(dependencies: VerificationRunDependencies, runId = RUN_ID, requestId = REQUEST_ID): Promise<Awaited<ReturnType<typeof runVerification>>> {
   const input = { runId, request: makeRequest(requestId), dependencies, now: FIXED_NOW } as unknown as RunInput;
   return runVerification(input);
+}
+
+async function makeSignedExternalCompletion(runId: string): Promise<{ request: VerificationRequest; completion: VerificationExecutionCompletionEnvelope }> {
+  const request = { ...makeRequest(`${runId}-request`), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+  const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
+  const fakes = makeDependencies({}, new FakeRepository(store));
+  await runVerification({ runId, request, dependencies: fakes.dependencies });
+  const completion = [...store.dispatchClaims.values()][0]?.completion;
+  if (!completion) throw new Error("missing fixture completion envelope");
+  return {
+    request,
+    completion: {
+      ...completion,
+      authority: {
+        ...completion.authority,
+        keyId: "e".repeat(64),
+        signature: "fixture-signature",
+      },
+    },
+  };
 }
 
 function reorderObjectKeysDeep<T>(value: T): T {
@@ -1463,7 +1580,7 @@ describe("verification run orchestration", () => {
       ...makeRequest("composition-scope-required"),
       change: { summary: "Adjust section spacing.", paths: ["frontend/catalog.tsx"], uiImpact: "significant" },
     } satisfies VerificationRequest;
-    await expect(establishTestBasis({ request, dependencies: makeDependencies().dependencies })).rejects.toThrow("must declare visual composition scope");
+    await expect(establishTestBasis({ request, dependencies: makeDependencies().dependencies })).rejects.toThrow("must declare visual composition and UI resilience scopes");
     const schema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verification-request.schema.json`).text()) as object;
     const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
     expect(validate(request)).toBe(false);
@@ -1509,6 +1626,73 @@ describe("verification run orchestration", () => {
     const compositionAuthority = result.documents.execution?.authorities.find(item => item.binding.obligationId.includes("visual-composition"));
     expect(compositionEvidence?.visualCompositionOracleDigest).toMatch(/^[a-f0-9]{64}$/);
     expect(compositionAuthority?.binding.visualCompositionOracleDigest).toBe(compositionEvidence?.visualCompositionOracleDigest);
+  });
+  test("plans, evaluates, and authority-binds deterministic UI resilience evidence", async () => {
+    const request = makeResilienceRequest("ui-resilience-runtime-pass");
+    const fakes = makeDependencies();
+    const producer = { kind: "deterministic-verifier", identity: "resilience-browser", independence: "independent-producer" } as const;
+    const browserExecutor: BrowserExecutor = {
+      atomicSameKeyIdempotency: true,
+      executeBrowser: async executionRequest => {
+        const oracle = executionRequest.obligation.uiResilienceRequirement ? makeResilienceOracle(executionRequest, producer) : undefined;
+        const artifacts: Artifact[] = [{ type: "verification-result", digest: "9".repeat(64) }];
+        if (oracle) {
+          artifacts.push(...oracle.runs.flatMap(run => run.observations.map(observation => ({ type: "screenshot" as const, digest: observation.screenshotDigest }))));
+          artifacts.push(...executionRequest.obligation.uiResilienceRequirement!.applicabilityApprovals.map(approval => ({ type: "ui-applicability-approval" as const, digest: approval.approvalArtifactDigest })));
+        }
+        return { status: "PASS", runId: executionRequest.runId, requestId: executionRequest.requestId, snapshotId: executionRequest.snapshotId, idempotencyKey: executionRequest.idempotencyKey, producer, artifacts, ...(oracle ? { uiResilienceOracle: oracle } : {}) };
+      },
+    };
+    const result = await runVerification({ runId: "ui-resilience-runtime-pass", request, dependencies: { ...fakes.dependencies, browserExecutor } });
+    expect(result.verdict.qaVerdict).toBe("PASS");
+    const resilienceEvidence = result.documents.execution?.evidence.find(item => item.obligationId.includes("ui-resilience"));
+    const resilienceAuthority = result.documents.execution?.authorities.find(item => item.binding.obligationId.includes("ui-resilience"));
+    const evidenceSchema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/evidence.schema.json`).text()) as object;
+    expect(resilienceEvidence?.uiResilienceOracleDigest).toMatch(/^[a-f0-9]{64}$/);
+    expect(resilienceAuthority?.binding.uiResilienceOracleDigest).toBe(resilienceEvidence?.uiResilienceOracleDigest);
+    const basis = await establishTestBasis({ request, dependencies: fakes.dependencies });
+    const discovery = await performRiskDiscovery({ request, basis, dependencies: fakes.dependencies });
+    const plan = await buildVerificationPlan({ request, basis, discovery, dependencies: fakes.dependencies });
+    const requestSchema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verification-request.schema.json`).text()) as object;
+    const planSchema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verification-plan.schema.json`).text()) as object;
+    const ajv = new Ajv2020({ allErrors: true, strict: true });
+    expect(ajv.compile(requestSchema)(request)).toBe(true);
+    expect(ajv.compile(planSchema)(plan)).toBe(true);
+    expect(ajv.compile(evidenceSchema)(resilienceEvidence)).toBe(true);
+  });
+
+  test("authenticates each applicability approval against its complete request-bound subject", async () => {
+    const request = makeResilienceRequest("ui-applicability-subject-binding");
+    const fakes = makeDependencies();
+    const subjects: UiApplicabilityApprovalSubject[] = [];
+    const result = await runVerification({
+      runId: "ui-applicability-subject-binding",
+      request,
+      dependencies: {
+        ...fakes.dependencies,
+        uiApplicabilityApprovalVerifier: {
+          independentAuthentication: true,
+          verifyApproval: async subject => {
+            subjects.push(subject);
+            return subject.profile !== "rtl";
+          },
+        },
+      },
+    });
+    expect(subjects.length).toBeGreaterThan(0);
+    expect(subjects.every(subject =>
+      subject.requestId === request.requestId
+      && subject.snapshotId === request.project.snapshotId
+      && subject.conditionId === "condition:request-ui-resilience"
+      && subject.surfaceId === "catalog"
+      && subject.basisIds.length === 1
+      && subject.approvalReceipt.requestId === subject.requestId
+      && subject.approvalReceipt.snapshotId === subject.snapshotId
+      && subject.approvalReceipt.profile === subject.profile
+    )).toBe(true);
+    expect(result.verdict.qaVerdict).not.toBe("PASS");
+    const resilienceEvidence = result.documents.execution?.evidence.find(item => item.obligationId.includes("ui-resilience"));
+    expect(resilienceEvidence?.result.summary).toContain("APPLICABILITY_APPROVAL_UNAUTHENTICATED:catalog:rtl");
   });
 
   test("evaluates a blocked executor oracle and preserves assertion failure precedence", async () => {
@@ -3018,6 +3202,126 @@ describe("verification run orchestration", () => {
     expect(executionAuthorityIssues).toBe(1);
     expect(resumed.documents.execution?.authorities[0]).toEqual(persistedCompletion.authority);
     expect(resumed.documents.execution?.observations[0]?.artifacts).toEqual(persistedCompletion.output.artifacts);
+  });
+  test("imports a signed external completion durably and replays it without calling the provider again", async () => {
+    const runId = "external-completion-replay";
+    const { request, completion } = await makeSignedExternalCompletion(runId);
+    const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
+    class CrashAfterExternalCompleteRepository extends FakeRepository {
+      crash = true;
+      override async completeExecutionDispatch(claim: DispatchClaim, value: VerificationExecutionCompletionEnvelope | undefined, now = FIXED_NOW) {
+        const completed = await super.completeExecutionDispatch(claim, value, now);
+        if (this.crash) {
+          this.crash = false;
+          throw new Error("simulated external completion crash");
+        }
+        return completed;
+      }
+    }
+    const repository = new CrashAfterExternalCompleteRepository(store);
+    const fakes = makeDependencies({}, repository);
+    let providerCalls = 0;
+    let executorCalls = 0;
+    const dependencies = {
+      ...fakes.dependencies,
+      completionProvider: { loadExecutionCompletion: async () => { providerCalls++; return completion; } },
+      executionAuthority: {
+        atomicCanonicalBindingIdempotency: true as const,
+        verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]) =>
+          authority.keyId === completion.authority.keyId
+          && authority.signature === completion.authority.signature
+          && JSON.stringify(authority.binding) === JSON.stringify(binding),
+      },
+      executor: { atomicSameKeyIdempotency: true as const, executeObligation: async () => { executorCalls++; throw new Error("local executor must not run"); } },
+    } as unknown as VerificationRunDependencies;
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("simulated external completion crash");
+    expect(providerCalls).toBe(1);
+    expect(executorCalls).toBe(0);
+    expect([...store.dispatchClaims.values()][0]).toMatchObject({ status: "COMPLETED", outputStored: true });
+    const resumed = await runVerification({ runId, dependencies });
+    expect(resumed.verdict.qaVerdict).toBe("PASS");
+    expect(providerCalls).toBe(1);
+    expect(executorCalls).toBe(0);
+    expect(resumed.documents.execution?.authorities[0]).toEqual(completion.authority);
+  });
+
+  test("releases an imported completion claim when durable completion fails before persistence", async () => {
+    const runId = "external-completion-persistence-failure";
+    const { request, completion } = await makeSignedExternalCompletion(runId);
+    class FailBeforeCompleteRepository extends FakeRepository {
+      override async completeExecutionDispatch(): Promise<boolean> {
+        throw new Error("completion storage unavailable");
+      }
+    }
+    const repository = new FailBeforeCompleteRepository();
+    const fakes = makeDependencies({}, repository);
+    const dependencies = {
+      ...fakes.dependencies,
+      completionProvider: { loadExecutionCompletion: async () => completion },
+      executionAuthority: {
+        atomicCanonicalBindingIdempotency: true as const,
+        verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]) =>
+          authority.signature === completion.authority.signature
+          && JSON.stringify(authority.binding) === JSON.stringify(binding),
+      },
+    } as unknown as VerificationRunDependencies;
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("completion storage unavailable");
+    expect(repository.dispatchClaims.size).toBe(0);
+  });
+
+  test("rejects tampered external completion bindings and signatures and releases their claims", async () => {
+    const runId = "external-completion-tamper";
+    const { request, completion } = await makeSignedExternalCompletion(runId);
+    const candidates: VerificationExecutionCompletionEnvelope[] = [
+      { ...completion, authority: { ...completion.authority, binding: { ...completion.authority.binding, snapshotId: "substituted-snapshot" } } },
+      { ...completion, authority: { ...completion.authority, signature: "tampered-signature" } },
+    ];
+    for (const candidate of candidates) {
+      const repository = new FakeRepository();
+      const fakes = makeDependencies({}, repository);
+      const dependencies = {
+        ...fakes.dependencies,
+        completionProvider: { loadExecutionCompletion: async () => candidate },
+        executionAuthority: {
+          atomicCanonicalBindingIdempotency: true as const,
+          verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]) =>
+            authority.signature === completion.authority.signature
+            && JSON.stringify(authority.binding) === JSON.stringify(binding),
+        },
+      } as unknown as VerificationRunDependencies;
+      await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("invalid external execution completion");
+      expect(repository.dispatchClaims.size).toBe(0);
+    }
+  });
+
+  test("rejects external completion without a trust verifier and releases the claim", async () => {
+    const runId = "external-completion-no-trust";
+    const { request, completion } = await makeSignedExternalCompletion(runId);
+    const repository = new FakeRepository();
+    const fakes = makeDependencies({}, repository);
+    const dependencies = {
+      ...fakes.dependencies,
+      completionProvider: { loadExecutionCompletion: async () => completion },
+      executionAuthority: { atomicCanonicalBindingIdempotency: true },
+    } as unknown as VerificationRunDependencies;
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("invalid external execution completion");
+    expect(repository.dispatchClaims.size).toBe(0);
+  });
+
+  test("releases the dispatch claim when the external completion provider fails", async () => {
+    const runId = "external-completion-provider-failure";
+    const request = { ...makeRequest(`${runId}-request`), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    const repository = new FakeRepository();
+    const fakes = makeDependencies({}, repository);
+    const failingDependencies = {
+      ...fakes.dependencies,
+      completionProvider: { loadExecutionCompletion: async () => { throw new Error("provider unavailable"); } },
+    } as unknown as VerificationRunDependencies;
+    await expect(runVerification({ runId, request, dependencies: failingDependencies })).rejects.toThrow("provider unavailable");
+    expect(repository.dispatchClaims.size).toBe(0);
+    const recovered = await runVerification({ runId, dependencies: fakes.dependencies });
+    expect(recovered.run.state).toBe("TERMINAL");
+    expect(recovered.verdict.qaVerdict).toBe("PASS");
   });
   test("rejects a mutated persisted completion envelope before replay", async () => {
     const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };

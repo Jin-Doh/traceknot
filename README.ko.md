@@ -156,9 +156,15 @@ Portable Skill과 호스트 중립 코어는 지금 사용할 수 있습니다. 
 traceknot verify --request request.json --manifest manifest.json --root .
 ```
 
-요청은 현재 Git의 `rootIdentity`와 `snapshotId`를 지정해야 하며, 두 필드 모두 리터럴 `auto`를 사용할 수 있습니다. `verification-manifest/v1` manifest는 생성된 각 obligation에 절대 경로 executable 하나와 argument 배열을 연결합니다. Shell 문자열 보간은 거부됩니다.
+요청은 현재 Git의 `rootIdentity`와 `snapshotId`를 지정해야 하며, 두 필드 모두 리터럴 `auto`를 사용할 수 있습니다. `verification-manifest/v1` manifest는 생성된 각 obligation에 절대 경로 executable과 argument 배열, 절대 경로 `executionCompletionPath`, 또는 둘 다를 연결합니다. Shell 문자열 보간은 거부됩니다.
+
+CLI의 로컬 collector는 하네스가 관리하는 별도 검증 컨텍스트(`separate-verification-context`) producer입니다. 자체 명령 결과나 호출자가 제공한 oracle 파일에 `independent-producer` 출처를 부여하지 않습니다. 따라서 독립 증거가 필요한 R2/R3 또는 중대한 UI obligation은 이러한 입력만으로 통과할 수 없습니다.
 
 Visual-composition obligation에는 절대 경로 `visualCompositionOraclePath`를 지정하고, 각 screenshot, design-token-resolution 또는 approved-visual-reference artifact의 원래 `type`, `digest`, `path`를 선언해야 합니다. CLI는 oracle을 검증하고 선언된 artifact를 안전하게 수집하며 증거 유형을 보존합니다. Screenshot 증거는 디코딩 가능한 PNG여야 합니다. Whole-page 크기는 capture viewport와 device-pixel ratio에 맞아야 하고, focused-region 크기는 연결된 measured region을 포함해야 합니다.
+
+UI content-resilience obligation에는 절대 경로 `uiResilienceOraclePath`를 지정합니다. Screenshot, `ui-applicability-approval`, `ui-full-text-access`, `ui-visual-review-approval-receipt` artifact의 원래 type, digest, path를 선언해야 합니다. 요청의 surface capability inventory가 필수 profile을 결정하며, 적용하지 않는 profile마다 저장된 승인 artifact가 필요합니다. Paint 단계의 사람 검토는 독립적으로 인증된 receipt가 있어야 `PASS`에 기여할 수 있습니다.
+
+독립 producer는 obligation의 절대 경로 `executionCompletionPath`를 통해 `verification-execution-completion/v1` envelope를 반환할 수 있습니다. Envelope는 정확한 request, plan, obligation, snapshot, idempotency key, output, artifact, oracle digest에 결합되어야 합니다. 서명된 각 artifact는 `executionCompletionArtifacts`에 type, digest, Git root 밖의 절대 handoff 경로와 함께 한 번씩 선언합니다. Traceknot은 서명된 artifact 집합을 먼저 인증한 뒤 해당 byte를 안전하게 읽고 hash를 검증해 새로운 artifact store에 게시합니다. Envelope는 root 소유의 `/etc/traceknot/trusted-producer.json` 정책(`trusted-producer-policy/v1`)에 대해 Ed25519 서명이 검증될 때만 허용됩니다. 정책은 일반 파일이어야 하며 group 또는 world 쓰기 권한이 없어야 합니다. 잘못되었거나 대체되었거나 서명되지 않았거나 신뢰할 수 없거나 byte가 없거나 digest가 일치하지 않는 입력은 fail-closed로 처리되며, 호출자가 작성한 독립 출처로 fallback하지 않습니다.
 
 기본 출력은 기계 판독용 JSON입니다. 사람이 읽는 보고서는 `--format markdown`, 명령을 다시 실행하지 않고 terminal run을 읽으려면 `--report-only --run-id ID`를 사용합니다. Exit code는 `PASS` 또는 `PASS_WITH_ACCEPTED_RISK`일 때 `0`, `FAIL`은 `1`, `BLOCKED`는 `2`, `INCOMPLETE`는 `3`, 잘못된 입력은 `64`, 내부 오류는 `70`입니다.
 

@@ -105,6 +105,12 @@ export class ArtifactPathError extends ArtifactStoreError {
     this.name = "ArtifactPathError";
   }
 }
+export class ArtifactNotFoundError extends ArtifactPathError {
+  constructor(message: string) {
+    super(message);
+    this.name = "ArtifactNotFoundError";
+  }
+}
 
 function native(): Native {
   if (!NATIVE) throw new ArtifactPathError(`artifact storage is unsupported on platform ${process.platform}`);
@@ -121,7 +127,9 @@ function cstring(value: string): Buffer {
 }
 function check(result: number, action: string): number {
   if (result >= 0) return result;
-  throw new ArtifactPathError(`${action} failed (errno ${errno()})`);
+  const error = errno();
+  if (error === 2) throw new ArtifactNotFoundError(`${action} failed (errno ${error})`);
+  throw new ArtifactPathError(`${action} failed (errno ${error})`);
 }
 export type SecureRootDescriptor = Readonly<{
   readonly rootDir: string;

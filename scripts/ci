@@ -116,5 +116,4 @@ if [ "$SELF_HOSTED_INNER" -eq 0 ]; then
     printf '%s\n' '==> canonical self-hosting verification'
     bun scripts/self-verify.ts
 fi
-
 printf '%s\n' 'Traceknot CI gate: PASS'
