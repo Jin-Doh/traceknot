@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   evaluateUiResilience,
   isUiResilienceOracle,
+  uiFullTextAccessPayloadDigest,
   uiVisualReviewApprovalPayloadDigest,
   uiVisualReviewApprovalReceiptDigest,
   type UiResilienceOracle,
@@ -287,7 +288,8 @@ describe("UI resilience scope binding and traceability", () => {
   });
 });
 
-const FULL_TEXT_DIGEST = "b".repeat(64);
+const FULL_TEXT_ARTIFACT_DIGEST = "b".repeat(64);
+const FULL_TEXT_CONTENT_DIGEST = new Bun.CryptoHasher("sha256").update("Complete catalog label").digest("hex");
 const truncationRequirement: UiResilienceRequirement = {
   ...requirement,
   requiredRuns: [{
@@ -300,6 +302,23 @@ function truncationOracle(contentTruncated: boolean, withAccess: boolean, scroll
   const candidate = oracle();
   const run = candidate.runs[0]!;
   const { visualReview: _visualReview, ...observation } = run.observations[0]!;
+  const accessPayload = {
+    schemaVersion: "ui-full-text-access/v1" as const,
+    evidenceId: "full-text:catalog-label",
+    requestId: requirement.requestId,
+    snapshotId: requirement.snapshotId,
+    conditionId: requirement.conditionId,
+    observationId: observation.observationId,
+    regionId: observation.regionId,
+    surfaceId: run.surfaceId,
+    stateId: run.stateId,
+    viewportId: run.viewportId,
+    profile: run.profile,
+    fixtureId: run.fixtureId,
+    kind: "focus" as const,
+    contentDigest: FULL_TEXT_CONTENT_DIGEST,
+    producer,
+  };
   return {
     ...candidate,
     runs: [{
@@ -312,7 +331,7 @@ function truncationOracle(contentTruncated: boolean, withAccess: boolean, scroll
         contentTruncated,
         truncationIndicatorVisible: contentTruncated,
         scrollWidth,
-        ...(withAccess ? { fullTextAccess: { kind: "focus" as const, evidenceId: "full-text:catalog-label", digest: FULL_TEXT_DIGEST } } : {}),
+        ...(withAccess ? { fullTextAccess: { ...accessPayload, payloadDigest: uiFullTextAccessPayloadDigest(accessPayload), digest: FULL_TEXT_ARTIFACT_DIGEST } } : {}),
       }],
     }],
   };
@@ -323,8 +342,12 @@ describe("UI resilience truncation evidence", () => {
     const truncated = truncationOracle(true, true, 420);
     expect(evaluateUiResilience(truncationRequirement, truncated, [
       { type: "screenshot", digest: SCREENSHOT_DIGEST },
-      { type: "ui-full-text-access", digest: FULL_TEXT_DIGEST },
+      { type: "ui-full-text-access", digest: FULL_TEXT_ARTIFACT_DIGEST },
     ])).toMatchObject({ status: "PASS", failedObservationIds: [] });
+    const missingArtifact = evaluateUiResilience(truncationRequirement, truncated, [
+      { type: "screenshot", digest: SCREENSHOT_DIGEST },
+    ]);
+    expect(missingArtifact.reasons.filter(reason => reason === "FULL_TEXT_ACCESS_ARTIFACT_MISSING:observation:catalog-label")).toHaveLength(1);
 
     const missingAccess = truncationOracle(true, false, 420);
     expect(evaluateUiResilience(truncationRequirement, missingAccess, [

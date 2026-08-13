@@ -7,10 +7,12 @@ import { inflateSync } from "node:zlib";
 import type { Artifact, Producer } from "../core/qa-core";
 import { isVisualCompositionOracle, type VisualCompositionOracle } from "../core/visual-composition";
 import {
+  isUiFullTextAccessArtifact,
   isUiResilienceOracle,
   uiApplicabilityApprovalReceiptPayload,
   uiVisualReviewApprovalPayloadDigest,
   type UiApplicabilityApprovalSubject,
+  type UiFullTextAccessEvidence,
   type UiResilienceOracle,
   type UiVisualReview,
 } from "../core/ui-resilience";
@@ -494,6 +496,14 @@ function exitForVerdict(value: unknown): number {
   return VERIFY_EXIT_CODES.INCOMPLETE;
 }
 
+export function validateFullTextAccessArtifact(bytes: Uint8Array, artifactDigest: string, oracle: UiResilienceOracle | undefined): void {
+  if (createHash("sha256").update(bytes).digest("hex") !== artifactDigest) throw new Error(`invalid UI full-text access artifact ${artifactDigest}: byte digest mismatch`);
+  const bindings = oracle?.runs.flatMap(run => run.observations.flatMap(observation => observation.fullTextAccess?.digest === artifactDigest ? [observation.fullTextAccess] : [])) ?? [];
+  if (bindings.length !== 1) throw new Error(`invalid UI full-text access artifact ${artifactDigest}: expected exactly one observation binding`);
+  const candidate = parseJsonBytes(bytes, `ui-full-text-access:${artifactDigest}`);
+  if (!isUiFullTextAccessArtifact(candidate, bindings[0] as UiFullTextAccessEvidence)) throw new Error(`invalid UI full-text access artifact ${artifactDigest}: payload does not match observation`);
+}
+
 export function validateScreenshotArtifact(bytes: Uint8Array, artifactDigest: string, visualOracle: VisualCompositionOracle | undefined, resilienceOracle: UiResilienceOracle | undefined): void {
   let dimensions: Readonly<{ width: number; height: number }>;
   try {
@@ -585,6 +595,7 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
         const bytes = await readBoundedFile(declaration.path, command.maxArtifactBytes ?? 256 * 1024 * 1024);
         if (createHash("sha256").update(bytes).digest("hex") !== declaration.digest) throw new Error(`execution completion artifact digest does not match: ${declaration.path}`);
         if (declaration.type === "screenshot") validateScreenshotArtifact(bytes, declaration.digest, completion.output.visualCompositionOracle, completion.output.uiResilienceOracle);
+        if (declaration.type === "ui-full-text-access") validateFullTextAccessArtifact(bytes, declaration.digest, completion.output.uiResilienceOracle);
         await mainStore.storeArtifact({ type: declaration.type, digest: declaration.digest, bytes } as Artifact & { bytes: Uint8Array }, input);
       }
       return completion;
@@ -623,6 +634,7 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
       const bytes = await collectorStore.readArtifact(artifact.digest);
       const type = status === "passed" && (artifact.type === "screenshot" || artifact.type === "design-token-resolution" || artifact.type === "approved-visual-reference" || artifact.type === "ui-applicability-approval" || artifact.type === "ui-full-text-access" || artifact.type === "ui-visual-review-approval-receipt") ? artifact.type : "verification-result";
       if (type === "screenshot") validateScreenshotArtifact(bytes, artifact.digest, visualCompositionOracle, uiResilienceOracle);
+      if (type === "ui-full-text-access") validateFullTextAccessArtifact(bytes, artifact.digest, uiResilienceOracle);
       artifacts.push(await mainStore.storeArtifact({ type, digest: artifact.digest, path: artifact.path, bytes } as Artifact & { bytes: Uint8Array }, input));
     }
     return { status, runId: input.runId, requestId: input.requestId, snapshotId: input.snapshotId, idempotencyKey: input.idempotencyKey, producer: observation.producer, summary: `Command ${command.executable} completed with ${observation.execution.exitStatus}.`, artifacts, executionKind, identity: observation.execution.identity, ...(observation.execution.exitCode === undefined ? {} : { exitCode: observation.execution.exitCode }), ...(visualCompositionOracle ? { visualCompositionOracle } : {}), ...(uiResilienceOracle ? { uiResilienceOracle } : {}) };

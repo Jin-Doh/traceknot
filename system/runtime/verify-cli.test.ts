@@ -6,10 +6,10 @@ import { deflateSync } from "node:zlib";
 import Ajv2020 from "ajv/dist/2020.js";
 import { describe, expect, test } from "bun:test";
 import { captureGitSnapshotIdentity } from "./git-snapshot";
-import { runVerify, validateScreenshotArtifact, verifyTrustedAuthority, verifyTrustedUiApplicabilityApproval, verifyTrustedUiVisualReview, type TrustedProducerPolicy } from "../cli/verify";
-import { canonicalizeJson, type VerificationExecutionAuthorityBinding, type VerificationExecutionCompletionEnvelope, type VerificationExecutionOutput } from "./verification-run";
+import { runVerify, validateFullTextAccessArtifact, validateScreenshotArtifact, verifyTrustedAuthority, verifyTrustedUiApplicabilityApproval, verifyTrustedUiVisualReview, type TrustedProducerPolicy } from "../cli/verify";
+import { canonicalizeJson, type ExecutionAuthority, type VerificationExecutionAuthorityBinding, type VerificationExecutionCompletionEnvelope, type VerificationExecutionOutput } from "./verification-run";
 import { LocalArtifactStore } from "./local-artifact-store";
-import { uiVisualReviewApprovalPayloadDigest, type UiApplicabilityApprovalSubject, type UiResilienceOracle, type UiResilienceProfile, type UiVisualReview } from "../core/ui-resilience";
+import { uiFullTextAccessPayload, uiFullTextAccessPayloadDigest, uiVisualReviewApprovalPayloadDigest, type UiApplicabilityApprovalSubject, type UiResilienceOracle, type UiResilienceProfile, type UiVisualReview } from "../core/ui-resilience";
 
 type RepoFixture = Readonly<{ root: string; config: string; state: string; request: string; manifest: string; cleanup: () => Promise<void> }>;
 const gitEnv = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", GIT_AUTHOR_NAME: "Traceknot Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Traceknot Test", GIT_COMMITTER_EMAIL: "test@example.com" };
@@ -119,6 +119,39 @@ test("CLI PNG decoder rejects transparency entries beyond the indexed palette", 
   ]);
   const digest = new Bun.CryptoHasher("sha256").update(invalid).digest("hex");
   expect(() => validateScreenshotArtifact(invalid, digest, undefined, undefined)).toThrow("invalid transparency metadata");
+});
+
+test("CLI authenticates full-text access bytes, content, and observation subject", () => {
+  const text = "Complete accessible catalog label";
+  const contentDigest = new Bun.CryptoHasher("sha256").update(text).digest("hex");
+  const payload = {
+    schemaVersion: "ui-full-text-access/v1" as const,
+    evidenceId: "full-text:one",
+    requestId: "request",
+    snapshotId: "snapshot",
+    conditionId: "condition",
+    observationId: "observation:one",
+    regionId: "main",
+    surfaceId: "surface",
+    stateId: "state",
+    viewportId: "desktop",
+    profile: "text-overflow" as const,
+    fixtureId: "fixture",
+    kind: "focus" as const,
+    contentDigest,
+    producer: { kind: "ci", identity: "trusted-ci", independence: "independent-producer" } as const,
+  };
+  const payloadDigest = uiFullTextAccessPayloadDigest(payload);
+  const artifact = { schemaVersion: "ui-full-text-access-artifact/v1", payload: uiFullTextAccessPayload(payload), payloadDigest, text };
+  const bytes = Buffer.from(JSON.stringify(artifact));
+  const digest = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
+  const observation = { observationId: "observation:one", regionId: "main", policy: "truncate-with-access" as const, clientWidth: 320, clientHeight: 40, scrollWidth: 420, scrollHeight: 40, fragmentRects: [{ x: 0, y: 0, width: 320, height: 40 }], clippingAncestors: [], paintFeatures: [], renderedLineCount: 2, contentTruncated: true, truncationIndicatorVisible: true, screenshotDigest: "a".repeat(64), fullTextAccess: { ...payload, payloadDigest, digest } };
+  const oracle: UiResilienceOracle = { schemaVersion: "ui-resilience-oracle/v1", oracleId: "oracle", requestId: "request", snapshotId: "snapshot", conditionId: "condition", producer: payload.producer, runs: [{ runId: "run", surfaceId: "surface", stateId: "state", viewportId: "desktop", viewport: { id: "desktop", width: 1440, height: 900 }, fixtureContentDigest: "c".repeat(64), profile: "text-overflow", fixtureId: "fixture", browser: "Chromium", userAgent: "test", profileEvidence: { profile: "text-overflow" }, observations: [observation] }], blockingReasons: [] };
+  expect(() => validateFullTextAccessArtifact(bytes, digest, oracle)).not.toThrow();
+  const tampered = Buffer.from(JSON.stringify({ ...artifact, text: "Different text" }));
+  const tamperedDigest = new Bun.CryptoHasher("sha256").update(tampered).digest("hex");
+  const tamperedOracle = { ...oracle, runs: oracle.runs.map(run => ({ ...run, observations: run.observations.map(item => ({ ...item, fullTextAccess: { ...item.fullTextAccess!, digest: tamperedDigest } })) })) };
+  expect(() => validateFullTextAccessArtifact(tampered, tamperedDigest, tamperedOracle)).toThrow("payload does not match observation");
 });
 
 test("CLI screenshot trust boundary rejects cross-run replay and undersized resilience captures", () => {

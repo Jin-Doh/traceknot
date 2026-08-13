@@ -129,8 +129,22 @@ export type UiClippingAncestor = Readonly<{
 export type UiPaintFeature = "clip-path" | "mask" | "border-radius" | "overflow-clip-margin" | "sibling-overlay";
 
 export type UiFullTextAccessEvidence = Readonly<{
-  kind: "focus" | "activation" | "linked-detail";
+  schemaVersion: "ui-full-text-access/v1";
   evidenceId: string;
+  requestId: string;
+  snapshotId: string;
+  conditionId: string;
+  observationId: string;
+  regionId: string;
+  surfaceId: string;
+  stateId: string;
+  viewportId: string;
+  profile: UiResilienceProfile;
+  fixtureId: string;
+  kind: "focus" | "activation" | "linked-detail";
+  contentDigest: string;
+  producer: Producer;
+  payloadDigest: string;
   digest: string;
 }>;
 
@@ -364,7 +378,28 @@ export function isUiResilienceRequirement(value: unknown): value is UiResilience
 
 function validRect(value: unknown): value is UiFragmentRect { return isRecord(value) && exactKeys(value, ["x", "y", "width", "height"]) && finiteNumber(value.x) && finiteNumber(value.y) && nonNegativeNumber(value.width) && nonNegativeNumber(value.height); }
 function validAncestor(value: unknown): value is UiClippingAncestor { return isRecord(value) && exactKeys(value, ["ancestorId", "clipRect", "overflowX", "overflowY"]) && nonEmptyString(value.ancestorId) && validRect(value.clipRect) && OVERFLOW_VALUES.includes(value.overflowX as UiClippingAncestor["overflowX"]) && OVERFLOW_VALUES.includes(value.overflowY as UiClippingAncestor["overflowY"]); }
-function validFullTextAccess(value: unknown): value is UiFullTextAccessEvidence { return isRecord(value) && exactKeys(value, ["kind", "evidenceId", "digest"]) && ["focus", "activation", "linked-detail"].includes(value.kind as string) && nonEmptyString(value.evidenceId) && validDigest(value.digest); }
+function validFullTextAccess(value: unknown): value is UiFullTextAccessEvidence {
+  return isRecord(value)
+    && exactKeys(value, ["schemaVersion", "evidenceId", "requestId", "snapshotId", "conditionId", "observationId", "regionId", "surfaceId", "stateId", "viewportId", "profile", "fixtureId", "kind", "contentDigest", "producer", "payloadDigest", "digest"])
+    && value.schemaVersion === "ui-full-text-access/v1"
+    && nonEmptyString(value.evidenceId)
+    && nonEmptyString(value.requestId)
+    && nonEmptyString(value.snapshotId)
+    && nonEmptyString(value.conditionId)
+    && nonEmptyString(value.observationId)
+    && nonEmptyString(value.regionId)
+    && nonEmptyString(value.surfaceId)
+    && nonEmptyString(value.stateId)
+    && nonEmptyString(value.viewportId)
+    && PROFILES.includes(value.profile as UiResilienceProfile)
+    && nonEmptyString(value.fixtureId)
+    && ["focus", "activation", "linked-detail"].includes(value.kind as string)
+    && validDigest(value.contentDigest)
+    && validProducer(value.producer)
+    && validDigest(value.payloadDigest)
+    && validDigest(value.digest)
+    && value.payloadDigest === uiFullTextAccessPayloadDigest(value as UiFullTextAccessEvidence);
+}
 function validReviewReceipt(value: unknown): value is UiVisualReviewApprovalReceipt {
   return isRecord(value)
     && exactKeys(value, ["schemaVersion", "receiptId", "issuer", "keyId", "payloadDigest", "signature"])
@@ -465,6 +500,53 @@ export function uiApplicabilityApprovalSubjectDigest(subject: UiApplicabilityApp
   const hasher = new Bun.CryptoHasher("sha256");
   hasher.update(JSON.stringify(uiApplicabilityApprovalSubjectPayload(subject)));
   return hasher.digest("hex");
+}
+
+export function uiFullTextAccessPayload(evidence: Pick<UiFullTextAccessEvidence, "schemaVersion" | "evidenceId" | "requestId" | "snapshotId" | "conditionId" | "observationId" | "regionId" | "surfaceId" | "stateId" | "viewportId" | "profile" | "fixtureId" | "kind" | "contentDigest" | "producer">): Readonly<Record<string, unknown>> {
+  return {
+    schemaVersion: evidence.schemaVersion,
+    evidenceId: evidence.evidenceId,
+    requestId: evidence.requestId,
+    snapshotId: evidence.snapshotId,
+    conditionId: evidence.conditionId,
+    observationId: evidence.observationId,
+    regionId: evidence.regionId,
+    surfaceId: evidence.surfaceId,
+    stateId: evidence.stateId,
+    viewportId: evidence.viewportId,
+    profile: evidence.profile,
+    fixtureId: evidence.fixtureId,
+    kind: evidence.kind,
+    contentDigest: evidence.contentDigest,
+    producer: {
+      kind: evidence.producer.kind,
+      identity: evidence.producer.identity,
+      independence: evidence.producer.independence,
+    },
+  };
+}
+
+export function uiFullTextAccessPayloadDigest(evidence: Parameters<typeof uiFullTextAccessPayload>[0]): string {
+  const hasher = new Bun.CryptoHasher("sha256");
+  hasher.update(JSON.stringify(uiFullTextAccessPayload(evidence)));
+  return hasher.digest("hex");
+}
+
+export type UiFullTextAccessArtifact = Readonly<{
+  schemaVersion: "ui-full-text-access-artifact/v1";
+  payload: ReturnType<typeof uiFullTextAccessPayload>;
+  payloadDigest: string;
+  text: string;
+}>;
+
+export function isUiFullTextAccessArtifact(value: unknown, expected: UiFullTextAccessEvidence): value is UiFullTextAccessArtifact {
+  if (!isRecord(value) || !exactKeys(value, ["schemaVersion", "payload", "payloadDigest", "text"]) || value.schemaVersion !== "ui-full-text-access-artifact/v1" || !isRecord(value.payload) || typeof value.text !== "string" || value.text.length === 0 || !validDigest(value.payloadDigest)) return false;
+  const hasher = new Bun.CryptoHasher("sha256");
+  hasher.update(value.text);
+  return value.payloadDigest === expected.payloadDigest
+    && value.payloadDigest === uiFullTextAccessPayloadDigest(expected)
+    && hasher.digest("hex") === expected.contentDigest
+    && JSON.stringify(value.payload) === JSON.stringify(uiFullTextAccessPayload(expected));
 }
 
 export function uiVisualReviewApprovalPayloadDigest(review: Pick<UiVisualReview, "reviewId" | "requestId" | "snapshotId" | "conditionId" | "observationId" | "surfaceId" | "stateId" | "viewportId" | "profile" | "fixtureId" | "outcome" | "rationale" | "producer" | "screenshotDigest">): string {
@@ -591,9 +673,22 @@ export function evaluateUiResilience(requirement: UiResilienceRequirement, oracl
     for (const observation of run.observations) {
       const policy = policies.get(observation.regionId);
       if (!policy) continue;
+      if (observation.fullTextAccess) {
+        const accessMatchesSubject = observation.fullTextAccess.requestId === requirement.requestId
+          && observation.fullTextAccess.snapshotId === requirement.snapshotId
+          && observation.fullTextAccess.conditionId === requirement.conditionId
+          && observation.fullTextAccess.observationId === observation.observationId
+          && observation.fullTextAccess.regionId === observation.regionId
+          && observation.fullTextAccess.surfaceId === run.surfaceId
+          && observation.fullTextAccess.stateId === run.stateId
+          && observation.fullTextAccess.viewportId === run.viewportId
+          && observation.fullTextAccess.profile === run.profile
+          && observation.fullTextAccess.fixtureId === run.fixtureId;
+        if (!accessMatchesSubject) reasons.push(`FULL_TEXT_ACCESS_SUBJECT_MISMATCH:${observation.observationId}`);
+        if (!artifactKeys.has(`ui-full-text-access\u0000${observation.fullTextAccess.digest}`)) reasons.push(`FULL_TEXT_ACCESS_ARTIFACT_MISSING:${observation.observationId}`);
+      }
       if (observation.policy !== policy.policy) { reasons.push(`OVERFLOW_POLICY_MISMATCH:${observation.observationId}`); continue; }
       if (!artifactKeys.has(`screenshot\u0000${observation.screenshotDigest}`)) { reasons.push(`SCREENSHOT_ARTIFACT_MISSING:${observation.observationId}`); continue; }
-      if (observation.fullTextAccess && !artifactKeys.has(`ui-full-text-access\u0000${observation.fullTextAccess.digest}`)) reasons.push(`FULL_TEXT_ACCESS_ARTIFACT_MISSING:${observation.observationId}`);
       const reviewMatchesSubject = observation.visualReview !== undefined
         && observation.visualReview.requestId === requirement.requestId
         && observation.visualReview.snapshotId === requirement.snapshotId
