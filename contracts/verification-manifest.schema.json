@@ -14,7 +14,23 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "executable"],
+        "required": ["id"],
+        "anyOf": [
+          { "required": ["executable"], "properties": { "executable": true } },
+          { "required": ["executionCompletionPath"], "properties": { "executionCompletionPath": true } }
+        ],
+        "dependentRequired": {
+          "argv": ["executable"],
+          "cwd": ["executable"],
+          "env": ["executable"],
+          "timeoutMs": ["executable"],
+          "maxOutputBytes": ["executable"],
+          "declaredArtifacts": ["executable"],
+          "visualCompositionOraclePath": ["executable"],
+          "uiResilienceOraclePath": ["executable"],
+          "toolVersion": ["executable"],
+          "executionCompletionArtifacts": ["executionCompletionPath"]
+        },
         "properties": {
           "id": { "type": "string", "minLength": 1, "maxLength": 128 },
           "executable": { "type": "string", "minLength": 1 },
@@ -37,7 +53,23 @@
                 "path": { "type": "string", "minLength": 1 }
               }
             }
-          }
+          },
+          "visualCompositionOraclePath": { "type": "string", "minLength": 1, "pattern": "^(?:/|[A-Za-z]:[\\\\/])" },
+          "uiResilienceOraclePath": { "type": "string", "minLength": 1, "pattern": "^(?:/|[A-Za-z]:[\\\\/])" },
+          "executionCompletionArtifacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "digest", "path"],
+              "properties": {
+                "type": { "type": "string", "minLength": 1 },
+                "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                "path": { "type": "string", "minLength": 1, "pattern": "^(?:/|[A-Za-z]:[\\\\/])" }
+              }
+            }
+          },
+          "executionCompletionPath": { "type": "string", "minLength": 1, "pattern": "^(?:/|[A-Za-z]:[\\\\/])" }
         }
       }
     }

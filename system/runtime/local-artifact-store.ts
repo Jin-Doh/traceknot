@@ -4,7 +4,7 @@ import { open, type FileHandle } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { dlopen, FFIType, read as ffiRead } from "bun:ffi";
 import type { Artifact } from "../core/qa-core";
-import type { ArtifactStore, CanonicalVerificationResultArtifact, VerificationExecutionRequest } from "./verification-run";
+import type { ArtifactStore, CanonicalStoredArtifact, VerificationExecutionRequest } from "./verification-run";
 
 const DIGEST = /^[0-9a-f]{64}$/;
 const O_NOFOLLOW = constants.O_NOFOLLOW ?? 0;
@@ -105,6 +105,12 @@ export class ArtifactPathError extends ArtifactStoreError {
     this.name = "ArtifactPathError";
   }
 }
+export class ArtifactNotFoundError extends ArtifactPathError {
+  constructor(message: string) {
+    super(message);
+    this.name = "ArtifactNotFoundError";
+  }
+}
 
 function native(): Native {
   if (!NATIVE) throw new ArtifactPathError(`artifact storage is unsupported on platform ${process.platform}`);
@@ -121,7 +127,9 @@ function cstring(value: string): Buffer {
 }
 function check(result: number, action: string): number {
   if (result >= 0) return result;
-  throw new ArtifactPathError(`${action} failed (errno ${errno()})`);
+  const error = errno();
+  if (error === 2) throw new ArtifactNotFoundError(`${action} failed (errno ${error})`);
+  throw new ArtifactPathError(`${action} failed (errno ${error})`);
 }
 export type SecureRootDescriptor = Readonly<{
   readonly rootDir: string;
@@ -510,7 +518,7 @@ export class LocalArtifactStore implements ArtifactStore {
     if (!published || published.type !== artifact.type || !compareBytes(published.bytes, bytes)) throw new ArtifactCollisionError("artifact readback verification failed");
     return outputArtifact(artifact);
   }
-  async storeVerificationResultArtifact(artifact: CanonicalVerificationResultArtifact, _input: VerificationExecutionRequest): Promise<Artifact> { return this.persist(artifact as ArtifactLike); }
+  async storeVerificationResultArtifact(artifact: CanonicalStoredArtifact, _input: VerificationExecutionRequest): Promise<Artifact> { return this.persist(artifact as ArtifactLike); }
   async storeArtifact(artifact: Artifact, _input: VerificationExecutionRequest): Promise<Artifact> { return this.persist(artifact as ArtifactLike); }
   async putArtifact(artifact: Artifact, _input: VerificationExecutionRequest): Promise<Artifact> { return this.persist(artifact as ArtifactLike); }
   async store(artifact: Artifact, _input: VerificationExecutionRequest): Promise<Artifact> { return this.persist(artifact as ArtifactLike); }

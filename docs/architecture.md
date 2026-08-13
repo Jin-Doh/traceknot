@@ -80,6 +80,12 @@ The Codex adapter exposes a capability-record discovery primitive, not a native 
 
 The Claude Code adapter uses the same canonical envelope and rejection semantics with a distinct `claude-code` host boundary. Hook events such as `Stop`, `TaskCompleted`, or `SubagentStop` remain observations and cannot stand in for a trusted producer or accepted evidence.
 
+### Independent execution completion
+
+The local Verify CLI collector is never promoted to `independent-producer` merely because a manifest supplies an oracle file. Independent command or browser results cross a separate trust boundary: an external producer emits a canonical `verification-execution-completion/v1` envelope, and the manifest identifies it with `executionCompletionPath`. The envelope binds the request, plan, obligation, snapshot, idempotency key, producer, execution result, artifacts, and UI oracle digests. `executionCompletionArtifacts` maps that signed artifact set to absolute handoff files outside the Git root. After authenticating the envelope, the CLI securely reads each file, verifies its digest and type, and publishes it into the run's content-addressed artifact store; duplicates, omissions, extras, and unavailable bytes are rejected.
+
+The CLI authenticates that binding with Ed25519 against the administrator-installed `/etc/traceknot/trusted-producer.json` policy. The policy is accepted only as a root-owned regular file without group or world write permission, and its key identifier must equal the SHA-256 digest of the configured public key. Imported completions are persisted under the same generation-fenced dispatch claim as local results, so crash replay cannot rerun the producer or substitute a later envelope. Missing policy, invalid signature, binding drift, and provider failure all fail closed; a failed import releases the live claim instead of leaving a false completed result.
+
 ### GitHub governance
 
 The root composite `action.yml` supports self-hosting and explicit request/manifest modes. Both modes retain their report; manifest mode also retains durable state and content-addressed artifacts even when verification fails. The governed workflow publishes separate lifecycle and verdict jobs plus an `always()` aggregate job suitable for branch protection; a missing, cancelled, blocked, incomplete, or failed verdict cannot satisfy that aggregate.

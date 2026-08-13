@@ -9,6 +9,7 @@ import {
   SelfHostingCliError,
 } from "../system/runtime/self-hosting-verification";
 
+
 const actionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const rootDir = resolveSelfHostingRoot(actionRoot, process.env.GITHUB_WORKSPACE);
 const cacheRoot = await mkdtemp(join(tmpdir(), "traceknot-self-hosting-cache."));

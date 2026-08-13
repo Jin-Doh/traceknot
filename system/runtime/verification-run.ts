@@ -1,22 +1,24 @@
 import { resolveProofCarryingQaVerdict, type Artifact, type CoverageInput, type DefectSummary, type EvidenceClaim, type EvidenceEvaluation, type Execution, type IndependenceLevel, type Observation, type ProofCarryingObligation, type Producer, type SuccessCriterion, type TraceabilityLink, type VerdictResult } from "../core/qa-core";
 import { addMillisecondsToCanonicalUtcTimestamp, compareCanonicalUtcTimestamps, isCanonicalUtcTimestamp } from "../core/canonical-time";
+import { evaluateVisualComposition, isVisualCompositionOracle, isVisualCompositionRequirement, isVisualCompositionScope, requirementFromVisualCompositionScope, type VisualCompositionOracle, type VisualCompositionRequirement, type VisualCompositionScope } from "../core/visual-composition";
+import { evaluateUiResilience, isUiResilienceOracle, isUiResilienceRequirement, isUiResilienceScope, requirementFromUiResilienceScope, uiApplicabilityApprovalSubjectDigest, type UiApplicabilityApprovalSubject, type UiResilienceOracle, type UiResilienceRequirement, type UiResilienceScope, type UiVisualReview } from "../core/ui-resilience";
 export type MaybePromise<T> = T | PromiseLike<T>; export type Clock = () => string | Date;
 export const RUN_STATES=["CREATED","BASIS_ESTABLISHED","DISCOVERY_COMPLETED","PLANNED","EXECUTING","EVIDENCE_EVALUATED","VERDICT_RESOLVED","TERMINAL"] as const; export type RunState=(typeof RUN_STATES)[number];
 export type CanonicalRunState=Readonly<{schemaVersion:"verification-run/v1";runId:string;requestId:string;rootIdentity:string;snapshotId:string;state:RunState;observationIds:readonly string[];claimIds:readonly string[];evaluationIds:readonly string[];revision:number;createdAt:string;updatedAt:string}>;
 export type BasisKind="request"|"requirement"|"acceptance-criterion"|"defect"|"contract"|"invariant"|"policy"; export type BasisOrigin="explicit"|"derived";
 export type VerificationBasisItem=Readonly<{id:string;kind:BasisKind;origin:BasisOrigin;text:string;source?:string}>;
-export type VerificationRequest=Readonly<{schemaVersion:"verification-request/v1";requestId:string;project:Readonly<{rootIdentity:string;snapshotId:string}>;change:Readonly<{summary:string;paths:readonly string[]}>;testBasis:readonly VerificationBasisItem[]}>;
+export type VerificationRequest=Readonly<{schemaVersion:"verification-request/v1";requestId:string;project:Readonly<{rootIdentity:string;snapshotId:string}>;change:Readonly<{summary:string;paths:readonly string[];uiImpact?:"functional-only"|"significant"}>;testBasis:readonly VerificationBasisItem[];visualComposition?:VisualCompositionScope;uiResilience?:UiResilienceScope}>;
 export type RiskLevel="R0"|"R1"|"R2"|"R3"; export type VerificationRisk=Readonly<{id:string;level:RiskLevel;impact:number;likelihood:number;basisIds:readonly string[];rationale:string}>;
 export type VerificationCondition=Readonly<{id:string;basisIds:readonly string[];riskIds:readonly string[];techniques:readonly string[];expectedResult:string}>;
 export type EvidenceType="experiment"|"test-result"|"browser-result"|"build-result"|"static-analysis"|"review"|"approval"|"scenario-result";
-export type VerificationObligationPlan=Readonly<{id:string;conditionIds:readonly string[];evidenceType:EvidenceType;mandatory:boolean;independence:IndependenceLevel;entryCriteria:readonly string[];completionCriteria:readonly string[]}>;
+export type VerificationObligationPlan=Readonly<{id:string;conditionIds:readonly string[];evidenceType:EvidenceType;mandatory:boolean;independence:IndependenceLevel;entryCriteria:readonly string[];completionCriteria:readonly string[];visualCompositionRequirement?:VisualCompositionRequirement;uiResilienceRequirement?:UiResilienceRequirement}>;
 export type VerificationPlan=Readonly<{schemaVersion:"verification-plan/v1";requestId:string;snapshotId:string;risks:readonly VerificationRisk[];conditions:readonly VerificationCondition[];obligations:readonly VerificationObligationPlan[]}>;
-export type CanonicalVerificationResultArtifact=Readonly<{type:"verification-result";digest:string;path?:string}>;
-export type VerificationEvidence=Readonly<{schemaVersion:"verification-evidence/v1";evidenceId:string;requestId:string;snapshotId:string;obligationId:string;producer:Producer;execution:Execution;result:Readonly<{verdict:"PASS"|"FAIL"|"BLOCKED"|"INCOMPLETE";summary:string;passed?:number;failed?:number;artifacts?:readonly string[]}>;observedAt:string}>;
+export type CanonicalStoredArtifact=Readonly<{type:"verification-result"|"screenshot"|"design-token-resolution"|"approved-visual-reference"|"ui-applicability-approval"|"ui-full-text-access"|"ui-visual-review-approval-receipt";digest:string;path?:string}>;
+export type VerificationEvidence=Readonly<{schemaVersion:"verification-evidence/v1";evidenceId:string;requestId:string;snapshotId:string;obligationId:string;producer:Producer;execution:Execution;result:Readonly<{verdict:"PASS"|"FAIL"|"BLOCKED"|"INCOMPLETE";summary:string;passed?:number;failed?:number;artifacts?:readonly string[]}>;observedAt:string;visualCompositionOracleDigest?:string;uiResilienceOracleDigest?:string;authenticatedUiReviewApprovalDigests?:readonly string[];authenticatedUiApplicabilityApprovalSubjectDigests?:readonly string[]}>;
 export type VerificationExecutionRequest=Readonly<{runId:string;requestId:string;requestDigest:string;planDigest:string;obligationDigest:string;rootIdentity:string;snapshotId:string;obligation:VerificationObligationPlan;conditionIds:readonly string[];idempotencyKey:string}>;
-export type VerificationExecutionOutput=Readonly<{status:"passed"|"failed"|"blocked"|"incomplete"|"PASS"|"FAIL"|"BLOCKED"|"INCOMPLETE";runId:string;requestId:string;snapshotId:string;idempotencyKey:string;producer:Producer;summary?:string;artifacts?:readonly Artifact[];executionKind?:Execution["kind"];identity?:string;exitCode?:number}>;
-export type VerificationExecutionAuthorityBinding=Readonly<{runId:string;requestId:string;requestDigest:string;planDigest:string;obligationDigest:string;rootIdentity:string;snapshotId:string;obligationId:string;idempotencyKey:string;producer:Producer;execution:Execution;result:VerificationEvidence["result"];observedAt:string;artifacts:readonly CanonicalVerificationResultArtifact[]}>;
-export type ExecutionAuthority=Readonly<{schemaVersion:"verification-execution-authority/v1";authorityId:string;issuer:string;binding:VerificationExecutionAuthorityBinding}>;
+export type VerificationExecutionOutput=Readonly<{status:"passed"|"failed"|"blocked"|"incomplete"|"PASS"|"FAIL"|"BLOCKED"|"INCOMPLETE";runId:string;requestId:string;snapshotId:string;idempotencyKey:string;producer:Producer;summary?:string;artifacts?:readonly Artifact[];executionKind?:Execution["kind"];identity?:string;exitCode?:number;visualCompositionOracle?:VisualCompositionOracle;uiResilienceOracle?:UiResilienceOracle}>;
+export type VerificationExecutionAuthorityBinding=Readonly<{runId:string;requestId:string;requestDigest:string;planDigest:string;obligationDigest:string;rootIdentity:string;snapshotId:string;obligationId:string;idempotencyKey:string;producer:Producer;execution:Execution;result:VerificationEvidence["result"];observedAt:string;artifacts:readonly CanonicalStoredArtifact[];visualCompositionOracleDigest?:string;uiResilienceOracleDigest?:string;authenticatedUiReviewApprovalDigests?:readonly string[];authenticatedUiApplicabilityApprovalSubjectDigests?:readonly string[]}>;
+export type ExecutionAuthority=Readonly<{schemaVersion:"verification-execution-authority/v1";authorityId:string;issuer:string;binding:VerificationExecutionAuthorityBinding;keyId?:string;signature?:string}>;
 export type VerificationExecutionCompletionEnvelope=Readonly<{schemaVersion:"verification-execution-completion/v1";runId:string;requestId:string;rootIdentity:string;snapshotId:string;planDigest:string;obligationId:string;idempotencyKey:string;output:VerificationExecutionOutput;authority:ExecutionAuthority}>;
 export type FreshnessAuthorityBinding=Readonly<{schemaVersion:"verification-freshness-binding/v1";requestId:string;snapshotId:string;planDigest:string;executionDigest:string;freshnessEvaluatedAt:string;evaluationIds:readonly string[];evaluationsDigest:string;acceptedClaimIds:readonly string[];coverage:CoverageInput}>;
 export type FreshnessAuthority=Readonly<{schemaVersion:"verification-freshness-authority/v1";authorityId:string;issuer:string;binding:FreshnessAuthorityBinding}>;
@@ -26,13 +28,16 @@ export type FreshnessStatus = "fresh" | "stale" | "unknown";
 export type FreshnessEvaluationInput = Readonly<{observation:Observation;evidence:VerificationEvidence;evaluatedAt:string}>;
 export interface FreshnessPolicy {readonly evaluateFreshness?:(input:FreshnessEvaluationInput)=>MaybePromise<FreshnessStatus>;readonly evaluate?:(input:FreshnessEvaluationInput)=>MaybePromise<FreshnessStatus>};
 export type FreshnessPolicyPort = FreshnessPolicy;
-export type BrowserExecutionRequest=VerificationExecutionRequest; export type BrowserExecutionOutput=VerificationExecutionOutput; export type StoredArtifact=CanonicalVerificationResultArtifact; export type ApprovalRequest=Readonly<{runId:string;defect:DefectSummary}>; export type ApprovalResult=Readonly<{approved:boolean;acceptanceExpiresAt?:string}>; export type UsageEvent=Readonly<{runId:string;obligationId?:string;event:"execution"|"artifact"|"approval";executionKey?:string;eventKey?:string}>;
+export type BrowserExecutionRequest=VerificationExecutionRequest; export type BrowserExecutionOutput=VerificationExecutionOutput; export type StoredArtifact=CanonicalStoredArtifact; export type ApprovalRequest=Readonly<{runId:string;defect:DefectSummary}>; export type ApprovalResult=Readonly<{approved:boolean;acceptanceExpiresAt?:string}>; export type UsageEvent=Readonly<{runId:string;obligationId?:string;event:"execution"|"artifact"|"approval";executionKey?:string;eventKey?:string}>;
 export type StageName="request"|"basis"|"discovery"|"plan"|"execution"|"evidence"|"residual-risk"|"verdict";
 export interface VerificationExecutor {readonly atomicSameKeyIdempotency?:true;readonly executeObligation?:(i:VerificationExecutionRequest)=>MaybePromise<VerificationExecutionOutput|undefined>;readonly execute?:(i:VerificationExecutionRequest)=>MaybePromise<VerificationExecutionOutput|undefined>};
-export interface ArtifactStore {readonly atomicSameKeyIdempotency?:true;readonly storeVerificationResultArtifact?:(a:CanonicalVerificationResultArtifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly storeArtifact?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly putArtifact?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly store?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>};
+export interface ExecutionCompletionProvider {readonly loadExecutionCompletion?:(i:VerificationExecutionRequest)=>MaybePromise<VerificationExecutionCompletionEnvelope|undefined>;readonly load?:(i:VerificationExecutionRequest)=>MaybePromise<VerificationExecutionCompletionEnvelope|undefined>};
+export interface ArtifactStore {readonly atomicSameKeyIdempotency?:true;readonly storeVerificationResultArtifact?:(a:CanonicalStoredArtifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly storeArtifact?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly putArtifact?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>;readonly store?:(a:Artifact,i:VerificationExecutionRequest)=>MaybePromise<Artifact>};
 export interface CapabilityProvider {readonly hasCapability?:(s:string)=>MaybePromise<boolean>;readonly has?:(s:string)=>MaybePromise<boolean>;readonly getCapabilities?:()=>MaybePromise<readonly string[]>;readonly capabilities?:readonly string[]};
 export interface BrowserExecutor {readonly atomicSameKeyIdempotency?:true;readonly executeBrowser?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>;readonly execute?:(i:BrowserExecutionRequest)=>MaybePromise<BrowserExecutionOutput|undefined>};
 export interface ApprovalProvider {readonly requestApproval?:(i:ApprovalRequest)=>MaybePromise<ApprovalResult|undefined>;readonly approve?:(i:ApprovalRequest)=>MaybePromise<ApprovalResult|undefined>};
+export interface UiVisualReviewApprovalVerifier {readonly independentAuthentication:true;readonly verifyApproval?:(review:UiVisualReview)=>MaybePromise<boolean>;readonly verify?:(review:UiVisualReview)=>MaybePromise<boolean>};
+export interface UiApplicabilityApprovalVerifier {readonly independentAuthentication:true;readonly verifyApproval?:(subject:UiApplicabilityApprovalSubject)=>MaybePromise<boolean>;readonly verify?:(subject:UiApplicabilityApprovalSubject)=>MaybePromise<boolean>};
 export interface UsageRecorder {readonly atomicSameKeyIdempotency?:true;readonly recordUsage?:(e:UsageEvent)=>MaybePromise<void>;readonly record?:(e:UsageEvent)=>MaybePromise<void>};
 export type DispatchClaim=Readonly<{schemaVersion:"verification-dispatch-claim/v1";claimKey:string;acquisitionId:string;runId:string;requestId:string;rootIdentity:string;snapshotId:string;planDigest:string;obligationId:string;idempotencyKey:string;ownerId:string;leaseGeneration:number;leaseExpiresAt:string}>;
 export type DispatchClaimResult=Readonly<{claimed:boolean;status:"CLAIMED"|"COMPLETED";claim:DispatchClaim;outputStored:boolean;completion?:VerificationExecutionCompletionEnvelope}>;
@@ -51,7 +56,7 @@ export type RepositoryTransition=Readonly<{runId:string;expectedRevision?:number
 export interface RepositoryPort {readonly generationFencedDispatchCompletion?:true;readonly generationFencedDispatchCheckpoint?:true;readonly loadRun:(id:string)=>MaybePromise<CanonicalRunState|undefined>;readonly loadStageDocument:(id:string,s:StageName)=>MaybePromise<unknown|undefined>;readonly commitTransition:(transition:RepositoryTransition)=>MaybePromise<boolean>;readonly claimExecutionDispatch?:(claim:DispatchClaim,now?:string,attemptToken?:symbol)=>MaybePromise<DispatchClaimResult>;readonly completeExecutionDispatch?:(claim:DispatchClaim,completion:VerificationExecutionCompletionEnvelope|undefined,now?:string)=>MaybePromise<boolean>;readonly releaseExecutionDispatch?:(claim:DispatchClaim,now?:string)=>MaybePromise<boolean>};
 export type TerminalEvidenceVerdictTransition=Readonly<{runId:string;expectedRevision?:number;evidence:EvidenceDocument;verdict:VerdictDocument;run:CanonicalRunState}>;
 export interface RepositoryPort {readonly commitEvidenceAndVerdict?:(transition:TerminalEvidenceVerdictTransition)=>MaybePromise<boolean>};
-export type VerificationRunDependencies=Readonly<{repository:RepositoryPort;executor:VerificationExecutor;artifactStore:ArtifactStore;capabilityProvider:CapabilityProvider;executionAuthority:ExecutionAuthorityPort;freshnessPolicy:FreshnessPolicy;freshnessAuthority:FreshnessAuthorityPort;browserExecutor?:BrowserExecutor;approvalProvider?:ApprovalProvider;usageRecorder?:UsageRecorder;now:Clock;dispatchOwnerId?:string;ownerId?:string;dispatchLeaseDurationMs?:number;leaseDurationMs?:number;snapshotVerifier?:()=>MaybePromise<boolean>}>;
+export type VerificationRunDependencies=Readonly<{repository:RepositoryPort;executor:VerificationExecutor;artifactStore:ArtifactStore;capabilityProvider:CapabilityProvider;executionAuthority:ExecutionAuthorityPort;freshnessPolicy:FreshnessPolicy;freshnessAuthority:FreshnessAuthorityPort;browserExecutor?:BrowserExecutor;completionProvider?:ExecutionCompletionProvider;approvalProvider?:ApprovalProvider;uiVisualReviewApprovalVerifier?:UiVisualReviewApprovalVerifier;uiApplicabilityApprovalVerifier?:UiApplicabilityApprovalVerifier;usageRecorder?:UsageRecorder;now:Clock;dispatchOwnerId?:string;ownerId?:string;dispatchLeaseDurationMs?:number;leaseDurationMs?:number;snapshotVerifier?:()=>MaybePromise<boolean>}>;
 export type BasisDocument=Readonly<{schemaVersion:"verification-basis/v1";requestId:string;snapshotId:string;basis:readonly VerificationBasisItem[];basisIds:readonly string[]}>; export type DiscoveryDocument=Readonly<{schemaVersion:"risk-discovery/v1";requestId:string;snapshotId:string;risks:readonly VerificationRisk[];conditions:readonly VerificationCondition[]}>; export type PlanDocument=VerificationPlan; export type UsageOutboxEntry=Readonly<{executionKey:string;obligationId:string;event:"execution"|"artifact";eventKey:string}>; export type ExecutionDocument=Readonly<{schemaVersion:"verification-execution/v1";requestId:string;snapshotId:string;observations:readonly Observation[];claims:readonly EvidenceClaim[];evidence:readonly VerificationEvidence[];authorities:readonly ExecutionAuthority[];usageOutbox:readonly UsageOutboxEntry[]}>; export type EvidenceDocument=Readonly<{schemaVersion:"verification-evidence-evaluation/v1";requestId:string;snapshotId:string;freshnessEvaluatedAt:string;freshnessAuthority:FreshnessAuthority;evaluations:readonly EvidenceEvaluation[];acceptedClaimIds:readonly string[];coverage:CoverageInput}>; export type ResidualRiskDocument=Readonly<{schemaVersion:"verification-residual-risk/v1";requestId:string;snapshotId:string;defects:readonly DefectSummary[]}>; export type VerdictDocument=VerdictResult; export type StageDocument=VerificationRequest|BasisDocument|DiscoveryDocument|PlanDocument|ExecutionDocument|EvidenceDocument|ResidualRiskDocument|VerdictDocument;
 export type VerificationRunDocuments={request?:VerificationRequest;basis?:BasisDocument;discovery?:DiscoveryDocument;plan?:PlanDocument;execution?:ExecutionDocument;evidence?:EvidenceDocument;"residual-risk"?:ResidualRiskDocument;verdict?:VerdictDocument};
 export type ExecutionCheckpointTransition=Readonly<{runId:string;expectedRevision:number;document:ExecutionDocument;run:CanonicalRunState}>;
@@ -104,11 +109,11 @@ function canonicalProducer(value: unknown): Producer | undefined {
 function validProducer(value: unknown): value is Producer {
   return isRecord(value) && exactOwnKeys(value, ["kind", "identity", "independence"]) && canonicalProducer(value) !== undefined;
 }
-function canonicalArtifact(value: unknown): CanonicalVerificationResultArtifact | undefined {
-  if (!isRecord(value) || !exactOwnKeys(value, ["type", "digest"], ["path"]) || value.type !== "verification-result" || typeof value.digest !== "string" || !DIGEST.test(value.digest) || (value.path !== undefined && (typeof value.path !== "string" || !value.path))) return undefined;
-  return { type: "verification-result", digest: value.digest.toLowerCase(), ...(value.path === undefined ? {} : { path: value.path }) };
+function canonicalArtifact(value: unknown): CanonicalStoredArtifact | undefined {
+  if (!isRecord(value) || !exactOwnKeys(value, ["type", "digest"], ["path"]) || !["verification-result", "screenshot", "design-token-resolution", "approved-visual-reference", "ui-applicability-approval", "ui-full-text-access", "ui-visual-review-approval-receipt"].includes(value.type as string) || typeof value.digest !== "string" || !DIGEST.test(value.digest) || (value.path !== undefined && (typeof value.path !== "string" || !value.path))) return undefined;
+  return { type: value.type as CanonicalStoredArtifact["type"], digest: value.digest.toLowerCase(), ...(value.path === undefined ? {} : { path: value.path }) };
 }
-function validArtifact(value: unknown): value is CanonicalVerificationResultArtifact {
+function validArtifact(value: unknown): value is CanonicalStoredArtifact {
   return canonicalArtifact(value) !== undefined && isRecord(value) && value.digest === (value.digest as string).toLowerCase();
 }
 const validDate = isCanonicalUtcTimestamp;
@@ -156,7 +161,21 @@ function clockNow(clock: Clock): string {
   return result;
 }
 function validRequest(request: unknown): void {
-  if (!isRecord(request) || !exactOwnKeys(request, ["schemaVersion", "requestId", "project", "change", "testBasis"]) || request.schemaVersion !== "verification-request/v1" || typeof request.requestId !== "string" || !request.requestId || !isRecord(request.project) || !exactOwnKeys(request.project, ["rootIdentity", "snapshotId"]) || typeof request.project.rootIdentity !== "string" || !request.project.rootIdentity || typeof request.project.snapshotId !== "string" || !request.project.snapshotId || !isRecord(request.change) || !exactOwnKeys(request.change, ["summary", "paths"]) || typeof request.change.summary !== "string" || !request.change.summary || !Array.isArray(request.change.paths) || request.change.paths.length < 1 || request.change.paths.some(path => typeof path !== "string" || !path) || new Set(request.change.paths as string[]).size !== request.change.paths.length || !Array.isArray(request.testBasis) || request.testBasis.length < 1 || request.testBasis.some(item => !validBasisItem(item)) || new Set(request.testBasis.map(item => (item as VerificationBasisItem).id)).size !== request.testBasis.length) throw new Error("invalid verification request");
+  if (!isRecord(request) || !exactOwnKeys(request, ["schemaVersion", "requestId", "project", "change", "testBasis"], ["visualComposition", "uiResilience"]) || request.schemaVersion !== "verification-request/v1" || typeof request.requestId !== "string" || !request.requestId || !isRecord(request.project) || !exactOwnKeys(request.project, ["rootIdentity", "snapshotId"]) || typeof request.project.rootIdentity !== "string" || !request.project.rootIdentity || typeof request.project.snapshotId !== "string" || !request.project.snapshotId || !isRecord(request.change) || !exactOwnKeys(request.change, ["summary", "paths"], ["uiImpact"]) || typeof request.change.summary !== "string" || !request.change.summary || !Array.isArray(request.change.paths) || request.change.paths.length < 1 || request.change.paths.some(path => typeof path !== "string" || !path) || new Set(request.change.paths).size !== request.change.paths.length || (request.change.uiImpact !== undefined && request.change.uiImpact !== "functional-only" && request.change.uiImpact !== "significant") || !Array.isArray(request.testBasis) || request.testBasis.length < 1 || request.testBasis.some(item => !validBasisItem(item)) || new Set(request.testBasis.map(item => (item as VerificationBasisItem).id)).size !== request.testBasis.length) throw new Error("invalid verification request");
+  const candidate = request as unknown as VerificationRequest;
+  if (candidate.visualComposition !== undefined) {
+    if (!isVisualCompositionScope(candidate.visualComposition)) throw new Error("invalid verification request visual composition scope");
+    const basisIds = new Set(candidate.testBasis.map(item => item.id));
+    if (candidate.visualComposition.basisIds.some(id => !basisIds.has(id))) throw new Error("visual composition scope references unknown basis");
+  }
+  if (candidate.uiResilience !== undefined) {
+    if (!isUiResilienceScope(candidate.uiResilience)) throw new Error("invalid verification request UI resilience scope");
+    const basisIds = new Set(candidate.testBasis.map(item => item.id));
+    if (candidate.uiResilience.basisIds.some(id => !basisIds.has(id))) throw new Error("UI resilience scope references unknown basis");
+  }
+  if ((candidate.visualComposition !== undefined || candidate.uiResilience !== undefined) && candidate.change.uiImpact === undefined) throw new Error("visual verification scopes require an explicit UI impact classification");
+  if (candidate.change.uiImpact === "significant" && (candidate.visualComposition === undefined || candidate.uiResilience === undefined)) throw new Error("significant UI verification request must declare visual composition and UI resilience scopes");
+  if (candidate.change.uiImpact === "functional-only" && candidate.visualComposition?.decision !== "not-required") throw new Error("functional-only UI verification request must declare visual composition not-required");
 }
 function canonicalSha256(value: unknown): string {
   const hasher = new Bun.CryptoHasher("sha256");
@@ -236,21 +255,55 @@ function canonicalDiscovery(request: VerificationRequest, basis: BasisDocument):
   validRequest(request);
   const canonical = canonicalBasis(request);
   if (!structurallyEqual(basis, canonical)) throw Error("invalid discovery basis canonicalization");
-  const risks = canonical.basis.map(item => { const level = riskLevel(item, request); const score = level === "R3" ? 3 : level === "R2" ? 2 : 1; return { id: `risk:${item.id}`, level, impact: score, likelihood: score, basisIds: [item.id], rationale: `Verification risk derived from ${level} basis ${item.id}.` }; }).sort((a, b) => compareCodeUnits(a.id, b.id));
-  const conditions = canonical.basis.map(item => { const techniques = browserMaterial(material(item)) ? ["browser-verification", "canonical-verification"] : ["canonical-verification"]; if (riskLevel(item, request) === "R3") techniques.push("independent-producer"); return { id: `condition:${item.id}`, basisIds: [item.id], riskIds: [`risk:${item.id}`], techniques: uniq(techniques), expectedResult: `Evidence demonstrates ${item.id}.` }; });
+  const risks = canonical.basis.map(item => {
+    const level = riskLevel(item, request);
+    const score = level === "R3" ? 3 : level === "R2" ? 2 : 1;
+    return { id: `risk:${item.id}`, level, impact: score, likelihood: score, basisIds: [item.id], rationale: `Verification risk derived from ${level} basis ${item.id}.` };
+  }).sort((a, b) => compareCodeUnits(a.id, b.id));
+  const conditions: VerificationCondition[] = canonical.basis.map(item => {
+    const techniques = browserMaterial(material(item)) ? ["browser-verification", "canonical-verification"] : ["canonical-verification"];
+    if (riskLevel(item, request) === "R3") techniques.push("independent-producer");
+    return { id: `condition:${item.id}`, basisIds: [item.id], riskIds: [`risk:${item.id}`], techniques: uniq(techniques), expectedResult: `Evidence demonstrates ${item.id}.` };
+  });
   if (!canonical.basis.some(item => browserMaterial(material(item))) && browserMaterial(requestMaterial(request))) {
     const basisIds = canonical.basis.map(item => item.id).sort(compareCodeUnits);
     const riskIds = risks.map(item => item.id).sort(compareCodeUnits);
     const baseId = "condition:request-browser";
-    const requestConditionId = (() => {
-      if (!conditions.some(item => item.id === baseId)) return baseId;
-      const digest = canonicalRequestDigest(request);
-      let suffix = 0;
-      let candidate = `${baseId}:${digest}`;
-      while (conditions.some(item => item.id === candidate)) candidate = `${baseId}:${digest}:${++suffix}`;
-      return candidate;
-    })();
+    const digest = canonicalRequestDigest(request);
+    let requestConditionId = baseId;
+    let suffix = 0;
+    while (conditions.some(item => item.id === requestConditionId)) requestConditionId = `${baseId}:${digest}${suffix++ === 0 ? "" : `:${suffix}`}`;
     conditions.push({ id: requestConditionId, basisIds, riskIds, techniques: ["browser-verification", "canonical-verification"], expectedResult: "Evidence demonstrates the request-level browser change." });
+  }
+  const composition = request.visualComposition;
+  if (composition && composition.decision !== "not-required") {
+    const baseId = "condition:request-visual-composition";
+    const digest = canonicalRequestDigest(request);
+    let conditionId = baseId;
+    let suffix = 0;
+    while (conditions.some(item => item.id === conditionId)) conditionId = `${baseId}:${digest}${suffix++ === 0 ? "" : `:${suffix}`}`;
+    conditions.push({
+      id: conditionId,
+      basisIds: [...composition.basisIds].sort(compareCodeUnits),
+      riskIds: composition.basisIds.map(id => `risk:${id}`).sort(compareCodeUnits),
+      techniques: ["browser-verification", "canonical-verification", "visual-composition"],
+      expectedResult: "Independent visual-composition evidence satisfies every required surface, representative state, viewport, region, and basis-derived relation.",
+    });
+  }
+  const resilience = request.uiResilience;
+  if (resilience) {
+    const baseId = "condition:request-ui-resilience";
+    const digest = canonicalRequestDigest(request);
+    let conditionId = baseId;
+    let suffix = 0;
+    while (conditions.some(item => item.id === conditionId)) conditionId = `${baseId}:${digest}${suffix++ === 0 ? "" : `:${suffix}`}`;
+    conditions.push({
+      id: conditionId,
+      basisIds: [...resilience.basisIds].sort(compareCodeUnits),
+      riskIds: resilience.basisIds.map(id => `risk:${id}`).sort(compareCodeUnits),
+      techniques: ["browser-verification", "canonical-verification", "ui-resilience"],
+      expectedResult: "Authenticated UI resilience evidence satisfies every required surface, representative state, viewport, content fixture, adaptive profile, and overflow policy.",
+    });
   }
   conditions.sort((a, b) => compareCodeUnits(a.id, b.id));
   return freeze({ schemaVersion: "risk-discovery/v1", requestId: request.requestId, snapshotId: request.project.snapshotId, risks, conditions });
@@ -266,9 +319,30 @@ export async function buildVerificationPlan(input: BuildVerificationPlanInput): 
   const risks = [...input.discovery.risks].sort((a, b) => compareCodeUnits(a.id, b.id));
   const conditions = [...input.discovery.conditions].sort((a, b) => compareCodeUnits(a.id, b.id));
   const obligations = conditions.map(item => {
-    const levels = item.riskIds.map(id => risks.find(risk => risk.id === id)?.level);
-    const materialRisk = levels.some(level => level === "R2" || level === "R3");
-    return { id: `obligation:${item.id}`, conditionIds: [item.id], evidenceType: item.techniques.includes("browser-verification") ? "browser-result" as const : "test-result" as const, mandatory: true, independence: materialRisk ? "independent-producer" as const : "separate-verification-context" as const, entryCriteria: [], completionCriteria: [item.expectedResult] };
+    const compositionReview = item.techniques.includes("visual-composition");
+    const resilienceReview = item.techniques.includes("ui-resilience");
+    const requiresIndependentProducer = compositionReview || resilienceReview || item.techniques.includes("independent-producer");
+    const independence = requiresIndependentProducer ? "independent-producer" as const : "separate-verification-context" as const;
+    const id = `obligation:${item.id}`;
+    const visualCompositionRequirement = item.techniques.includes("visual-composition") && input.request.visualComposition
+      ? requirementFromVisualCompositionScope(input.request.requestId, input.request.project.snapshotId, item.id, input.request.visualComposition, independence)
+      : undefined;
+    if (item.techniques.includes("visual-composition") && !visualCompositionRequirement) throw Error("visual composition condition has no canonical requirement");
+    const uiResilienceRequirement = item.techniques.includes("ui-resilience") && input.request.uiResilience
+      ? requirementFromUiResilienceScope(input.request.requestId, input.request.project.snapshotId, item.id, input.request.uiResilience, independence)
+      : undefined;
+    if (item.techniques.includes("ui-resilience") && !uiResilienceRequirement) throw Error("UI resilience condition has no canonical requirement");
+    return {
+      id,
+      conditionIds: [item.id],
+      evidenceType: item.techniques.includes("browser-verification") ? "browser-result" as const : "test-result" as const,
+      mandatory: true,
+      independence,
+      entryCriteria: [],
+      completionCriteria: [item.expectedResult],
+      ...(visualCompositionRequirement ? { visualCompositionRequirement } : {}),
+      ...(uiResilienceRequirement ? { uiResilienceRequirement } : {}),
+    } satisfies VerificationObligationPlan;
   }).sort((a, b) => compareCodeUnits(a.id, b.id));
   return freeze({ schemaVersion: "verification-plan/v1", requestId: input.request.requestId, snapshotId: input.request.project.snapshotId, risks, conditions, obligations });
 }
@@ -363,6 +437,7 @@ async function releaseExecutionDispatch(repository: RepositoryPort, claim: Dispa
 }
 async function executeExecutor(port: VerificationExecutor, input: VerificationExecutionRequest): Promise<VerificationExecutionOutput | undefined> { if (port.executeObligation) return port.executeObligation(input); return port.execute ? port.execute(input) : undefined; }
 async function executeBrowser(port: BrowserExecutor, input: BrowserExecutionRequest): Promise<BrowserExecutionOutput | undefined> { if (port.executeBrowser) return port.executeBrowser(input); return port.execute ? port.execute(input) : undefined; }
+async function loadExternalCompletion(port: ExecutionCompletionProvider | undefined, input: VerificationExecutionRequest): Promise<VerificationExecutionCompletionEnvelope | undefined> { if (!port) return undefined; if (port.loadExecutionCompletion) return port.loadExecutionCompletion(input); return port.load ? port.load(input) : undefined; }
 function normalizeStatus(value: VerificationExecutionOutput["status"]): VerificationEvidence["result"]["verdict"] { const status = String(value).toLowerCase(); return status === "passed" || status === "pass" ? "PASS" : status === "failed" || status === "fail" ? "FAIL" : status === "blocked" || status === "block" ? "BLOCKED" : "INCOMPLETE"; }
 function idempotencyKeyFor(runId: string, requestDigest: string, planDigest: string, obligationDigest: string): string {
   return `verification:${canonicalSha256([runId, requestDigest, planDigest, obligationDigest])}`;
@@ -385,33 +460,35 @@ function canonicalResult(value: unknown): VerificationEvidence["result"] | undef
   return { verdict: value.verdict as VerificationEvidence["result"]["verdict"], summary: value.summary, ...(value.passed === undefined ? {} : { passed: value.passed }), ...(value.failed === undefined ? {} : { failed: value.failed }), ...(artifacts === undefined ? {} : { artifacts }) };
 }
 function validVerificationEvidence(value: unknown): value is VerificationEvidence {
-  if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "evidenceId", "requestId", "snapshotId", "obligationId", "producer", "execution", "result", "observedAt"]) || "contentHash" in value || value.schemaVersion !== "verification-evidence/v1" || typeof value.evidenceId !== "string" || !value.evidenceId || typeof value.requestId !== "string" || !value.requestId || typeof value.snapshotId !== "string" || !value.snapshotId || typeof value.obligationId !== "string" || !value.obligationId || !validProducer(value.producer) || !validExecution(value.execution) || canonicalResult(value.result) === undefined || !validDate(value.observedAt)) return false;
+  if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "evidenceId", "requestId", "snapshotId", "obligationId", "producer", "execution", "result", "observedAt"], ["visualCompositionOracleDigest", "uiResilienceOracleDigest", "authenticatedUiReviewApprovalDigests", "authenticatedUiApplicabilityApprovalSubjectDigests"]) || "contentHash" in value || value.schemaVersion !== "verification-evidence/v1" || typeof value.evidenceId !== "string" || !value.evidenceId || typeof value.requestId !== "string" || !value.requestId || typeof value.snapshotId !== "string" || !value.snapshotId || typeof value.obligationId !== "string" || !value.obligationId || !validProducer(value.producer) || !validExecution(value.execution) || canonicalResult(value.result) === undefined || !validDate(value.observedAt) || (value.visualCompositionOracleDigest !== undefined && (typeof value.visualCompositionOracleDigest !== "string" || !DIGEST.test(value.visualCompositionOracleDigest))) || (value.uiResilienceOracleDigest !== undefined && (typeof value.uiResilienceOracleDigest !== "string" || !DIGEST.test(value.uiResilienceOracleDigest))) || (value.authenticatedUiReviewApprovalDigests !== undefined && (!Array.isArray(value.authenticatedUiReviewApprovalDigests) || value.authenticatedUiReviewApprovalDigests.some(digest => typeof digest !== "string" || !DIGEST.test(digest)) || !structurallyEqual(value.authenticatedUiReviewApprovalDigests, uniq(value.authenticatedUiReviewApprovalDigests as string[])))) || (value.authenticatedUiApplicabilityApprovalSubjectDigests !== undefined && (!Array.isArray(value.authenticatedUiApplicabilityApprovalSubjectDigests) || value.authenticatedUiApplicabilityApprovalSubjectDigests.some(digest => typeof digest !== "string" || !DIGEST.test(digest)) || !structurallyEqual(value.authenticatedUiApplicabilityApprovalSubjectDigests, uniq(value.authenticatedUiApplicabilityApprovalSubjectDigests as string[]))))) return false;
   return true;
 }
 function validAuthority(value: unknown): value is ExecutionAuthority {
-  if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "authorityId", "issuer", "binding"]) || value.schemaVersion !== "verification-execution-authority/v1" || typeof value.authorityId !== "string" || !value.authorityId || typeof value.issuer !== "string" || !value.issuer || !isRecord(value.binding) || !exactOwnKeys(value.binding, ["runId", "requestId", "requestDigest", "planDigest", "obligationDigest", "rootIdentity", "snapshotId", "obligationId", "idempotencyKey", "producer", "execution", "result", "observedAt", "artifacts"])) return false;
+  if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "authorityId", "issuer", "binding"], ["keyId", "signature"]) || value.schemaVersion !== "verification-execution-authority/v1" || typeof value.authorityId !== "string" || !value.authorityId || typeof value.issuer !== "string" || !value.issuer || ((value.keyId === undefined) !== (value.signature === undefined)) || (value.keyId !== undefined && (typeof value.keyId !== "string" || !DIGEST.test(value.keyId))) || (value.signature !== undefined && (typeof value.signature !== "string" || !/^[A-Za-z0-9_-]+$/.test(value.signature))) || !isRecord(value.binding) || !exactOwnKeys(value.binding, ["runId", "requestId", "requestDigest", "planDigest", "obligationDigest", "rootIdentity", "snapshotId", "obligationId", "idempotencyKey", "producer", "execution", "result", "observedAt", "artifacts"], ["visualCompositionOracleDigest", "uiResilienceOracleDigest", "authenticatedUiReviewApprovalDigests", "authenticatedUiApplicabilityApprovalSubjectDigests"])) return false;
   const binding = value.binding;
-  return typeof binding.runId === "string" && Boolean(binding.runId) && typeof binding.requestId === "string" && Boolean(binding.requestId) && typeof binding.requestDigest === "string" && REQUEST_DIGEST.test(binding.requestDigest) && typeof binding.planDigest === "string" && REQUEST_DIGEST.test(binding.planDigest) && typeof binding.obligationDigest === "string" && REQUEST_DIGEST.test(binding.obligationDigest) && typeof binding.rootIdentity === "string" && Boolean(binding.rootIdentity) && typeof binding.snapshotId === "string" && Boolean(binding.snapshotId) && typeof binding.obligationId === "string" && Boolean(binding.obligationId) && validExecutionKey(binding.idempotencyKey) && validProducer(binding.producer) && validExecution(binding.execution) && validDate(binding.observedAt) && canonicalResult(binding.result) !== undefined && Array.isArray(binding.artifacts) && binding.artifacts.every(artifact => validArtifact(artifact)) && structurallyEqual(binding.artifacts, (binding.artifacts as unknown[]).map(artifact => canonicalArtifact(artifact)!));
+  return typeof binding.runId === "string" && Boolean(binding.runId) && typeof binding.requestId === "string" && Boolean(binding.requestId) && typeof binding.requestDigest === "string" && REQUEST_DIGEST.test(binding.requestDigest) && typeof binding.planDigest === "string" && REQUEST_DIGEST.test(binding.planDigest) && typeof binding.obligationDigest === "string" && REQUEST_DIGEST.test(binding.obligationDigest) && typeof binding.rootIdentity === "string" && Boolean(binding.rootIdentity) && typeof binding.snapshotId === "string" && Boolean(binding.snapshotId) && typeof binding.obligationId === "string" && Boolean(binding.obligationId) && validExecutionKey(binding.idempotencyKey) && validProducer(binding.producer) && validExecution(binding.execution) && validDate(binding.observedAt) && canonicalResult(binding.result) !== undefined && Array.isArray(binding.artifacts) && binding.artifacts.every(artifact => validArtifact(artifact)) && structurallyEqual(binding.artifacts, (binding.artifacts as unknown[]).map(artifact => canonicalArtifact(artifact)!)) && (binding.visualCompositionOracleDigest === undefined || (typeof binding.visualCompositionOracleDigest === "string" && DIGEST.test(binding.visualCompositionOracleDigest))) && (binding.uiResilienceOracleDigest === undefined || (typeof binding.uiResilienceOracleDigest === "string" && DIGEST.test(binding.uiResilienceOracleDigest))) && (binding.authenticatedUiReviewApprovalDigests === undefined || (Array.isArray(binding.authenticatedUiReviewApprovalDigests) && binding.authenticatedUiReviewApprovalDigests.every(digest => typeof digest === "string" && DIGEST.test(digest)) && structurallyEqual(binding.authenticatedUiReviewApprovalDigests, uniq(binding.authenticatedUiReviewApprovalDigests as string[])))) && (binding.authenticatedUiApplicabilityApprovalSubjectDigests === undefined || (Array.isArray(binding.authenticatedUiApplicabilityApprovalSubjectDigests) && binding.authenticatedUiApplicabilityApprovalSubjectDigests.every(digest => typeof digest === "string" && DIGEST.test(digest)) && structurallyEqual(binding.authenticatedUiApplicabilityApprovalSubjectDigests, uniq(binding.authenticatedUiApplicabilityApprovalSubjectDigests as string[]))));
 }
 function authorityBindingFor(runId: string, requestDigest: string, planDigest: string, obligationDigest: string, rootIdentity: string, observation: Observation, item: VerificationEvidence): VerificationExecutionAuthorityBinding {
-  return { runId, requestId: observation.requestId, requestDigest, planDigest, obligationDigest, rootIdentity, snapshotId: observation.snapshotId, obligationId: item.obligationId, idempotencyKey: idempotencyKeyFor(runId, requestDigest, planDigest, obligationDigest), producer: observation.producer, execution: observation.execution, result: item.result, observedAt: item.observedAt, artifacts: observation.artifacts.map(artifact => canonicalArtifact(artifact)!).map(artifact => ({ ...artifact })) };
+  return { runId, requestId: observation.requestId, requestDigest, planDigest, obligationDigest, rootIdentity, snapshotId: observation.snapshotId, obligationId: item.obligationId, idempotencyKey: idempotencyKeyFor(runId, requestDigest, planDigest, obligationDigest), producer: observation.producer, execution: observation.execution, result: item.result, observedAt: item.observedAt, artifacts: observation.artifacts.map(artifact => canonicalArtifact(artifact)!).map(artifact => ({ ...artifact })), ...(item.visualCompositionOracleDigest === undefined ? {} : { visualCompositionOracleDigest: item.visualCompositionOracleDigest }), ...(item.uiResilienceOracleDigest === undefined ? {} : { uiResilienceOracleDigest: item.uiResilienceOracleDigest }), ...(item.authenticatedUiReviewApprovalDigests === undefined ? {} : { authenticatedUiReviewApprovalDigests: [...item.authenticatedUiReviewApprovalDigests] }), ...(item.authenticatedUiApplicabilityApprovalSubjectDigests === undefined ? {} : { authenticatedUiApplicabilityApprovalSubjectDigests: [...item.authenticatedUiApplicabilityApprovalSubjectDigests] }) };
 }
 function authorityBindingMatchesRequest(runId: string, request: VerificationExecutionRequest, binding: VerificationExecutionAuthorityBinding): boolean {
   return binding.runId === runId && binding.requestId === request.requestId && binding.requestDigest === request.requestDigest && binding.planDigest === request.planDigest && binding.obligationDigest === request.obligationDigest && binding.rootIdentity === request.rootIdentity && binding.snapshotId === request.snapshotId && binding.obligationId === request.obligation.id && binding.idempotencyKey === request.idempotencyKey;
 }
-function canonicalEvidenceFromAuthority(binding: VerificationExecutionAuthorityBinding, artifacts: readonly CanonicalVerificationResultArtifact[]): { producer: Producer; execution: Execution; result: VerificationEvidence["result"]; observedAt: string; artifacts: CanonicalVerificationResultArtifact[] } | undefined {
+function canonicalEvidenceFromAuthority(binding: VerificationExecutionAuthorityBinding, artifacts: readonly CanonicalStoredArtifact[]): { producer: Producer; execution: Execution; result: VerificationEvidence["result"]; observedAt: string; artifacts: CanonicalStoredArtifact[]; visualCompositionOracleDigest?: string; uiResilienceOracleDigest?: string; authenticatedUiReviewApprovalDigests?: readonly string[]; authenticatedUiApplicabilityApprovalSubjectDigests?: readonly string[] } | undefined {
   const producer = canonicalProducer(binding.producer);
   const execution = canonicalExecution(binding.execution);
   const result = canonicalResult(binding.result);
-  if (!producer || !execution || !result || !validDate(binding.observedAt) || binding.observedAt !== execution.finishedAt || !resultMatchesExecution(result, execution)) return undefined;
+  const authenticatedUiReviewApprovalDigests = binding.authenticatedUiReviewApprovalDigests === undefined ? undefined : uniq(binding.authenticatedUiReviewApprovalDigests);
+  const authenticatedUiApplicabilityApprovalSubjectDigests = binding.authenticatedUiApplicabilityApprovalSubjectDigests === undefined ? undefined : uniq(binding.authenticatedUiApplicabilityApprovalSubjectDigests);
+  if (!producer || !execution || !result || !validDate(binding.observedAt) || binding.observedAt !== execution.finishedAt || !resultMatchesExecution(result, execution) || (binding.visualCompositionOracleDigest !== undefined && !DIGEST.test(binding.visualCompositionOracleDigest)) || (binding.uiResilienceOracleDigest !== undefined && !DIGEST.test(binding.uiResilienceOracleDigest)) || (authenticatedUiReviewApprovalDigests !== undefined && !structurallyEqual(authenticatedUiReviewApprovalDigests, binding.authenticatedUiReviewApprovalDigests)) || (authenticatedUiApplicabilityApprovalSubjectDigests !== undefined && !structurallyEqual(authenticatedUiApplicabilityApprovalSubjectDigests, binding.authenticatedUiApplicabilityApprovalSubjectDigests))) return undefined;
   const signedArtifacts = binding.artifacts.map(artifact => canonicalArtifact(artifact));
   if (signedArtifacts.some(artifact => !artifact)) return undefined;
-  const canonicalArtifacts = signedArtifacts as CanonicalVerificationResultArtifact[];
+  const canonicalArtifacts = signedArtifacts as CanonicalStoredArtifact[];
   if (!structurallyEqual(canonicalArtifacts, binding.artifacts)) return undefined;
   const resultDigests = result.artifacts ?? [];
   if (!structurallyEqual(uniq(canonicalArtifacts.map(artifact => artifact.digest)), resultDigests)) return undefined;
   if (!structurallyEqual(canonicalArtifacts, artifacts)) return undefined;
-  return { producer, execution, result, observedAt: binding.observedAt, artifacts: canonicalArtifacts };
+  return { producer, execution, result, observedAt: binding.observedAt, artifacts: canonicalArtifacts, ...(binding.visualCompositionOracleDigest === undefined ? {} : { visualCompositionOracleDigest: binding.visualCompositionOracleDigest }), ...(binding.uiResilienceOracleDigest === undefined ? {} : { uiResilienceOracleDigest: binding.uiResilienceOracleDigest }), ...(authenticatedUiReviewApprovalDigests === undefined ? {} : { authenticatedUiReviewApprovalDigests }), ...(authenticatedUiApplicabilityApprovalSubjectDigests === undefined ? {} : { authenticatedUiApplicabilityApprovalSubjectDigests }) };
 }
 function authorityBindingReplayMatches(runId: string, request: VerificationExecutionRequest, local: VerificationExecutionAuthorityBinding, candidate: VerificationExecutionAuthorityBinding): boolean {
   const comparableExecution = (execution: Execution): Record<string, unknown> => {
@@ -422,7 +499,7 @@ function authorityBindingReplayMatches(runId: string, request: VerificationExecu
   };
   const candidateResult = canonicalResult(candidate.result);
   const localResult = canonicalResult(local.result);
-  return Boolean(candidateResult && localResult && authorityBindingMatchesRequest(runId, request, candidate) && structurallyEqual(candidate.producer, local.producer) && structurallyEqual(candidateResult, localResult) && structurallyEqual(candidate.artifacts, local.artifacts) && structurallyEqual(comparableExecution(candidate.execution), comparableExecution(local.execution)));
+  return Boolean(candidateResult && localResult && authorityBindingMatchesRequest(runId, request, candidate) && structurallyEqual(candidate.producer, local.producer) && structurallyEqual(candidateResult, localResult) && structurallyEqual(candidate.artifacts, local.artifacts) && candidate.visualCompositionOracleDigest === local.visualCompositionOracleDigest && candidate.uiResilienceOracleDigest === local.uiResilienceOracleDigest && structurallyEqual(candidate.authenticatedUiReviewApprovalDigests ?? [], local.authenticatedUiReviewApprovalDigests ?? []) && structurallyEqual(candidate.authenticatedUiApplicabilityApprovalSubjectDigests ?? [], local.authenticatedUiApplicabilityApprovalSubjectDigests ?? []) && structurallyEqual(comparableExecution(candidate.execution), comparableExecution(local.execution)));
 }
 function assertExecutionEvidenceBindings(execution: ExecutionDocument, request?: VerificationRequest, plan?: VerificationPlan, runId?: string): void {
   if (!isRecord(execution) || !exactOwnKeys(execution, ["schemaVersion", "requestId", "snapshotId", "observations", "claims", "evidence", "authorities", "usageOutbox"]) || execution.schemaVersion !== "verification-execution/v1" || !Array.isArray(execution.observations) || !Array.isArray(execution.claims) || !Array.isArray(execution.evidence) || !Array.isArray(execution.authorities) || !Array.isArray(execution.usageOutbox)) throw Error("invalid execution document");
@@ -458,6 +535,8 @@ function assertExecutionEvidenceBindings(execution: ExecutionDocument, request?:
     const obligation = plan?.obligations.find(candidate => candidate.id === obligationId);
     if (!claim || !item || !obligation || claim.claim !== item.result.summary || (request && (observation.requestId !== request.requestId || observation.snapshotId !== request.project.snapshotId || claim.requestId !== request.requestId || claim.snapshotId !== request.project.snapshotId || item.requestId !== request.requestId || item.snapshotId !== request.project.snapshotId)) || observation.requestId !== item.requestId || observation.snapshotId !== item.snapshotId || claim.requestId !== item.requestId || claim.snapshotId !== item.snapshotId || !structurallyEqual(observation.producer, item.producer) || !structurallyEqual(observation.execution, item.execution) || !structurallyEqual(observation.artifacts, observation.artifacts.map(artifact => canonicalArtifact(artifact)!))) throw Error("invalid execution evidence binding");
     if (!structurallyEqual(uniq(observation.artifacts.map(artifact => artifact.digest)), item.result.artifacts ?? [])) throw Error("invalid execution evidence binding");
+    if (obligation.visualCompositionRequirement && item.result.verdict === "PASS" && item.visualCompositionOracleDigest === undefined) throw Error("invalid execution visual composition evidence binding");
+    if (obligation.uiResilienceRequirement && item.result.verdict === "PASS" && item.uiResilienceOracleDigest === undefined) throw Error("invalid execution UI resilience evidence binding");
     const persistedAuthority = authorityByObligation.get(obligationId);
     const expectedRequest = requestDigest ?? persistedAuthority?.binding.requestDigest;
     const expectedPlan = planDigest ?? persistedAuthority?.binding.planDigest;
@@ -512,7 +591,7 @@ function executionFor(obligation: VerificationObligationPlan, verdict: Verificat
   const identity = typeof output?.identity === "string" && output.identity ? output.identity : producer.identity;
   return { kind, identity, startedAt, finishedAt, exitStatus, ...(typeof output?.exitCode === "number" && Number.isInteger(output.exitCode) ? { exitCode: output.exitCode } : {}) };
 }
-function canonicalArtifacts(values: readonly unknown[]): CanonicalVerificationResultArtifact[] {
+function canonicalArtifacts(values: readonly unknown[]): CanonicalStoredArtifact[] {
   return values.map(value => {
     const artifact = canonicalArtifact(value);
     if (!artifact) throw Error("invalid artifact descriptor");
@@ -520,31 +599,101 @@ function canonicalArtifacts(values: readonly unknown[]): CanonicalVerificationRe
   });
 }
 function canonicalExecutionOutput(value: unknown): VerificationExecutionOutput | undefined {
-  if (!isRecord(value) || !exactOwnKeys(value, ["status", "runId", "requestId", "snapshotId", "idempotencyKey", "producer"], ["summary", "artifacts", "executionKind", "identity", "exitCode"]) || !["passed", "failed", "blocked", "incomplete", "PASS", "FAIL", "BLOCKED", "INCOMPLETE"].includes(value.status as string) || typeof value.runId !== "string" || !value.runId || typeof value.requestId !== "string" || !value.requestId || typeof value.snapshotId !== "string" || !value.snapshotId || !validExecutionKey(value.idempotencyKey) || !validProducer(value.producer) || (value.summary !== undefined && (typeof value.summary !== "string" || !value.summary)) || (value.executionKind !== undefined && !EXECUTION_KINDS.includes(value.executionKind as Execution["kind"])) || (value.identity !== undefined && (typeof value.identity !== "string" || !value.identity)) || (value.exitCode !== undefined && (typeof value.exitCode !== "number" || !Number.isInteger(value.exitCode)))) return undefined;
+  if (!isRecord(value) || !exactOwnKeys(value, ["status", "runId", "requestId", "snapshotId", "idempotencyKey", "producer"], ["summary", "artifacts", "executionKind", "identity", "exitCode", "visualCompositionOracle", "uiResilienceOracle"]) || !["passed", "failed", "blocked", "incomplete", "PASS", "FAIL", "BLOCKED", "INCOMPLETE"].includes(value.status as string) || typeof value.runId !== "string" || !value.runId || typeof value.requestId !== "string" || !value.requestId || typeof value.snapshotId !== "string" || !value.snapshotId || !validExecutionKey(value.idempotencyKey) || !validProducer(value.producer) || (value.summary !== undefined && (typeof value.summary !== "string" || !value.summary)) || (value.executionKind !== undefined && !EXECUTION_KINDS.includes(value.executionKind as Execution["kind"])) || (value.identity !== undefined && (typeof value.identity !== "string" || !value.identity)) || (value.exitCode !== undefined && (typeof value.exitCode !== "number" || !Number.isInteger(value.exitCode)))) return undefined;
+  if (value.visualCompositionOracle !== undefined && !isVisualCompositionOracle(value.visualCompositionOracle)) return undefined;
+  if (value.uiResilienceOracle !== undefined && !isUiResilienceOracle(value.uiResilienceOracle)) return undefined;
   const artifacts = value.artifacts === undefined ? undefined : Array.isArray(value.artifacts) ? Array.from(value.artifacts, item => canonicalArtifact(item)) : null;
   if (artifacts === null || artifacts?.some(item => !item)) return undefined;
-  return { status: value.status as VerificationExecutionOutput["status"], runId: value.runId, requestId: value.requestId, snapshotId: value.snapshotId, idempotencyKey: value.idempotencyKey, producer: canonicalProducer(value.producer)!, ...(value.summary === undefined ? {} : { summary: value.summary }), ...(artifacts === undefined ? {} : { artifacts: artifacts as CanonicalVerificationResultArtifact[] }), ...(value.executionKind === undefined ? {} : { executionKind: value.executionKind as Execution["kind"] }), ...(value.identity === undefined ? {} : { identity: value.identity }), ...(value.exitCode === undefined ? {} : { exitCode: value.exitCode }) };
+  return { status: value.status as VerificationExecutionOutput["status"], runId: value.runId, requestId: value.requestId, snapshotId: value.snapshotId, idempotencyKey: value.idempotencyKey, producer: canonicalProducer(value.producer)!, ...(value.summary === undefined ? {} : { summary: value.summary }), ...(artifacts === undefined ? {} : { artifacts: artifacts as CanonicalStoredArtifact[] }), ...(value.executionKind === undefined ? {} : { executionKind: value.executionKind as Execution["kind"] }), ...(value.identity === undefined ? {} : { identity: value.identity }), ...(value.exitCode === undefined ? {} : { exitCode: value.exitCode }), ...(value.visualCompositionOracle === undefined ? {} : { visualCompositionOracle: value.visualCompositionOracle as VisualCompositionOracle }), ...(value.uiResilienceOracle === undefined ? {} : { uiResilienceOracle: value.uiResilienceOracle as UiResilienceOracle }) };
 }
-function validCompletionEnvelope(value: unknown, request: VerificationExecutionRequest, claim: DispatchClaim): value is VerificationExecutionCompletionEnvelope {
+function enforceVisualCompositionOutput(obligation: VerificationObligationPlan, output: VerificationExecutionOutput): VerificationExecutionOutput | undefined {
+  const requirement = obligation.visualCompositionRequirement;
+  if (!requirement) return output.visualCompositionOracle === undefined ? output : undefined;
+  if (!isVisualCompositionRequirement(requirement)) return undefined;
+  const executorStatus = normalizeStatus(output.status);
+  const oracle = output.visualCompositionOracle;
+  if (!oracle && executorStatus !== "PASS") return output;
+  const result = oracle ? evaluateVisualComposition(requirement, oracle, output.artifacts ?? []) : { status: "INCOMPLETE" as const, reasons: ["VISUAL_COMPOSITION_ORACLE_MISSING"] as readonly string[], failedAssertionIds: [] as readonly string[], missingCaptureKeys: [] as readonly string[] };
+  const producerMatches = Boolean(oracle && structurallyEqual(oracle.producer, output.producer));
+  const reasons = producerMatches ? result.reasons : [...result.reasons, "ORACLE_PRODUCER_MISMATCH"].sort();
+  const rank = { PASS: 0, INCOMPLETE: 1, BLOCKED: 2, FAIL: 3 } as const;
+  const evaluatedStatus = producerMatches ? result.status : "INCOMPLETE";
+  const finalStatus = rank[evaluatedStatus] > rank[executorStatus] ? evaluatedStatus : executorStatus;
+  if (finalStatus === executorStatus && result.status === "PASS" && producerMatches) return output;
+  const { exitCode: _exitCode, ...rest } = output;
+  return { ...rest, status: finalStatus, summary: `Visual composition ${finalStatus}: ${reasons.join(", ") || `executor reported ${executorStatus}`}` };
+}
+function uiVisualReviews(oracle: UiResilienceOracle): UiVisualReview[] {
+  return oracle.runs.flatMap(run => run.observations.flatMap(observation => observation.visualReview === undefined ? [] : [observation.visualReview]));
+}
+async function authenticateUiVisualReviews(oracle: UiResilienceOracle | undefined, verifier: UiVisualReviewApprovalVerifier | undefined): Promise<string[]> {
+  if (!oracle || !isUiResilienceOracle(oracle) || verifier?.independentAuthentication !== true) return [];
+  const verify = verifier.verifyApproval ?? verifier.verify;
+  if (!verify) return [];
+  const authenticated = new Set<string>();
+  for (const review of uiVisualReviews(oracle)) {
+    if (await verify.call(verifier, review) === true) authenticated.add(review.approvalArtifactDigest);
+  }
+  return [...authenticated].sort(compareCodeUnits);
+}
+async function authenticateUiApplicabilityApprovals(requirement: UiResilienceRequirement | undefined, verifier: UiApplicabilityApprovalVerifier | undefined): Promise<string[]> {
+  if (!requirement || !isUiResilienceRequirement(requirement) || verifier?.independentAuthentication !== true) return [];
+  const verify = verifier.verifyApproval ?? verifier.verify;
+  if (!verify) return [];
+  const authenticated = new Set<string>();
+  for (const subject of requirement.applicabilityApprovals) {
+    if (await verify.call(verifier, subject) === true) authenticated.add(uiApplicabilityApprovalSubjectDigest(subject));
+  }
+  return [...authenticated].sort(compareCodeUnits);
+}
+function enforceUiResilienceOutput(obligation: VerificationObligationPlan, output: VerificationExecutionOutput, authenticatedUiReviewApprovalDigests: readonly string[], authenticatedUiApplicabilityApprovalSubjectDigests: readonly string[]): VerificationExecutionOutput | undefined {
+  const requirement = obligation.uiResilienceRequirement;
+  if (!requirement) return output.uiResilienceOracle === undefined ? output : undefined;
+  if (!isUiResilienceRequirement(requirement)) return undefined;
+  const executorStatus = normalizeStatus(output.status);
+  const oracle = output.uiResilienceOracle;
+  if (!oracle && executorStatus !== "PASS") return output;
+  const result = oracle ? evaluateUiResilience(requirement, oracle, output.artifacts ?? [], authenticatedUiReviewApprovalDigests, authenticatedUiApplicabilityApprovalSubjectDigests) : { status: "INCOMPLETE" as const, reasons: ["UI_RESILIENCE_ORACLE_MISSING"] as readonly string[], failedObservationIds: [] as readonly string[], missingRunKeys: [] as readonly string[] };
+  const producerMatches = Boolean(oracle && structurallyEqual(oracle.producer, output.producer));
+  const reasons = producerMatches ? result.reasons : [...result.reasons, "ORACLE_PRODUCER_MISMATCH"].sort();
+  const rank = { PASS: 0, INCOMPLETE: 1, BLOCKED: 2, FAIL: 3 } as const;
+  const evaluatedStatus = producerMatches ? result.status : "INCOMPLETE";
+  const finalStatus = rank[evaluatedStatus] > rank[executorStatus] ? evaluatedStatus : executorStatus;
+  if (finalStatus === executorStatus && result.status === "PASS" && producerMatches) return output;
+  const { exitCode: _exitCode, ...rest } = output;
+  return { ...rest, status: finalStatus, summary: `UI resilience ${finalStatus}: ${reasons.join(", ") || `executor reported ${executorStatus}`}` };
+}
+function validCompletionEnvelope(value: unknown, request: VerificationExecutionRequest, claim: DispatchClaim, authenticatedApprovals?: Readonly<{ reviewDigests: readonly string[]; applicabilitySubjectDigests: readonly string[] }>): value is VerificationExecutionCompletionEnvelope {
   if (!isRecord(value) || !exactOwnKeys(value, ["schemaVersion", "runId", "requestId", "rootIdentity", "snapshotId", "planDigest", "obligationId", "idempotencyKey", "output", "authority"]) || value.schemaVersion !== "verification-execution-completion/v1" || value.runId !== request.runId || value.requestId !== request.requestId || value.rootIdentity !== request.rootIdentity || value.snapshotId !== request.snapshotId || value.planDigest !== request.planDigest || value.obligationId !== request.obligation.id || value.idempotencyKey !== request.idempotencyKey || value.runId !== claim.runId || value.requestId !== claim.requestId || value.rootIdentity !== claim.rootIdentity || value.snapshotId !== claim.snapshotId || value.planDigest !== claim.planDigest || value.obligationId !== claim.obligationId || value.idempotencyKey !== claim.idempotencyKey || !validAuthority(value.authority)) return false;
   const output = canonicalExecutionOutput(value.output);
-  if (!output || !structurallyEqual(output, value.output) || !outputReceiptMatches(output, request) || !authorityBindingMatchesRequest(request.runId, request, value.authority.binding)) return false;
+  const compositionOutput = output && enforceVisualCompositionOutput(request.obligation, output);
+  const reviewDigests = authenticatedApprovals?.reviewDigests ?? value.authority.binding.authenticatedUiReviewApprovalDigests ?? [];
+  const applicabilitySubjectDigests = authenticatedApprovals?.applicabilitySubjectDigests ?? value.authority.binding.authenticatedUiApplicabilityApprovalSubjectDigests ?? [];
+  if (authenticatedApprovals && (!structurallyEqual(reviewDigests, value.authority.binding.authenticatedUiReviewApprovalDigests ?? []) || !structurallyEqual(applicabilitySubjectDigests, value.authority.binding.authenticatedUiApplicabilityApprovalSubjectDigests ?? []))) return false;
+  const enforcedOutput = compositionOutput && outputExitCodeMatchesStatus(output) && enforceUiResilienceOutput(request.obligation, compositionOutput, reviewDigests, applicabilitySubjectDigests);
+  if (!output || !enforcedOutput || !structurallyEqual(output, enforcedOutput) || !structurallyEqual(output, value.output) || !outputReceiptMatches(output, request) || !authorityBindingMatchesRequest(request.runId, request, value.authority.binding)) return false;
   const binding = value.authority.binding;
-  const artifacts = (output.artifacts ?? []) as CanonicalVerificationResultArtifact[];
+  const artifacts = (output.artifacts ?? []) as CanonicalStoredArtifact[];
   const canonical = canonicalEvidenceFromAuthority(binding, artifacts);
   if (!canonical || !structurallyEqual(canonical.producer, output.producer) || canonical.result.verdict !== normalizeStatus(output.status) || canonical.result.summary !== (output.summary ?? `Obligation ${request.obligation.id} completed.`) || !structurallyEqual(canonical.result.artifacts ?? [], uniq(artifacts.map(item => item.digest))) || canonical.execution.identity !== (output.identity ?? output.producer.identity) || canonical.execution.exitCode !== output.exitCode || canonical.execution.exitStatus !== (normalizeStatus(output.status) === "PASS" ? "passed" : normalizeStatus(output.status) === "FAIL" ? "failed" : normalizeStatus(output.status) === "BLOCKED" ? "blocked" : "cancelled") || canonical.execution.kind !== (output.executionKind ?? (request.obligation.evidenceType === "browser-result" ? "browser" : "command"))) return false;
-  return true;
+  const outputOracleDigest = output.visualCompositionOracle === undefined ? undefined : canonicalSha256(output.visualCompositionOracle);
+  const uiResilienceOracleDigest = output.uiResilienceOracle === undefined ? undefined : canonicalSha256(output.uiResilienceOracle);
+  return canonical.visualCompositionOracleDigest === outputOracleDigest && canonical.uiResilienceOracleDigest === uiResilienceOracleDigest;
 }
-async function createCompletionEnvelope(request: VerificationExecutionRequest, claim: DispatchClaim, output: VerificationExecutionOutput | undefined, startedAt: string, finishedAt: string, dependencies: VerificationRunDependencies): Promise<VerificationExecutionCompletionEnvelope | undefined> {
-  const canonicalOutput = canonicalExecutionOutput(output);
+async function createCompletionEnvelope(request: VerificationExecutionRequest, claim: DispatchClaim, output: VerificationExecutionOutput | undefined, authenticatedUiReviewApprovalDigests: readonly string[], authenticatedUiApplicabilityApprovalSubjectDigests: readonly string[], startedAt: string, finishedAt: string, dependencies: VerificationRunDependencies): Promise<VerificationExecutionCompletionEnvelope | undefined> {
+  const parsedOutput = canonicalExecutionOutput(output);
+  const compositionOutput = parsedOutput && enforceVisualCompositionOutput(request.obligation, parsedOutput);
+  const canonicalOutput = compositionOutput && enforceUiResilienceOutput(request.obligation, compositionOutput, authenticatedUiReviewApprovalDigests, authenticatedUiApplicabilityApprovalSubjectDigests);
   if (!canonicalOutput || !outputReceiptMatches(canonicalOutput, request)) return undefined;
   const producer = canonicalOutput.producer;
-  const artifacts = (canonicalOutput.artifacts ?? []) as CanonicalVerificationResultArtifact[];
+  const artifacts = (canonicalOutput.artifacts ?? []) as CanonicalStoredArtifact[];
   const verdict = normalizeStatus(canonicalOutput.status);
   const execution = executionFor(request.obligation, verdict, startedAt, finishedAt, canonicalOutput, producer);
   const result: VerificationEvidence["result"] = { verdict, summary: canonicalOutput.summary ?? `Obligation ${request.obligation.id} completed.`, ...(verdict === "PASS" ? { passed: 1 } : verdict === "FAIL" ? { failed: 1 } : {}), artifacts: uniq(artifacts.map(item => item.digest)) };
   const observation: Observation = { schemaVersion: "observation/v1", observationId: `observation:${request.obligation.id}`, requestId: request.requestId, snapshotId: request.snapshotId, producer, execution, artifacts };
-  const item: VerificationEvidence = { schemaVersion: "verification-evidence/v1", evidenceId: `evidence:${request.obligation.id}`, requestId: request.requestId, snapshotId: request.snapshotId, obligationId: request.obligation.id, producer, execution, result, observedAt: finishedAt };
+  const visualCompositionOracleDigest = canonicalOutput.visualCompositionOracle === undefined ? undefined : canonicalSha256(canonicalOutput.visualCompositionOracle);
+  const uiResilienceOracleDigest = canonicalOutput.uiResilienceOracle === undefined ? undefined : canonicalSha256(canonicalOutput.uiResilienceOracle);
+  const item: VerificationEvidence = { schemaVersion: "verification-evidence/v1", evidenceId: `evidence:${request.obligation.id}`, requestId: request.requestId, snapshotId: request.snapshotId, obligationId: request.obligation.id, producer, execution, result, observedAt: finishedAt, ...(visualCompositionOracleDigest === undefined ? {} : { visualCompositionOracleDigest }), ...(uiResilienceOracleDigest === undefined ? {} : { uiResilienceOracleDigest }), ...(authenticatedUiReviewApprovalDigests.length === 0 ? {} : { authenticatedUiReviewApprovalDigests: [...authenticatedUiReviewApprovalDigests] }), ...(authenticatedUiApplicabilityApprovalSubjectDigests.length === 0 ? {} : { authenticatedUiApplicabilityApprovalSubjectDigests: [...authenticatedUiApplicabilityApprovalSubjectDigests] }) };
   const binding = authorityBindingFor(request.runId, request.requestDigest, request.planDigest, request.obligationDigest, request.rootIdentity, observation, item);
   const authority = await issueExecutionAuthority(dependencies.executionAuthority, binding);
   if (!authority || !validAuthority(authority) || !structurallyEqual(authority.binding, binding)) throw Error("execution authority issue failed");
@@ -553,25 +702,35 @@ async function createCompletionEnvelope(request: VerificationExecutionRequest, c
   if (!validCompletionEnvelope(envelope, request, claim)) throw Error("execution completion envelope validation failed");
   return freeze(envelope);
 }
-async function storeArtifact(store: ArtifactStore, artifact: CanonicalVerificationResultArtifact, input: VerificationExecutionRequest): Promise<CanonicalVerificationResultArtifact | undefined> {
-  const saved = store.storeVerificationResultArtifact ? await store.storeVerificationResultArtifact(artifact, input) : store.storeArtifact ? await store.storeArtifact(artifact, input) : store.putArtifact ? await store.putArtifact(artifact, input) : store.store ? await store.store(artifact, input) : undefined;
+async function storeArtifact(store: ArtifactStore, artifact: CanonicalStoredArtifact, input: VerificationExecutionRequest): Promise<CanonicalStoredArtifact | undefined> {
+  const saved = artifact.type === "verification-result" && store.storeVerificationResultArtifact
+    ? await store.storeVerificationResultArtifact(artifact, input)
+    : store.storeArtifact ? await store.storeArtifact(artifact, input)
+    : store.putArtifact ? await store.putArtifact(artifact, input)
+    : store.store ? await store.store(artifact, input)
+    : undefined;
   const savedRecord = isRecord(saved) ? { type: saved.type, digest: saved.digest, ...(saved.path === undefined ? {} : { path: saved.path }) } : undefined;
   const canonical = canonicalArtifact(savedRecord);
   const expected = canonicalArtifact(artifact);
   return canonical && expected && structurallyEqual(canonical, expected) ? canonical : undefined;
 }
-async function canonicalizeAndStoreExecutionOutput(value: unknown, input: VerificationExecutionRequest, store: ArtifactStore): Promise<VerificationExecutionOutput | undefined> {
-  const output = canonicalExecutionOutput(value);
-  if (!output || !outputReceiptMatches(output, input)) return undefined;
-  const artifacts = (output.artifacts ?? []) as readonly CanonicalVerificationResultArtifact[];
+async function canonicalizeAndStoreExecutionOutput(value: unknown, input: VerificationExecutionRequest, store: ArtifactStore, reviewVerifier: UiVisualReviewApprovalVerifier | undefined, applicabilityVerifier: UiApplicabilityApprovalVerifier | undefined): Promise<Readonly<{ output: VerificationExecutionOutput; authenticatedUiReviewApprovalDigests: readonly string[]; authenticatedUiApplicabilityApprovalSubjectDigests: readonly string[] }> | undefined> {
+  const parsed = canonicalExecutionOutput(value);
+  if (!parsed || !outputExitCodeMatchesStatus(parsed) || !outputReceiptMatches(parsed, input)) return undefined;
+  const authenticatedUiReviewApprovalDigests = await authenticateUiVisualReviews(parsed.uiResilienceOracle, reviewVerifier);
+  const authenticatedUiApplicabilityApprovalSubjectDigests = await authenticateUiApplicabilityApprovals(input.obligation.uiResilienceRequirement, applicabilityVerifier);
+  const compositionOutput = enforceVisualCompositionOutput(input.obligation, parsed);
+  const output = compositionOutput && enforceUiResilienceOutput(input.obligation, compositionOutput, authenticatedUiReviewApprovalDigests, authenticatedUiApplicabilityApprovalSubjectDigests);
+  if (!output) return undefined;
+  const artifacts = (output.artifacts ?? []) as readonly CanonicalStoredArtifact[];
   if (artifacts.length > 0 && store.atomicSameKeyIdempotency !== true) throw Error("artifact store must declare atomic same-key idempotency");
-  const stored: CanonicalVerificationResultArtifact[] = [];
+  const stored: CanonicalStoredArtifact[] = [];
   for (const artifact of artifacts) {
     const saved = await storeArtifact(store, artifact, input);
     if (!saved) return undefined;
     stored.push(saved);
   }
-  return { ...output, ...(output.artifacts === undefined ? {} : { artifacts: stored }) };
+  return { output: { ...output, ...(output.artifacts === undefined ? {} : { artifacts: stored }) }, authenticatedUiReviewApprovalDigests, authenticatedUiApplicabilityApprovalSubjectDigests };
 }
 async function assertCanonicalPlan(request: VerificationRequest, basis: BasisDocument, discovery: DiscoveryDocument, plan: PlanDocument, dependencies: VerificationRunDependencies): Promise<void> {
   const canonical = await buildVerificationPlan({ request, basis, discovery, dependencies });
@@ -658,7 +817,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     const planDigest = canonicalPlanDigest(input.plan);
     const obligationDigest = canonicalObligationDigest(obligation);
     const request = { runId: input.runId, requestId: input.request.requestId, requestDigest, planDigest, obligationDigest, rootIdentity: input.request.project.rootIdentity, snapshotId: input.request.project.snapshotId, obligation, conditionIds: uniq(obligation.conditionIds), idempotencyKey: idempotencyKeyFor(input.runId, requestDigest, planDigest, obligationDigest) };
-    const lease = await claimExecutionDispatch(input.dependencies.repository, request, input.dependencies);
+    let lease = await claimExecutionDispatch(input.dependencies.repository, request, input.dependencies);
     let claimReleased = false;
     let completionPersisted = false;
     const releaseClaim = async (preserveError: boolean): Promise<void> => {
@@ -670,6 +829,22 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
         if (!preserveError) throw error;
       }
     };
+    if (lease.owned) {
+      try {
+        const externalCompletion = await loadExternalCompletion(input.dependencies.completionProvider, request);
+        if (externalCompletion !== undefined) {
+          const reviewDigests = await authenticateUiVisualReviews(externalCompletion.output.uiResilienceOracle, input.dependencies.uiVisualReviewApprovalVerifier);
+          const applicabilitySubjectDigests = await authenticateUiApplicabilityApprovals(request.obligation.uiResilienceRequirement, input.dependencies.uiApplicabilityApprovalVerifier);
+          if (!validCompletionEnvelope(externalCompletion, request, lease.claim, { reviewDigests, applicabilitySubjectDigests }) || !await verifyExecutionAuthority(input.dependencies.executionAuthority, externalCompletion.authority, externalCompletion.authority.binding)) throw Error("invalid external execution completion");
+          await completeExecutionDispatch(input.dependencies.repository, lease.claim, externalCompletion, clockNow(input.dependencies.now));
+          completionPersisted = true;
+          lease = { owned: false, outputStored: true, claim: lease.claim, completion: externalCompletion };
+        }
+      } catch (error) {
+        await releaseClaim(true);
+        throw error;
+      }
+    }
     const executionPort = obligation.evidenceType === "browser-result" ? input.dependencies.browserExecutor : input.dependencies.executor;
     try {
     let available: boolean;
@@ -682,6 +857,8 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     }
     let startedAt: string;
     let finishedAt: string;
+    let authenticatedUiReviewApprovalDigests: readonly string[] = [];
+    let authenticatedUiApplicabilityApprovalSubjectDigests: readonly string[] = [];
     let output: VerificationExecutionOutput | undefined;
     if (available) {
       if (lease.owned) {
@@ -702,7 +879,10 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
         if (output) {
           try {
             if (!outputExitCodeMatchesStatus(output)) throw Error("executor output status contradicts exit code");
-            output = await canonicalizeAndStoreExecutionOutput(output, request, input.dependencies.artifactStore);
+            const canonicalized = await canonicalizeAndStoreExecutionOutput(output, request, input.dependencies.artifactStore, input.dependencies.uiVisualReviewApprovalVerifier, input.dependencies.uiApplicabilityApprovalVerifier);
+            output = canonicalized?.output;
+            authenticatedUiReviewApprovalDigests = canonicalized?.authenticatedUiReviewApprovalDigests ?? [];
+            authenticatedUiApplicabilityApprovalSubjectDigests = canonicalized?.authenticatedUiApplicabilityApprovalSubjectDigests ?? [];
           } catch (error) {
             await releaseClaim(true);
             throw error;
@@ -711,7 +891,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
         const outputRequiresArtifact = output && ["PASS", "FAIL", "passed", "failed"].includes(output.status) && !(output.artifacts?.length);
         const completion = outputRequiresArtifact
           ? undefined
-          : await createCompletionEnvelope(request, lease.claim, output, startedAt, finishedAt, input.dependencies);
+          : await createCompletionEnvelope(request, lease.claim, output, authenticatedUiReviewApprovalDigests, authenticatedUiApplicabilityApprovalSubjectDigests, startedAt, finishedAt, input.dependencies);
         if (completion) {
           completionAuthority = completion.authority;
           await completeExecutionDispatch(input.dependencies.repository, lease.claim, completion, clockNow(input.dependencies.now));
@@ -725,6 +905,8 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
         output = lease.completion.output;
         startedAt = lease.completion.authority.binding.execution.startedAt;
         finishedAt = lease.completion.authority.binding.execution.finishedAt;
+        authenticatedUiReviewApprovalDigests = lease.completion.authority.binding.authenticatedUiReviewApprovalDigests ?? [];
+        authenticatedUiApplicabilityApprovalSubjectDigests = lease.completion.authority.binding.authenticatedUiApplicabilityApprovalSubjectDigests ?? [];
       }
     } else {
       startedAt = clockNow(input.dependencies.now);
@@ -737,7 +919,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     const outputProducer = output ? canonicalProducer(output.producer) : undefined;
     let producer = outputProducer ?? UNAVAILABLE_PRODUCER;
     let summary = !available ? `Capability ${capabilityFor(obligation)} is unavailable.` : !output ? "No executor output was returned." : !receiptValid ? "Executor output did not echo the canonical idempotency receipt (provenance or idempotency mismatch)." : output.summary ?? `Obligation ${obligation.id} completed.`;
-    let artifacts: CanonicalVerificationResultArtifact[] = output?.artifacts ? canonicalArtifacts(output.artifacts) : [];
+    let artifacts: CanonicalStoredArtifact[] = output?.artifacts ? canonicalArtifacts(output.artifacts) : [];
     if (verdict === "PASS" || verdict === "FAIL") {
       if (!output || !outputProducer) {
         hostGenerated = true;
@@ -756,7 +938,9 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     const observationSnapshotId = input.request.project.snapshotId;
     let observation: Observation = { schemaVersion: "observation/v1", observationId, requestId: observationRequestId, snapshotId: observationSnapshotId, producer, execution, artifacts };
     let result: VerificationEvidence["result"] = { verdict, summary, ...(verdict === "PASS" ? { passed: 1 } : verdict === "FAIL" ? { failed: 1 } : {}), artifacts: uniq(artifacts.map(item => item.digest)) };
-    let item: VerificationEvidence = { schemaVersion: "verification-evidence/v1", evidenceId: `evidence:${obligation.id}`, requestId: observationRequestId, snapshotId: observationSnapshotId, obligationId: obligation.id, producer, execution, result, observedAt: finishedAt };
+    const visualCompositionOracleDigest = output?.visualCompositionOracle === undefined ? undefined : canonicalSha256(output.visualCompositionOracle);
+    const uiResilienceOracleDigest = output?.uiResilienceOracle === undefined ? undefined : canonicalSha256(output.uiResilienceOracle);
+    let item: VerificationEvidence = { schemaVersion: "verification-evidence/v1", evidenceId: `evidence:${obligation.id}`, requestId: observationRequestId, snapshotId: observationSnapshotId, obligationId: obligation.id, producer, execution, result, observedAt: finishedAt, ...(visualCompositionOracleDigest === undefined ? {} : { visualCompositionOracleDigest }), ...(uiResilienceOracleDigest === undefined ? {} : { uiResilienceOracleDigest }), ...(authenticatedUiReviewApprovalDigests.length === 0 ? {} : { authenticatedUiReviewApprovalDigests }), ...(authenticatedUiApplicabilityApprovalSubjectDigests.length === 0 ? {} : { authenticatedUiApplicabilityApprovalSubjectDigests }) };
     const binding = authorityBindingFor(input.runId, requestDigest, planDigest, obligationDigest, input.request.project.rootIdentity, observation, item);
     const candidate = completionAuthority ?? await issueExecutionAuthority(input.dependencies.executionAuthority, binding);
     if (!candidate || !validAuthority(candidate)) throw Error("execution authority issue failed");
@@ -769,7 +953,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
       const replayCanonical = canonicalEvidenceFromAuthority(candidate.binding, artifacts);
       if (!replayCanonical) throw Error("execution authority binding is not canonical");
       const replayObservation = { ...observation, producer: replayCanonical.producer, execution: replayCanonical.execution, artifacts: replayCanonical.artifacts };
-      const replayItem = { ...item, producer: replayCanonical.producer, execution: replayCanonical.execution, result: replayCanonical.result, observedAt: replayCanonical.observedAt };
+      const replayItem: VerificationEvidence = { schemaVersion: "verification-evidence/v1", evidenceId: item.evidenceId, requestId: item.requestId, snapshotId: item.snapshotId, obligationId: item.obligationId, producer: replayCanonical.producer, execution: replayCanonical.execution, result: replayCanonical.result, observedAt: replayCanonical.observedAt, ...(replayCanonical.visualCompositionOracleDigest === undefined ? {} : { visualCompositionOracleDigest: replayCanonical.visualCompositionOracleDigest }), ...(replayCanonical.uiResilienceOracleDigest === undefined ? {} : { uiResilienceOracleDigest: replayCanonical.uiResilienceOracleDigest }), ...(replayCanonical.authenticatedUiReviewApprovalDigests === undefined ? {} : { authenticatedUiReviewApprovalDigests: replayCanonical.authenticatedUiReviewApprovalDigests }), ...(replayCanonical.authenticatedUiApplicabilityApprovalSubjectDigests === undefined ? {} : { authenticatedUiApplicabilityApprovalSubjectDigests: replayCanonical.authenticatedUiApplicabilityApprovalSubjectDigests }) };
       const expectedBinding = authorityBindingFor(input.runId, requestDigest, planDigest, obligationDigest, input.request.project.rootIdentity, replayObservation, replayItem);
       if (!structurallyEqual(candidate.binding, expectedBinding)) throw Error("execution authority replay binding is not canonical");
       if (!await verifyExecutionAuthority(input.dependencies.executionAuthority, candidate, expectedBinding)) throw Error("execution authority replay verification failed");
@@ -784,7 +968,7 @@ async function executeObligations(input: ExecuteObligationsInput): Promise<Execu
     summary = canonical.result.summary;
     result = canonical.result;
     observation = { ...observation, producer, execution, artifacts };
-    item = { ...item, producer, execution, result, observedAt: canonical.observedAt };
+    item = { schemaVersion: "verification-evidence/v1", evidenceId: item.evidenceId, requestId: item.requestId, snapshotId: item.snapshotId, obligationId: item.obligationId, producer, execution, result, observedAt: canonical.observedAt, ...(canonical.visualCompositionOracleDigest === undefined ? {} : { visualCompositionOracleDigest: canonical.visualCompositionOracleDigest }), ...(canonical.uiResilienceOracleDigest === undefined ? {} : { uiResilienceOracleDigest: canonical.uiResilienceOracleDigest }), ...(canonical.authenticatedUiReviewApprovalDigests === undefined ? {} : { authenticatedUiReviewApprovalDigests: canonical.authenticatedUiReviewApprovalDigests }), ...(canonical.authenticatedUiApplicabilityApprovalSubjectDigests === undefined ? {} : { authenticatedUiApplicabilityApprovalSubjectDigests: canonical.authenticatedUiApplicabilityApprovalSubjectDigests }) };
     observations.push(observation);
     evidence.push(item);
     authorities.push(candidate);
@@ -1061,6 +1245,44 @@ function assertCanonicalRunIndexes(run: CanonicalRunState, execution: ExecutionD
 const repositoryRunLocks = new WeakMap<object, Map<string, Promise<void>>>();
 export function getVerificationRunLockCount(repository: RepositoryPort): number {
   return repositoryRunLocks.get(repository as unknown as object)?.size ?? 0;
+}
+export async function validatePersistedVerificationRun(input: RunVerificationInput): Promise<RunVerificationResult> {
+  const { repository } = input.dependencies;
+  const run = await loadRun(repository, input.runId);
+  if (!run || run.state !== "TERMINAL") throw Error("report-only validation requires a terminal persisted run");
+  const persisted = await loadStage<VerificationRequest>(repository, input.runId, "request");
+  if (!persisted) throw Error("report-only validation requires a persisted request");
+  validateStage("request", persisted, input.request ?? persisted, input.runId);
+  if (input.request && !structurallyEqual(input.request, persisted)) throw Error("resume request identity/structural mismatch");
+  if (run.requestId !== persisted.requestId || run.rootIdentity !== persisted.project.rootIdentity || run.snapshotId !== persisted.project.snapshotId) throw Error("run identity mismatch");
+  const documents: VerificationRunDocuments = { request: persisted };
+  const basis = await loadCheckedStage<BasisDocument>(repository, input.runId, "basis", persisted, input.dependencies, documents);
+  if (!basis) throw Error("basis document is missing");
+  documents.basis = basis;
+  const discovery = await loadCheckedStage<DiscoveryDocument>(repository, input.runId, "discovery", persisted, input.dependencies, documents);
+  if (!discovery) throw Error("discovery document is missing");
+  documents.discovery = discovery;
+  const plan = await loadCheckedStage<PlanDocument>(repository, input.runId, "plan", persisted, input.dependencies, documents);
+  if (!plan) throw Error("plan document is missing");
+  documents.plan = plan;
+  await assertCanonicalPlan(persisted, basis, discovery, plan, input.dependencies);
+  const execution = await loadCheckedStage<ExecutionDocument>(repository, input.runId, "execution", persisted, input.dependencies, documents);
+  if (!execution) throw Error("execution document is missing");
+  documents.execution = execution;
+  validateExecutionCompleteness(execution, plan);
+  const evidence = await loadHistoricallyCheckedEvidence(repository, input.runId, persisted, input.dependencies, documents);
+  if (!evidence) throw Error("evidence document is missing");
+  documents.evidence = evidence;
+  assertCanonicalRunIndexes(run, execution, evidence);
+  const residual = await loadCheckedStage<ResidualRiskDocument>(repository, input.runId, "residual-risk", persisted, input.dependencies, documents);
+  if (!residual) throw Error("residual-risk document is missing");
+  documents["residual-risk"] = residual;
+  const verdict = await loadCheckedStage<VerdictDocument>(repository, input.runId, "verdict", persisted, input.dependencies, documents);
+  if (!verdict) throw Error("terminal run has no verdict document");
+  await assertCanonicalVerdict({ runId: input.runId, request: persisted, basis, discovery, plan, execution, evidence, residualRisk: residual, dependencies: input.dependencies }, verdict);
+  documents.verdict = verdict;
+  if (input.dependencies.snapshotVerifier && !(await input.dependencies.snapshotVerifier())) throw Error("Git snapshot changed during verification");
+  return freeze({ run, verdict, documents });
 }
 async function runVerificationUnlocked(input: RunVerificationInput): Promise<RunVerificationResult> {
   const { dependencies } = input;

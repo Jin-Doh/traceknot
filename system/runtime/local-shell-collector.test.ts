@@ -167,6 +167,18 @@ describe("LocalShellCollector", () => {
       await writeFile(path, Buffer.from("actual"));
       await expect(collectorFor(root, store).collect({ ...requestFor(root), argv: [], declaredArtifacts: [{ type: "structured", digest: "0".repeat(64), path: "result.bin" }] })).rejects.toMatchObject({ code: "DECLARED_ARTIFACT_MISMATCH" });
       await expect(collectorFor(root, store).collect({ ...requestFor(root), argv: [], timeoutMs: 0 })).rejects.toMatchObject({ code: "LIMIT_INVALID" });
+      const missing = [{ type: "structured", digest: "1".repeat(64), path: "missing.bin" }];
+      await expect(collectorFor(root, store).collect({ ...requestFor(root), argv: ["-e", ""], declaredArtifacts: missing, bestEffortDeclaredArtifactsOnFailure: true })).rejects.toMatchObject({ code: "ARTIFACT_READ_FAILED" });
+      const failed = await collectorFor(root, store).collect({ ...requestFor(root), argv: ["-e", "process.exit(7)"], declaredArtifacts: missing, bestEffortDeclaredArtifactsOnFailure: true });
+      expect({ status: failed.execution.exitStatus, exitCode: failed.execution.exitCode, missingPublished: failed.artifacts.some(artifact => artifact.digest === missing[0]!.digest) }).toEqual({ status: "failed", exitCode: 7, missingPublished: false });
+      const partial = [{ type: "structured", digest: digest(Buffer.from("complete")), path: "result.bin" }];
+      const partialFailure = await collectorFor(root, store).collect({ ...requestFor(root), argv: ["-e", "process.exit(8)"], declaredArtifacts: partial, bestEffortDeclaredArtifactsOnFailure: true });
+      expect({ status: partialFailure.execution.exitStatus, exitCode: partialFailure.execution.exitCode, partialPublished: partialFailure.artifacts.some(artifact => artifact.digest === partial[0]!.digest) }).toEqual({ status: "failed", exitCode: 8, partialPublished: false });
+      await symlink(path, join(root, "unsafe.bin"));
+      await expect(collectorFor(root, store).collect({ ...requestFor(root), argv: ["-e", "process.exit(7)"], declaredArtifacts: [{ type: "structured", digest: digest(Buffer.from("actual")), path: "unsafe.bin" }], bestEffortDeclaredArtifactsOnFailure: true })).rejects.toMatchObject({ code: "ARTIFACT_READ_FAILED" });
+      const boundedCollector = new LocalShellCollector({ rootDir: root, snapshotId: "snapshot-shell-1", rootIdentity: "repo-shell-root", artifactStore: store, maxArtifactBytes: 1 });
+      await expect(boundedCollector.collect({ ...requestFor(root), argv: ["-e", "process.exit(7)"], declaredArtifacts: [{ type: "structured", digest: digest(Buffer.from("actual")), path: "result.bin" }], bestEffortDeclaredArtifactsOnFailure: true })).rejects.toMatchObject({ code: "ARTIFACT_TOO_LARGE" });
+      await expect(collectorFor(root, store).collect({ ...requestFor(root), argv: [], maxArtifactBytes: 1, declaredArtifacts: [{ type: "structured", digest: digest(Buffer.from("actual")), path: "result.bin" }] })).rejects.toMatchObject({ code: "ARTIFACT_TOO_LARGE" });
     } finally {
       await cleanup(root, store);
     }

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import Ajv2020 from "ajv/dist/2020.js";
 import type { Artifact } from "../core/qa-core";
+import type { VisualCompositionOracle } from "../core/visual-composition";
+import { type UiApplicabilityApprovalReceipt, type UiApplicabilityApprovalSubject, type UiProfileEvidence, type UiResilienceOracle, type UiResilienceProfile } from "../core/ui-resilience";
 import {
   buildVerificationPlan,
   DispatchClaimAcquisitionError,
@@ -41,7 +43,7 @@ const SNAPSHOT_ID = "snapshot-001";
 
 type RunInput = Parameters<typeof runVerification>[0];
 type RunStateValue = CanonicalRunState["state"];
-type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerKind?: "self" | "harness-managed" | "deterministic-verifier" | "ci" | "human" | "external-system"; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean; rejectedAuthority?: boolean; invalidProducer?: boolean };
+type FakeOptions = { missingCapability?: boolean; missingExecutorOutput?: boolean; missingBrowserOutput?: boolean; invalidArtifact?: boolean; missingArtifactStorage?: boolean; mismatchedProvenance?: boolean; producerKind?: "self" | "harness-managed" | "deterministic-verifier" | "ci" | "human" | "external-system"; producerIndependence?: "self-check" | "separate-verification-context" | "independent-producer"; missingAuthority?: boolean; mismatchedAuthority?: boolean; rejectedAuthority?: boolean; invalidProducer?: boolean; visualCompositionOracle?: boolean; mismatchedOracleProducer?: boolean; omitStoredScreenshot?: boolean; browserStatus?: "PASS" | "BLOCKED" | "INCOMPLETE"; failedVisualAssertion?: boolean; visualBlocking?: boolean };
 
 type FakeDispatchClaimResult = { claimed: boolean; status: "CLAIMED" | "COMPLETED"; claim: DispatchClaim; outputStored: boolean; completion?: VerificationExecutionCompletionEnvelope };
 type FakeRepositoryStore = {
@@ -165,6 +167,169 @@ function makeRequest(requestId = REQUEST_ID): VerificationRequest {
   };
 }
 
+function makeCompositionRequest(requestId = "request-visual-composition"): VerificationRequest {
+  return {
+    ...makeRequest(requestId),
+    change: { summary: "Adjust responsive section spacing and panel hierarchy.", paths: ["frontend/catalog.tsx"], uiImpact: "significant" },
+    testBasis: [{ id: "basis-layout", kind: "acceptance-criterion", origin: "explicit", text: "Primary and supporting regions preserve the approved layout spacing." }],
+    visualComposition: {
+      schemaVersion: "visual-composition-scope/v1",
+      decision: "required",
+      basisIds: ["basis-layout"],
+      rationale: "Responsive section spacing changes at the affected desktop and mobile breakpoints.",
+      surfaces: [{ surfaceId: "surface-catalog", stateIds: ["populated"], viewportIds: ["desktop", "mobile"] }],
+      viewports: [
+        { id: "desktop", width: 1440, height: 900 },
+        { id: "mobile", width: 390, height: 844, devicePixelRatio: 3 },
+      ],
+    },
+    uiResilience: (() => {
+      const scope = makeResilienceRequest(requestId).uiResilience!;
+      return { ...scope, basisIds: ["basis-layout"], surfaces: scope.surfaces.map(surface => ({ ...surface, regions: surface.regions.map(region => ({ ...region, basisIds: ["basis-layout"] })), profileApplicability: surface.profileApplicability.map(profile => ({ ...profile, basisIds: ["basis-layout"], ...(profile.approvalReceipt === undefined ? {} : { approvalReceipt: { ...profile.approvalReceipt, basisIds: ["basis-layout"] } }) })) })) };
+    })(),
+  };
+}
+
+const TOKEN_RESOLUTION_DIGEST = new Bun.CryptoHasher("sha256")
+  .update(JSON.stringify({ schemaVersion: "design-token-resolution/v1", systemId: "synthetic-design-system", token: "layout.sectionGap", unit: "css-px", value: 32 }))
+  .digest("hex");
+const compositionScreenshotDigest = (role: string, viewportId: string) => new Bun.CryptoHasher("sha256").update(`${role}:${viewportId}:populated`).digest("hex");
+
+
+function makeCompositionOracle(request: VerificationExecutionRequest, producer: VisualCompositionOracle["producer"], options: FakeOptions = {}): VisualCompositionOracle {
+  const conditionId = request.obligation.visualCompositionRequirement?.conditionId;
+  if (!conditionId) throw new Error("composition fixture received a non-composition obligation");
+  return {
+    schemaVersion: "visual-composition-oracle/v1",
+    oracleId: `oracle:${request.runId}`,
+    requestId: request.requestId,
+    snapshotId: request.snapshotId,
+    conditionId,
+    producer,
+    captures: ["desktop", "mobile"].map(viewportId => ({
+      captureId: `capture-${viewportId}`,
+      surfaceId: "surface-catalog",
+      stateId: "populated",
+      viewportId,
+      viewport: viewportId === "desktop" ? { id: "desktop", width: 1440, height: 900 } : { id: "mobile", width: 390, height: 844, devicePixelRatio: 3 },
+      screenshots: [
+        { evidenceId: `evidence-full-page-${viewportId}`, role: "full-page", digest: compositionScreenshotDigest("full-page", viewportId) },
+        { evidenceId: `evidence-focused-region-${viewportId}`, role: "focused-region", regionId: "main", digest: compositionScreenshotDigest("focused-region", viewportId) },
+      ],
+      regions: [
+        { regionId: "main", role: "primary", x: 0, y: 0, width: viewportId === "desktop" ? 900 : 390, height: 500 },
+        { regionId: "supporting", role: "supporting", x: 0, y: 532, width: viewportId === "desktop" ? 900 : 390, height: 200 },
+      ],
+      assertions: [{
+        assertionId: `section-separation-${viewportId}`,
+        relation: "separation",
+        regionIds: ["main", "supporting"],
+        axis: "vertical",
+        operator: "greater-than-or-equal",
+        expected: 32,
+        actual: options.failedVisualAssertion ? 0 : 32,
+        unit: "css-px",
+        source: { kind: "design-token", systemId: "synthetic-design-system", token: "layout.sectionGap", unit: "css-px", resolvedValue: 32, resolutionArtifactDigest: TOKEN_RESOLUTION_DIGEST, basisIds: ["basis-layout"] },
+      }],
+    })),
+    representativeStateLimitations: ["Loading and error states use the unchanged shared shell."],
+    blockingReasons: options.visualBlocking ? ["token service unavailable"] : [],
+  };
+}
+const resilienceProfiles: readonly UiResilienceProfile[] = ["text-overflow", "resize-text-200", "reflow-320", "text-spacing-wcag", "pseudo-localization", "rtl", "reduced-motion", "hover-focus-content"];
+function resilienceApprovalReceipt(requestId: string, profile: UiResilienceProfile, basisId = "basis-content"): UiApplicabilityApprovalReceipt {
+  const rationale = `${profile} capability is absent.`;
+  return { schemaVersion: "ui-applicability-approval-receipt/v1", receiptId: `receipt:${profile}`, issuer: "fixture-applicability-authority", keyId: "fixture-key", requestId, snapshotId: SNAPSHOT_ID, conditionId: "condition:request-ui-resilience", surfaceId: "catalog", profile, basisIds: [basisId], rationale, signature: `signed:${profile}` };
+}
+function makeResilienceRequest(requestId = "request-ui-resilience"): VerificationRequest {
+  const required = new Set<UiResilienceProfile>(["text-overflow", "resize-text-200", "text-spacing-wcag"]);
+  return {
+    ...makeRequest(requestId),
+    change: { summary: "Keep catalog labels readable under content stress.", paths: ["frontend/catalog.tsx"], uiImpact: "significant" },
+    testBasis: [{ id: "basis-content", kind: "acceptance-criterion", origin: "explicit", text: "Catalog labels remain fully readable without unintended clipping." }],
+    visualComposition: {
+      schemaVersion: "visual-composition-scope/v1",
+      decision: "not-required",
+      basisIds: ["basis-content"],
+      rationale: "The test isolates content resilience without changing composition.",
+      surfaces: [],
+      viewports: [],
+    },
+    uiResilience: {
+      schemaVersion: "ui-resilience-scope/v1",
+      decision: "required",
+      basisIds: ["basis-content"],
+      rationale: "The rendered text surface accepts variable user and localized content.",
+      viewports: [{ id: "desktop", width: 1440, height: 900 }],
+      surfaces: [{
+        surfaceId: "catalog",
+        stateIds: ["populated"],
+        viewportIds: ["desktop"],
+        capabilities: ["rendered-text"],
+        fixtures: [
+          { fixtureId: "representative", kind: "representative", contentDigest: "1".repeat(64) },
+          { fixtureId: "natural", kind: "long-natural-language", contentDigest: "2".repeat(64) },
+          { fixtureId: "token", kind: "long-unbroken-token", contentDigest: "3".repeat(64) },
+        ],
+        regions: [{ regionId: "label", policy: "no-overflow", basisIds: ["basis-content"] }],
+        profileApplicability: resilienceProfiles.map(profile => {
+          if (required.has(profile)) return { profile, status: "required" as const, basisIds: ["basis-content"], rationale: `${profile} applies to rendered text.` };
+          const approvalReceipt = resilienceApprovalReceipt(requestId, profile);
+          return { profile, status: "not-applicable" as const, basisIds: ["basis-content"], rationale: approvalReceipt.rationale, approvalReceipt };
+        }),
+      }],
+    },
+  };
+}
+function resilienceProfileEvidence(profile: UiResilienceProfile): UiProfileEvidence {
+  if (profile === "text-overflow") return { profile };
+  if (profile === "resize-text-200") return { profile, textScalePercent: 200 };
+  if (profile === "text-spacing-wcag") return { profile, lineHeightRatio: 1.5, paragraphSpacingRatio: 2, letterSpacingRatio: 0.12, wordSpacingRatio: 0.16, onlySpacingPropertiesChanged: true };
+  throw new Error(`unexpected resilience profile ${profile}`);
+}
+function makeResilienceOracle(request: VerificationExecutionRequest, producer: UiResilienceOracle["producer"]): UiResilienceOracle {
+  const requirement = request.obligation.uiResilienceRequirement;
+  if (!requirement) throw new Error("resilience fixture received a non-resilience obligation");
+  return {
+    schemaVersion: "ui-resilience-oracle/v1",
+    oracleId: `oracle:${request.runId}`,
+    requestId: request.requestId,
+    snapshotId: request.snapshotId,
+    conditionId: requirement.conditionId,
+    producer,
+    runs: requirement.requiredRuns.map((run, index) => ({
+      runId: `resilience-run-${index}`,
+      surfaceId: run.surfaceId,
+      stateId: run.stateId,
+      viewportId: run.viewportId,
+      viewport: requirement.viewports.find(viewport => viewport.id === run.viewportId)!,
+      profile: run.profile,
+      fixtureId: run.fixtureId,
+      fixtureContentDigest: run.fixtureContentDigest,
+      browser: "Chromium 140",
+      userAgent: "fixture-browser",
+      profileEvidence: resilienceProfileEvidence(run.profile),
+      observations: run.regions.map(region => ({
+        observationId: `resilience-observation-${index}-${region.regionId}`,
+        regionId: region.regionId,
+        policy: region.policy,
+        clientWidth: 320,
+        clientHeight: 40,
+        scrollWidth: 320,
+        scrollHeight: 40,
+        fragmentRects: [{ x: 0, y: 0, width: 300, height: 20 }],
+        clippingAncestors: [],
+        paintFeatures: [],
+        renderedLineCount: 1,
+        contentTruncated: false,
+        truncationIndicatorVisible: false,
+        screenshotDigest: new Bun.CryptoHasher("sha256").update(`resilience:${index}:${region.regionId}`).digest("hex"),
+      })),
+    })),
+    blockingReasons: [],
+  };
+}
+
 function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRepository): FakeDependencies {
   const repository = repositoryOverride ?? new FakeRepository();
   let executorCalls = 0;
@@ -182,7 +347,28 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
     executeBrowser: async (request: VerificationExecutionRequest) => {
       browserCalls++;
       if (options.missingBrowserOutput) return undefined;
-      return { status: "PASS" as const, runId: request.runId, requestId: request.requestId, snapshotId: request.snapshotId, idempotencyKey: request.idempotencyKey, producer: { kind: options.producerKind ?? "deterministic-verifier", identity: "fixture-browser", independence: options.producerIndependence ?? "independent-producer" }, artifacts: [{ type: "verification-result", digest: "b".repeat(64) }] };
+      const producer = { kind: options.producerKind ?? "deterministic-verifier", identity: "fixture-browser", independence: options.producerIndependence ?? "independent-producer" } as const;
+      const visualCompositionOracle = options.visualCompositionOracle && request.obligation.visualCompositionRequirement ? makeCompositionOracle(request, options.mismatchedOracleProducer ? { ...producer, identity: "other-browser" } : producer, options) : undefined;
+      const uiResilienceOracle = request.obligation.uiResilienceRequirement ? makeResilienceOracle(request, producer) : undefined;
+      const screenshotArtifacts: Artifact[] = visualCompositionOracle
+        ? visualCompositionOracle.captures.flatMap(capture => capture.screenshots.filter(screenshot => !options.omitStoredScreenshot || screenshot.role === "full-page").map(screenshot => ({ type: "screenshot" as const, digest: screenshot.digest })))
+        : [];
+      if (visualCompositionOracle) screenshotArtifacts.push({ type: "design-token-resolution", digest: TOKEN_RESOLUTION_DIGEST });
+      if (uiResilienceOracle) {
+        screenshotArtifacts.push(...uiResilienceOracle.runs.flatMap(run => run.observations.map(observation => ({ type: "screenshot" as const, digest: observation.screenshotDigest }))));
+        screenshotArtifacts.push(...request.obligation.uiResilienceRequirement!.applicabilityApprovals.map(approval => ({ type: "ui-applicability-approval" as const, digest: approval.approvalArtifactDigest })));
+      }
+      return {
+        status: options.browserStatus ?? "PASS",
+        runId: request.runId,
+        requestId: request.requestId,
+        snapshotId: request.snapshotId,
+        idempotencyKey: request.idempotencyKey,
+        producer,
+        artifacts: [{ type: "verification-result", digest: "b".repeat(64) }, ...screenshotArtifacts],
+        ...(visualCompositionOracle ? { visualCompositionOracle } : {}),
+        ...(uiResilienceOracle ? { uiResilienceOracle } : {}),
+      };
     },
   } as unknown as BrowserExecutor;
   let authorityCalls = 0;
@@ -238,6 +424,7 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
     freshnessPolicy: { evaluateFreshness: async () => "fresh" as const },
     repository: repository as unknown as RepositoryPort,
     executor,
+    uiApplicabilityApprovalVerifier: { independentAuthentication: true, verifyApproval: async () => true },
     artifactStore,
     capabilityProvider,
     browserExecutor: browser,
@@ -252,6 +439,26 @@ function makeDependencies(options: FakeOptions = {}, repositoryOverride?: FakeRe
 async function runOnce(dependencies: VerificationRunDependencies, runId = RUN_ID, requestId = REQUEST_ID): Promise<Awaited<ReturnType<typeof runVerification>>> {
   const input = { runId, request: makeRequest(requestId), dependencies, now: FIXED_NOW } as unknown as RunInput;
   return runVerification(input);
+}
+
+async function makeSignedExternalCompletion(runId: string): Promise<{ request: VerificationRequest; completion: VerificationExecutionCompletionEnvelope }> {
+  const request = { ...makeRequest(`${runId}-request`), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+  const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
+  const fakes = makeDependencies({}, new FakeRepository(store));
+  await runVerification({ runId, request, dependencies: fakes.dependencies });
+  const completion = [...store.dispatchClaims.values()][0]?.completion;
+  if (!completion) throw new Error("missing fixture completion envelope");
+  return {
+    request,
+    completion: {
+      ...completion,
+      authority: {
+        ...completion.authority,
+        keyId: "e".repeat(64),
+        signature: "fixture-signature",
+      },
+    },
+  };
 }
 
 function reorderObjectKeysDeep<T>(value: T): T {
@@ -556,16 +763,17 @@ test("canonicalizes executor and artifact-store artifacts before authority and p
     snapshotId: request.snapshotId,
     idempotencyKey: request.idempotencyKey,
     producer: { kind: "deterministic-verifier", identity: "uppercase-executor", independence: "independent-producer" },
-    artifacts: [{ type: "verification-result", digest }, { type: "verification-result", digest: digest.toLowerCase(), path: "/tmp/result" }] as unknown as Artifact[],
+    artifacts: [{ type: "verification-result", digest }, { type: "verification-result", digest: digest.toLowerCase(), path: "/tmp/result" }, { type: "approved-visual-reference", digest }] as unknown as Artifact[],
   }), }
   const artifactStore: ArtifactStore = {
     atomicSameKeyIdempotency: true,
     storeVerificationResultArtifact: async artifact => ({ ...artifact, digest: artifact.digest.toUpperCase(), extra: "discard" } as unknown as Artifact),
+    storeArtifact: async artifact => ({ ...artifact, digest: artifact.digest.toUpperCase(), extra: "discard" } as unknown as Artifact),
   };
   const result = await runOnce({ ...fakes.dependencies, executor, artifactStore }, "artifact-normalization");
   const execution = result.documents.execution;
   expect(result.verdict.qaVerdict).toBe("PASS");
-  expect(execution?.observations[0]?.artifacts).toEqual([{ type: "verification-result", digest: digest.toLowerCase() }, { type: "verification-result", digest: digest.toLowerCase(), path: "/tmp/result" }]);
+  expect(execution?.observations[0]?.artifacts).toEqual([{ type: "verification-result", digest: digest.toLowerCase() }, { type: "verification-result", digest: digest.toLowerCase(), path: "/tmp/result" }, { type: "approved-visual-reference", digest: digest.toLowerCase() }]);
   expect(execution?.evidence[0]?.result.artifacts).toEqual([digest.toLowerCase()]);
   const resultDigests = execution?.evidence[0]?.result.artifacts ?? [];
   expect(new Set(resultDigests).size).toBe(resultDigests.length);
@@ -1273,7 +1481,7 @@ describe("verification run orchestration", () => {
     expect(second.idempotencyKey).toBe(first.idempotencyKey);
   });
 
-  test("classifies material risks, derives independent obligations, and preserves browser technique", async () => {
+  test("classifies material risks, derives tiered obligations, and preserves browser technique", async () => {
     const request = { ...makeRequest(), testBasis: [
       { id: "z-browser", kind: "acceptance-criterion" as const, origin: "explicit" as const, text: "The browser flow renders the UI." },
       { id: "a-security", kind: "requirement" as const, origin: "explicit" as const, text: "Security migration must be reviewed." },
@@ -1290,9 +1498,9 @@ describe("verification run orchestration", () => {
     expect(plan.obligations.find(item => item.id === "obligation:condition:a-security")?.independence).toBe("independent-producer");
     expect(discovery.risks.find(item => item.id === "risk:r-basic")?.level).toBe("R2");
     expect(discovery.risks.find(item => item.id === "risk:z-browser")?.level).toBe("R2");
-    expect(plan.obligations.find(item => item.id === "obligation:condition:m-contract")?.independence).toBe("independent-producer");
-    expect(plan.obligations.find(item => item.id === "obligation:condition:r-basic")?.independence).toBe("independent-producer");
-    expect(plan.obligations.find(item => item.id === "obligation:condition:z-browser")?.independence).toBe("independent-producer");
+    expect(plan.obligations.find(item => item.id === "obligation:condition:m-contract")?.independence).toBe("separate-verification-context");
+    expect(plan.obligations.find(item => item.id === "obligation:condition:r-basic")?.independence).toBe("separate-verification-context");
+    expect(plan.obligations.find(item => item.id === "obligation:condition:z-browser")?.independence).toBe("separate-verification-context");
     expect(plan.obligations.find(item => item.id === "obligation:condition:z-browser")?.evidenceType).toBe("browser-result");
     const execution = (await runVerification({ runId: RUN_ID, request, dependencies: deps })).documents.execution;
     if (!execution) throw new Error("missing execution");
@@ -1374,6 +1582,215 @@ describe("verification run orchestration", () => {
     expect(execution.observations.filter(item => item.execution.kind === "browser")).toHaveLength(1);
     expect(fakes.browserCalls).toBe(1);
     expect(fakes.executorCalls).toBeGreaterThan(0);
+  });
+
+  test("requires an explicit scope decision for significant UI requests", async () => {
+    const request = {
+      ...makeRequest("composition-scope-required"),
+      change: { summary: "Adjust section spacing.", paths: ["frontend/catalog.tsx"], uiImpact: "significant" },
+    } satisfies VerificationRequest;
+    await expect(establishTestBasis({ request, dependencies: makeDependencies().dependencies })).rejects.toThrow("must declare visual composition and UI resilience scopes");
+    const schema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verification-request.schema.json`).text()) as object;
+    const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
+    expect(validate(request)).toBe(false);
+  });
+
+  test("rejects visual scopes without an explicit UI impact classification", async () => {
+    const classified = makeCompositionRequest("composition-impact-required");
+    const { uiImpact: _, ...change } = classified.change;
+    const request = { ...classified, change };
+    await expect(establishTestBasis({ request, dependencies: makeDependencies().dependencies })).rejects.toThrow("require an explicit UI impact classification");
+    const schema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verification-request.schema.json`).text()) as object;
+    const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
+    expect(validate(request)).toBe(false);
+  });
+
+  test("keeps browser-only verification separate when composition is explicitly out of scope", async () => {
+    const request = {
+      ...makeRequest("composition-not-required"),
+      change: { summary: "Refresh the UI copy without changing layout.", paths: ["frontend/catalog.tsx"], uiImpact: "functional-only" },
+      visualComposition: {
+        schemaVersion: "visual-composition-scope/v1",
+        decision: "not-required",
+        basisIds: ["basis-001"],
+        rationale: "The rendered geometry and responsive composition are unchanged.",
+        surfaces: [],
+        viewports: [],
+      },
+    } satisfies VerificationRequest;
+    const dependencies = makeDependencies().dependencies;
+    const basis = await establishTestBasis({ request, dependencies });
+    const discovery = await performRiskDiscovery({ request, basis, dependencies });
+    expect(discovery.conditions.some(item => item.techniques.includes("visual-composition"))).toBe(false);
+  });
+
+  test("cannot pass composition scope with functional browser success but no composition oracle", async () => {
+    const result = await runVerification({ runId: "composition-oracle-missing", request: makeCompositionRequest("composition-oracle-missing"), dependencies: makeDependencies().dependencies });
+    expect(result.verdict.qaVerdict).toBe("INCOMPLETE");
+    const compositionEvidence = result.documents.execution?.evidence.find(item => item.obligationId.includes("visual-composition"));
+    expect(compositionEvidence?.result.verdict).toBe("INCOMPLETE");
+    expect(compositionEvidence?.result.summary).toContain("VISUAL_COMPOSITION_ORACLE_MISSING");
+  });
+
+  test("passes composition scope only with independent oracle and stored whole-page and focused screenshots", async () => {
+    const fakes = makeDependencies({ visualCompositionOracle: true });
+    const result = await runVerification({ runId: "composition-oracle-pass", request: makeCompositionRequest("composition-oracle-pass"), dependencies: fakes.dependencies });
+    expect(result.verdict.qaVerdict).toBe("PASS");
+    const compositionObservation = result.documents.execution?.observations.find(item => item.observationId.includes("visual-composition"));
+    expect(compositionObservation?.artifacts).toEqual(expect.arrayContaining([
+      { type: "screenshot", digest: compositionScreenshotDigest("full-page", "desktop") },
+      { type: "screenshot", digest: compositionScreenshotDigest("focused-region", "desktop") },
+    ]));
+    const compositionEvidence = result.documents.execution?.evidence.find(item => item.obligationId.includes("visual-composition"));
+    const compositionAuthority = result.documents.execution?.authorities.find(item => item.binding.obligationId.includes("visual-composition"));
+    expect(compositionEvidence?.visualCompositionOracleDigest).toMatch(/^[a-f0-9]{64}$/);
+    expect(compositionAuthority?.binding.visualCompositionOracleDigest).toBe(compositionEvidence?.visualCompositionOracleDigest);
+  });
+  test("plans, evaluates, and authority-binds deterministic UI resilience evidence", async () => {
+    const request = makeResilienceRequest("ui-resilience-runtime-pass");
+    const fakes = makeDependencies();
+    const producer = { kind: "deterministic-verifier", identity: "resilience-browser", independence: "independent-producer" } as const;
+    const browserExecutor: BrowserExecutor = {
+      atomicSameKeyIdempotency: true,
+      executeBrowser: async executionRequest => {
+        const oracle = executionRequest.obligation.uiResilienceRequirement ? makeResilienceOracle(executionRequest, producer) : undefined;
+        const artifacts: Artifact[] = [{ type: "verification-result", digest: "9".repeat(64) }];
+        if (oracle) {
+          artifacts.push(...oracle.runs.flatMap(run => run.observations.map(observation => ({ type: "screenshot" as const, digest: observation.screenshotDigest }))));
+          artifacts.push(...executionRequest.obligation.uiResilienceRequirement!.applicabilityApprovals.map(approval => ({ type: "ui-applicability-approval" as const, digest: approval.approvalArtifactDigest })));
+        }
+        return { status: "PASS", runId: executionRequest.runId, requestId: executionRequest.requestId, snapshotId: executionRequest.snapshotId, idempotencyKey: executionRequest.idempotencyKey, producer, artifacts, ...(oracle ? { uiResilienceOracle: oracle } : {}) };
+      },
+    };
+    const result = await runVerification({ runId: "ui-resilience-runtime-pass", request, dependencies: { ...fakes.dependencies, browserExecutor } });
+    expect(result.verdict.qaVerdict).toBe("PASS");
+    const resilienceEvidence = result.documents.execution?.evidence.find(item => item.obligationId.includes("ui-resilience"));
+    const resilienceAuthority = result.documents.execution?.authorities.find(item => item.binding.obligationId.includes("ui-resilience"));
+    const evidenceSchema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/evidence.schema.json`).text()) as object;
+    expect(resilienceEvidence?.uiResilienceOracleDigest).toMatch(/^[a-f0-9]{64}$/);
+    expect(resilienceAuthority?.binding.uiResilienceOracleDigest).toBe(resilienceEvidence?.uiResilienceOracleDigest);
+    const basis = await establishTestBasis({ request, dependencies: fakes.dependencies });
+    const discovery = await performRiskDiscovery({ request, basis, dependencies: fakes.dependencies });
+    const plan = await buildVerificationPlan({ request, basis, discovery, dependencies: fakes.dependencies });
+    const requestSchema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verification-request.schema.json`).text()) as object;
+    const planSchema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verification-plan.schema.json`).text()) as object;
+    const ajv = new Ajv2020({ allErrors: true, strict: true });
+    expect(ajv.compile(requestSchema)(request)).toBe(true);
+    expect(ajv.compile(planSchema)(plan)).toBe(true);
+    expect(ajv.compile(evidenceSchema)(resilienceEvidence)).toBe(true);
+  });
+
+  test("authenticates each applicability approval against its complete request-bound subject", async () => {
+    const request = makeResilienceRequest("ui-applicability-subject-binding");
+    const fakes = makeDependencies();
+    const subjects: UiApplicabilityApprovalSubject[] = [];
+    const result = await runVerification({
+      runId: "ui-applicability-subject-binding",
+      request,
+      dependencies: {
+        ...fakes.dependencies,
+        uiApplicabilityApprovalVerifier: {
+          independentAuthentication: true,
+          verifyApproval: async subject => {
+            subjects.push(subject);
+            return subject.profile !== "rtl";
+          },
+        },
+      },
+    });
+    expect(subjects.length).toBeGreaterThan(0);
+    expect(subjects.every(subject =>
+      subject.requestId === request.requestId
+      && subject.snapshotId === request.project.snapshotId
+      && subject.conditionId === "condition:request-ui-resilience"
+      && subject.surfaceId === "catalog"
+      && subject.basisIds.length === 1
+      && subject.approvalReceipt.requestId === subject.requestId
+      && subject.approvalReceipt.snapshotId === subject.snapshotId
+      && subject.approvalReceipt.profile === subject.profile
+    )).toBe(true);
+    expect(result.verdict.qaVerdict).not.toBe("PASS");
+    const resilienceEvidence = result.documents.execution?.evidence.find(item => item.obligationId.includes("ui-resilience"));
+    expect(resilienceEvidence?.result.summary).toContain("APPLICABILITY_APPROVAL_UNAUTHENTICATED:catalog:rtl");
+  });
+
+  test("evaluates a blocked executor oracle and preserves assertion failure precedence", async () => {
+    const fakes = makeDependencies({ visualCompositionOracle: true, browserStatus: "BLOCKED", failedVisualAssertion: true, visualBlocking: true });
+    const result = await runVerification({ runId: "composition-blocked-with-failure", request: makeCompositionRequest("composition-blocked-with-failure"), dependencies: fakes.dependencies });
+    const compositionEvidence = result.documents.execution?.evidence.find(item => item.obligationId.includes("visual-composition"));
+    expect(compositionEvidence?.result.verdict).toBe("FAIL");
+    expect(compositionEvidence?.result.summary).toContain("COMPOSITION_ASSERTION_FAILED");
+  });
+  test("does not attribute a mismatched oracle failure to the executor producer", async () => {
+    const fakes = makeDependencies({ visualCompositionOracle: true, mismatchedOracleProducer: true, failedVisualAssertion: true });
+    const result = await runVerification({ runId: "composition-producer-mismatch", request: makeCompositionRequest("composition-producer-mismatch"), dependencies: fakes.dependencies });
+    const compositionEvidence = result.documents.execution?.evidence.find(item => item.obligationId.includes("visual-composition"));
+    expect(compositionEvidence?.result.verdict).toBe("INCOMPLETE");
+    expect(compositionEvidence?.result.summary).toContain("ORACLE_PRODUCER_MISMATCH");
+  });
+
+
+  test("rejects a persisted passing composition result with both oracle digests removed", async () => {
+    const runId = "composition-oracle-digest-removed";
+    const fakes = makeDependencies({ visualCompositionOracle: true });
+    const result = await runVerification({ runId, request: makeCompositionRequest(runId), dependencies: fakes.dependencies });
+    expect(result.verdict.qaVerdict).toBe("PASS");
+    const saved = fakes.repository.stageDocuments.get(`${runId}:execution`) as ExecutionDocument;
+    const evidence = saved.evidence.map(item => {
+      if (!item.obligationId.includes("visual-composition")) return item;
+      const { visualCompositionOracleDigest: _removed, ...withoutDigest } = item;
+      return withoutDigest;
+    });
+    const authorities = saved.authorities.map(authority => {
+      if (!authority.binding.obligationId.includes("visual-composition")) return authority;
+      const { visualCompositionOracleDigest: _removed, ...binding } = authority.binding;
+      return { ...authority, binding };
+    });
+    fakes.repository.stageDocuments.set(`${runId}:execution`, { ...saved, evidence, authorities });
+    await expect(runVerification({ runId, dependencies: fakes.dependencies })).rejects.toThrow("invalid execution visual composition evidence binding");
+  });
+
+  test("validates composition request and emitted plan with canonical AJV schemas", async () => {
+    const request = makeCompositionRequest("composition-ajv-contract");
+    const dependencies = makeDependencies().dependencies;
+    const basis = await establishTestBasis({ request, dependencies });
+    const discovery = await performRiskDiscovery({ request, basis, dependencies });
+    const plan = await buildVerificationPlan({ request, basis, discovery, dependencies });
+    const requestSchema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verification-request.schema.json`).text()) as object;
+    const planSchema = JSON.parse(await Bun.file(`${import.meta.dir}/../../contracts/verification-plan.schema.json`).text()) as object;
+    const ajv = new Ajv2020({ allErrors: true, strict: true });
+    const validateRequest = ajv.compile(requestSchema);
+    const validatePlan = ajv.compile(planSchema);
+    expect(validateRequest(request), validateRequest.errors ? JSON.stringify(validateRequest.errors) : undefined).toBe(true);
+    expect(validatePlan(plan), validatePlan.errors ? JSON.stringify(validatePlan.errors) : undefined).toBe(true);
+  });
+
+  test("requires independent composition evidence for explicitly significant UI with neutral basis text", async () => {
+    const request = {
+      ...makeCompositionRequest("composition-significant-neutral"),
+      testBasis: [{ id: "basis-layout", kind: "request" as const, origin: "explicit" as const, text: "Keep the approved spacing." }],
+    } satisfies VerificationRequest;
+    const dependencies = makeDependencies().dependencies;
+    const basis = await establishTestBasis({ request, dependencies });
+    const discovery = await performRiskDiscovery({ request, basis, dependencies });
+    const plan = await buildVerificationPlan({ request, basis, discovery, dependencies });
+    const compositionObligation = plan.obligations.find(item => item.visualCompositionRequirement);
+    expect(compositionObligation?.independence).toBe("independent-producer");
+    expect(compositionObligation?.visualCompositionRequirement?.minimumIndependence).toBe("independent-producer");
+  });
+
+  test("cannot pass when a focused screenshot digest is not backed by stored screenshot evidence", async () => {
+    const fakes = makeDependencies({ visualCompositionOracle: true, omitStoredScreenshot: true });
+    const result = await runVerification({ runId: "composition-focused-missing", request: makeCompositionRequest("composition-focused-missing"), dependencies: fakes.dependencies });
+    expect(result.verdict.qaVerdict).toBe("INCOMPLETE");
+    expect(result.documents.execution?.evidence.find(item => item.obligationId.includes("visual-composition"))?.result.summary).toContain("SCREENSHOT_ARTIFACT_MISSING");
+  });
+
+  test("cannot pass R2 composition approval from the implementer's self-check", async () => {
+    const fakes = makeDependencies({ visualCompositionOracle: true, producerKind: "self", producerIndependence: "self-check" });
+    const result = await runVerification({ runId: "composition-self-check", request: makeCompositionRequest("composition-self-check"), dependencies: fakes.dependencies });
+    expect(result.verdict.qaVerdict).not.toBe("PASS");
+    expect(result.documents.execution?.evidence.find(item => item.obligationId.includes("visual-composition"))?.result.summary).toContain("INDEPENDENCE_NOT_MET");
   });
   test("keeps explicit UI and backend basis conditions as one browser and one generic obligation", async () => {
     const request = { ...makeRequest("mixed-explicit-ui-backend"), change: { summary: "Verify the backend endpoint.", paths: ["server/api.ts"] }, testBasis: [
@@ -2330,7 +2747,7 @@ describe("verification run orchestration", () => {
     expect(restoredEvents.length).toBeGreaterThan(0);
     expect(restoredEvents.some(event => event.eventKey === checkpoint.usageOutbox?.find(entry => entry.event === "execution")?.eventKey)).toBe(true);
     expect((fakes.repository.stageDocuments.get(`${runId}:execution`) as ExecutionDocument).usageOutbox).toHaveLength(0);
-    expect(initialEvents.filter(event => event.event === "artifact")).toHaveLength(0);
+    expect(initialEvents.filter(event => event.event === "artifact")).toHaveLength(1);
   });
 
   test("rejects a usage outbox execution key bound to a foreign run before external dispatch", async () => {
@@ -2805,6 +3222,126 @@ describe("verification run orchestration", () => {
     expect(resumed.documents.execution?.authorities[0]).toEqual(persistedCompletion.authority);
     expect(resumed.documents.execution?.observations[0]?.artifacts).toEqual(persistedCompletion.output.artifacts);
   });
+  test("imports a signed external completion durably and replays it without calling the provider again", async () => {
+    const runId = "external-completion-replay";
+    const { request, completion } = await makeSignedExternalCompletion(runId);
+    const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
+    class CrashAfterExternalCompleteRepository extends FakeRepository {
+      crash = true;
+      override async completeExecutionDispatch(claim: DispatchClaim, value: VerificationExecutionCompletionEnvelope | undefined, now = FIXED_NOW) {
+        const completed = await super.completeExecutionDispatch(claim, value, now);
+        if (this.crash) {
+          this.crash = false;
+          throw new Error("simulated external completion crash");
+        }
+        return completed;
+      }
+    }
+    const repository = new CrashAfterExternalCompleteRepository(store);
+    const fakes = makeDependencies({}, repository);
+    let providerCalls = 0;
+    let executorCalls = 0;
+    const dependencies = {
+      ...fakes.dependencies,
+      completionProvider: { loadExecutionCompletion: async () => { providerCalls++; return completion; } },
+      executionAuthority: {
+        atomicCanonicalBindingIdempotency: true as const,
+        verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]) =>
+          authority.keyId === completion.authority.keyId
+          && authority.signature === completion.authority.signature
+          && JSON.stringify(authority.binding) === JSON.stringify(binding),
+      },
+      executor: { atomicSameKeyIdempotency: true as const, executeObligation: async () => { executorCalls++; throw new Error("local executor must not run"); } },
+    } as unknown as VerificationRunDependencies;
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("simulated external completion crash");
+    expect(providerCalls).toBe(1);
+    expect(executorCalls).toBe(0);
+    expect([...store.dispatchClaims.values()][0]).toMatchObject({ status: "COMPLETED", outputStored: true });
+    const resumed = await runVerification({ runId, dependencies });
+    expect(resumed.verdict.qaVerdict).toBe("PASS");
+    expect(providerCalls).toBe(1);
+    expect(executorCalls).toBe(0);
+    expect(resumed.documents.execution?.authorities[0]).toEqual(completion.authority);
+  });
+
+  test("releases an imported completion claim when durable completion fails before persistence", async () => {
+    const runId = "external-completion-persistence-failure";
+    const { request, completion } = await makeSignedExternalCompletion(runId);
+    class FailBeforeCompleteRepository extends FakeRepository {
+      override async completeExecutionDispatch(): Promise<boolean> {
+        throw new Error("completion storage unavailable");
+      }
+    }
+    const repository = new FailBeforeCompleteRepository();
+    const fakes = makeDependencies({}, repository);
+    const dependencies = {
+      ...fakes.dependencies,
+      completionProvider: { loadExecutionCompletion: async () => completion },
+      executionAuthority: {
+        atomicCanonicalBindingIdempotency: true as const,
+        verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]) =>
+          authority.signature === completion.authority.signature
+          && JSON.stringify(authority.binding) === JSON.stringify(binding),
+      },
+    } as unknown as VerificationRunDependencies;
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("completion storage unavailable");
+    expect(repository.dispatchClaims.size).toBe(0);
+  });
+
+  test("rejects tampered external completion bindings and signatures and releases their claims", async () => {
+    const runId = "external-completion-tamper";
+    const { request, completion } = await makeSignedExternalCompletion(runId);
+    const candidates: VerificationExecutionCompletionEnvelope[] = [
+      { ...completion, authority: { ...completion.authority, binding: { ...completion.authority.binding, snapshotId: "substituted-snapshot" } } },
+      { ...completion, authority: { ...completion.authority, signature: "tampered-signature" } },
+    ];
+    for (const candidate of candidates) {
+      const repository = new FakeRepository();
+      const fakes = makeDependencies({}, repository);
+      const dependencies = {
+        ...fakes.dependencies,
+        completionProvider: { loadExecutionCompletion: async () => candidate },
+        executionAuthority: {
+          atomicCanonicalBindingIdempotency: true as const,
+          verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: ExecutionAuthority["binding"]) =>
+            authority.signature === completion.authority.signature
+            && JSON.stringify(authority.binding) === JSON.stringify(binding),
+        },
+      } as unknown as VerificationRunDependencies;
+      await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("invalid external execution completion");
+      expect(repository.dispatchClaims.size).toBe(0);
+    }
+  });
+
+  test("rejects external completion without a trust verifier and releases the claim", async () => {
+    const runId = "external-completion-no-trust";
+    const { request, completion } = await makeSignedExternalCompletion(runId);
+    const repository = new FakeRepository();
+    const fakes = makeDependencies({}, repository);
+    const dependencies = {
+      ...fakes.dependencies,
+      completionProvider: { loadExecutionCompletion: async () => completion },
+      executionAuthority: { atomicCanonicalBindingIdempotency: true },
+    } as unknown as VerificationRunDependencies;
+    await expect(runVerification({ runId, request, dependencies })).rejects.toThrow("invalid external execution completion");
+    expect(repository.dispatchClaims.size).toBe(0);
+  });
+
+  test("releases the dispatch claim when the external completion provider fails", async () => {
+    const runId = "external-completion-provider-failure";
+    const request = { ...makeRequest(`${runId}-request`), testBasis: [makeRequest().testBasis[0]!] } satisfies VerificationRequest;
+    const repository = new FakeRepository();
+    const fakes = makeDependencies({}, repository);
+    const failingDependencies = {
+      ...fakes.dependencies,
+      completionProvider: { loadExecutionCompletion: async () => { throw new Error("provider unavailable"); } },
+    } as unknown as VerificationRunDependencies;
+    await expect(runVerification({ runId, request, dependencies: failingDependencies })).rejects.toThrow("provider unavailable");
+    expect(repository.dispatchClaims.size).toBe(0);
+    const recovered = await runVerification({ runId, dependencies: fakes.dependencies });
+    expect(recovered.run.state).toBe("TERMINAL");
+    expect(recovered.verdict.qaVerdict).toBe("PASS");
+  });
   test("rejects a mutated persisted completion envelope before replay", async () => {
     const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
     class CrashAfterCompleteRepository extends FakeRepository {
@@ -2838,6 +3375,44 @@ describe("verification run orchestration", () => {
     store.dispatchClaims.set(entry.claim.claimKey, { ...entry, completion: tampered });
     await expect(runVerification({ runId, dependencies })).rejects.toThrow("invalid persisted dispatch completion");
     expect(requests).toHaveLength(1);
+  });
+  test("rejects a substituted passing visual oracle before durable completion replay", async () => {
+    const store: FakeRepositoryStore = { runs: new Map(), stageDocuments: new Map(), dispatchClaims: new Map() };
+    class CrashAfterCompositionCompleteRepository extends FakeRepository {
+      crash = true;
+      override async completeExecutionDispatch(claim: DispatchClaim, completion: VerificationExecutionCompletionEnvelope | undefined, now = FIXED_NOW) {
+        const completed = await super.completeExecutionDispatch(claim, completion, now);
+        if (this.crash && completion?.output.visualCompositionOracle) {
+          this.crash = false;
+          throw new Error("simulated composition completion crash");
+        }
+        return completed;
+      }
+    }
+    const runId = "composition-oracle-substitution";
+    const request = makeCompositionRequest(runId);
+    const fakes = makeDependencies({ visualCompositionOracle: true }, new CrashAfterCompositionCompleteRepository(store));
+    await expect(runVerification({ runId, request, dependencies: fakes.dependencies })).rejects.toThrow("simulated composition completion crash");
+    const entry = [...store.dispatchClaims.values()].find(candidate => candidate.completion?.output.visualCompositionOracle);
+    if (!entry?.completion?.output.visualCompositionOracle) throw new Error("missing persisted visual composition completion");
+    const oracle = entry.completion.output.visualCompositionOracle;
+    const tampered = {
+      ...entry.completion,
+      output: {
+        ...entry.completion.output,
+        visualCompositionOracle: {
+          ...oracle,
+          captures: oracle.captures.map((capture, captureIndex) => captureIndex === 0 ? {
+            ...capture,
+            assertions: capture.assertions.map((assertion, assertionIndex) => assertionIndex === 0 ? { ...assertion, expected: 40, actual: 40 } : assertion),
+          } : capture),
+        },
+      },
+    };
+    const browserCallsBeforeResume = fakes.browserCalls;
+    store.dispatchClaims.set(entry.claim.claimKey, { ...entry, completion: tampered });
+    await expect(runVerification({ runId, dependencies: fakes.dependencies })).rejects.toThrow("invalid persisted dispatch completion");
+    expect(fakes.browserCalls).toBe(browserCallsBeforeResume);
   });
 
   test("fixed-clock adapters atomically claim and dispatch one shared obligation", async () => {

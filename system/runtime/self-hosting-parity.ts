@@ -86,10 +86,9 @@ function assertExternalCacheRoot(rootDir: string, cacheRoot: string): void {
 export async function runSelfHostingCacheParity(
   command: SelfHostingCommand,
   cacheRoot: string,
-  traceknotExecutable?: string,
 ): Promise<SelfHostingParityReport> {
   assertExternalCacheRoot(command.rootDir, cacheRoot);
-  const result = await runSelfHostingVerification(command, traceknotExecutable);
+  const result = await runSelfHostingVerification(command);
   const run = record(result.reportOnly.run, "self-hosting run");
   const verdict = record(result.reportOnly.verdict, "self-hosting verdict");
   const runId = requiredString(run, "runId");

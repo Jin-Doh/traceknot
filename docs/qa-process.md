@@ -77,6 +77,14 @@ test basis ↔ risk ↔ test condition ↔ obligation ↔ evidence ↔ defect
 
 The evidence path is proof-carrying: an Observation records inspectable facts, an Evidence Claim explains how those facts support an obligation, an Evidence Evaluation accepts or rejects that claim against the expected result, and an Obligation Outcome records the bounded result. These layers must not be collapsed.
 
+### Visual-composition obligations
+
+For every affected surface in a significant UI change, explicitly decide whether composition-level verification is `required`, `not-required`, or `unknown`. Significant means an R2/R3 or otherwise materially user-visible UI change; it does not refer to Google Material Design.
+
+When required, derive separate visual-composition conditions for the affected surfaces, representative states, concrete desktop/mobile viewport sizes, whole-page context, focused regions, and basis-derived geometry or qualitative relations. Functional, accessibility, overflow, interaction, and route-reachability results remain separate and cannot satisfy these conditions.
+
+The portable `visual-composition-oracle/v1` contract treats design-system IDs and token names as opaque provenance. Material, Fluent, Carbon, Apple, and product-specific systems use the same relation evaluator. Every whole-page and focused screenshot digest must identify a stored `screenshot` artifact. R2/R3 approval requires an independent producer; missing scope, captures, stored artifacts, or independence produces a non-PASS result.
+
 ## 5. Check entry criteria
 
 Before execution, confirm the target snapshot, environment, dependencies, test data, expected results, required tools, and producer independence. A missing mandatory prerequisite makes the obligation `BLOCKED`, not PASS.

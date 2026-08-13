@@ -89,7 +89,7 @@ Minimum independence levels:
 - `independent-producer`
 - `external-approval`
 
-Default minimums: R0=`self-check`, R1=`separate-verification-context`, R2=`independent-producer`, R3=`independent-producer` plus explicit risk acceptance for unresolved material risk.
+Default minimums: R0=`self-check`; R1=`separate-verification-context`; R2=`separate-verification-context` plus the bounded adversarial challenge above, unless the obligation profile explicitly requires `independent-producer`; R3=`independent-producer` plus explicit risk acceptance for unresolved material risk. Visual-composition and UI-resilience acceptance profiles explicitly require `independent-producer`.
 
 ### 6. Check entry criteria
 
@@ -98,7 +98,15 @@ Before execution confirm the target snapshot, environment, dependencies, test da
 ### 7. Execute and capture evidence
 
 - Investigation: run the experiment and preserve its observed output.
-- UI change: exercise the changed flow in a real browser and inspect the rendered result.
+- **Significant UI change:** exercise the changed flow in a real browser and inspect the rendered result. Explicitly decide whether each affected surface needs composition-level visual obligations. When composition is in scope, derive at least one observable condition from the test basis and keep these obligations separate from reachability, overflow, accessibility, and interaction checks:
+  - top-level section separation and ownership of vertical or horizontal gaps;
+  - nested card or panel hierarchy and internal density;
+  - full-page context and focused-region inspection;
+  - representative populated, empty, loading, and error states when materially different;
+  - desktop and mobile composition at each affected breakpoint;
+  - measured geometry or a documented visual oracle when objective thresholds are appropriate.
+  Record the viewport, state, region, expected relation or threshold, actual geometry or observation, screenshot artifact, and evidence producer. For R2/R3 visual acceptance, require `independent-producer` evidence, or disclose the independence limitation and resolve the result as `INCOMPLETE`, `BLOCKED`, or accepted risk under the existing verdict rules. Passing reachability, overflow, accessibility, and interaction checks alone MUST NOT establish visual-composition coverage or `PASS`. Use the design-system-neutral contract in `references/visual-composition.md`.
+  Also inventory each surface's rendered-text, responsive-layout, localization, RTL, truncation, animation, and hover/focus-content capabilities. The capability inventory determines the required resilience profiles: text overflow, 200% text resize, 320 CSS px reflow, WCAG text spacing, pseudo-localization, RTL, reduced motion, and hover/focus content. Every profile MUST be `required`, `unknown`, or `not-applicable`; `not-applicable` requires an approval artifact. Exercise required profiles with representative and profile-specific stress fixtures, explicit region overflow policies, DOM geometry, screenshots, and human review only where paint-level clipping cannot be decided deterministically. A self-authored review JSON is not approval: human review requires an independently authenticated receipt artifact. Missing runs, approval artifacts, authenticated review receipts, or full-text access evidence resolve to `INCOMPLETE`, not `PASS`.
 - Bug fix: reproduce the defect first, then rerun the same reproduction after the fix.
 - Feature or API: execute tests covering the observable contract; add a test only for a new contract not already covered.
 - Persistence or concurrency: test transaction boundaries, rollback, recovery, races, and stale operations as applicable.

@@ -21,6 +21,28 @@ Report the QA decision independently from harness task completion.
 15. Final QA verdict and rationale.
 16. Separate harness completion status when the host supplies it.
 
+For a significant UI change, include a separate **Visual-composition coverage** subsection in the conditions, evidence, and coverage portions of the report. It MUST state:
+
+- whether composition-level obligations were in scope for each affected surface and the basis for that decision;
+- the section separation, gap ownership, nested hierarchy, and density conditions exercised;
+- whole-page and focused-region evidence, with viewport and affected desktop/mobile breakpoints;
+- representative populated, empty, loading, and error states inspected, plus state limitations;
+- each expected relation or threshold, actual geometry or observation, screenshot artifact, and producer identity;
+- whether R2/R3 visual evidence came from an `independent-producer`; any independence limitation MUST be disclosed and must not be reported as `PASS` unless the existing accepted-risk rule applies.
+
+Functional, accessibility, overflow, interaction, and route-reachability coverage MUST be reported separately. Those checks alone do not establish visual-composition coverage.
+
+For a significant UI change, also include a separate **UI content-resilience coverage** subsection. It MUST state:
+
+- the affected surface capability inventory and resulting profile applicability decisions;
+- required, unknown, and approved not-applicable profiles, with approval artifact digests;
+- the surface, state, viewport, profile, fixture, and region overflow policy for each required run;
+- geometry, clipping-ancestor, paint-feature, screenshot, and full-text-access evidence;
+- any human visual review outcome, producer, and independently authenticated approval-receipt artifact;
+- missing runs or artifacts and the resulting non-PASS disposition.
+
+Visual composition, content resilience, functional behavior, accessibility, interaction, and route reachability are separate coverage families. Passing one MUST NOT imply another.
+
 ## Verdict precedence
 
 1. `FAIL`: failed mandatory obligation or unaccepted material defect.

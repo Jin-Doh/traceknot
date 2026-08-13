@@ -3,6 +3,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import type { Artifact, Execution, Observation, Producer } from "../core/qa-core";
 import type { ArtifactStore, VerificationExecutionRequest } from "./verification-run";
 import {
+  ArtifactNotFoundError,
   assertSecureRoot,
   closeSecureRoot,
   closeSecureDescriptor,
@@ -38,7 +39,9 @@ export type ShellObservationRequest = Readonly<{
   env?: Readonly<Record<string, string>>;
   timeoutMs?: number;
   maxOutputBytes?: number;
+  maxArtifactBytes?: number;
   declaredArtifacts?: readonly ShellArtifactDeclaration[];
+  bestEffortDeclaredArtifactsOnFailure?: boolean;
   toolVersion?: string;
   producer?: Producer;
 }>;
@@ -307,6 +310,7 @@ export class LocalShellCollector {
     if (request.observationId !== undefined && (typeof request.observationId !== "string" || !request.observationId)) throw new ShellCollectorError("REQUEST_INVALID", "observationId must be a non-empty string");
     if (request.toolVersion !== undefined && typeof request.toolVersion !== "string") throw new ShellCollectorError("REQUEST_INVALID", "toolVersion must be a string");
     if (request.declaredArtifacts !== undefined && !Array.isArray(request.declaredArtifacts)) throw new ShellCollectorError("REQUEST_INVALID", "declaredArtifacts must be an array");
+    if (request.bestEffortDeclaredArtifactsOnFailure !== undefined && typeof request.bestEffortDeclaredArtifactsOnFailure !== "boolean") throw new ShellCollectorError("REQUEST_INVALID", "bestEffortDeclaredArtifactsOnFailure must be a boolean");
     if (request.env !== undefined && (typeof request.env !== "object" || request.env === null || Object.entries(request.env).some(([name, value]) => name.includes("\0") || typeof value !== "string" || value.includes("\0")))) throw new ShellCollectorError("REQUEST_INVALID", "env must contain only NUL-free string values");
     const argv = [...(request.argv ?? [])];
     if (argv.some(value => typeof value !== "string" || value.includes("\0"))) throw new ShellCollectorError("REQUEST_INVALID", "argv values must be NUL-free strings");
@@ -320,6 +324,7 @@ export class LocalShellCollector {
     }
     const timeoutMs = boundedNumber(request.timeoutMs, this.defaultTimeoutMs, MAX_TIMEOUT_MS, "timeoutMs");
     const maxOutputBytes = boundedNumber(request.maxOutputBytes, this.defaultOutputBytes, DEFAULT_ARTIFACT_BYTES, "maxOutputBytes");
+    const maxArtifactBytes = boundedNumber(request.maxArtifactBytes, this.maxArtifactBytes, this.maxArtifactBytes, "maxArtifactBytes");
     const executable = request.executable;
     const env: Record<string, string> = { PATH: SAFE_PATH };
     for (const name of this.envAllowlist) {
@@ -399,12 +404,16 @@ export class LocalShellCollector {
       const artifactRelative = relativePath(root.canonical, root.rootDir, declaration.path, "declared artifact");
       let bytes: Uint8Array;
       try {
-        bytes = await readSecureRegularFile(root.fd, artifactRelative, this.maxArtifactBytes);
+        bytes = await readSecureRegularFile(root.fd, artifactRelative, maxArtifactBytes);
       } catch (error) {
+        if (status !== "passed" && request.bestEffortDeclaredArtifactsOnFailure === true && error instanceof ArtifactNotFoundError) continue;
         const code = String(error).includes("byte bound") ? "ARTIFACT_TOO_LARGE" : "ARTIFACT_READ_FAILED";
         throw new ShellCollectorError(code, `declared artifact cannot be securely read: ${String(error)}`, { cause: error });
       }
-      if (digest(bytes) !== declaration.digest) throw new ShellCollectorError("DECLARED_ARTIFACT_MISMATCH", `declared artifact digest mismatch for ${declaration.path}`);
+      if (digest(bytes) !== declaration.digest) {
+        if (status !== "passed" && request.bestEffortDeclaredArtifactsOnFailure === true) continue;
+        throw new ShellCollectorError("DECLARED_ARTIFACT_MISMATCH", `declared artifact digest mismatch for ${declaration.path}`);
+      }
       const path = resolve(root.canonical, artifactRelative);
       artifacts.push(await saveArtifact(this.artifactStore, { ...declaration, path, bytes } as Artifact & { bytes: Uint8Array }, request));
     }
