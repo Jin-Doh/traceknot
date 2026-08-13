@@ -103,7 +103,25 @@ function indexedPng(width: number, height: number, palette: Uint8Array, pixelInd
   for (let row = 0; row < height; row++) pixels[row * (width + 1) + 1] = pixelIndex;
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk("IHDR", header), pngChunk("PLTE", palette), pngChunk("IDAT", deflateSync(pixels)), pngChunk("IEND", new Uint8Array())]);
 }
-test("CLI screenshot trust boundary rejects one digest reused across resilience runs", () => {
+test("CLI PNG decoder rejects transparency entries beyond the indexed palette", () => {
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(1, 0);
+  header.writeUInt32BE(1, 4);
+  header[8] = 8;
+  header[9] = 3;
+  const invalid = Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk("IHDR", header),
+    pngChunk("PLTE", new Uint8Array([0, 0, 0])),
+    pngChunk("tRNS", new Uint8Array([255, 255])),
+    pngChunk("IDAT", deflateSync(new Uint8Array([0, 0]))),
+    pngChunk("IEND", new Uint8Array()),
+  ]);
+  const digest = new Bun.CryptoHasher("sha256").update(invalid).digest("hex");
+  expect(() => validateScreenshotArtifact(invalid, digest, undefined, undefined)).toThrow("invalid transparency metadata");
+});
+
+test("CLI screenshot trust boundary rejects cross-run replay and undersized resilience captures", () => {
   const bytes = png(900, 500);
   const digest = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
   const observation = {
@@ -136,6 +154,12 @@ test("CLI screenshot trust boundary rejects one digest reused across resilience 
     blockingReasons: [],
   };
   expect(() => validateScreenshotArtifact(bytes, digest, undefined, oracle)).toThrow("reused across distinct runs");
+  const singleRunOracle = { ...oracle, runs: [oracle.runs[0]!] };
+  expect(() => validateScreenshotArtifact(bytes, digest, undefined, singleRunOracle)).toThrow("dimensions do not cover observation");
+  const fullBytes = png(1440, 900);
+  const fullDigest = new Bun.CryptoHasher("sha256").update(fullBytes).digest("hex");
+  const fullOracle = { ...singleRunOracle, runs: singleRunOracle.runs.map(run => ({ ...run, observations: run.observations.map(item => ({ ...item, screenshotDigest: fullDigest })) })) };
+  expect(() => validateScreenshotArtifact(fullBytes, fullDigest, undefined, fullOracle)).not.toThrow();
 });
 
 function fractionalViewportPng(): Uint8Array { return png(Math.round(390 * 1.25), Math.round(844 * 1.25)); }
@@ -542,7 +566,7 @@ describe("traceknot verify CLI", () => {
       };
       let resilienceMarker = 0;
       const resilienceScreenshots = new Map(resilienceProfiles.flatMap(profile => resilienceFixtureKinds[profile].map(fixtureKind => {
-        const bytes = png(900, 500, ++resilienceMarker);
+        const bytes = profile === "reflow-320" ? png(900, 500, ++resilienceMarker) : png(1440, 900, ++resilienceMarker);
         const digest = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
         return [`${profile}\u0000${fixtureKind}`, { bytes, digest, path: `ui-resilience-${resilienceMarker}.png` }] as const;
       })));

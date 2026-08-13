@@ -108,7 +108,9 @@ function decodePngDimensions(bytes: Uint8Array): Readonly<{ width: number; heigh
   let colorType = -1;
   let sawHeader = false;
   let paletteEntries = 0;
+  let transparencyEntries = 0;
   let sawEnd = false;
+  let dataEnded = false;
   const compressed: Uint8Array[] = [];
   while (offset < bytes.length) {
     if (offset + 12 > bytes.length) fail("screenshot PNG is truncated");
@@ -120,6 +122,7 @@ function decodePngDimensions(bytes: Uint8Array): Readonly<{ width: number; heigh
     const data = bytes.subarray(offset + 8, offset + 8 + length);
     const crcInput = bytes.subarray(offset + 4, offset + 8 + length);
     if (crc32(crcInput) !== view.getUint32(offset + 8 + length)) fail("screenshot PNG checksum is invalid");
+    if (type !== "IDAT" && compressed.length > 0) dataEnded = true;
     if (!sawHeader && type !== "IHDR") fail("screenshot PNG is missing its leading IHDR");
     if (type === "IHDR") {
       if (sawHeader || length !== 13) fail("screenshot PNG has an invalid IHDR");
@@ -134,7 +137,11 @@ function decodePngDimensions(bytes: Uint8Array): Readonly<{ width: number; heigh
     } else if (type === "PLTE") {
       if (paletteEntries > 0 || compressed.length > 0 || length === 0 || length % 3 !== 0 || length > 768 || (colorType === 3 && length / 3 > 2 ** bitDepth) || colorType === 0 || colorType === 4) fail("screenshot PNG has an invalid palette");
       paletteEntries = length / 3;
+    } else if (type === "tRNS") {
+      if (compressed.length > 0 || transparencyEntries > 0 || ![0, 2, 3].includes(colorType) || (colorType === 0 && length !== 2) || (colorType === 2 && length !== 6) || (colorType === 3 && (paletteEntries === 0 || length === 0 || length > paletteEntries))) fail("screenshot PNG has invalid transparency metadata");
+      transparencyEntries = length;
     } else if (type === "IDAT") {
+      if (dataEnded) fail("screenshot PNG has non-consecutive image data");
       compressed.push(data);
     } else if (type === "IEND") {
       if (length !== 0) fail("screenshot PNG has an invalid IEND");
@@ -522,8 +529,8 @@ export function validateScreenshotArtifact(bytes: Uint8Array, artifactDigest: st
   }
   for (const { run, observation } of resilienceBindings) {
     const scale = run.viewport.devicePixelRatio ?? 1;
-    const minimumWidth = Math.ceil(observation.clientWidth * scale);
-    const minimumHeight = Math.ceil(observation.clientHeight * scale);
+    const minimumWidth = run.profile === "reflow-320" ? Math.ceil(observation.clientWidth * scale) : Math.ceil(run.viewport.width * scale);
+    const minimumHeight = run.profile === "reflow-320" ? Math.ceil(observation.clientHeight * scale) : Math.ceil(run.viewport.height * scale);
     if (dimensions.width < minimumWidth || dimensions.height < minimumHeight) {
       throw new Error(`invalid UI resilience screenshot artifact ${artifactDigest}: dimensions do not cover observation ${observation.observationId}`);
     }
