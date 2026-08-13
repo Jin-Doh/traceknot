@@ -158,7 +158,7 @@ traceknot verify --request request.json --manifest manifest.json --root .
 
 요청은 현재 Git의 `rootIdentity`와 `snapshotId`를 지정해야 하며, 두 필드 모두 리터럴 `auto`를 사용할 수 있습니다. `verification-manifest/v1` manifest는 생성된 각 obligation에 절대 경로 executable과 argument 배열, 절대 경로 `executionCompletionPath`, 또는 둘 다를 연결합니다. Shell 문자열 보간은 거부됩니다.
 
-CLI의 로컬 collector는 하네스가 관리하는 별도 검증 컨텍스트(`separate-verification-context`) producer입니다. 자체 명령 결과나 호출자가 제공한 oracle 파일에 `independent-producer` 출처를 부여하지 않습니다. 따라서 독립 증거가 필요한 R2/R3 또는 중대한 UI obligation은 이러한 입력만으로 통과할 수 없습니다.
+CLI의 로컬 collector는 하네스가 관리하는 별도 검증 컨텍스트(`separate-verification-context`) producer입니다. 자체 명령 결과나 호출자가 제공한 oracle 파일에 `independent-producer` 출처를 부여하지 않습니다. 따라서 R3, visual-composition, UI-resilience 또는 profile이 독립 증거를 요구하는 obligation은 이러한 입력만으로 통과할 수 없습니다.
 
 Visual-composition obligation에는 절대 경로 `visualCompositionOraclePath`를 지정하고, 각 screenshot, design-token-resolution 또는 approved-visual-reference artifact의 원래 `type`, `digest`, `path`를 선언해야 합니다. CLI는 oracle을 검증하고 선언된 artifact를 안전하게 수집하며 증거 유형을 보존합니다. Screenshot 증거는 디코딩 가능한 PNG여야 합니다. Whole-page 크기는 capture viewport와 device-pixel ratio에 맞아야 하고, focused-region 크기는 연결된 measured region을 포함해야 합니다.
 

@@ -177,9 +177,8 @@ async function runCli(
 
 export async function runSelfHostingVerification(
   command: SelfHostingCommand,
-  traceknotExecutable = resolve(dirname(fileURLToPath(import.meta.url)), "../../bin/traceknot"),
 ): Promise<SelfHostingResult> {
-  if (!isAbsolute(traceknotExecutable)) throw Error("Traceknot executable must be absolute");
+  const traceknotExecutable = resolve(dirname(fileURLToPath(import.meta.url)), "../../bin/traceknot");
   const inputs = buildSelfHostingInputs(command);
   const workspace = await mkdtemp(join(tmpdir(), "traceknot-self-hosting."));
   const requestPath = join(workspace, "request.json");

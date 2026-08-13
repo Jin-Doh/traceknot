@@ -1472,7 +1472,7 @@ describe("verification run orchestration", () => {
     expect(second.idempotencyKey).toBe(first.idempotencyKey);
   });
 
-  test("classifies material risks, derives independent obligations, and preserves browser technique", async () => {
+  test("classifies material risks, derives tiered obligations, and preserves browser technique", async () => {
     const request = { ...makeRequest(), testBasis: [
       { id: "z-browser", kind: "acceptance-criterion" as const, origin: "explicit" as const, text: "The browser flow renders the UI." },
       { id: "a-security", kind: "requirement" as const, origin: "explicit" as const, text: "Security migration must be reviewed." },
@@ -1489,9 +1489,9 @@ describe("verification run orchestration", () => {
     expect(plan.obligations.find(item => item.id === "obligation:condition:a-security")?.independence).toBe("independent-producer");
     expect(discovery.risks.find(item => item.id === "risk:r-basic")?.level).toBe("R2");
     expect(discovery.risks.find(item => item.id === "risk:z-browser")?.level).toBe("R2");
-    expect(plan.obligations.find(item => item.id === "obligation:condition:m-contract")?.independence).toBe("independent-producer");
-    expect(plan.obligations.find(item => item.id === "obligation:condition:r-basic")?.independence).toBe("independent-producer");
-    expect(plan.obligations.find(item => item.id === "obligation:condition:z-browser")?.independence).toBe("independent-producer");
+    expect(plan.obligations.find(item => item.id === "obligation:condition:m-contract")?.independence).toBe("separate-verification-context");
+    expect(plan.obligations.find(item => item.id === "obligation:condition:r-basic")?.independence).toBe("separate-verification-context");
+    expect(plan.obligations.find(item => item.id === "obligation:condition:z-browser")?.independence).toBe("separate-verification-context");
     expect(plan.obligations.find(item => item.id === "obligation:condition:z-browser")?.evidenceType).toBe("browser-result");
     const execution = (await runVerification({ runId: RUN_ID, request, dependencies: deps })).documents.execution;
     if (!execution) throw new Error("missing execution");
@@ -2728,7 +2728,7 @@ describe("verification run orchestration", () => {
     expect(restoredEvents.length).toBeGreaterThan(0);
     expect(restoredEvents.some(event => event.eventKey === checkpoint.usageOutbox?.find(entry => entry.event === "execution")?.eventKey)).toBe(true);
     expect((fakes.repository.stageDocuments.get(`${runId}:execution`) as ExecutionDocument).usageOutbox).toHaveLength(0);
-    expect(initialEvents.filter(event => event.event === "artifact")).toHaveLength(0);
+    expect(initialEvents.filter(event => event.event === "artifact")).toHaveLength(1);
   });
 
   test("rejects a usage outbox execution key bound to a foreign run before external dispatch", async () => {

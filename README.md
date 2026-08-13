@@ -158,7 +158,7 @@ traceknot verify --request request.json --manifest manifest.json --root .
 
 The request must identify the current Git `rootIdentity` and `snapshotId`; either field may use the literal `auto`. A `verification-manifest/v1` manifest assigns each generated obligation either an absolute executable with an argument array, an absolute `executionCompletionPath`, or both. Shell-string interpolation is rejected.
 
-The CLI's local collector is a harness-managed, separate-verification-context producer. It does not claim `independent-producer` provenance for its own command results or caller-supplied oracle files. An R2/R3 or significant UI obligation that requires independent evidence therefore cannot pass from those inputs alone.
+The CLI's local collector is a harness-managed, separate-verification-context producer. It does not claim `independent-producer` provenance for its own command results or caller-supplied oracle files. An R3, visual-composition, UI-resilience, or other obligation whose profile requires independent evidence therefore cannot pass from those inputs alone.
 
 For a visual-composition obligation, set its absolute `visualCompositionOraclePath` and declare every screenshot, design-token-resolution, or approved-visual-reference artifact with its original `type`, `digest`, and `path`. The CLI validates the oracle, securely ingests the declared artifacts, and preserves their evidence types. Screenshot evidence must be a decodable PNG. Whole-page dimensions must match the capture viewport and device-pixel ratio; focused-region dimensions must cover their bound measured region.
 

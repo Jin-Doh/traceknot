@@ -6,7 +6,7 @@ import { deflateSync } from "node:zlib";
 import Ajv2020 from "ajv/dist/2020.js";
 import { describe, expect, test } from "bun:test";
 import { captureGitSnapshotIdentity } from "./git-snapshot";
-import { runVerify } from "../cli/verify";
+import { runVerify, verifyTrustedAuthority, type TrustedProducerPolicy } from "../cli/verify";
 import { canonicalizeJson, type VerificationExecutionAuthorityBinding, type VerificationExecutionCompletionEnvelope, type VerificationExecutionOutput } from "./verification-run";
 import { LocalArtifactStore } from "./local-artifact-store";
 import type { UiResilienceProfile } from "../core/ui-resilience";
@@ -137,19 +137,56 @@ describe("traceknot verify CLI", () => {
       manifest.obligations[0]!.executionCompletionArtifacts = [];
       await writeFile(fixtureValue.manifest, JSON.stringify(manifest));
       const stderr: string[] = [];
+      const status = await runVerify(
+        ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest],
+        () => undefined,
+        text => stderr.push(text),
+      );
+      expect({ status, stderr }).toEqual({ status: 0, stderr: [] });
+    } finally {
+      await fixtureValue.cleanup();
+    }
+  });
+  test("keeps local command provenance below independent-producer", async () => {
+    const fixtureValue = await fixture();
+    try {
+      const stdout: string[] = [];
+      expect(await runVerify(
+        ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest],
+        text => stdout.push(text),
+        () => undefined,
+      )).toBe(0);
+      const report = JSON.parse(stdout.join("")) as { documents: { execution: { observations: Array<{ producer: { kind: string; identity: string; independence: string } }> } } };
+      expect(report.documents.execution.observations[0]!.producer).toEqual({ kind: "harness-managed", identity: "traceknot-cli", independence: "separate-verification-context" });
+    } finally {
+      await fixtureValue.cleanup();
+    }
+  });
+
+  test("rejects a present external completion when no trusted policy is installed", async () => {
+    const fixtureValue = await fixture();
+    try {
+      const completionPath = join(fixtureValue.config, "present-completion.json");
+      await writeFile(completionPath, "{}");
+      const manifest = JSON.parse(await readFile(fixtureValue.manifest, "utf8")) as { schemaVersion: string; obligations: Array<Record<string, unknown>> };
+      manifest.obligations[0]!.executionCompletionPath = completionPath;
+      manifest.obligations[0]!.executionCompletionArtifacts = [];
+      await writeFile(fixtureValue.manifest, JSON.stringify(manifest));
+      const stderr: string[] = [];
       expect(await runVerify(
         ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest],
         () => undefined,
         text => stderr.push(text),
-      )).toBe(0);
-      expect(stderr).toEqual([]);
+      )).toBe(64);
+      expect(stderr.join("")).toContain("trusted producer policy");
     } finally {
       await fixtureValue.cleanup();
     }
   });
 
 
-  test("imports a real Ed25519 completion without an unused executable", async () => {
+
+  test("validates a real Ed25519 completion and fails closed without an installed trust policy", async () => {
     const fixtureValue = await fixture();
     const tamperedState = await mkdtemp(join(tmpdir(), "traceknot-cli-tampered-state-"));
     const externalState = await mkdtemp(join(tmpdir(), "traceknot-cli-external-state-"));
@@ -197,6 +234,8 @@ describe("traceknot verify CLI", () => {
         keyId,
         signature,
       };
+      const policy: TrustedProducerPolicy = { schemaVersion: "trusted-producer-policy/v1", issuer: producer.identity, keyId, publicKeyPem };
+      expect(verifyTrustedAuthority(policy, authority, binding)).toBe(true);
       const output: VerificationExecutionOutput = {
         status: "PASS",
         runId: binding.runId,
@@ -231,7 +270,9 @@ describe("traceknot verify CLI", () => {
       }));
       const tamperedCompletionPath = join(fixtureValue.config, "tampered-completion.json");
       const tamperedManifestPath = join(fixtureValue.config, "tampered-manifest.json");
-      await writeFile(tamperedCompletionPath, JSON.stringify({ ...completion, authority: { ...authority, signature: `${signature[0] === "A" ? "B" : "A"}${signature.slice(1)}` } }));
+      const tamperedAuthority = { ...authority, signature: `${signature[0] === "A" ? "B" : "A"}${signature.slice(1)}` };
+      expect(verifyTrustedAuthority(policy, tamperedAuthority, binding)).toBe(false);
+      await writeFile(tamperedCompletionPath, JSON.stringify({ ...completion, authority: tamperedAuthority }));
       await writeFile(tamperedManifestPath, JSON.stringify({
         schemaVersion: "verification-manifest/v1",
         obligations: [{
@@ -245,27 +286,16 @@ describe("traceknot verify CLI", () => {
         ["--root", fixtureValue.root, "--state-dir", tamperedState, "--request", fixtureValue.request, "--manifest", tamperedManifestPath],
         () => undefined,
         text => tamperedErrors.push(text),
-        { readTrustedProducerPolicy: async () => ({ schemaVersion: "trusted-producer-policy/v1", issuer: producer.identity, keyId, publicKeyPem }) },
       )).toBe(64);
-      expect(tamperedErrors.join("")).toContain("invalid execution completion authentication");
+      expect(tamperedErrors.join("")).toContain("trusted producer policy");
       expect(tamperedErrors.join("")).not.toContain("must-not-be-read");
-      const stdout: string[] = [];
       const stderr: string[] = [];
-      const status = await runVerify(
+      expect(await runVerify(
         ["--root", fixtureValue.root, "--state-dir", externalState, "--request", fixtureValue.request, "--manifest", externalManifestPath],
-        text => stdout.push(text),
+        () => undefined,
         text => stderr.push(text),
-        { readTrustedProducerPolicy: async () => ({ schemaVersion: "trusted-producer-policy/v1", issuer: producer.identity, keyId, publicKeyPem }) },
-      );
-      expect(status, stderr.join("")).toBe(0);
-      expect(JSON.parse(stdout.join("")).verdict.qaVerdict).toBe("PASS");
-      expect(stdout.join("")).toContain(signature);
-      const importedArtifactStore = new LocalArtifactStore(join(externalState, "artifacts"));
-      try {
-        for (const artifact of binding.artifacts) expect(await importedArtifactStore.hasArtifact(artifact.digest)).toBe(true);
-      } finally {
-        await importedArtifactStore.close();
-      }
+      )).toBe(64);
+      expect(stderr.join("")).toContain("trusted producer policy");
     } finally {
       await Promise.all([fixtureValue.cleanup(), rm(externalState, { recursive: true, force: true }), rm(tamperedState, { recursive: true, force: true })]);
     }

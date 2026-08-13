@@ -1,5 +1,6 @@
 import { createHash, createPublicKey, verify as verifySignature } from "node:crypto";
-import { mkdir, lstat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, mkdir, open, type FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { inflateSync } from "node:zlib";
@@ -22,10 +23,9 @@ import {
   performRiskDiscovery,
 } from "../runtime/verification-run";
 import { captureGitSnapshotIdentity } from "../runtime/git-snapshot";
-import { LocalArtifactStore } from "../runtime/local-artifact-store";
+import { ArtifactNotFoundError, closeSecureRoot, LocalArtifactStore, openSecureRoot, readSecureRegularFile } from "../runtime/local-artifact-store";
 import { LocalShellCollector, type ShellArtifactDeclaration } from "../runtime/local-shell-collector";
 import { FileVerificationRepository } from "../runtime/file-repository";
-import { closeSecureRoot, openSecureRoot, readSecureRegularFile } from "../runtime/local-artifact-store";
 
 export const VERIFY_EXIT_CODES = Object.freeze({ PASS: 0, FAIL: 1, BLOCKED: 2, INCOMPLETE: 3, USAGE: 64, INTERNAL: 70 });
 const MAX_INPUT_BYTES = 4 * 1024 * 1024;
@@ -56,7 +56,7 @@ type ManifestCommand = Readonly<{
 type VerifyManifest = Readonly<{ schemaVersion: "verification-manifest/v1"; obligations: readonly ManifestCommand[] }>;
 type CliOptions = Readonly<{ requestPath?: string; manifestPath?: string; rootDir: string; stateDir: string; artifactDir: string; runId?: string; expectedHead?: string; format: "json" | "markdown"; reportOnly: boolean; help: boolean }>;
 type CliReport = Readonly<{ schemaVersion: "traceknot-cli-report/v1"; run: unknown; verdict: unknown; snapshot: Readonly<{ rootIdentity: string; snapshotId: string; head: string; dirty: boolean }>; documents?: unknown }>;
-type TrustedProducerPolicy = Readonly<{
+export type TrustedProducerPolicy = Readonly<{
   schemaVersion: "trusted-producer-policy/v1";
   issuer: string;
   keyId: string;
@@ -193,6 +193,27 @@ function assertPlain(value: unknown, path = "$"): void {
     assertPlain(child, `${path}.${key}`);
   }
 }
+function parseJsonBytes(bytes: Uint8Array, path: string): unknown {
+  try {
+    const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
+    assertPlain(value);
+    return value;
+  } catch (error) {
+    if (error instanceof Error && /^(invalid input file|unsafe input key)/.test(error.message)) throw error;
+    throw new Error(`invalid input file ${path}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+async function readBoundedHandle(handle: FileHandle, path: string): Promise<Uint8Array> {
+  const bytes = Buffer.allocUnsafe(MAX_INPUT_BYTES + 1);
+  let offset = 0;
+  while (offset < bytes.length) {
+    const result = await handle.read(bytes, offset, bytes.length - offset, null);
+    if (result.bytesRead === 0) break;
+    offset += result.bytesRead;
+  }
+  if (offset > MAX_INPUT_BYTES) fail(`invalid input file ${path}: exceeds ${MAX_INPUT_BYTES} bytes`);
+  return bytes.subarray(0, offset);
+}
 async function readBoundedJson(path: string): Promise<unknown>;
 async function readBoundedJson(path: string, allowMissing: true): Promise<unknown | undefined>;
 async function readBoundedJson(path: string, allowMissing = false): Promise<unknown | undefined> {
@@ -201,11 +222,9 @@ async function readBoundedJson(path: string, allowMissing = false): Promise<unkn
     const absolute = resolve(path);
     root = await openSecureRoot(dirname(absolute));
     const bytes = await readSecureRegularFile(root.fd, basename(absolute), MAX_INPUT_BYTES);
-    const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
-    assertPlain(value);
-    return value;
+    return parseJsonBytes(bytes, path);
   } catch (error) {
-    if (allowMissing && error && typeof error === "object" && "code" in error && error.code === "ENOENT") return undefined;
+    if (allowMissing && error instanceof ArtifactNotFoundError) return undefined;
     if (error instanceof Error && /^(invalid input file|unsafe input key)/.test(error.message)) throw error;
     throw new Error(`invalid input file ${path}: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
@@ -242,17 +261,21 @@ function validateTrustedProducerPolicy(value: unknown): TrustedProducerPolicy {
   if (actualKeyId !== keyId) fail("trusted producer keyId does not match public key");
   return { schemaVersion: "trusted-producer-policy/v1", issuer, keyId, publicKeyPem };
 }
-async function loadTrustedProducerPolicy(readOverride?: () => Promise<unknown>): Promise<TrustedProducerPolicy | undefined> {
-  if (readOverride) return validateTrustedProducerPolicy(await readOverride());
-  let info;
+async function loadTrustedProducerPolicy(): Promise<TrustedProducerPolicy | undefined> {
+  let handle: FileHandle;
   try {
-    info = await lstat(TRUSTED_PRODUCER_POLICY_PATH);
+    handle = await open(TRUSTED_PRODUCER_POLICY_PATH, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return undefined;
     throw error;
   }
-  if (!info.isFile() || info.isSymbolicLink() || info.uid !== 0 || (info.mode & 0o022) !== 0) fail("trusted producer policy must be a root-owned, non-writable regular file");
-  return validateTrustedProducerPolicy(await readBoundedJson(TRUSTED_PRODUCER_POLICY_PATH));
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.uid !== 0 || (info.mode & 0o022) !== 0) fail("trusted producer policy must be a root-owned, non-writable regular file");
+    return validateTrustedProducerPolicy(parseJsonBytes(await readBoundedHandle(handle, TRUSTED_PRODUCER_POLICY_PATH), TRUSTED_PRODUCER_POLICY_PATH));
+  } finally {
+    await handle.close();
+  }
 }
 function parseArgs(argv: readonly string[]): CliOptions {
   let rootDir = process.cwd();
@@ -390,14 +413,21 @@ async function assertExistingExternalDirectory(rootDir: string, directory: strin
   const info = await lstat(directory); if (!info.isDirectory() || info.isSymbolicLink()) fail(`${label} must be a real directory`);
 }
 function digest(value: unknown): string { return createHash("sha256").update(canonicalizeJson(value)).digest("hex"); }
-function localProducerFor(obligation: Parameters<NonNullable<VerificationRunDependencies["executor"]["executeObligation"]>>[0]["obligation"]): Producer {
-  if (obligation.visualCompositionRequirement || obligation.uiResilienceRequirement) return { kind: "harness-managed", identity: "traceknot-cli", independence: "separate-verification-context" };
-  return { kind: "deterministic-verifier", identity: "traceknot-cli", independence: "independent-producer" };
+function localProducer(): Producer {
+  return { kind: "harness-managed", identity: "traceknot-cli", independence: "separate-verification-context" };
 }
 function authorityFor(binding: Parameters<NonNullable<VerificationRunDependencies["executionAuthority"]["issueExecutionAuthority"]>>[0]): ExecutionAuthority {
   return { schemaVersion: "verification-execution-authority/v1", authorityId: `authority:${digest(binding).slice(0, 48)}`, issuer: "traceknot-cli", binding };
 }
-function verifyTrustedAuthority(policy: TrustedProducerPolicy, authority: ExecutionAuthority, binding: VerificationExecutionAuthorityBinding): boolean {
+function isUnsignedLocalAuthority(authority: ExecutionAuthority, binding: VerificationExecutionAuthorityBinding): boolean {
+  return authority.keyId === undefined
+    && authority.signature === undefined
+    && canonicalizeJson(authority) === canonicalizeJson(authorityFor(binding))
+    && binding.producer.kind === "harness-managed"
+    && binding.producer.identity === "traceknot-cli"
+    && binding.producer.independence === "separate-verification-context";
+}
+export function verifyTrustedAuthority(policy: TrustedProducerPolicy, authority: ExecutionAuthority, binding: VerificationExecutionAuthorityBinding): boolean {
   if (authority.issuer !== policy.issuer || authority.keyId !== policy.keyId || typeof authority.signature !== "string" || !/^[A-Za-z0-9_-]{86}$/.test(authority.signature) || canonicalizeJson(authority.binding) !== canonicalizeJson(binding)) return false;
   const expectedId = `ed25519:${policy.keyId}:${createHash("sha256").update(authority.signature).digest("hex")}`;
   if (authority.authorityId !== expectedId) return false;
@@ -431,18 +461,6 @@ function exitForVerdict(value: unknown): number {
   return VERIFY_EXIT_CODES.INCOMPLETE;
 }
 
-async function loadLegacyReport(repository: FileVerificationRepository, runId: string, snapshot: Awaited<ReturnType<typeof captureGitSnapshotIdentity>>): Promise<CliReport> {
-  const run = await repository.loadRun(runId);
-  if (!run) fail(`run does not exist: ${runId}`);
-  const metadata = await repository.readMetadata(runId);
-  const request = await repository.loadStageDocument(runId, "request");
-  const verdict = await repository.loadStageDocument(runId, "verdict");
-  if (!request || !verdict) fail("run is missing persisted request or verdict");
-  const project = request && typeof request === "object" && "project" in request ? request.project : undefined;
-  if (!project || typeof project !== "object" || !("rootIdentity" in project) || !("snapshotId" in project) || project.rootIdentity !== snapshot.rootIdentity || project.snapshotId !== snapshot.snapshotId) fail("persisted request does not match the current Git snapshot");
-  if (!metadata || metadata.rootIdentity !== snapshot.rootIdentity || metadata.snapshotId !== snapshot.snapshotId || run.rootIdentity !== snapshot.rootIdentity || run.snapshotId !== snapshot.snapshotId) fail("current Git snapshot or persisted run metadata does not match the persisted run");
-  return { schemaVersion: "traceknot-cli-report/v1", run, verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: { request, basis: await repository.loadStageDocument(runId, "basis"), discovery: await repository.loadStageDocument(runId, "discovery"), plan: await repository.loadStageDocument(runId, "plan"), execution: await repository.loadStageDocument(runId, "execution"), evidence: await repository.loadStageDocument(runId, "evidence"), residualRisk: await repository.loadStageDocument(runId, "residual-risk"), verdict } };
-}
 async function makeDependencies(options: CliOptions, request: VerificationRequest, manifest: VerifyManifest | undefined, repository: FileVerificationRepository, snapshotId: string, trustedPolicy: TrustedProducerPolicy | undefined): Promise<{ dependencies: VerificationRunDependencies; close: () => Promise<void> }> {
   const mainStore = new LocalArtifactStore(options.artifactDir);
   const collectorStore = new LocalArtifactStore(join(options.artifactDir, "collector"));
@@ -453,7 +471,7 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
     issueExecutionAuthority: async (binding: VerificationExecutionAuthorityBinding) => authorityFor(binding),
     verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: VerificationExecutionAuthorityBinding) => {
       if (authority.keyId !== undefined || authority.signature !== undefined || authority.issuer !== "traceknot-cli") return trustedPolicy !== undefined && verifyTrustedAuthority(trustedPolicy, authority, binding);
-      return canonicalizeJson(authority.binding) === canonicalizeJson(binding) && binding.producer.identity === "traceknot-cli" && (binding.producer.kind === "deterministic-verifier" || binding.producer.independence !== "independent-producer");
+      return isUnsignedLocalAuthority(authority, binding);
     },
   };
   const freshnessAuthority = { atomicSameKeyIdempotency: true as const, issueFreshnessAuthority: async (binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["issueFreshnessAuthority"]>>[0]) => freshnessAuthorityFor(binding), verifyFreshnessAuthority: async (authority: FreshnessAuthority, binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["verifyFreshnessAuthority"]>>[1]) => authority.issuer === "traceknot-cli" && canonicalizeJson(authority.binding) === canonicalizeJson(binding) };
@@ -462,7 +480,6 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
     loadExecutionCompletion: async (input: ManifestExecutionInput): Promise<VerificationExecutionCompletionEnvelope | undefined> => {
       const command = commands.get(input.obligation.id);
       if (!command?.executionCompletionPath) return undefined;
-      if (command.executable && !trustedPolicy) return undefined;
       const rawCompletion = await readBoundedJson(command.executionCompletionPath, true);
       if (rawCompletion === undefined) return undefined;
       if (!trustedPolicy) throw new Error(`manifest obligation ${input.obligation.id} requires the administrator-installed trusted producer policy`);
@@ -499,7 +516,7 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
     const command = commands.get(input.obligation.id);
     if (!command) throw new Error(`manifest has no command for obligation ${input.obligation.id}`);
     if (!command.executable) throw new Error(`manifest obligation ${command.id} external completion is unavailable and no executable fallback is configured`);
-    const observation = await collector.collect({ requestId: input.requestId, snapshotId: input.snapshotId, rootIdentity: input.rootIdentity, observationId: `observation:${input.obligation.id}`, executable: command.executable, ...(command.argv ? { argv: command.argv } : {}), ...(command.cwd ? { cwd: command.cwd } : {}), ...(command.env ? { env: command.env } : {}), ...(command.timeoutMs ? { timeoutMs: command.timeoutMs } : {}), ...(command.maxOutputBytes ? { maxOutputBytes: command.maxOutputBytes } : {}), ...(command.maxArtifactBytes ? { maxArtifactBytes: command.maxArtifactBytes } : {}), ...(command.declaredArtifacts ? { declaredArtifacts: command.declaredArtifacts, bestEffortDeclaredArtifactsOnFailure: true } : {}), ...(command.toolVersion ? { toolVersion: command.toolVersion } : {}), producer: localProducerFor(input.obligation) });
+    const observation = await collector.collect({ requestId: input.requestId, snapshotId: input.snapshotId, rootIdentity: input.rootIdentity, observationId: `observation:${input.obligation.id}`, executable: command.executable, ...(command.argv ? { argv: command.argv } : {}), ...(command.cwd ? { cwd: command.cwd } : {}), ...(command.env ? { env: command.env } : {}), ...(command.timeoutMs ? { timeoutMs: command.timeoutMs } : {}), ...(command.maxOutputBytes ? { maxOutputBytes: command.maxOutputBytes } : {}), ...(command.maxArtifactBytes ? { maxArtifactBytes: command.maxArtifactBytes } : {}), ...(command.declaredArtifacts ? { declaredArtifacts: command.declaredArtifacts, bestEffortDeclaredArtifactsOnFailure: true } : {}), ...(command.toolVersion ? { toolVersion: command.toolVersion } : {}), producer: localProducer() });
     const status = observation.execution.exitStatus === "passed" ? "passed" : observation.execution.exitStatus === "blocked" ? "blocked" : "failed";
     let visualCompositionOracle: VisualCompositionOracle | undefined;
     if (input.obligation.visualCompositionRequirement) {
@@ -573,7 +590,7 @@ async function loadReport(repository: FileVerificationRepository, runId: string,
   return { schemaVersion: "traceknot-cli-report/v1", run, verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: { request, basis: await repository.loadStageDocument(runId, "basis"), discovery: await repository.loadStageDocument(runId, "discovery"), plan: await repository.loadStageDocument(runId, "plan"), execution: await repository.loadStageDocument(runId, "execution"), evidence: await repository.loadStageDocument(runId, "evidence"), residualRisk: await repository.loadStageDocument(runId, "residual-risk"), verdict } };
 }
 
-export async function runVerify(argv: readonly string[], stdout: (text: string) => void = text => process.stdout.write(text), stderr: (text: string) => void = text => process.stderr.write(text), system: Readonly<{ readTrustedProducerPolicy?: () => Promise<unknown> }> = {}): Promise<number> {
+export async function runVerify(argv: readonly string[], stdout: (text: string) => void = text => process.stdout.write(text), stderr: (text: string) => void = text => process.stderr.write(text)): Promise<number> {
   let options: CliOptions;
   try { options = parseArgs(argv); } catch (error) { stderr(`${String(error instanceof Error ? error.message : error)}\n${usage()}\n`); return VERIFY_EXIT_CODES.USAGE; }
   if (options.help) { stdout(`${usage()}\n`); return VERIFY_EXIT_CODES.PASS; }
@@ -594,7 +611,7 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
     }
     const repository = new FileVerificationRepository(options.stateDir);
     const requestInput = options.requestPath ? validateRequest(await readBoundedJson(options.requestPath)) : undefined;
-    const trustedPolicy = await loadTrustedProducerPolicy(system.readTrustedProducerPolicy);
+    const trustedPolicy = await loadTrustedProducerPolicy();
     const runId = options.runId ?? requestInput?.requestId;
     if (!runId || !SAFE_ID.test(runId)) fail("--run-id or request.requestId is required");
     if (options.reportOnly) {
@@ -602,11 +619,7 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
       const persistedRequestValue = await repository.loadStageDocument(runId, "request");
       if (persistedRequestValue === undefined) fail("run is missing persisted request");
       const metadata = await repository.readMetadata(runId);
-      if (!metadata?.capabilities.includes("authenticated-execution-authority")) {
-        const report = await loadLegacyReport(repository, runId, snapshot);
-        stdout(reportOutput(report, options.format));
-        return exitForVerdict(report.verdict);
-      }
+      if (!metadata) fail("run is missing persisted metadata");
       const persistedRequest = validateRequest(persistedRequestValue);
       if (metadata.rootIdentity !== snapshot.rootIdentity || metadata.snapshotId !== snapshot.snapshotId || persistedRequest.project.rootIdentity !== snapshot.rootIdentity || persistedRequest.project.snapshotId !== snapshot.snapshotId) fail("current Git snapshot or persisted run metadata does not match the persisted run");
       const executionAuthority = {
@@ -614,7 +627,7 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
         issueExecutionAuthority: async (binding: VerificationExecutionAuthorityBinding) => authorityFor(binding),
         verifyExecutionAuthority: async (authority: ExecutionAuthority, binding: VerificationExecutionAuthorityBinding) => {
           if (authority.keyId !== undefined || authority.signature !== undefined || authority.issuer !== "traceknot-cli") return trustedPolicy !== undefined && verifyTrustedAuthority(trustedPolicy, authority, binding);
-          return canonicalizeJson(authority.binding) === canonicalizeJson(binding) && binding.producer.identity === "traceknot-cli" && (binding.producer.kind === "deterministic-verifier" || binding.producer.independence !== "independent-producer");
+          return isUnsignedLocalAuthority(authority, binding);
         },
       };
       const freshnessAuthority = { atomicSameKeyIdempotency: true as const, issueFreshnessAuthority: async (binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["issueFreshnessAuthority"]>>[0]) => freshnessAuthorityFor(binding), verifyFreshnessAuthority: async (authority: FreshnessAuthority, binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["verifyFreshnessAuthority"]>>[1]) => authority.issuer === "traceknot-cli" && canonicalizeJson(authority.binding) === canonicalizeJson(binding) };

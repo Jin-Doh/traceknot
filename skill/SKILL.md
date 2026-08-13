@@ -89,7 +89,7 @@ Minimum independence levels:
 - `independent-producer`
 - `external-approval`
 
-Default minimums: R0=`self-check`, R1=`separate-verification-context`, R2=`independent-producer`, R3=`independent-producer` plus explicit risk acceptance for unresolved material risk.
+Default minimums: R0=`self-check`; R1=`separate-verification-context`; R2=`separate-verification-context` plus the bounded adversarial challenge above, unless the obligation profile explicitly requires `independent-producer`; R3=`independent-producer` plus explicit risk acceptance for unresolved material risk. Visual-composition and UI-resilience acceptance profiles explicitly require `independent-producer`.
 
 ### 6. Check entry criteria
 
