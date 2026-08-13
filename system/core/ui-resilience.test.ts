@@ -191,6 +191,7 @@ describe("UI resilience visual review approval binding", () => {
       { type: "ui-visual-review-approval-receipt", digest: observation.visualReview!.approvalArtifactDigest },
     ], [observation.visualReview!.approvalArtifactDigest])).toMatchObject({ status: "INCOMPLETE", reasons: ["INVALID_ORACLE"] });
   });
+
 });
 
   test("rejects an authentic review replayed under a different request subject", () => {
@@ -358,6 +359,23 @@ describe("UI resilience truncation evidence", () => {
     expect(evaluateUiResilience(truncationRequirement, fitting, [
       { type: "screenshot", digest: SCREENSHOT_DIGEST },
     ])).toMatchObject({ status: "PASS", failedObservationIds: [] });
+  });
+
+  test("rejects full-text access replayed under another run subject", () => {
+    const candidate = truncationOracle(true, true, 420);
+    const run = candidate.runs[0]!;
+    const observation = run.observations[0]!;
+    const access = observation.fullTextAccess!;
+    const changedPayload = { ...access, surfaceId: "surface:other" };
+    const changedAccess = { ...changedPayload, payloadDigest: uiFullTextAccessPayloadDigest(changedPayload) };
+    const replayed = { ...candidate, runs: [{ ...run, observations: [{ ...observation, fullTextAccess: changedAccess }] }] };
+    expect(isUiResilienceOracle(replayed)).toBe(true);
+    const result = evaluateUiResilience(truncationRequirement, replayed, [
+      { type: "screenshot", digest: SCREENSHOT_DIGEST },
+      { type: "ui-full-text-access", digest: FULL_TEXT_ARTIFACT_DIGEST },
+    ]);
+    expect(result.status).toBe("INCOMPLETE");
+    expect(result.reasons).toContain("FULL_TEXT_ACCESS_SUBJECT_MISMATCH:observation:catalog-label");
   });
 
   test("rejects a non-truncated claim that contradicts overflow geometry", () => {
