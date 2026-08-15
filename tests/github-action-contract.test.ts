@@ -86,7 +86,7 @@ describe("reusable governed GitHub Action", () => {
     expect(steps[5]?.if).toBe("always()");
     expect(steps[6]?.if).toBe("${{ always() && inputs.board == 'true' }}");
     expect(steps[7]?.if).toBe("${{ always() && inputs.sarif-path != '' }}");
-    expect(steps[8]?.if).toBe("${{ always() && inputs.cleanup-local-after-upload == 'true' && steps.prepare.outcome == 'success' && steps.artifact.outcome == 'success' && (steps['board-artifact'].outcome == 'success' || steps['board-artifact'].outcome == 'skipped') && (steps.sarif.outcome == 'success' || steps.sarif.outcome == 'skipped') }}");
+    expect(steps[8]?.if).toBe("${{ always() && inputs.cleanup-local-after-upload == 'true' && steps.prepare.outcome == 'success' && steps.summary.outcome == 'success' && steps.artifact.outcome == 'success' && (steps['board-artifact'].outcome == 'success' || steps['board-artifact'].outcome == 'skipped') && (steps.sarif.outcome == 'success' || steps.sarif.outcome == 'skipped') }}");
     expect(object(inputs["artifact-retention-days"], "artifact retention input").default).toBe("30");
     expect(object(inputs["board-retention-days"], "Board retention input").default).toBe("14");
     expect(object(inputs["cleanup-local-after-upload"], "local cleanup input").default).toBe("false");

@@ -276,7 +276,7 @@ runs:
 
     - id: cleanup
       name: Clean up local evidence
-      if: ${{ always() && inputs.cleanup-local-after-upload == 'true' && steps.prepare.outcome == 'success' && steps.artifact.outcome == 'success' && (steps['board-artifact'].outcome == 'success' || steps['board-artifact'].outcome == 'skipped') && (steps.sarif.outcome == 'success' || steps.sarif.outcome == 'skipped') }}
+      if: ${{ always() && inputs.cleanup-local-after-upload == 'true' && steps.prepare.outcome == 'success' && steps.summary.outcome == 'success' && steps.artifact.outcome == 'success' && (steps['board-artifact'].outcome == 'success' || steps['board-artifact'].outcome == 'skipped') && (steps.sarif.outcome == 'success' || steps.sarif.outcome == 'skipped') }}
       shell: bash
       env:
         TRACEKNOT_EVIDENCE: ${{ steps.prepare.outputs.evidence-path }}
