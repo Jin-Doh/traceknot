@@ -2,7 +2,8 @@ import { constants, type Dirent, writeSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { lstat, readdir, readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
-import { ArtifactNotFoundError, assertSecureRoot, closeSecureDescriptor, closeSecureRoot, openOrCreateSecureDirectoryPath, openSecureDirectory, openSecureRoot, readSecureRegularFile, secureFlock, secureFsync, secureOpenAt, secureRenameAt, secureRmdirAt, secureUnlinkAt, type SecureRootDescriptor } from "./local-artifact-store";
+import { ARTIFACT_CANONICAL_LOCK_FILE, ArtifactNotFoundError, assertSecureRoot, closeSecureDescriptor, closeSecureRoot, openOrCreateSecureDirectoryPath, openSecureDirectory, openSecureRoot, readSecureRegularFile, secureFlock, secureFsync, secureOpenAt, secureRenameAt, secureRmdirAt, secureUnlinkAt, STORAGE_MAINTENANCE_LOCK_FILE, type SecureRootDescriptor } from "./local-artifact-store";
+import { assertCanonicalRun } from "./verification-run";
 
 const DIGEST = /^[0-9a-f]{64}$/;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -10,9 +11,8 @@ const RUN_STATE = "state.json";
 const PINS_FILE = ".traceknot-pins.json";
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const GC_MARKS_FILE = ".traceknot-gc-marks.json";
-const LOCK_FILE = ".traceknot-storage.lock";
-const ARTIFACT_LOCK_FILE = ".artifact.lock";
 const EPHEMERAL_LEASE_FILE = ".ephemeral.lease";
+const ARTIFACT_WRITE_TEMP = /^\.tmp-[0-9a-f]{64}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const ATOMIC_WRITE_TEMP = /^\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/;
 const DAY = 24 * 60 * 60 * 1000;
 const DEFAULT_GRACE_MS = DAY;
@@ -348,15 +348,16 @@ function collectDigests(value: unknown, output = new Set<string>(), keyHint = ""
   return output;
 }
 
-function parseRun(value: unknown): { state?: string; updatedAt?: number; documents: unknown[]; malformed: boolean; digests: ReadonlySet<string> } {
+function parseRun(value: unknown, expectedRunId: string): { state?: string; updatedAt?: number; documents: unknown[]; malformed: boolean; digests: ReadonlySet<string> } {
   if (!isRecord(value) || value.schemaVersion !== "traceknot-state/v1" || !isRecord(value.documents) || !isRecord(value.dispatch)) return { documents: [], malformed: true, digests: new Set() };
-  const run = isRecord(value.run) ? value.run : undefined;
-  const state = typeof run?.state === "string" ? run.state : undefined;
-  const updatedAt = asTimestamp(run?.updatedAt);
   const documents = Object.values(value.documents);
   const digests = collectDigests(value);
-  const malformed = run !== undefined && (run.schemaVersion !== "verification-run/v1" || typeof run.runId !== "string" || typeof run.revision !== "number" || !state || updatedAt === undefined);
-  return { state, updatedAt, documents, malformed: malformed || run === undefined, digests };
+  try {
+    assertCanonicalRun(value.run, expectedRunId);
+    return { state: value.run.state, updatedAt: asTimestamp(value.run.updatedAt), documents, malformed: false, digests };
+  } catch {
+    return { documents, malformed: true, digests };
+  }
 }
 
 async function readJson(path: string): Promise<unknown | undefined> {
@@ -450,7 +451,7 @@ async function inspectRuns(stateDir: string, pins: ReadonlySet<string>, pinsMalf
     if (!stat.isDirectory) continue;
     const stateStat = await safeStat(join(runPath, RUN_STATE));
     const stateValue = stateStat?.isSymlink ? undefined : await readJson(join(runPath, RUN_STATE));
-    const parsed = parseRun(stateValue);
+    const parsed = parseRun(stateValue, runId);
     const size = await directorySize(runPath, ["boards"]);
     symlinks.push(...size.symlinks.map(item => `runs/${runId}/${item}`));
     const boardsPath = join(runPath, "boards");
@@ -511,6 +512,10 @@ async function inspectObjects(artifactDir: string, now: number): Promise<{ objec
       if (!stat) continue;
       const rel = `.objects/${entry.name}`;
       if (stat.isFile) {
+        if (ARTIFACT_WRITE_TEMP.test(entry.name)) {
+          staging.push({ kind: "staging", path, relativePath: rel, bytes: stat.bytes, allocatedBytes: stat.allocatedBytes, mtimeMs: stat.mtimeMs, logicalUpdatedAt: stat.mtimeMs, future: stat.mtimeMs > now });
+          continue;
+        }
         const malformed = !DIGEST.test(entry.name);
         objects.push({ kind: "object", path, relativePath: rel, digest: DIGEST.test(entry.name) ? entry.name : undefined, bytes: stat.bytes, allocatedBytes: stat.allocatedBytes, mtimeMs: stat.mtimeMs, logicalUpdatedAt: stat.mtimeMs, malformed, future: stat.mtimeMs > now });
       } else if (stat.isDirectory) {
@@ -783,6 +788,10 @@ async function removeCanonicalRun(root: SecureRootDescriptor, statePath: string)
         const knownFile = (entry.name === "metadata.json" || entry.name === RUN_STATE || entry.name === ".state.lock") && entry.isFile() && !entry.isSymbolicLink();
         const boardsDirectory = entry.name === "boards" && entry.isDirectory() && !entry.isSymbolicLink();
         if (!knownFile && !boardsDirectory) return false;
+        if (boardsDirectory) {
+          const boardEntries = await readdir(join(root.rootDir, runRelativePath, "boards"));
+          if (boardEntries.length === 0) secureRmdirAt(runFd, "boards");
+        }
       }
       for (const file of ["metadata.json", RUN_STATE]) {
         const stat = await safeStat(join(root.rootDir, runRelativePath, file));
@@ -828,11 +837,11 @@ async function acquireLock(rootPath: string, coordinateArtifactStore = false): P
   let artifactLockFd: number | undefined;
   try {
     assertSecureRoot(root);
-    const acquiredFd = secureOpenAt(root.fd, LOCK_FILE, constants.O_RDWR | constants.O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600);
+    const acquiredFd = secureOpenAt(root.fd, STORAGE_MAINTENANCE_LOCK_FILE, constants.O_RDWR | constants.O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600);
     lockFd = acquiredFd;
     secureFlock(acquiredFd, LOCK_EX | LOCK_NB);
     if (coordinateArtifactStore) {
-      artifactLockFd = secureOpenAt(root.fd, ARTIFACT_LOCK_FILE, constants.O_RDWR | constants.O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600);
+      artifactLockFd = secureOpenAt(root.fd, ARTIFACT_CANONICAL_LOCK_FILE, constants.O_RDWR | constants.O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600);
       secureFlock(artifactLockFd, LOCK_EX | LOCK_NB);
     }
     const coordinatedFd = artifactLockFd;
@@ -877,13 +886,13 @@ async function applyCandidates(inventory: StorageInventory, candidates: StorageM
   return deleted;
 }
 
-function reconcileGcMarks(inventory: StorageInventory, previous: GcMarks, now: number): GcMarks {
+function reconcileGcMarks(inventory: StorageInventory, previous: GcMarks, now: number, resetDigests: ReadonlySet<string> = new Set()): GcMarks {
   const referenced = new Set(Object.values(inventory.runReferences).flatMap(digests => digests));
   const available = new Map(inventory.objects.filter(object => !object.malformed && object.digest !== undefined).map(object => [object.digest!, object] as const));
   const next: Record<string, number> = {};
   for (const [digest, markedAt] of Object.entries(previous)) {
     const object = available.get(digest);
-    if (!referenced.has(digest) && object !== undefined) next[digest] = object.mtimeMs > markedAt ? now : markedAt;
+    if (!referenced.has(digest) && object !== undefined) next[digest] = resetDigests.has(digest) || object.mtimeMs > markedAt ? now : markedAt;
   }
   for (const digest of available.keys()) {
     if (!referenced.has(digest) && next[digest] === undefined) next[digest] = now;
@@ -925,6 +934,7 @@ export async function pruneStorage(input: StorageMaintenanceOptions): Promise<St
       if (artifactLock) assertSecureRoot(artifactLock.root);
       inventory = await inspectStorage({ ...input, policy });
       if (inventory.counts.pinFileMalformed) throw new Error("pin file became malformed; refusing apply");
+      const referencedBeforeRunPrune = new Set(Object.values(inventory.runReferences).flatMap(digests => digests));
       gcMarksState = artifactLock ? await loadGcMarks(inventory.directories.artifactDir, artifactLock.root) : { marks: {}, malformed: false };
       if (gcMarksState.malformed) warnings.push("GC marks are malformed; object deletion is disabled until they are repaired");
       const phasePlan = candidatePlan(inventory, policy, now, {}, gcMarksState.malformed, protectedRunIds);
@@ -936,7 +946,9 @@ export async function pruneStorage(input: StorageMaintenanceOptions): Promise<St
       inventory = await inspectStorage({ ...input, policy });
       if (inventory.counts.pinFileMalformed) throw new Error("pin file became malformed; refusing apply");
       if (artifactLock && !gcMarksState.malformed) {
-        const marks = reconcileGcMarks(inventory, gcMarksState.marks, now);
+        const referencedAfterRunPrune = new Set(Object.values(inventory.runReferences).flatMap(digests => digests));
+        const newlyUnreferenced = new Set([...referencedBeforeRunPrune].filter(digest => !referencedAfterRunPrune.has(digest)));
+        const marks = reconcileGcMarks(inventory, gcMarksState.marks, now, newlyUnreferenced);
         await writeGcMarks(artifactLock.root, marks);
         const objectPlan = candidatePlan(inventory, policy, now, marks, false, protectedRunIds);
         plan = { candidates: { ...plan.candidates, objects: objectPlan.candidates.objects }, protected: objectPlan.protected };

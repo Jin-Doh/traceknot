@@ -5,6 +5,7 @@ import { expect, test } from "bun:test";
 import type { QaBoardView } from "./qa-board";
 import { sha256 } from "./qa-board";
 import { writeQaBoardBundle } from "./qa-board-store";
+import { pruneStorage } from "../runtime/storage-retention";
 
 const SCREENSHOT_BYTES = new TextEncoder().encode("screenshot-bytes");
 const SCREENSHOT_DIGEST = sha256(SCREENSHOT_BYTES);
@@ -168,5 +169,44 @@ test("rejects a mismatched screenshot digest before publishing a Board", async (
     expect(await boardNames(fixture.root)).toEqual([]);
   } finally {
     await fixture.cleanup();
+  }
+});
+
+test("leases pending Board publication against zero-grace maintenance", async () => {
+  const fixture = await stateFixture();
+  const artifacts = await mkdtemp(join(tmpdir(), "traceknot-board-artifacts-"));
+  await mkdir(join(artifacts, ".objects"), { recursive: true });
+  let resumeRead!: () => void;
+  let signalRead!: () => void;
+  const readStarted = new Promise<void>(resolvePromise => { signalRead = resolvePromise; });
+  const resume = new Promise<void>(resolvePromise => { resumeRead = resolvePromise; });
+  try {
+    const publication = writeQaBoardBundle({
+      view: viewWithScreenshot(),
+      stateDir: fixture.root,
+      invocationId: "leased-publication",
+      generatedAt: "2026-08-15T00:01:00Z",
+      artifactReader: {
+        readArtifact: async () => {
+          signalRead();
+          await resume;
+          return SCREENSHOT_BYTES;
+        },
+      },
+    });
+    await readStarted;
+    await expect(pruneStorage({
+      stateDir: fixture.root,
+      artifactDir: artifacts,
+      now: new Date(Date.now() + 1000),
+      policy: { boardTtlMs: 0, boardMaxPerRun: 0, boardQuotaBytes: 0, canonicalRunTtlMs: 0, canonicalQuotaBytes: 0, graceMs: 0 },
+      apply: true,
+    })).rejects.toThrow();
+    resumeRead();
+    const result = await publication;
+    expect(await stat(result.entrypoint)).toBeDefined();
+  } finally {
+    resumeRead();
+    await Promise.all([fixture.cleanup(), rm(artifacts, { recursive: true, force: true })]);
   }
 });

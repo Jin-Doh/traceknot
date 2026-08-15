@@ -91,8 +91,8 @@ traceknot storage prune \
   --apply
 ```
 
-Every prune emits a `traceknot-storage-maintenance/v1` report conforming to `contracts/storage-maintenance-report.schema.json`. The report includes inventory totals, policy values, candidates, actual deletions, protected entries, and warnings. Active, pinned, malformed, future-dated, and newest terminal runs are protected. Canonical objects referenced by retained runs remain protected; unreferenced objects are eligible only after the grace period. Symlinks are never followed or deleted.
-Applied maintenance coordinates with repository readers/writers, canonical artifact publication, and invocation-scoped collector lifetime leases through advisory locks. A run currently being projected into a Board is protected across both automatic maintenance passes.
+Every prune emits a `traceknot-storage-maintenance/v1` report conforming to `contracts/storage-maintenance-report.schema.json`. The report includes inventory totals, policy values, candidates, actual deletions, protected entries, and warnings. Active, pinned, malformed, future-dated, and newest terminal runs are protected. Canonical objects referenced by retained runs remain protected; newly unreferenced objects receive a fresh grace interval before deletion. Exact crash-left artifact publication temporaries (`.objects/.tmp-<digest>-<uuid>`) are reclaimed as staging after the same grace interval; unknown `.objects` files remain malformed and protected. Symlinks are never followed or deleted.
+Applied maintenance coordinates with repository readers/writers, canonical artifact publication, Board publication, and invocation-scoped collector lifetime leases through advisory locks. Contended in-process readers and writers retry without blocking the JavaScript event loop. Board publication holds its lease from temporary-directory creation through atomic rename, and collector teardown releases its lifetime lease even when content deletion fails so a later maintenance pass can recover the residual tree.
 
 Pinning is explicit and durable:
 

@@ -15,6 +15,7 @@ import type {
 import { DispatchClaimAcquisitionError as ClaimError } from "./verification-run";
 import { canonicalizeJson } from "./verification-run";
 import {
+  acquireSecureFlock,
   assertSecureRoot,
   closeSecureDescriptor,
   closeSecureRoot,
@@ -28,6 +29,7 @@ import {
   secureOpenAt,
   secureRenameAt,
   secureUnlinkAt,
+  STORAGE_MAINTENANCE_LOCK_FILE,
   type SecureRootDescriptor,
 } from "./local-artifact-store";
 
@@ -65,9 +67,7 @@ const LOCK_FLAGS = constants.O_RDWR | constants.O_CREAT | O_NOFOLLOW | O_CLOEXEC
 const ENOENT = 2;
 const LOCK_SH = 1;
 const LOCK_EX = 2;
-const LOCK_NB = 4;
 const LOCK_UN = 8;
-const MAINTENANCE_LOCK_FILE = ".traceknot-storage.lock";
 
 function assertSafeValue(value: unknown, seen = new Set<object>()): void {
   if (!value || typeof value !== "object") return;
@@ -178,19 +178,16 @@ async function atomicWriteAt(runFd: number, name: string, value: unknown): Promi
 }
 async function acquireStateLock(runFd: number): Promise<() => Promise<void>> {
   const fd = secureOpenAt(runFd, ".state.lock", LOCK_FLAGS, 0o600);
-  for (let attempt = 0; attempt < 600; attempt += 1) {
-    try {
-      secureFlock(fd, LOCK_EX | LOCK_NB);
-      return async () => {
-        try { secureFlock(fd, LOCK_UN); }
-        finally { closeQuietly(fd); }
-      };
-    } catch {
-      await new Promise<void>(resolvePromise => setTimeout(resolvePromise, 50));
-    }
+  try {
+    await acquireSecureFlock(fd, LOCK_EX, "durable run state lock");
+    return async () => {
+      try { secureFlock(fd, LOCK_UN); }
+      finally { closeQuietly(fd); }
+    };
+  } catch (error) {
+    closeQuietly(fd);
+    throw error;
   }
-  closeQuietly(fd);
-  throw new Error("timed out waiting for durable run state lock");
 }
 
 /** Atomic, append-oriented JSON repository used by the verify CLI. */
@@ -211,10 +208,10 @@ export class FileVerificationRepository implements RepositoryPort {
   private async withPinnedRoot<T>(operation: (root: SecureRootDescriptor) => Promise<T>): Promise<T> {
     const root = await this.root();
     assertSecureRoot(root);
-    const maintenanceFd = secureOpenAt(root.fd, MAINTENANCE_LOCK_FILE, LOCK_FLAGS, 0o600);
+    const maintenanceFd = secureOpenAt(root.fd, STORAGE_MAINTENANCE_LOCK_FILE, LOCK_FLAGS, 0o600);
     let locked = false;
     try {
-      secureFlock(maintenanceFd, LOCK_SH);
+      await acquireSecureFlock(maintenanceFd, LOCK_SH, "storage maintenance lock");
       locked = true;
       return await operation(root);
     } finally {
@@ -236,22 +233,28 @@ export class FileVerificationRepository implements RepositoryPort {
     let maintenanceLocked = false;
     try {
       root = await this.root();
-      maintenanceFd = secureOpenAt(root.fd, MAINTENANCE_LOCK_FILE, LOCK_FLAGS, 0o600);
-      secureFlock(maintenanceFd, LOCK_SH);
+      maintenanceFd = secureOpenAt(root.fd, STORAGE_MAINTENANCE_LOCK_FILE, LOCK_FLAGS, 0o600);
+      await acquireSecureFlock(maintenanceFd, LOCK_SH, "storage maintenance lock");
       maintenanceLocked = true;
       directories = await openRunDirectory(root, runId, true);
       if (!directories) throw new Error("run directory could not be opened");
       unlock = await acquireStateLock(directories.runFd);
       return await operation(directories.runFd);
     } finally {
-      if (unlock) await unlock();
-      if (maintenanceFd !== undefined) {
-        try { if (maintenanceLocked) secureFlock(maintenanceFd, LOCK_UN); }
-        finally { closeQuietly(maintenanceFd); }
+      try {
+        if (unlock) await unlock();
+      } finally {
+        try {
+          if (maintenanceFd !== undefined) {
+            try { if (maintenanceLocked) secureFlock(maintenanceFd, LOCK_UN); }
+            finally { closeQuietly(maintenanceFd); }
+          }
+        } finally {
+          if (directories) { closeQuietly(directories.runFd); closeQuietly(directories.runsFd); }
+          try { if (root) assertSecureRoot(root); }
+          finally { release(); if (this.operations.get(runId) === chain) this.operations.delete(runId); }
+        }
       }
-      if (directories) { closeQuietly(directories.runFd); closeQuietly(directories.runsFd); }
-      try { if (root) assertSecureRoot(root); }
-      finally { release(); if (this.operations.get(runId) === chain) this.operations.delete(runId); }
     }
   }
   private async loadState(runId: string): Promise<PersistedState | undefined> {
