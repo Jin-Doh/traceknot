@@ -246,6 +246,20 @@ async function fixture(executable = "/usr/bin/true"): Promise<RepoFixture> {
   await writeFile(requestPath, JSON.stringify(request)); await writeFile(manifestPath, JSON.stringify(manifest));
   return { root, config, state, request: requestPath, manifest: manifestPath, cleanup: async () => { await Promise.all([rm(root, { recursive: true, force: true }), rm(config, { recursive: true, force: true }), rm(state, { recursive: true, force: true })]); } };
 }
+async function invocationCollectors(state: string): Promise<string[]> {
+  const entries = await readdir(join(state, "artifacts"), { withFileTypes: true });
+  return entries.filter(entry => entry.name.startsWith(".collector-")).map(entry => entry.name);
+}
+
+async function assertCanonicalArtifact(state: string, digest: string, expectedBytes: readonly number[]): Promise<void> {
+  const store = new LocalArtifactStore(join(state, "artifacts"));
+  try {
+    expect(await store.hasArtifact(digest)).toBe(true);
+    expect([...await store.readArtifact(digest)]).toEqual([...expectedBytes]);
+  } finally {
+    await store.close();
+  }
+}
 
 describe("traceknot verify CLI", () => {
   test("publishes manifest completion and trusted producer policy schema fields", async () => {
@@ -343,6 +357,47 @@ describe("traceknot verify CLI", () => {
       expect(report.documents.execution.observations[0]!.producer).toEqual({ kind: "harness-managed", identity: "traceknot-cli", independence: "separate-verification-context" });
     } finally {
       await fixtureValue.cleanup();
+    }
+  });
+  test("cleans invocation collectors while retaining canonical artifacts on pass, fail, and report errors", async () => {
+    const emptyDigest = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const pass = await fixture("/usr/bin/true");
+    try {
+      const stdout: string[] = [];
+      expect(await runVerify(["--root", pass.root, "--state-dir", pass.state, "--request", pass.request, "--manifest", pass.manifest], text => stdout.push(text), () => undefined)).toBe(0);
+      const report = JSON.parse(stdout.join("")) as { documents: { execution: { observations: Array<{ artifacts: Array<{ path?: string; digest: string; type: string }> }> } } };
+      const artifact = report.documents.execution.observations[0]!.artifacts.find(item => item.path === "stdout");
+      if (!artifact) throw new Error("pass report did not publish stdout artifact");
+      expect(artifact.type).toBe("verification-result");
+      await assertCanonicalArtifact(pass.state, artifact.digest, []);
+      expect(await invocationCollectors(pass.state)).toEqual([]);
+    } finally {
+      await pass.cleanup();
+    }
+
+    const fail = await fixture("/usr/bin/false");
+    try {
+      const stdout: string[] = [];
+      expect(await runVerify(["--root", fail.root, "--state-dir", fail.state, "--request", fail.request, "--manifest", fail.manifest], text => stdout.push(text), () => undefined)).toBe(1);
+      const report = JSON.parse(stdout.join("")) as { documents: { execution: { observations: Array<{ artifacts: Array<{ path?: string; digest: string; type: string }> }> } } };
+      const artifact = report.documents.execution.observations[0]!.artifacts.find(item => item.path === "stdout");
+      if (!artifact) throw new Error("fail report did not publish stdout artifact");
+      expect(artifact.type).toBe("verification-result");
+      await assertCanonicalArtifact(fail.state, artifact.digest, []);
+      expect(await invocationCollectors(fail.state)).toEqual([]);
+    } finally {
+      await fail.cleanup();
+    }
+
+    const reportError = await fixture("/usr/bin/true");
+    try {
+      const stderr: string[] = [];
+      expect(await runVerify(["--root", reportError.root, "--state-dir", reportError.state, "--request", reportError.request, "--manifest", reportError.manifest], () => { throw new Error("report sink failed"); }, text => stderr.push(text))).toBe(70);
+      expect(stderr.join("")).toContain("report sink failed");
+      await assertCanonicalArtifact(reportError.state, emptyDigest, []);
+      expect(await invocationCollectors(reportError.state)).toEqual([]);
+    } finally {
+      await reportError.cleanup();
     }
   });
 
@@ -588,6 +643,7 @@ describe("traceknot verify CLI", () => {
       const stdout: string[] = []; const stderr: string[] = [];
       const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest], text => stdout.push(text), text => stderr.push(text));
       expect(status).toBe(2); expect(stdout).toEqual([]); expect(stderr.join("")).toContain("snapshot");
+      expect(await invocationCollectors(fixtureValue.state)).toEqual([]);
     } finally { await fixtureValue.cleanup(); }
   });
 

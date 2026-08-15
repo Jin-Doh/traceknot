@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/storage-maintenance-report.v1.json",
+  "title": "Traceknot storage maintenance report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt", "dryRun", "applied", "directories", "policy", "inventory", "candidates", "deleted", "protected", "warnings"],
+  "properties": {
+    "schemaVersion": { "const": "traceknot-storage-maintenance/v1" },
+    "generatedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$" },
+    "dryRun": { "type": "boolean" },
+    "applied": { "type": "boolean" },
+    "directories": {
+      "type": "object", "additionalProperties": false, "required": ["stateDir", "artifactDir"],
+      "properties": { "stateDir": { "type": "string", "minLength": 1 }, "artifactDir": { "type": "string", "minLength": 1 } }
+    },
+    "policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["boardTtlMs", "boardMaxPerRun", "boardQuotaBytes", "canonicalRunTtlMs", "canonicalQuotaBytes", "graceMs"],
+      "properties": {
+        "boardTtlMs": { "type": "integer", "minimum": 0 }, "boardMaxPerRun": { "type": "integer", "minimum": 0 }, "boardQuotaBytes": { "type": "integer", "minimum": 0 },
+        "canonicalRunTtlMs": { "type": "integer", "minimum": 0 }, "canonicalQuotaBytes": { "type": "integer", "minimum": 0 }, "graceMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "inventory": { "$ref": "#/$defs/inventory" },
+    "candidates": { "$ref": "#/$defs/paths" },
+    "deleted": { "$ref": "#/$defs/paths" },
+    "protected": {
+      "type": "object", "additionalProperties": false,
+      "required": ["newestTerminalRuns", "activeRuns", "pinnedRuns", "requestedRuns", "malformed", "future", "grace", "sharedObjects", "symlinks"],
+      "properties": {
+        "newestTerminalRuns": { "$ref": "#/$defs/strings" }, "activeRuns": { "$ref": "#/$defs/strings" }, "pinnedRuns": { "$ref": "#/$defs/strings" }, "malformed": { "$ref": "#/$defs/strings" },
+        "future": { "$ref": "#/$defs/strings" }, "grace": { "$ref": "#/$defs/strings" }, "sharedObjects": { "$ref": "#/$defs/strings" }, "symlinks": { "$ref": "#/$defs/strings" }, "requestedRuns": { "$ref": "#/$defs/strings" }
+      }
+    },
+    "warnings": { "$ref": "#/$defs/strings" }
+  },
+  "$defs": {
+    "strings": { "type": "array", "items": { "type": "string" } },
+    "paths": {
+      "type": "object", "additionalProperties": false, "required": ["boards", "runs", "objects", "collector", "staging"],
+      "properties": { "boards": { "$ref": "#/$defs/strings" }, "runs": { "$ref": "#/$defs/strings" }, "objects": { "$ref": "#/$defs/strings" }, "collector": { "$ref": "#/$defs/strings" }, "staging": { "$ref": "#/$defs/strings" } }
+    },
+    "entry": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "path", "relativePath", "bytes", "allocatedBytes", "mtimeMs"],
+      "properties": {
+        "kind": { "enum": ["board", "run", "object", "collector", "staging"] }, "path": { "type": "string" }, "relativePath": { "type": "string" },
+        "bytes": { "type": "integer", "minimum": 0 }, "allocatedBytes": { "type": "integer", "minimum": 0 }, "mtimeMs": { "type": "number", "minimum": 0 },
+        "logicalUpdatedAt": { "type": "number" }, "runId": { "type": "string" }, "boardId": { "type": "string" }, "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "malformed": { "type": "boolean" }, "future": { "type": "boolean" }, "terminal": { "type": "boolean" }, "protectedReason": { "type": "string" }
+      }
+    },
+    "inventory": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "generatedAt", "directories", "logicalBytes", "allocatedBytes", "counts", "runs", "boards", "objects", "collector", "staging", "symlinks", "runReferences"],
+      "properties": {
+        "schemaVersion": { "const": "traceknot-storage-inventory/v1" }, "generatedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$" }, "directories": { "$ref": "#/properties/directories" },
+        "logicalBytes": { "type": "integer", "minimum": 0 }, "allocatedBytes": { "type": "integer", "minimum": 0 }, "oldest": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$" }, "newest": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$" },
+        "counts": {
+          "type": "object", "additionalProperties": false,
+          "required": ["runs", "terminalRuns", "activeRuns", "pinnedRuns", "malformedRuns", "futureRuns", "boards", "malformedBoards", "futureBoards", "canonicalObjects", "malformedObjects", "collector", "staging", "symlinks", "pinFileMalformed"],
+          "properties": {
+            "runs": { "type": "integer", "minimum": 0 }, "terminalRuns": { "type": "integer", "minimum": 0 }, "activeRuns": { "type": "integer", "minimum": 0 }, "pinnedRuns": { "type": "integer", "minimum": 0 },
+            "malformedRuns": { "type": "integer", "minimum": 0 }, "futureRuns": { "type": "integer", "minimum": 0 }, "boards": { "type": "integer", "minimum": 0 }, "malformedBoards": { "type": "integer", "minimum": 0 },
+            "futureBoards": { "type": "integer", "minimum": 0 }, "canonicalObjects": { "type": "integer", "minimum": 0 }, "malformedObjects": { "type": "integer", "minimum": 0 }, "collector": { "type": "integer", "minimum": 0 },
+            "staging": { "type": "integer", "minimum": 0 }, "symlinks": { "type": "integer", "minimum": 0 }, "pinFileMalformed": { "type": "boolean" }
+          }
+        }, "runs": { "type": "array", "items": { "$ref": "#/$defs/entry" } }, "boards": { "type": "array", "items": { "$ref": "#/$defs/entry" } },
+        "objects": { "type": "array", "items": { "$ref": "#/$defs/entry" } }, "collector": { "type": "array", "items": { "$ref": "#/$defs/entry" } }, "staging": { "type": "array", "items": { "$ref": "#/$defs/entry" } }, "symlinks": { "$ref": "#/$defs/strings" },
+        "runReferences": { "type": "object", "additionalProperties": { "$ref": "#/$defs/strings" } }
+      }
+    }
+  }
+}

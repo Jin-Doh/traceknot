@@ -1,4 +1,4 @@
-import { constants, fstatSync, readSync, writeSync } from "node:fs";
+import { constants, readSync, writeSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import type {
   CanonicalRunState,
@@ -22,6 +22,7 @@ import {
   openSecureRegularFile,
   openSecureRoot,
   readSecureRegularFile,
+  secureFlock,
   secureFsync,
   secureMkdirAt,
   secureOpenAt,
@@ -60,8 +61,13 @@ const O_CLOEXEC = (constants as Record<string, number | undefined>).O_CLOEXEC ??
 const DIRECTORY_FLAGS = constants.O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC;
 const READ_FLAGS = constants.O_RDONLY | O_NOFOLLOW | O_CLOEXEC;
 const WRITE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW | O_CLOEXEC;
-const LOCK_FLAGS = constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW | O_CLOEXEC;
+const LOCK_FLAGS = constants.O_RDWR | constants.O_CREAT | O_NOFOLLOW | O_CLOEXEC;
 const ENOENT = 2;
+const LOCK_SH = 1;
+const LOCK_EX = 2;
+const LOCK_NB = 4;
+const LOCK_UN = 8;
+const MAINTENANCE_LOCK_FILE = ".traceknot-storage.lock";
 
 function assertSafeValue(value: unknown, seen = new Set<object>()): void {
   if (!value || typeof value !== "object") return;
@@ -171,28 +177,19 @@ async function atomicWriteAt(runFd: number, name: string, value: unknown): Promi
   }
 }
 async function acquireStateLock(runFd: number): Promise<() => Promise<void>> {
+  const fd = secureOpenAt(runFd, ".state.lock", LOCK_FLAGS, 0o600);
   for (let attempt = 0; attempt < 600; attempt += 1) {
     try {
-      const fd = secureOpenAt(runFd, ".state.lock", LOCK_FLAGS, 0o600);
-      writeAll(fd, Buffer.from(`${process.pid}:${Date.now()}`, "utf8"));
-      secureFsync(fd);
-      return async () => { closeQuietly(fd); try { secureUnlinkAt(runFd, ".state.lock"); } catch { /* another owner recovered it */ } };
-    } catch (error) {
-      if (!isErrno(error, 17)) throw error;
-      let lockFd: number | undefined;
-      try {
-        lockFd = secureOpenAt(runFd, ".state.lock", READ_FLAGS, 0);
-        if (Date.now() - fstatSync(lockFd).mtimeMs > 60_000) {
-          closeQuietly(lockFd);
-          lockFd = undefined;
-          try { secureUnlinkAt(runFd, ".state.lock"); } catch (unlinkError) { if (!isErrno(unlinkError, ENOENT)) throw unlinkError; }
-        }
-      } catch (lockError) {
-        if (!isErrno(lockError, ENOENT)) throw lockError;
-      } finally { closeQuietly(lockFd); }
+      secureFlock(fd, LOCK_EX | LOCK_NB);
+      return async () => {
+        try { secureFlock(fd, LOCK_UN); }
+        finally { closeQuietly(fd); }
+      };
+    } catch {
       await new Promise<void>(resolvePromise => setTimeout(resolvePromise, 50));
     }
   }
+  closeQuietly(fd);
   throw new Error("timed out waiting for durable run state lock");
 }
 
@@ -214,8 +211,16 @@ export class FileVerificationRepository implements RepositoryPort {
   private async withPinnedRoot<T>(operation: (root: SecureRootDescriptor) => Promise<T>): Promise<T> {
     const root = await this.root();
     assertSecureRoot(root);
-    try { return await operation(root); }
-    finally { assertSecureRoot(root); }
+    const maintenanceFd = secureOpenAt(root.fd, MAINTENANCE_LOCK_FILE, LOCK_FLAGS, 0o600);
+    let locked = false;
+    try {
+      secureFlock(maintenanceFd, LOCK_SH);
+      locked = true;
+      return await operation(root);
+    } finally {
+      try { if (locked) secureFlock(maintenanceFd, LOCK_UN); }
+      finally { closeQuietly(maintenanceFd); assertSecureRoot(root); }
+    }
   }
   private async serialize<T>(runId: string, operation: (runFd: number) => Promise<T>): Promise<T> {
     const prior = this.operations.get(runId) ?? Promise.resolve();
@@ -227,14 +232,23 @@ export class FileVerificationRepository implements RepositoryPort {
     let root: SecureRootDescriptor | undefined;
     let directories: { runsFd: number; runFd: number } | undefined;
     let unlock: (() => Promise<void>) | undefined;
+    let maintenanceFd: number | undefined;
+    let maintenanceLocked = false;
     try {
       root = await this.root();
+      maintenanceFd = secureOpenAt(root.fd, MAINTENANCE_LOCK_FILE, LOCK_FLAGS, 0o600);
+      secureFlock(maintenanceFd, LOCK_SH);
+      maintenanceLocked = true;
       directories = await openRunDirectory(root, runId, true);
       if (!directories) throw new Error("run directory could not be opened");
       unlock = await acquireStateLock(directories.runFd);
       return await operation(directories.runFd);
     } finally {
       if (unlock) await unlock();
+      if (maintenanceFd !== undefined) {
+        try { if (maintenanceLocked) secureFlock(maintenanceFd, LOCK_UN); }
+        finally { closeQuietly(maintenanceFd); }
+      }
       if (directories) { closeQuietly(directories.runFd); closeQuietly(directories.runsFd); }
       try { if (root) assertSecureRoot(root); }
       finally { release(); if (this.operations.get(runId) === chain) this.operations.delete(runId); }
