@@ -27,8 +27,7 @@ async function fixture(): Promise<{ root: string; state: string; artifacts: stri
   await mkdir(join(artifacts, ".objects"), { recursive: true });
   return { root, state, artifacts };
 }
-
-async function run(state: string, runId: string, value: { state: string; updatedAt: string; digest?: string }): Promise<void> {
+async function run(state: string, runId: string, value: { state: string; updatedAt: string | number; digest?: string }): Promise<void> {
   const path = join(state, "runs", runId);
   await mkdir(path, { recursive: true });
   const stateValue = { schemaVersion: "traceknot-state/v1", run: { schemaVersion: "verification-run/v1", runId, requestId: `request-${runId}`, rootIdentity: "root", snapshotId: "snapshot", state: value.state, observationIds: [], claimIds: [], evaluationIds: [], revision: 1, createdAt: value.updatedAt, updatedAt: value.updatedAt }, documents: value.digest ? { evidence: { artifacts: [{ digest: value.digest }] } } : {}, dispatch: {} };
@@ -151,6 +150,23 @@ describe("storage retention", () => {
     const second = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: "2026-08-15T00:00:01.002Z", policy: { ...policy, graceMs: 1000 }, apply: true });
     expect(second.deleted.objects).toContain(`.objects/${digest}`);
   });
+  test("stale GC marks reset when pruning the last referencing run", async () => {
+    const { state, artifacts } = await fixture();
+    await run(state, "old", { state: "TERMINAL", updatedAt: OLD, digest });
+    await run(state, "new", { state: "TERMINAL", updatedAt: NOW });
+    const objectPath = join(artifacts, ".objects", digest);
+    await writeFile(objectPath, "object");
+    await utimes(objectPath, new Date(OLD), new Date(OLD));
+    await writeFile(join(artifacts, ".traceknot-gc-marks.json"), `${JSON.stringify({ schemaVersion: "traceknot-gc-marks/v1", marks: { [digest]: Date.parse(OLD) } })}\n`);
+    const first = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, graceMs: 1000 }, apply: true });
+    expect(first.deleted.runs).toContain("runs/old/state.json");
+    expect(first.deleted.objects).not.toContain(`.objects/${digest}`);
+    const gcState = JSON.parse(await readFile(join(artifacts, ".traceknot-gc-marks.json"), "utf8")) as { marks: Record<string, number> };
+    expect(gcState.marks[digest]).toBe(Date.parse(NOW));
+    const second = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: "2026-08-15T00:00:01.002Z", policy: { ...policy, graceMs: 1000 }, apply: true });
+    expect(second.deleted.objects).toContain(`.objects/${digest}`);
+  });
+
 
   test("refreshing an unreferenced object restarts its GC grace interval", async () => {
     const { state, artifacts } = await fixture();
@@ -177,6 +193,22 @@ describe("storage retention", () => {
     expect(report.warnings).toContain("malformed run state disables canonical object deletion");
   });
 
+  test("reclaims exact crash-left artifact temporaries but preserves unknown files", async () => {
+    const { state, artifacts } = await fixture();
+    const temporaryName = `.tmp-${digest}-${randomUUID()}`;
+    const temporaryPath = join(artifacts, ".objects", temporaryName);
+    const unknownPath = join(artifacts, ".objects", "unexpected");
+    await writeFile(temporaryPath, "temporary");
+    await writeFile(unknownPath, "unknown");
+    await utimes(temporaryPath, new Date(OLD), new Date(OLD));
+    await utimes(unknownPath, new Date(OLD), new Date(OLD));
+    const report = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, graceMs: 0 }, apply: true });
+    expect(report.deleted.staging).toContain(`.objects/${temporaryName}`);
+    expect(await stat(temporaryPath).catch(() => undefined)).toBeUndefined();
+    expect((await stat(unknownPath)).isFile()).toBe(true);
+    expect(report.inventory.objects).toEqual(expect.arrayContaining([expect.objectContaining({ relativePath: ".objects/unexpected", malformed: true })]));
+  });
+
   test("explicitly protected source runs survive a maintenance pass", async () => {
     const { state, artifacts } = await fixture();
     await run(state, "source", { state: "TERMINAL", updatedAt: OLD });
@@ -200,6 +232,17 @@ describe("storage retention", () => {
     expect(await stat(join(state, "runs", "old", "metadata.json")).catch(() => undefined)).toBeUndefined();
     expect(after.runs.map(item => item.relativePath)).not.toContain("runs/old");
   });
+  test("removes empty Board and run containers after combined expiry", async () => {
+    const { state, artifacts } = await fixture();
+    await run(state, "old", { state: "TERMINAL", updatedAt: OLD });
+    await board(state, "old", "expired", OLD);
+    await run(state, "new", { state: "TERMINAL", updatedAt: NOW });
+    const report = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    expect(report.deleted.boards).toContain("runs/old/boards/expired");
+    expect(report.deleted.runs).toContain("runs/old/state.json");
+    expect(await stat(join(state, "runs", "old")).catch(() => undefined)).toBeUndefined();
+  });
+
 
   test("malformed pins fail closed", async () => {
     const { state, artifacts } = await fixture();
@@ -380,5 +423,15 @@ describe("storage retention", () => {
     expect(report.protected.malformed).toContain("runs/malformed");
     expect(report.protected.future).toContain("runs/future");
   });
+  test("noncanonical run fields remain malformed and protected", async () => {
+    const { state, artifacts } = await fixture();
+    await run(state, "noncanonical", { state: "TERMINAL", updatedAt: 0 });
+    await run(state, "newest", { state: "TERMINAL", updatedAt: NOW });
+    const report = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    expect(report.protected.malformed).toContain("runs/noncanonical");
+    expect(report.deleted.runs).not.toContain("runs/noncanonical/state.json");
+    expect(await stat(join(state, "runs", "noncanonical", "state.json"))).toBeDefined();
+  });
+
 });
 

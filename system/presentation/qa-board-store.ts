@@ -2,6 +2,7 @@ import { constants, writeSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import {
+  acquireSecureFlock,
   closeSecureDescriptor,
   closeSecureRoot,
   openOrCreateSecureDirectory,
@@ -12,8 +13,10 @@ import {
   secureOpenAt,
   secureRenameAt,
   secureRmdirAt,
+  secureFlock,
   secureUnlinkAt,
   type SecureRootDescriptor,
+  STORAGE_MAINTENANCE_LOCK_FILE,
 } from "../runtime/local-artifact-store";
 import {
   buildQaBoardManifest,
@@ -54,6 +57,9 @@ export const QA_BOARD_LIMITS = Object.freeze({
 const DIGEST = /^[0-9a-f]{64}$/;
 const SAFE_ENTRY = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const WRITE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0) | ((constants as Record<string, number | undefined>).O_CLOEXEC ?? 0);
+const LOCK_FLAGS = constants.O_RDWR | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0) | ((constants as Record<string, number | undefined>).O_CLOEXEC ?? 0);
+const LOCK_SH = 1;
+const LOCK_UN = 8;
 
 function assertSafeEntry(value: string, label: string): void {
   if (!SAFE_ENTRY.test(value)) throw new Error(`${label} contains unsafe characters`);
@@ -222,6 +228,15 @@ export async function writeQaBoardBundle(input: BoardBundleInput): Promise<Board
   assertSafeEntry(boardName, "Board directory");
   const pendingName = `.pending-${randomUUID()}`;
   const root = await openSecureRoot(resolve(input.stateDir));
+  let maintenanceFd: number | undefined;
+  try {
+    maintenanceFd = secureOpenAt(root.fd, STORAGE_MAINTENANCE_LOCK_FILE, LOCK_FLAGS, 0o600);
+    await acquireSecureFlock(maintenanceFd, LOCK_SH, "Board publication maintenance lock");
+  } catch (error) {
+    if (maintenanceFd !== undefined) closeSecureDescriptor(maintenanceFd);
+    await closeSecureRoot(root);
+    throw error;
+  }
   const boardRoot = root.canonical;
   const directory = join(boardRoot, "runs", input.view.runId, "boards", boardName);
   const entrypoint = join(directory, "index.html");
@@ -282,7 +297,12 @@ export async function writeQaBoardBundle(input: BoardBundleInput): Promise<Board
     }
   }
   if (directories) closeBoardDirectories(directories);
-  await closeSecureRoot(root);
+  try {
+    if (maintenanceFd !== undefined) secureFlock(maintenanceFd, LOCK_UN);
+  } finally {
+    if (maintenanceFd !== undefined) closeSecureDescriptor(maintenanceFd);
+    await closeSecureRoot(root);
+  }
   if (failed) throw failure;
   return result!;
 }
