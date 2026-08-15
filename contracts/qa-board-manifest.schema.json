@@ -47,8 +47,8 @@
         "additionalProperties": false,
         "required": ["path", "role", "sha256", "bytes"],
         "properties": {
-          "path": { "type": "string", "minLength": 1, "pattern": "^(?:index\\.html|evidence/[0-9a-f]{64}\\.png)$" },
-          "role": { "enum": ["entrypoint", "screenshot-preview"] },
+          "path": { "type": "string", "minLength": 1, "pattern": "^(?:index(?:\\.(?:en|ko|zh-CN))?\\.html|evidence/[0-9a-f]{64}\\.png)$" },
+          "role": { "enum": ["entrypoint", "localized-view", "screenshot-preview"] },
           "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "bytes": { "type": "integer", "minimum": 0 },
           "artifactDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },

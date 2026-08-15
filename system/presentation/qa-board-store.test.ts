@@ -59,15 +59,20 @@ async function boardNames(root: string): Promise<string[]> {
 test("writes an immutable Board bundle and verifies screenshot bytes", async () => {
   const fixture = await stateFixture();
   try {
-    const result = await writeQaBoardBundle({ view: viewWithScreenshot(), stateDir: fixture.root, invocationId: "invocation-1", sessionHost: "omp", sessionId: "raw-session", generatedAt: "2026-08-15T00:01:00Z", artifactReader: { readArtifact: async digest => { expect(digest).toBe(SCREENSHOT_DIGEST); return SCREENSHOT_BYTES; } } });
+    const result = await writeQaBoardBundle({ view: viewWithScreenshot(), stateDir: fixture.root, invocationId: "invocation-1", sessionHost: "omp", sessionId: "raw-session", locale: "ko", generatedAt: "2026-08-15T00:01:00Z", artifactReader: { readArtifact: async digest => { expect(digest).toBe(SCREENSHOT_DIGEST); return SCREENSHOT_BYTES; } } });
     expect(result.entrypoint).toContain("/boards/9-invocation-1/index.html");
     expect(result.manifest.generatedBy.sessionRef).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(result.manifest.generatedAt).toBe("2026-08-15T00:01:00Z");
     expect(result.manifest.sourceUpdatedAt).toBe("2026-08-15T00:00:03Z");
     expect(JSON.stringify(result.manifest)).not.toContain("raw-session");
-    expect(result.manifest.files).toHaveLength(2);
+    expect(result.manifest.files).toHaveLength(5);
+    expect(result.manifest.files.filter(file => file.role === "localized-view").map(file => file.path)).toEqual(["index.en.html", "index.ko.html", "index.zh-CN.html"]);
     expect(result.manifest.files.find(file => file.path === `evidence/${SCREENSHOT_DIGEST}.png`)?.bytes).toBe(SCREENSHOT_BYTES.byteLength);
     expect(result.manifest.files.find(file => file.path === "index.html")?.bytes).toBe((await stat(join(result.directory, "index.html"))).size);
+    expect(await readFile(join(result.directory, "index.html"), "utf8")).toContain('<html lang="ko">');
+    expect(await readFile(join(result.directory, "index.en.html"), "utf8")).toContain('<html lang="en">');
+    expect(await readFile(join(result.directory, "index.ko.html"), "utf8")).toContain("필수 검증을 모두 통과했습니다");
+    expect(await readFile(join(result.directory, "index.zh-CN.html"), "utf8")).toContain("所有必需检查均已通过");
     expect(await readFile(join(result.directory, "evidence", `${SCREENSHOT_DIGEST}.png`))).toEqual(Buffer.from(SCREENSHOT_BYTES));
     expect(await readFile(join(result.directory, "manifest.json"), "utf8")).toContain("traceknot-qa-board/v1");
     expect((await stat(join(result.directory, "index.html"))).mode & 0o777).toBe(0o600);

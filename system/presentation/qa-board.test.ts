@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { EvidenceEvaluation, Observation } from "../core/qa-core";
 import type { BoardSource } from "./qa-board";
-import { buildQaBoardView, renderQaBoardHtml, sessionReference, sha256 } from "./qa-board";
+import { buildQaBoardView, renderQaBoardHtml, resolveQaBoardLocale, sessionReference, sha256 } from "./qa-board";
 
 const SNAPSHOT = "snapshot-1";
 const REQUEST = "request-1";
@@ -76,6 +76,33 @@ describe("QA Board projection", () => {
     const first = renderQaBoardHtml(buildQaBoardView(source()));
     const second = renderQaBoardHtml(buildQaBoardView(source()));
     expect(first).toBe(second);
+  });
+
+  test("renders complete English, Korean, and Simplified Chinese views", () => {
+    const view = buildQaBoardView(source());
+    const english = renderQaBoardHtml(view, "en");
+    const korean = renderQaBoardHtml(view, "ko");
+    const chinese = renderQaBoardHtml(view, "zh-CN");
+    expect(english).toContain('<html lang="en">');
+    expect(english).toContain("All required checks passed");
+    expect(korean).toContain('<html lang="ko">');
+    expect(korean).toContain("필수 검증을 모두 통과했습니다");
+    expect(korean).toContain("확인이 필요한 항목이 없습니다.");
+    expect(chinese).toContain('<html lang="zh-CN">');
+    expect(chinese).toContain("所有必需检查均已通过");
+    expect(chinese).toContain("没有需要关注的检查项。");
+    for (const html of [english, korean, chinese]) {
+      expect(html).toContain('href="index.en.html"');
+      expect(html).toContain('href="index.ko.html"');
+      expect(html).toContain('href="index.zh-CN.html"');
+    }
+  });
+
+  test("resolves locale preferences in order with a stable English fallback", () => {
+    expect(resolveQaBoardLocale("ko_KR.UTF-8", "en-US")).toBe("ko");
+    expect(resolveQaBoardLocale("zh-Hans-CN")).toBe("zh-CN");
+    expect(resolveQaBoardLocale("fr-FR", "en_GB")).toBe("en");
+    expect(resolveQaBoardLocale(undefined, "fr-FR")).toBe("en");
   });
   test("emits mobile-safe wrapping and labeled coverage rows", () => {
     const initial = source();
