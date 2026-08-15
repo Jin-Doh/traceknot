@@ -227,7 +227,7 @@ done
 
 source_is_complete() {
     candidate_root=$1
-    for candidate_component in skill contracts adapters system/core system/runtime system/cli bin; do
+    for candidate_component in skill contracts adapters system/core system/runtime system/cli system/presentation bin; do
         [ -d "$candidate_root/$candidate_component" ] || return 1
     done
     [ -f "$candidate_root/LICENSE" ]
@@ -323,7 +323,7 @@ if [ -e "$MANIFEST" ]; then
     while IFS= read -r previous_entry; do
         [ -n "$previous_entry" ] || fail 'manifest contains an empty entry'
         case "$previous_entry" in
-            LICENSE|skill/*|contracts/*|adapters/*|system/core/*|system/runtime/*|system/cli/*|bin/*) ;;
+            LICENSE|skill/*|contracts/*|adapters/*|system/core/*|system/runtime/*|system/cli/*|system/presentation/*|bin/*) ;;
             *) fail "unsafe manifest entry: $previous_entry" ;;
         esac
         case "$previous_entry" in
@@ -406,7 +406,7 @@ check_file_target() {
 }
 
 check_file_target LICENSE
-for component in skill contracts adapters system/core system/runtime system/cli bin; do
+for component in skill contracts adapters system/core system/runtime system/cli system/presentation bin; do
     while IFS= read -r source_file; do
         [ -n "$source_file" ] || continue
         relative=${source_file#"$SOURCE_ROOT"/}
@@ -419,7 +419,7 @@ done
 if [ "$DRY_RUN" -eq 1 ]; then
     printf 'Would install Traceknot to %s\n' "$PREFIX_CANON"
     printf '  %s -> %s/LICENSE\n' "$SOURCE_ROOT/LICENSE" "$PREFIX_CANON"
-    for component in skill contracts adapters system/core system/runtime system/cli bin; do
+    for component in skill contracts adapters system/core system/runtime system/cli system/presentation bin; do
         while IFS= read -r source_file; do
             [ -n "$source_file" ] || continue
             relative=${source_file#"$SOURCE_ROOT"/}
@@ -532,7 +532,7 @@ copy_file() {
 }
 
 copy_file "$SOURCE_ROOT/LICENSE" LICENSE
-for component in skill contracts adapters system/core system/runtime system/cli bin; do
+for component in skill contracts adapters system/core system/runtime system/cli system/presentation bin; do
     while IFS= read -r source_file; do
         [ -n "$source_file" ] || continue
         relative=${source_file#"$SOURCE_ROOT"/}
