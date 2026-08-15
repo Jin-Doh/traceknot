@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { LocalArtifactStore, secureFlock } from "./local-artifact-store";
 import { inspectStorage, pinRun, pruneStorage, unpinRun, type StorageRetentionPolicy } from "./storage-retention";
+import Ajv2020 from "ajv/dist/2020";
 
 const NOW = "2026-08-15T00:00:00.000Z";
 const OLD = "2025-01-01T00:00:00.000Z";
@@ -59,6 +60,16 @@ describe("storage retention", () => {
     expect(report.counts.symlinks).toBe(1);
     expect(report.objects[0]?.relativePath).toBe(`.objects/${digest}`);
   });
+  test("emits maintenance reports conforming to the public schema", async () => {
+    const { state, artifacts } = await fixture();
+    await run(state, "terminal", { state: "TERMINAL", updatedAt: NOW });
+    const report = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy });
+    const schema = JSON.parse(await Bun.file(join(import.meta.dir, "../../contracts/storage-maintenance-report.schema.json")).text()) as object;
+    const validate = new Ajv2020({ strict: true, allErrors: true }).compile(schema);
+    expect(validate(report), validate.errors ? JSON.stringify(validate.errors) : undefined).toBe(true);
+    expect(validate({ ...report, unexpected: true })).toBe(false);
+  });
+
 
   test("shared digests survive run pruning and dry-run candidates match apply", async () => {
     const { state, artifacts } = await fixture();
