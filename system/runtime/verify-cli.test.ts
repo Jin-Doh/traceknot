@@ -1,5 +1,5 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { mkdtemp, writeFile, readFile, rm, symlink } from "node:fs/promises";
+import { mkdtemp, readdir, writeFile, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
@@ -543,6 +543,27 @@ describe("traceknot verify CLI", () => {
         await rm(localState, { recursive: true, force: true });
       }
     } finally { await fixtureValue.cleanup(); }
+  });
+  test("generates an immutable Board bundle without changing the verification exit contract", async () => {
+    const fixtureValue = await fixture();
+    try {
+      const stdout: string[] = [];
+      const stderr: string[] = [];
+      const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--board", "--no-notify", "--session-id", "raw-agent-session", "--session-host", "omp"], text => stdout.push(text), text => stderr.push(text));
+      expect(status).toBe(0);
+      expect(JSON.parse(stdout.join("")).verdict.qaVerdict).toBe("PASS");
+      expect(stderr.join("")).toMatch(/^Traceknot Board: file:\/\//);
+      const boardRoot = join(fixtureValue.state, "runs", "cli-e2e", "boards");
+      const entries = await readdir(boardRoot);
+      expect(entries).toHaveLength(1);
+      const manifest = JSON.parse(await readFile(join(boardRoot, entries[0]!, "manifest.json"), "utf8")) as { generatedBy: { sessionRef: string }; sourceRevision: number; files: Array<{ path: string }> };
+      expect(manifest.sourceRevision).toBeGreaterThanOrEqual(0);
+      expect(manifest.generatedBy.sessionRef).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(JSON.stringify(manifest)).not.toContain("raw-agent-session");
+      expect(manifest.files.map(file => file.path)).toContain("index.html");
+    } finally {
+      await fixtureValue.cleanup();
+    }
   });
 
   test("returns verdict exit codes and rejects a changed snapshot on report-only", async () => {
