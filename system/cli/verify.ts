@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { lstat, mkdir, open, type FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { inflateSync } from "node:zlib";
 import type { Artifact, Producer } from "../core/qa-core";
 import { isVisualCompositionOracle, type VisualCompositionOracle } from "../core/visual-composition";
@@ -24,8 +25,9 @@ import {
   type VerificationExecutionAuthorityBinding,
   type VerificationExecutionCompletionEnvelope,
   type VerificationExecutionOutput,
-  type VerificationRequest,
   type VerificationRunDependencies,
+  type RunVerificationResult,
+  type VerificationRequest,
   runVerification,
   establishTestBasis,
   validatePersistedVerificationRun,
@@ -35,6 +37,10 @@ import { captureGitSnapshotIdentity } from "../runtime/git-snapshot";
 import { ArtifactNotFoundError, closeSecureRoot, LocalArtifactStore, openSecureRoot, readSecureRegularFile } from "../runtime/local-artifact-store";
 import { LocalShellCollector, type ShellArtifactDeclaration } from "../runtime/local-shell-collector";
 import { FileVerificationRepository } from "../runtime/file-repository";
+import { buildQaBoardView } from "../presentation/qa-board";
+import { openBoard } from "../presentation/board-opener";
+import { writeQaBoardBundle } from "../presentation/qa-board-store";
+import { notifyBoard } from "../presentation/user-notifier";
 
 export const VERIFY_EXIT_CODES = Object.freeze({ PASS: 0, FAIL: 1, BLOCKED: 2, INCOMPLETE: 3, USAGE: 64, INTERNAL: 70 });
 const MAX_INPUT_BYTES = 4 * 1024 * 1024;
@@ -63,7 +69,7 @@ type ManifestCommand = Readonly<{
   toolVersion?: string;
 }>;
 type VerifyManifest = Readonly<{ schemaVersion: "verification-manifest/v1"; obligations: readonly ManifestCommand[] }>;
-type CliOptions = Readonly<{ requestPath?: string; manifestPath?: string; rootDir: string; stateDir: string; artifactDir: string; runId?: string; expectedHead?: string; format: "json" | "markdown"; reportOnly: boolean; help: boolean }>;
+type CliOptions = Readonly<{ requestPath?: string; manifestPath?: string; rootDir: string; stateDir: string; artifactDir: string; runId?: string; invocationId?: string; expectedHead?: string; format: "json" | "markdown"; reportOnly: boolean; board: boolean; noNotify: boolean; openBoard: boolean; sessionId?: string; sessionHost: string; help: boolean }>;
 type CliReport = Readonly<{ schemaVersion: "traceknot-cli-report/v1"; run: unknown; verdict: unknown; snapshot: Readonly<{ rootIdentity: string; snapshotId: string; head: string; dirty: boolean }>; documents?: unknown }>;
 export type TrustedProducerPolicy = Readonly<{
   schemaVersion: "trusted-producer-policy/v1";
@@ -81,9 +87,12 @@ function usage(): string {
     "  --root DIR              Git repository root (default: current directory)",
     "  --state-dir DIR         Durable run state outside the repository",
     "  --artifact-dir DIR      Content-addressed artifact root",
-    "  --run-id ID             Durable run identifier (default: requestId)",
-    "  --expected-head OID      Require this clean Git HEAD commit",
-    "  --format json|markdown   Report format (default: json)",
+    "  --invocation-id ID      Durable Board invocation identifier",
+    "  --board                 Generate a static QA Board bundle",
+    "  --no-notify             Suppress desktop notification after Board generation",
+    "  --open-board            Open the generated Board in the desktop browser",
+    "  --session-id ID         Hash this agent session identifier in the Board manifest",
+    "  --session-host HOST     Record the agent session host in the Board manifest",
     "  --report-only           Read an existing run without executing commands",
     "  --help                  Show this message",
   ].join("\n");
@@ -300,9 +309,15 @@ function parseArgs(argv: readonly string[]): CliOptions {
   let requestPath: string | undefined;
   let manifestPath: string | undefined;
   let runId: string | undefined;
+  let invocationId: string | undefined;
   let expectedHead: string | undefined;
   let format: "json" | "markdown" = "json";
   let reportOnly = false;
+  let board = false;
+  let noNotify = false;
+  let openBoard = false;
+  let sessionId: string | undefined;
+  let sessionHost = "unavailable";
   let help = false;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]!;
@@ -313,18 +328,27 @@ function parseArgs(argv: readonly string[]): CliOptions {
     else if (arg === "--artifact-dir") artifactDir = next();
     else if (arg === "--request") requestPath = next();
     else if (arg === "--manifest" || arg === "--config") manifestPath = next();
+    else if (arg === "--invocation-id") invocationId = next();
     else if (arg === "--run-id") runId = next();
     else if (arg === "--expected-head") expectedHead = next();
     else if (arg === "--format") { const value = next(); if (value !== "json" && value !== "markdown") fail("--format must be json or markdown"); format = value; }
     else if (arg === "--report-only") reportOnly = true;
+    else if (arg === "--board") board = true;
+    else if (arg === "--no-notify") noNotify = true;
+    else if (arg === "--open-board") { openBoard = true; board = true; }
+    else if (arg === "--session-id") sessionId = next();
+    else if (arg === "--session-host") sessionHost = next();
     else fail(`unknown option: ${arg}`);
   }
   const absoluteRoot = resolve(rootDir);
   if (!stateDir) stateDir = join(homedir(), ".cache", "traceknot", "runs", createHash("sha256").update(absoluteRoot).digest("hex").slice(0, 24));
   if (!artifactDir) artifactDir = join(stateDir, "artifacts");
   if (runId !== undefined && !SAFE_ID.test(runId)) fail("run-id contains unsafe characters");
+  if (invocationId !== undefined && !SAFE_ID.test(invocationId)) fail("invocation-id contains unsafe characters");
+  if (sessionId !== undefined && sessionId.includes("\0")) fail("session-id must be NUL-free");
+  if (sessionHost.includes("\0") || sessionHost.length > 128) fail("session-host must be NUL-free and at most 128 characters");
   if (expectedHead !== undefined && !GIT_OBJECT_ID.test(expectedHead)) fail("expected-head must be a lowercase Git object ID");
-  return { requestPath, manifestPath, rootDir: absoluteRoot, stateDir: resolve(stateDir), artifactDir: resolve(artifactDir), runId, expectedHead, format, reportOnly, help };
+  return { requestPath, manifestPath, rootDir: absoluteRoot, stateDir: resolve(stateDir), artifactDir: resolve(artifactDir), runId, invocationId, expectedHead, format, reportOnly, board, noNotify, openBoard, sessionId, sessionHost, help };
 }
 function requireString(value: unknown, label: string): string { if (typeof value !== "string" || !value || value.includes("\0")) fail(`${label} must be a non-empty NUL-free string`); return value; }
 function validateManifest(value: unknown): VerifyManifest {
@@ -656,9 +680,40 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
       const current = await captureGitSnapshotIdentity(options.rootDir);
       return current.rootIdentity === request.project.rootIdentity && current.snapshotId === request.project.snapshotId;
     },
+
     now: () => new Date(),
   };
   return { dependencies, close: async () => { await collectorStore.close(); await mainStore.close(); await repository.close(); } };
+}
+
+async function generateBoardForResult(options: CliOptions, result: RunVerificationResult, stderr: (text: string) => void): Promise<void> {
+  if (!options.board) return;
+  const artifactStore = new LocalArtifactStore(options.artifactDir);
+  try {
+    const board = await writeQaBoardBundle({
+      view: buildQaBoardView({ run: result.run, verdict: result.verdict, documents: result.documents }),
+      invocationId: options.invocationId,
+      stateDir: options.stateDir,
+      sessionHost: options.sessionHost,
+      sessionId: options.sessionId,
+      generatedAt: result.run.updatedAt,
+      artifactReader: artifactStore,
+    });
+    const boardUri = pathToFileURL(board.entrypoint).href;
+    stderr(`Traceknot Board: ${boardUri}\n`);
+    if (!options.noNotify) {
+      const notification = await notifyBoard({ title: "Traceknot QA finished", message: `${result.verdict.qaVerdict}: ${result.verdict.obligationSummary.failed} failed`, boardUri });
+      if (notification === "failed") stderr("Traceknot Board: desktop notification failed\n");
+    }
+    if (options.openBoard) {
+      const opened = await openBoard(boardUri);
+      if (opened === "failed") stderr("Traceknot Board: browser opener failed\n");
+    }
+  } catch (error) {
+    stderr(`Traceknot Board unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
+  } finally {
+    await artifactStore.close();
+  }
 }
 
 async function loadReport(repository: FileVerificationRepository, runId: string, snapshot: Awaited<ReturnType<typeof captureGitSnapshotIdentity>>): Promise<CliReport> {
@@ -714,6 +769,7 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
       const freshnessAuthority = { atomicSameKeyIdempotency: true as const, issueFreshnessAuthority: async (binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["issueFreshnessAuthority"]>>[0]) => freshnessAuthorityFor(binding), verifyFreshnessAuthority: async (authority: FreshnessAuthority, binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["verifyFreshnessAuthority"]>>[1]) => authority.issuer === "traceknot-cli" && canonicalizeJson(authority.binding) === canonicalizeJson(binding) };
       const dependencies: VerificationRunDependencies = { repository, executor: {}, artifactStore: {}, capabilityProvider: { has: () => false }, executionAuthority, freshnessPolicy: { evaluateFreshness: () => "unknown" }, freshnessAuthority, snapshotVerifier: async () => { const current = await captureGitSnapshotIdentity(options.rootDir); return current.rootIdentity === persistedRequest.project.rootIdentity && current.snapshotId === persistedRequest.project.snapshotId; }, now: () => new Date() };
       const result = await validatePersistedVerificationRun({ runId, request: persistedRequest, dependencies });
+      await generateBoardForResult(options, result, stderr);
       const report: CliReport = { schemaVersion: "traceknot-cli-report/v1", run: result.run, verdict: result.verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: result.documents };
       stdout(reportOutput(report, options.format));
       return exitForVerdict(result.verdict);
@@ -739,6 +795,7 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
     }
     const dependenciesResult = await makeDependencies(options, request, manifest, repository, snapshot.snapshotId, trustedPolicy); stores = dependenciesResult;
     const result = await runVerification({ runId, request, dependencies: dependenciesResult.dependencies });
+    await generateBoardForResult(options, result, stderr);
     const report: CliReport = { schemaVersion: "traceknot-cli-report/v1", run: result.run, verdict: result.verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: result.documents };
     stdout(reportOutput(report, options.format));
     return exitForVerdict(result.verdict);

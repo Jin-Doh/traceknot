@@ -87,7 +87,7 @@ reject_symlink_components() {
 validate_entry() {
     manifest_entry=$1
     case "$manifest_entry" in
-        LICENSE|skill/*|contracts/*|adapters/*|system/core/*|system/runtime/*|system/cli/*|bin/*) ;;
+        LICENSE|skill/*|contracts/*|adapters/*|system/core/*|system/runtime/*|system/cli/*|system/presentation/*|bin/*) ;;
         /*|../*|*/../*|*/..|.|./*|*/./*) fail "unsafe manifest entry: $manifest_entry" ;;
         *) fail "unknown manifest entry: $manifest_entry" ;;
     esac

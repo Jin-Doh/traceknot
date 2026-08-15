@@ -25,6 +25,10 @@ inputs:
     description: Prefix for the invocation-unique retained canonical evidence artifact.
     required: false
     default: traceknot-evidence
+  board:
+    description: Generate a static QA Board bundle in manifest mode.
+    required: false
+    default: 'false'
   sarif-path:
     description: Optional tracked SARIF file path in the caller HEAD.
     required: false
@@ -36,6 +40,9 @@ outputs:
   evidence-path:
     description: Absolute retained evidence directory on the runner.
     value: ${{ steps.prepare.outputs.evidence-path }}
+  board-path:
+    description: Root directory containing generated Board revisions on the runner.
+    value: ${{ steps.prepare.outputs.board-path }}
 runs:
   using: composite
   steps:
@@ -69,8 +76,13 @@ runs:
         TRACEKNOT_MANIFEST: ${{ inputs.manifest }}
         TRACEKNOT_FORMAT: ${{ inputs.format }}
         TRACEKNOT_SARIF: ${{ inputs.sarif-path }}
+        TRACEKNOT_BOARD: ${{ inputs.board }}
       run: |
         set -euo pipefail
+        case "$TRACEKNOT_BOARD" in
+          true|false) ;;
+          *) printf 'board must be true or false\n' >&2; exit 64 ;;
+        esac
         umask 077
         evidence_path="$(mktemp -d "${RUNNER_TEMP}/traceknot-governed.XXXXXX")"
         invocation_id="${evidence_path##*.}"
@@ -132,6 +144,7 @@ runs:
           printf 'manifest-path=%s\n' "$manifest_path"
           printf 'sarif-path=%s\n' "$sarif_path"
           printf 'invocation-id=%s\n' "$invocation_id"
+          printf 'board-path=%s\n' "${state_path}/runs"
           printf 'head-oid=%s\n' "$head_oid"
         } >> "$GITHUB_OUTPUT"
 
@@ -149,6 +162,7 @@ runs:
         TRACEKNOT_REQUEST: ${{ steps.prepare.outputs.request-path }}
         TRACEKNOT_MANIFEST: ${{ steps.prepare.outputs.manifest-path }}
         TRACEKNOT_EXPECTED_HEAD: ${{ steps.prepare.outputs.head-oid }}
+        TRACEKNOT_BOARD: ${{ inputs.board }}
       run: |
         set -euo pipefail
         trap 'status=$?; printf "exit=%s\n" "$status" > "${TRACEKNOT_EVIDENCE}/status.txt"; chmod -R go-rwx "$TRACEKNOT_EVIDENCE"' EXIT
@@ -168,6 +182,9 @@ runs:
             )
             if test -n "$TRACEKNOT_RUN_ID"; then
               args+=(--run-id "$TRACEKNOT_RUN_ID")
+            fi
+            if test "$TRACEKNOT_BOARD" = true; then
+              args+=(--board --no-notify --invocation-id "${{ steps.prepare.outputs.invocation-id }}" --session-host github-actions)
             fi
             bun "$GITHUB_ACTION_PATH/bin/traceknot" verify "${args[@]}" | tee "$TRACEKNOT_REPORT"
             ;;
