@@ -55,6 +55,7 @@ describe("reusable governed GitHub Action", () => {
       "assurance",
       "format",
       "artifact-name",
+      "board",
       "sarif-path",
     ]);
     expect(steps.map((step) => step.id ?? step.name)).toEqual([
@@ -147,6 +148,7 @@ exit "$status"
           TRACEKNOT_REQUEST: "request.json",
           TRACEKNOT_MANIFEST: "manifest.json",
           TRACEKNOT_SARIF: "",
+          TRACEKNOT_BOARD: "false",
         },
         stdout: "ignore",
         stderr: "pipe",
@@ -213,6 +215,7 @@ exit "$status"
         TRACEKNOT_RUN_ID: "",
         TRACEKNOT_ASSURANCE: "release",
         TRACEKNOT_FORMAT: "json",
+        TRACEKNOT_BOARD: "false",
         TRACEKNOT_SARIF: "",
       };
       const preparation = Bun.spawn(["bash", "-c", String(prepare?.run)], {
