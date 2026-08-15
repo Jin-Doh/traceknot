@@ -108,6 +108,26 @@ describe("QA Board projection", () => {
     expect(html).toContain(".findings::before");
   });
 
+  test("keeps verification flow order independent of coverage object insertion order", () => {
+    const initial = source();
+    const coverage = initial.verdict.coverage;
+    const permutedCoverage = {
+      mandatoryObligations: coverage.mandatoryObligations,
+      conditions: coverage.conditions,
+      risks: coverage.risks,
+      basis: coverage.basis,
+    };
+    const html = renderQaBoardHtml(buildQaBoardView({
+      ...initial,
+      verdict: { ...initial.verdict, coverage: permutedCoverage },
+    }));
+    const flow = html.slice(html.indexOf('<div class="flow"'));
+    const labels = ["Test basis", "Risks", "Conditions", "Mandatory checks", "Accepted evidence"];
+    const positions = labels.map(label => flow.indexOf(`<strong>${label}</strong>`));
+    expect(positions.every(position => position >= 0)).toBe(true);
+    expect(positions).toEqual([...positions].sort((left, right) => left - right));
+  });
+
   test("labels zero-total coverage as not applicable without invalid percentages", () => {
     const initial = source();
     const html = renderQaBoardHtml(buildQaBoardView({
