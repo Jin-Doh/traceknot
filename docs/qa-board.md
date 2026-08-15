@@ -26,9 +26,11 @@ traceknot verify \
   --no-notify
 ```
 
-`--open-board` implies `--board` and asks the platform opener to open the generated `file://` URI. `--session-id` is never written raw; the manifest stores a SHA-256 session reference. `--invocation-id` is optional and must be a safe identifier; CI uses it to make the Board directory deterministic for that action invocation.
+`--open-board` implies `--board` and asks the platform opener to open the generated `file://` URI. `--board-locale auto|en|ko|zh-CN` selects the language of `index.html`; `auto` is the default and resolves `LC_ALL`, then `LC_MESSAGES`, then `LANG`, with English as the fallback. `--session-id` is never written raw; the manifest stores a SHA-256 session reference. `--invocation-id` is optional and must be a safe identifier; CI uses it to make the Board directory deterministic for that action invocation.
 
 The CLI preserves the verification verdict exit code. Board generation, notification, and opening are isolated: failures emit a `Traceknot Board unavailable:` or platform warning on stderr and do not convert a completed verification verdict into an internal error.
+
+Every bundle includes English, Korean, and Simplified Chinese views. The language switcher moves between those local static pages without scripts or network access. Only interface labels are localized; persisted summaries, evidence, identifiers, and verdict rationale remain byte-for-byte faithful to the canonical run.
 
 ## Bundle layout
 
@@ -37,6 +39,9 @@ Boards are immutable invocation directories below the durable run state:
 ```text
 runs/<run-id>/boards/<revision>-<invocation-id>/
 ├── index.html
+├── index.en.html
+├── index.ko.html
+├── index.zh-CN.html
 ├── manifest.json
 └── evidence/
     └── <sha256>.png

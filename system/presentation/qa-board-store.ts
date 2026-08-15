@@ -19,15 +19,17 @@ import {
   STORAGE_MAINTENANCE_LOCK_FILE,
 } from "../runtime/local-artifact-store";
 import {
+  QA_BOARD_LOCALES,
   buildQaBoardManifest,
   renderQaBoardHtml,
   sessionReference,
   sha256,
+  type QaBoardLocale,
   type QaBoardManifest,
   type QaBoardManifestFile,
   type QaBoardView,
-} from "./qa-board";
 
+} from "./qa-board";
 export type BoardArtifactReader = Readonly<{
   readArtifact: (digest: string) => Promise<Uint8Array>;
 }>;
@@ -38,6 +40,7 @@ export type BoardBundleInput = Readonly<{
   invocationId?: string;
   sessionHost?: string;
   sessionId?: string;
+  locale?: QaBoardLocale;
   generatedAt: string;
   artifactReader: BoardArtifactReader;
 }>;
@@ -240,7 +243,7 @@ export async function writeQaBoardBundle(input: BoardBundleInput): Promise<Board
   const boardRoot = root.canonical;
   const directory = join(boardRoot, "runs", input.view.runId, "boards", boardName);
   const entrypoint = join(directory, "index.html");
-  const boardFiles = new Set(["index.html", "manifest.json"]);
+  const boardFiles = new Set(["index.html", ...QA_BOARD_LOCALES.map(locale => `index.${locale}.html`), "manifest.json"]);
   const evidenceFiles = new Set<string>();
   let directories: BoardDirectories | undefined;
   let published = false;
@@ -271,9 +274,17 @@ export async function writeQaBoardBundle(input: BoardBundleInput): Promise<Board
       }
     }
     const view = availableScreenshots(input.view, copied);
-    const html = new TextEncoder().encode(renderQaBoardHtml(view));
+    const locale = input.locale ?? "en";
+    const html = new TextEncoder().encode(renderQaBoardHtml(view, locale));
     await writeAtomic(directories.boardFd, "index.html", html);
-    files.unshift({ path: "index.html", role: "entrypoint", sha256: sha256(html), bytes: html.byteLength });
+    const pageFiles: QaBoardManifestFile[] = [{ path: "index.html", role: "entrypoint", sha256: sha256(html), bytes: html.byteLength }];
+    for (const pageLocale of QA_BOARD_LOCALES) {
+      const path = `index.${pageLocale}.html`;
+      const localizedHtml = new TextEncoder().encode(renderQaBoardHtml(view, pageLocale));
+      await writeAtomic(directories.boardFd, path, localizedHtml);
+      pageFiles.push({ path, role: "localized-view", sha256: sha256(localizedHtml), bytes: localizedHtml.byteLength });
+    }
+    files.unshift(...pageFiles);
     const manifest = buildQaBoardManifest({ view, generatedAt: input.generatedAt, invocationId, sessionHost, sessionRef: sessionReference(sessionHost, input.sessionId), files });
     await writeAtomic(directories.boardFd, "manifest.json", new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`));
     try {

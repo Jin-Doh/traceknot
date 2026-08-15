@@ -225,8 +225,8 @@ function validBoardManifest(value: unknown): value is JsonRecord {
   if (!Array.isArray(value.files)) return false;
   return value.files.every(file => isRecord(file)
     && exactKeys(file, ["path", "role", "sha256", "bytes"], ["artifactDigest", "observationId"])
-    && typeof file.path === "string" && /^(?:index\.html|evidence\/[0-9a-f]{64}\.png)$/.test(file.path)
-    && (file.role === "entrypoint" || file.role === "screenshot-preview")
+    && typeof file.path === "string" && /^(?:index(?:\.(?:en|ko|zh-CN))?\.html|evidence\/[0-9a-f]{64}\.png)$/.test(file.path)
+    && (file.role === "entrypoint" || file.role === "localized-view" || file.role === "screenshot-preview")
     && typeof file.sha256 === "string" && DIGEST.test(file.sha256)
     && nonnegativeInteger(file.bytes)
     && (file.artifactDigest === undefined || typeof file.artifactDigest === "string" && DIGEST.test(file.artifactDigest))

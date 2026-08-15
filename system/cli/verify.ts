@@ -38,7 +38,7 @@ import { ArtifactNotFoundError, closeSecureRoot, LocalArtifactStore, openSecureR
 import { LocalShellCollector, type ShellArtifactDeclaration } from "../runtime/local-shell-collector";
 import { pruneStorage } from "../runtime/storage-retention";
 import { FileVerificationRepository } from "../runtime/file-repository";
-import { buildQaBoardView } from "../presentation/qa-board";
+import { buildQaBoardView, resolveQaBoardLocale, type QaBoardLocale } from "../presentation/qa-board";
 import { openBoard } from "../presentation/board-opener";
 import { writeQaBoardBundle } from "../presentation/qa-board-store";
 import { notifyBoard } from "../presentation/user-notifier";
@@ -70,7 +70,7 @@ type ManifestCommand = Readonly<{
   toolVersion?: string;
 }>;
 type VerifyManifest = Readonly<{ schemaVersion: "verification-manifest/v1"; obligations: readonly ManifestCommand[] }>;
-type CliOptions = Readonly<{ requestPath?: string; manifestPath?: string; rootDir: string; stateDir: string; artifactDir: string; automaticCacheMaintenance: boolean; runId?: string; invocationId?: string; expectedHead?: string; format: "json" | "markdown"; reportOnly: boolean; board: boolean; noNotify: boolean; openBoard: boolean; sessionId?: string; sessionHost: string; help: boolean }>;
+type CliOptions = Readonly<{ requestPath?: string; manifestPath?: string; rootDir: string; stateDir: string; artifactDir: string; automaticCacheMaintenance: boolean; runId?: string; invocationId?: string; expectedHead?: string; format: "json" | "markdown"; reportOnly: boolean; board: boolean; boardLocale: QaBoardLocale; noNotify: boolean; openBoard: boolean; sessionId?: string; sessionHost: string; help: boolean }>;
 type CliReport = Readonly<{ schemaVersion: "traceknot-cli-report/v1"; run: unknown; verdict: unknown; snapshot: Readonly<{ rootIdentity: string; snapshotId: string; head: string; dirty: boolean }>; documents?: unknown }>;
 export type TrustedProducerPolicy = Readonly<{
   schemaVersion: "trusted-producer-policy/v1";
@@ -90,6 +90,7 @@ function usage(): string {
     "  --artifact-dir DIR      Content-addressed artifact root",
     "  --invocation-id ID      Durable Board invocation identifier",
     "  --board                 Generate a static QA Board bundle",
+    "  --board-locale LOCALE   Board language: auto, en, ko, or zh-CN (default: auto)",
     "  --no-notify             Suppress desktop notification after Board generation",
     "  --open-board            Open the generated Board in the desktop browser",
     "  --session-id ID         Hash this agent session identifier in the Board manifest",
@@ -315,6 +316,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
   let format: "json" | "markdown" = "json";
   let reportOnly = false;
   let board = false;
+  let boardLocale = resolveQaBoardLocale(process.env.LC_ALL, process.env.LC_MESSAGES, process.env.LANG);
   let noNotify = false;
   let openBoard = false;
   let sessionId: string | undefined;
@@ -335,6 +337,11 @@ function parseArgs(argv: readonly string[]): CliOptions {
     else if (arg === "--format") { const value = next(); if (value !== "json" && value !== "markdown") fail("--format must be json or markdown"); format = value; }
     else if (arg === "--report-only") reportOnly = true;
     else if (arg === "--board") board = true;
+    else if (arg === "--board-locale") {
+      const value = next();
+      if (value !== "auto" && value !== "en" && value !== "ko" && value !== "zh-CN") fail("--board-locale must be auto, en, ko, or zh-CN");
+      boardLocale = value === "auto" ? resolveQaBoardLocale(process.env.LC_ALL, process.env.LC_MESSAGES, process.env.LANG) : value;
+    }
     else if (arg === "--no-notify") noNotify = true;
     else if (arg === "--open-board") { openBoard = true; board = true; }
     else if (arg === "--session-id") sessionId = next();
@@ -350,7 +357,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
   if (sessionId !== undefined && sessionId.includes("\0")) fail("session-id must be NUL-free");
   if (sessionHost.includes("\0") || sessionHost.length > 128) fail("session-host must be NUL-free and at most 128 characters");
   if (expectedHead !== undefined && !GIT_OBJECT_ID.test(expectedHead)) fail("expected-head must be a lowercase Git object ID");
-  return { requestPath, manifestPath, rootDir: absoluteRoot, stateDir: resolve(stateDir), artifactDir: resolve(artifactDir), automaticCacheMaintenance, runId, invocationId, expectedHead, format, reportOnly, board, noNotify, openBoard, sessionId, sessionHost, help };
+  return { requestPath, manifestPath, rootDir: absoluteRoot, stateDir: resolve(stateDir), artifactDir: resolve(artifactDir), automaticCacheMaintenance, runId, invocationId, expectedHead, format, reportOnly, board, boardLocale, noNotify, openBoard, sessionId, sessionHost, help };
 }
 function requireString(value: unknown, label: string): string { if (typeof value !== "string" || !value || value.includes("\0")) fail(`${label} must be a non-empty NUL-free string`); return value; }
 function validateManifest(value: unknown): VerifyManifest {
@@ -780,6 +787,7 @@ async function generateBoardForResult(options: CliOptions, result: RunVerificati
       stateDir: options.stateDir,
       sessionHost: options.sessionHost,
       sessionId: options.sessionId,
+      locale: options.boardLocale,
       generatedAt: new Date().toISOString(),
       artifactReader: artifactStore,
     });

@@ -631,18 +631,20 @@ describe("traceknot verify CLI", () => {
     try {
       const stdout: string[] = [];
       const stderr: string[] = [];
-      const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--board", "--no-notify", "--session-id", "raw-agent-session", "--session-host", "omp"], text => stdout.push(text), text => stderr.push(text));
+      const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--board", "--board-locale", "zh-CN", "--no-notify", "--session-id", "raw-agent-session", "--session-host", "omp"], text => stdout.push(text), text => stderr.push(text));
       expect(status).toBe(0);
       expect(JSON.parse(stdout.join("")).verdict.qaVerdict).toBe("PASS");
       expect(stderr.join("")).toMatch(/^Traceknot Board: file:\/\//);
       const boardRoot = join(fixtureValue.state, "runs", "cli-e2e", "boards");
       const entries = await readdir(boardRoot);
       expect(entries).toHaveLength(1);
-      const manifest = JSON.parse(await readFile(join(boardRoot, entries[0]!, "manifest.json"), "utf8")) as { generatedBy: { sessionRef: string }; sourceRevision: number; files: Array<{ path: string }> };
+      const boardDirectory = join(boardRoot, entries[0]!);
+      const manifest = JSON.parse(await readFile(join(boardDirectory, "manifest.json"), "utf8")) as { generatedBy: { sessionRef: string }; sourceRevision: number; files: Array<{ path: string; role: string }> };
       expect(manifest.sourceRevision).toBeGreaterThanOrEqual(0);
       expect(manifest.generatedBy.sessionRef).toMatch(/^sha256:[0-9a-f]{64}$/);
       expect(JSON.stringify(manifest)).not.toContain("raw-agent-session");
-      expect(manifest.files.map(file => file.path)).toContain("index.html");
+      expect(manifest.files.filter(file => file.role === "localized-view").map(file => file.path)).toEqual(["index.en.html", "index.ko.html", "index.zh-CN.html"]);
+      expect(await readFile(join(boardDirectory, "index.html"), "utf8")).toContain('<html lang="zh-CN">');
     } finally {
       await fixtureValue.cleanup();
     }
