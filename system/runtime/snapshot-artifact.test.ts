@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
+import { constants } from "node:fs";
 import { mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, stat, symlink, unlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "bun:test";
-import { ArtifactCollisionError, ArtifactIntegrityError, ArtifactPathError, LocalArtifactStore } from "./local-artifact-store";
+import { ARTIFACT_CANONICAL_LOCK_FILE, ArtifactCollisionError, ArtifactIntegrityError, ArtifactPathError, closeSecureDescriptor, closeSecureRoot, LocalArtifactStore, openSecureRoot, secureFlock, secureOpenAt } from "./local-artifact-store";
 import { captureGitSnapshotIdentity } from "./git-snapshot";
 import type { VerificationExecutionRequest } from "./verification-run";
 
@@ -322,6 +323,36 @@ test("native temporary cleanup failure rejects publication and permits determini
     await cleanup(root);
   }
 });
+
+test("yields while the canonical artifact lock is held in the same process", async () => {
+  const root = await temporaryDirectory();
+  const artifactRoot = join(root, "artifacts");
+  const bytes = Buffer.from("locked artifact");
+  const artifactDigest = digest(bytes);
+  const store = new LocalArtifactStore(artifactRoot);
+  await store.store({ type: "seam", digest: artifactDigest, bytes } as never, request);
+  const secureRoot = await openSecureRoot(artifactRoot);
+  const lockFd = secureOpenAt(secureRoot.fd, ARTIFACT_CANONICAL_LOCK_FILE, constants.O_RDWR | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0), 0o600);
+  let locked = true;
+  secureFlock(lockFd, 2);
+  try {
+    let releaseRan = false;
+    const pendingRead = store.readArtifact(artifactDigest);
+    setImmediate(() => {
+      releaseRan = true;
+      secureFlock(lockFd, 8);
+      locked = false;
+    });
+    expect(await pendingRead).toEqual(bytes);
+    expect(releaseRan).toBe(true);
+  } finally {
+    if (locked) secureFlock(lockFd, 8);
+    closeSecureDescriptor(lockFd);
+    await closeSecureRoot(secureRoot);
+    await store.close();
+    await cleanup(root);
+  }
+}, 2000);
 
 test("local artifact store fails closed on mismatch, torn frames, corruption, and symlink sources", async () => {
   const root = await temporaryDirectory();

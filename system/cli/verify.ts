@@ -474,28 +474,28 @@ async function openInvocationCollector(artifactDir: string): Promise<InvocationC
     created = true;
     store = new LocalArtifactStore({ rootDir: join(parent.rootDir, name), ephemeral: true });
     const openedStore = store;
-    let closed = false;
+    let closePromise: Promise<void> | undefined;
     return {
       store: openedStore,
-      close: async () => {
-        if (closed) return;
-        closed = true;
+      close: () => closePromise ??= (async () => {
         const errors: unknown[] = [];
         let destroyed = false;
         try { await openedStore.destroyContents(); destroyed = true; } catch (error) { errors.push(error); }
+        try { await openedStore.close(); } catch (error) { errors.push(error); }
         if (destroyed) {
           try { secureRmdirAt(parent.fd, name); } catch (error) { errors.push(error); }
         }
         try { await closeSecureRoot(parent); } catch (error) { errors.push(error); }
         if (errors.length === 1) throw errors[0];
         if (errors.length > 1) throw new AggregateError(errors, "collector cleanup failed");
-      },
+      })(),
     };
   } catch (error) {
     const cleanupErrors: unknown[] = [];
     let destroyed = false;
     if (store) {
       try { await store.destroyContents(); destroyed = true; } catch (cleanupError) { cleanupErrors.push(cleanupError); }
+      try { await store.close(); } catch (cleanupError) { cleanupErrors.push(cleanupError); }
     }
     if (created && (!store || destroyed)) {
       try { secureRmdirAt(parent.fd, name); } catch (cleanupError) { cleanupErrors.push(cleanupError); }

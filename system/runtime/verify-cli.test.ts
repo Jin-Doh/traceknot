@@ -10,6 +10,7 @@ import { runVerify, validateFullTextAccessArtifact, validateScreenshotArtifact, 
 import { canonicalizeJson, type ExecutionAuthority, type VerificationExecutionAuthorityBinding, type VerificationExecutionCompletionEnvelope, type VerificationExecutionOutput } from "./verification-run";
 import { LocalArtifactStore } from "./local-artifact-store";
 import { uiFullTextAccessPayload, uiFullTextAccessPayloadDigest, uiVisualReviewApprovalPayloadDigest, type UiApplicabilityApprovalSubject, type UiResilienceOracle, type UiResilienceProfile, type UiVisualReview } from "../core/ui-resilience";
+import { pruneStorage } from "./storage-retention";
 
 type RepoFixture = Readonly<{ root: string; config: string; state: string; request: string; manifest: string; cleanup: () => Promise<void> }>;
 const gitEnv = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", GIT_AUTHOR_NAME: "Traceknot Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Traceknot Test", GIT_COMMITTER_EMAIL: "test@example.com" };
@@ -398,6 +399,41 @@ describe("traceknot verify CLI", () => {
       expect(await invocationCollectors(reportError.state)).toEqual([]);
     } finally {
       await reportError.cleanup();
+    }
+  });
+
+  test("releases collector leases after destruction failure so retention can recover", async () => {
+    const fixtureValue = await fixture("/bin/sh");
+    const artifactDir = join(fixtureValue.state, "artifacts");
+    try {
+      await writeFile(fixtureValue.manifest, JSON.stringify({
+        schemaVersion: "verification-manifest/v1",
+        obligations: [{
+          id: "obligation:condition:command",
+          executable: "/bin/sh",
+          argv: ["-c", "for collector in \"$1\"/.collector-*; do printf x > \"$collector/.objects/unexpected\"; done", "collector-inject", artifactDir],
+        }],
+      }));
+      const stderr: string[] = [];
+      expect(await runVerify(
+        ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest],
+        () => undefined,
+        text => stderr.push(text),
+      )).toBe(0);
+      expect(stderr.join("")).toContain("cleanup");
+      const residual = await invocationCollectors(fixtureValue.state);
+      expect(residual).toHaveLength(1);
+      const report = await pruneStorage({
+        stateDir: fixtureValue.state,
+        artifactDir,
+        now: new Date(Date.now() + 1000),
+        policy: { boardTtlMs: 0, boardMaxPerRun: 0, boardQuotaBytes: 0, canonicalRunTtlMs: 0, canonicalQuotaBytes: 0, graceMs: 0 },
+        apply: true,
+      });
+      expect(report.deleted.collector).toContain(residual[0]!);
+      expect(await invocationCollectors(fixtureValue.state)).toEqual([]);
+    } finally {
+      await fixtureValue.cleanup();
     }
   });
 
