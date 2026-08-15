@@ -35,4 +35,4 @@ The Traceknot source repository includes `scripts/audit-prose-quality.ts` as a r
 
 Bind the verifier's structured report to the target snapshot and relevant obligation as a static-analysis or test-result evidence artifact. Run preservation verification and the repository gate again on the rewritten snapshot.
 
-The Korean categories and preservation approach were informed by [epoko77-ai/im-not-ai](https://github.com/epoko77-ai/im-not-ai). Traceknot's scanner is an independent multilingual, deterministic verification boundary.
+The Korean categories and preservation approach were informed by the `epoko77-ai/im-not-ai` project. This is a provenance note only; Traceknot neither fetches nor executes that project. Traceknot's scanner is an independent multilingual, deterministic verification boundary.
