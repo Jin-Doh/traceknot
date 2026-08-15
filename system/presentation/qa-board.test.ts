@@ -77,6 +77,19 @@ describe("QA Board projection", () => {
     const second = renderQaBoardHtml(buildQaBoardView(source()));
     expect(first).toBe(second);
   });
+  test("emits mobile-safe wrapping and labeled coverage rows", () => {
+    const initial = source();
+    const html = renderQaBoardHtml(buildQaBoardView({
+      ...initial,
+      run: { ...initial.run, rootIdentity: `/private/tmp/${"long-repository-path-".repeat(12)}` },
+    }));
+    expect(html).toContain(".technical-trace dd");
+    expect(html).toContain("overflow-wrap:anywhere");
+    expect(html).toContain(".coverage-table tbody td::before");
+    expect(html).toContain('data-label="Covered"');
+    expect(html).toContain('data-label="Uncovered IDs"');
+  });
+
 
   test("does not invent a pass when evidence is absent", () => {
     const initial = source();
