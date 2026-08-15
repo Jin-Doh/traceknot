@@ -98,6 +98,36 @@ describe("QA Board projection", () => {
     }
   });
 
+  test("renders evidence-backed health, distribution, and flow visualizations", () => {
+    const html = renderQaBoardHtml(buildQaBoardView(source()));
+    expect(html).toContain('class="health-ring tone-complete"');
+    expect(html).toContain('style="--health:100%"');
+    expect(html).toContain('class="distribution-segment segment-pass"');
+    expect(html).toContain('class="flow" role="img"');
+    expect(html).toContain('class="findings"');
+    expect(html).toContain(".findings::before");
+  });
+
+  test("labels zero-total coverage as not applicable without invalid percentages", () => {
+    const initial = source();
+    const html = renderQaBoardHtml(buildQaBoardView({
+      ...initial,
+      verdict: {
+        ...initial.verdict,
+        obligationSummary: { mandatory: 0, passed: 0, failed: 0, blocked: 0, incomplete: 0 },
+        coverage: {
+          basis: { total: 0, covered: 0, uncoveredIds: [] },
+          risks: { total: 0, covered: 0, uncoveredIds: [] },
+          conditions: { total: 0, covered: 0, uncoveredIds: [] },
+          mandatoryObligations: { total: 0, covered: 0, uncoveredIds: [] },
+        },
+      },
+    }));
+    expect(html).toContain("Not applicable");
+    expect(html).toContain('style="--health:0%"');
+    expect(html).not.toContain("NaN");
+  });
+
   test("resolves locale preferences in order with a stable English fallback", () => {
     expect(resolveQaBoardLocale("ko_KR.UTF-8", "en-US")).toBe("ko");
     expect(resolveQaBoardLocale("zh-Hans-CN")).toBe("zh-CN");

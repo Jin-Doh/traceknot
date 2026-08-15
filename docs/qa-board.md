@@ -32,6 +32,16 @@ The CLI preserves the verification verdict exit code. Board generation, notifica
 
 Every bundle includes English, Korean, and Simplified Chinese views. The language switcher moves between those local static pages without scripts or network access. Only interface labels are localized; persisted summaries, evidence, identifiers, and verdict rationale remain byte-for-byte faithful to the canonical run.
 
+## Visual presentation
+
+Each localized page is a static projection of persisted verification data:
+
+- **Verification health** shows mandatory passed checks over the mandatory total, with a status distribution for passed, failed, blocked, and incomplete obligations.
+- **Verification flow** connects the persisted coverage areas, mandatory checks, accepted evidence, and final verdict into one readable path. It is explanatory only; it does not infer or recalculate the canonical verdict.
+- Coverage rows use proportional bars and explicitly label zero-total areas as `Not applicable`, `해당 없음`, or `不适用`; finding lists use status-colored rails to preserve scan order.
+
+The layout is responsive at desktop and mobile widths, supports the three bundled locales, and does not require JavaScript, network access, or remote assets.
+
 ## Bundle layout
 
 Boards are immutable invocation directories below the durable run state:
