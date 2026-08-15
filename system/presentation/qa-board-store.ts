@@ -11,6 +11,7 @@ import {
   secureMkdirAt,
   secureOpenAt,
   secureRenameAt,
+  secureRmdirAt,
   secureUnlinkAt,
   type SecureRootDescriptor,
 } from "../runtime/local-artifact-store";
@@ -51,11 +52,19 @@ export const QA_BOARD_LIMITS = Object.freeze({
 });
 
 const DIGEST = /^[0-9a-f]{64}$/;
-const SAFE_ENTRY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const SAFE_ENTRY = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const WRITE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0) | ((constants as Record<string, number | undefined>).O_CLOEXEC ?? 0);
 
 function assertSafeEntry(value: string, label: string): void {
   if (!SAFE_ENTRY.test(value)) throw new Error(`${label} contains unsafe characters`);
+}
+
+function hasErrno(error: unknown, value: number): boolean {
+  return error instanceof Error && error.message.includes(`errno ${value}`);
+}
+
+function isExistingTarget(error: unknown): boolean {
+  return hasErrno(error, 17) || hasErrno(error, 39) || hasErrno(error, 66);
 }
 
 function writeBytes(fd: number, bytes: Uint8Array): void {
@@ -94,43 +103,113 @@ function availableScreenshots(view: QaBoardView, copied: ReadonlySet<string>): Q
   };
 }
 
-async function openBoardDirectories(root: SecureRootDescriptor, view: QaBoardView, boardName: string): Promise<{ runsFd: number; runFd: number; boardsFd: number; boardFd: number; evidenceFd: number }> {
-  const runsFd = openOrCreateSecureDirectory(root.fd, "runs");
-  let runFd: number | undefined;
-  let boardsFd: number | undefined;
-  let boardFd: number | undefined;
-  let evidenceFd: number | undefined;
-  try {
-    runFd = openSecureDirectory(runsFd, view.runId);
-    boardsFd = openOrCreateSecureDirectory(runFd, "boards");
+type BoardDirectoryHandles = {
+  runsFd?: number;
+  runFd?: number;
+  boardsFd?: number;
+  boardFd?: number;
+  evidenceFd?: number;
+  pendingName: string;
+};
+
+type BoardDirectories = {
+  runsFd: number;
+  runFd: number;
+  boardsFd: number;
+  boardFd: number;
+  evidenceFd: number;
+  pendingName: string;
+};
+
+/**
+ * Cleanup is descriptor-relative and bounded to names this writer can create.
+ * Unknown entries make rmdir fail rather than being walked; symlinks are
+ * unlinked as entries and never traversed.
+ */
+function cleanupBoardBundle(
+  handles: BoardDirectoryHandles,
+  targetName: string,
+  boardFiles: ReadonlySet<string>,
+  evidenceFiles: ReadonlySet<string>,
+): void {
+  const failures: unknown[] = [];
+  const attempt = (operation: () => void): void => {
     try {
-      secureMkdirAt(boardsFd, boardName, 0o700);
+      operation();
     } catch (error) {
-      if (error instanceof Error && /\(errno 17\)$/.test(error.message)) {
-        throw new Error(`Board invocation already exists (${boardName}); choose a new --invocation-id`);
-      }
-      throw error;
+      if (!hasErrno(error, 2)) failures.push(error);
     }
-    boardFd = openSecureDirectory(boardsFd, boardName);
-    secureMkdirAt(boardFd, "evidence", 0o700);
-    evidenceFd = openSecureDirectory(boardFd, "evidence");
-    return { runsFd, runFd, boardsFd, boardFd, evidenceFd };
-  } catch (error) {
-    if (evidenceFd !== undefined) closeSecureDescriptor(evidenceFd);
-    if (boardFd !== undefined) closeSecureDescriptor(boardFd);
-    if (boardsFd !== undefined) closeSecureDescriptor(boardsFd);
-    if (runFd !== undefined) closeSecureDescriptor(runFd);
-    closeSecureDescriptor(runsFd);
-    throw error;
+  };
+  if (handles.evidenceFd !== undefined) {
+    for (const name of evidenceFiles) attempt(() => secureUnlinkAt(handles.evidenceFd!, name));
+    closeSecureDescriptor(handles.evidenceFd);
+    handles.evidenceFd = undefined;
+  }
+  if (handles.boardFd !== undefined) {
+    for (const name of boardFiles) attempt(() => secureUnlinkAt(handles.boardFd!, name));
+    attempt(() => secureRmdirAt(handles.boardFd!, "evidence"));
+    closeSecureDescriptor(handles.boardFd);
+    handles.boardFd = undefined;
+  }
+  if (handles.boardsFd !== undefined) attempt(() => secureRmdirAt(handles.boardsFd!, targetName));
+  if (failures.length > 0) throw new AggregateError(failures, "Board bundle cleanup failed");
+}
+
+function closeBoardDirectories(directories: BoardDirectoryHandles): void {
+  if (directories.evidenceFd !== undefined) {
+    closeSecureDescriptor(directories.evidenceFd);
+    directories.evidenceFd = undefined;
+  }
+  if (directories.boardFd !== undefined) {
+    closeSecureDescriptor(directories.boardFd);
+    directories.boardFd = undefined;
+  }
+  if (directories.boardsFd !== undefined) {
+    closeSecureDescriptor(directories.boardsFd);
+    directories.boardsFd = undefined;
+  }
+  if (directories.runFd !== undefined) {
+    closeSecureDescriptor(directories.runFd);
+    directories.runFd = undefined;
+  }
+  if (directories.runsFd !== undefined) {
+    closeSecureDescriptor(directories.runsFd);
+    directories.runsFd = undefined;
   }
 }
 
-function closeBoardDirectories(directories: { runsFd: number; runFd: number; boardsFd: number; boardFd: number; evidenceFd: number }): void {
-  closeSecureDescriptor(directories.evidenceFd);
-  closeSecureDescriptor(directories.boardFd);
-  closeSecureDescriptor(directories.boardsFd);
-  closeSecureDescriptor(directories.runFd);
-  closeSecureDescriptor(directories.runsFd);
+async function openBoardDirectories(root: SecureRootDescriptor, view: QaBoardView, pendingName: string): Promise<BoardDirectories> {
+  const handles: BoardDirectoryHandles = { runsFd: openOrCreateSecureDirectory(root.fd, "runs"), pendingName };
+  let pendingCreated = false;
+  try {
+    handles.runFd = openSecureDirectory(handles.runsFd!, view.runId);
+    handles.boardsFd = openOrCreateSecureDirectory(handles.runFd!, "boards");
+    secureMkdirAt(handles.boardsFd!, pendingName, 0o700);
+    pendingCreated = true;
+    handles.boardFd = openSecureDirectory(handles.boardsFd!, pendingName);
+    secureMkdirAt(handles.boardFd!, "evidence", 0o700);
+    handles.evidenceFd = openSecureDirectory(handles.boardFd!, "evidence");
+    return {
+      runsFd: handles.runsFd!,
+      runFd: handles.runFd!,
+      boardsFd: handles.boardsFd!,
+      boardFd: handles.boardFd!,
+      evidenceFd: handles.evidenceFd!,
+      pendingName,
+    };
+  } catch (error) {
+    let cleanupError: unknown;
+    if (pendingCreated) {
+      try {
+        cleanupBoardBundle(handles, pendingName, new Set(["index.html", "manifest.json"]), new Set());
+      } catch (caught) {
+        cleanupError = caught;
+      }
+    }
+    closeBoardDirectories(handles);
+    if (cleanupError !== undefined) throw new AggregateError([error, cleanupError], "Board pending bundle cleanup failed");
+    throw error;
+  }
 }
 
 export async function writeQaBoardBundle(input: BoardBundleInput): Promise<BoardBundleResult> {
@@ -141,10 +220,20 @@ export async function writeQaBoardBundle(input: BoardBundleInput): Promise<Board
   if (!Number.isInteger(input.view.revision) || input.view.revision < 0) throw new Error("Board source revision must be a non-negative integer");
   const boardName = `${input.view.revision}-${invocationId}`;
   assertSafeEntry(boardName, "Board directory");
+  const pendingName = `.pending-${randomUUID()}`;
   const root = await openSecureRoot(resolve(input.stateDir));
-  let directories: { runsFd: number; runFd: number; boardsFd: number; boardFd: number; evidenceFd: number } | undefined;
+  const boardRoot = root.canonical;
+  const directory = join(boardRoot, "runs", input.view.runId, "boards", boardName);
+  const entrypoint = join(directory, "index.html");
+  const boardFiles = new Set(["index.html", "manifest.json"]);
+  const evidenceFiles = new Set<string>();
+  let directories: BoardDirectories | undefined;
+  let published = false;
+  let result: BoardBundleResult | undefined;
+  let failure: unknown;
+  let failed = false;
   try {
-    directories = await openBoardDirectories(root, input.view, boardName);
+    directories = await openBoardDirectories(root, input.view, pendingName);
     const copied = new Set<string>();
     const files: QaBoardManifestFile[] = [];
     let screenshotCount = 0;
@@ -157,23 +246,43 @@ export async function writeQaBoardBundle(input: BoardBundleInput): Promise<Board
         const bytes = await input.artifactReader.readArtifact(screenshot.digest);
         if (bytes.byteLength > QA_BOARD_LIMITS.maxScreenshotBytes || totalBytes + bytes.byteLength > QA_BOARD_LIMITS.maxTotalPreviewBytes) continue;
         if (sha256(bytes) !== screenshot.digest) throw new Error(`screenshot artifact digest mismatch: ${screenshot.digest}`);
-        await writeAtomic(directories.evidenceFd, `${screenshot.digest}.png`, bytes);
+        const evidenceName = `${screenshot.digest}.png`;
+        evidenceFiles.add(evidenceName);
+        await writeAtomic(directories.evidenceFd, evidenceName, bytes);
         copied.add(screenshot.digest);
         screenshotCount += 1;
         totalBytes += bytes.byteLength;
-        files.push({ path: `evidence/${screenshot.digest}.png`, role: "screenshot-preview", sha256: screenshot.digest, artifactDigest: screenshot.digest, observationId: screenshot.observationId });
+        files.push({ path: `evidence/${evidenceName}`, role: "screenshot-preview", sha256: screenshot.digest, bytes: bytes.byteLength, artifactDigest: screenshot.digest, observationId: screenshot.observationId });
       }
     }
     const view = availableScreenshots(input.view, copied);
     const html = new TextEncoder().encode(renderQaBoardHtml(view));
     await writeAtomic(directories.boardFd, "index.html", html);
-    files.unshift({ path: "index.html", role: "entrypoint", sha256: sha256(html) });
+    files.unshift({ path: "index.html", role: "entrypoint", sha256: sha256(html), bytes: html.byteLength });
     const manifest = buildQaBoardManifest({ view, generatedAt: input.generatedAt, invocationId, sessionHost, sessionRef: sessionReference(sessionHost, input.sessionId), files });
     await writeAtomic(directories.boardFd, "manifest.json", new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`));
-    const directory = join(resolve(input.stateDir), "runs", input.view.runId, "boards", boardName);
-    return { directory, entrypoint: join(directory, "index.html"), manifest };
-  } finally {
-    if (directories) closeBoardDirectories(directories);
-    await closeSecureRoot(root);
+    try {
+      secureRenameAt(directories.boardsFd, pendingName, directories.boardsFd, boardName);
+      published = true;
+      secureFsync(directories.boardsFd);
+    } catch (error) {
+      if (isExistingTarget(error)) throw new Error(`Board invocation already exists (${boardName}); choose a new --invocation-id`);
+      throw error;
+    }
+    result = { directory, entrypoint, manifest };
+  } catch (error) {
+    failure = error;
+    failed = true;
   }
+  if (failed && directories) {
+    try {
+      cleanupBoardBundle(directories, published ? boardName : pendingName, boardFiles, evidenceFiles);
+    } catch (cleanupError) {
+      failure = new AggregateError([failure, cleanupError], "Board bundle cleanup failed");
+    }
+  }
+  if (directories) closeBoardDirectories(directories);
+  await closeSecureRoot(root);
+  if (failed) throw failure;
+  return result!;
 }

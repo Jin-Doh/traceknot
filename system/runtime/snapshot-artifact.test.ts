@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, stat, symlink, unlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "bun:test";
@@ -192,6 +192,24 @@ test("local artifact store verifies bytes, preserves the caller path, and is ide
     expect(await store.readArtifact(artifactDigest)).toEqual(bytes);
     expect(await readdir(join(root, "artifacts"))).toEqual(expect.arrayContaining([".objects", ".artifact.lock"]));
   } finally {
+    await cleanup(root);
+  }
+});
+
+test("idempotent artifact publication refreshes the object lease timestamp", async () => {
+  const root = await temporaryDirectory();
+  const artifactRoot = join(root, "artifacts");
+  const bytes = Buffer.from("lease payload");
+  const artifactDigest = digest(bytes);
+  const objectPath = join(artifactRoot, ".objects", artifactDigest);
+  const store = new LocalArtifactStore(artifactRoot);
+  try {
+    await store.storeArtifact({ type: "result", digest: artifactDigest, bytes } as never, request);
+    await utimes(objectPath, new Date("2025-01-01T00:00:00Z"), new Date("2025-01-01T00:00:00Z"));
+    await store.storeArtifact({ type: "result", digest: artifactDigest, bytes } as never, request);
+    expect((await stat(objectPath)).mtimeMs).toBeGreaterThan(Date.parse("2025-01-01T00:00:00Z"));
+  } finally {
+    await store.close();
     await cleanup(root);
   }
 });
