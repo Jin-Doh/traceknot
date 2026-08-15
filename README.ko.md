@@ -239,6 +239,7 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
 | Observation → Claim → Evaluation → Outcome 규범 의미 | [Proof-carrying success](skill/references/proof-carrying-success.md) |
 | 구성 요소, 책임, adapter, 저장소 구조 | [아키텍처](docs/architecture.md) |
 | 증거, capability, 권한, 보안 경계 | [Trust model](docs/trust-model.md) |
+| 정적 QA Board, 저장소 점검, 보존, 정리 | [QA Board](docs/qa-board.md) |
 | 번역 책임과 동기화 규칙 | [다국어 문서 관리](docs/localization.md) |
 | 전체 Toolkit updater 정책과 복구 | [자동 업데이트](docs/automatic-updates.md) |
 | 결정론적 1.0 quality, cache, token-accounting gate | [Release readiness](docs/release-readiness.md) |

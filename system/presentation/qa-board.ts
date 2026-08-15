@@ -52,6 +52,7 @@ export type QaBoardManifestFile = Readonly<{
   path: string;
   role: "entrypoint" | "screenshot-preview";
   sha256: string;
+  bytes: number;
   artifactDigest?: string;
   observationId?: string;
 }>;

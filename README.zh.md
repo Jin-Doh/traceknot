@@ -218,6 +218,7 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
 | Observation → Claim → Evaluation → Outcome 的规范语义 | [Proof-carrying success](skill/references/proof-carrying-success.md) |
 | 组件、职责、adapter 和仓库结构 | [架构](docs/architecture.md) |
 | 证据、capability、权限和安全边界 | [信任模型](docs/trust-model.md) |
+| 静态 QA Board、存储检查、保留与清理 | [QA Board](docs/qa-board.md) |
 | 翻译责任和同步规则 | [本地化](docs/localization.md) |
 | 完整 Toolkit updater 策略和恢复 | [自动更新](docs/automatic-updates.md) |
 | 确定性的 1.0 quality、cache 与 token-accounting gate | [Release readiness](docs/release-readiness.md) |

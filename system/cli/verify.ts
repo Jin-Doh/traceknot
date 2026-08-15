@@ -1,4 +1,4 @@
-import { createHash, createPublicKey, verify as verifySignature } from "node:crypto";
+import { createHash, createPublicKey, randomUUID, verify as verifySignature } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, type FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -35,8 +35,9 @@ import {
   performRiskDiscovery,
 } from "../runtime/verification-run";
 import { captureGitSnapshotIdentity } from "../runtime/git-snapshot";
-import { ArtifactNotFoundError, closeSecureRoot, LocalArtifactStore, openSecureRoot, readSecureRegularFile } from "../runtime/local-artifact-store";
+import { ArtifactNotFoundError, closeSecureRoot, LocalArtifactStore, openSecureRoot, readSecureRegularFile, secureMkdirAt, secureRmdirAt } from "../runtime/local-artifact-store";
 import { LocalShellCollector, type ShellArtifactDeclaration } from "../runtime/local-shell-collector";
+import { pruneStorage } from "../runtime/storage-retention";
 import { FileVerificationRepository } from "../runtime/file-repository";
 import { buildQaBoardView } from "../presentation/qa-board";
 import { openBoard } from "../presentation/board-opener";
@@ -45,7 +46,7 @@ import { notifyBoard } from "../presentation/user-notifier";
 
 export const VERIFY_EXIT_CODES = Object.freeze({ PASS: 0, FAIL: 1, BLOCKED: 2, INCOMPLETE: 3, USAGE: 64, INTERNAL: 70 });
 const MAX_INPUT_BYTES = 4 * 1024 * 1024;
-const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const SAFE_ID = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
 const GIT_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const DANGEROUS_KEYS = new Set(["__proto__", "prototype", "constructor"]);
@@ -70,7 +71,7 @@ type ManifestCommand = Readonly<{
   toolVersion?: string;
 }>;
 type VerifyManifest = Readonly<{ schemaVersion: "verification-manifest/v1"; obligations: readonly ManifestCommand[] }>;
-type CliOptions = Readonly<{ requestPath?: string; manifestPath?: string; rootDir: string; stateDir: string; artifactDir: string; runId?: string; invocationId?: string; expectedHead?: string; assuranceContext: AssuranceContext; format: "json" | "markdown"; reportOnly: boolean; board: boolean; noNotify: boolean; openBoard: boolean; sessionId?: string; sessionHost: string; help: boolean }>;
+type CliOptions = Readonly<{ requestPath?: string; manifestPath?: string; rootDir: string; stateDir: string; artifactDir: string; automaticCacheMaintenance: boolean; runId?: string; invocationId?: string; expectedHead?: string; assuranceContext: AssuranceContext; format: "json" | "markdown"; reportOnly: boolean; board: boolean; noNotify: boolean; openBoard: boolean; sessionId?: string; sessionHost: string; help: boolean }>;
 type CliReport = Readonly<{ schemaVersion: "traceknot-cli-report/v1"; assurance: Readonly<{ context: AssuranceContext; requiredIndependence: "separate-verification-context" | "independent-producer"; releaseStatus: "not-evaluated" | "satisfied" | "insufficient" }>; run: unknown; verdict: unknown; snapshot: Readonly<{ rootIdentity: string; snapshotId: string; head: string; dirty: boolean }>; documents?: unknown }>;
 export type TrustedProducerPolicy = Readonly<{
   schemaVersion: "trusted-producer-policy/v1";
@@ -347,6 +348,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
     else if (arg === "--session-host") sessionHost = next();
     else fail(`unknown option: ${arg}`);
   }
+  const automaticCacheMaintenance = stateDir.length === 0 && artifactDir.length === 0;
   const absoluteRoot = resolve(rootDir);
   if (!stateDir) stateDir = join(homedir(), ".cache", "traceknot", "runs", createHash("sha256").update(absoluteRoot).digest("hex").slice(0, 24));
   if (!artifactDir) artifactDir = join(stateDir, "artifacts");
@@ -355,7 +357,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
   if (sessionId !== undefined && sessionId.includes("\0")) fail("session-id must be NUL-free");
   if (sessionHost.includes("\0") || sessionHost.length > 128) fail("session-host must be NUL-free and at most 128 characters");
   if (expectedHead !== undefined && !GIT_OBJECT_ID.test(expectedHead)) fail("expected-head must be a lowercase Git object ID");
-  return { requestPath, manifestPath, rootDir: absoluteRoot, stateDir: resolve(stateDir), artifactDir: resolve(artifactDir), runId, invocationId, expectedHead, assuranceContext, format, reportOnly, board, noNotify, openBoard, sessionId, sessionHost, help };
+  return { requestPath, manifestPath, rootDir: absoluteRoot, stateDir: resolve(stateDir), artifactDir: resolve(artifactDir), automaticCacheMaintenance, runId, invocationId, expectedHead, assuranceContext, format, reportOnly, board, noNotify, openBoard, sessionId, sessionHost, help };
 }
 function requireString(value: unknown, label: string): string { if (typeof value !== "string" || !value || value.includes("\0")) fail(`${label} must be a non-empty NUL-free string`); return value; }
 function validateManifest(value: unknown): VerifyManifest {
@@ -418,10 +420,10 @@ function validateManifest(value: unknown): VerifyManifest {
         if (!rawDeclaration || typeof rawDeclaration !== "object" || Array.isArray(rawDeclaration)) fail(`executionCompletionArtifacts[${n}] must be an object`);
         const declaration = rawDeclaration as Record<string, unknown>;
         const type = requireString(declaration.type, "execution completion artifact type");
-        const digest = requireString(declaration.digest, "execution completion artifact digest");
         const path = requireString(declaration.path, "execution completion artifact path");
-        if (!DIGEST.test(digest)) fail("execution completion artifact digest must be lowercase SHA-256");
         if (!isAbsolute(path)) fail("execution completion artifact path must be absolute");
+        const digest = requireString(declaration.digest, "execution completion artifact digest");
+        if (!DIGEST.test(digest)) fail("execution completion artifact digest must be lowercase SHA-256");
         return { type, digest, path };
       });
     }
@@ -459,6 +461,49 @@ async function assertExternalDirectory(rootDir: string, directory: string, label
 async function assertExistingExternalDirectory(rootDir: string, directory: string, label: string): Promise<void> {
   if (isInside(rootDir, directory)) fail(`${label} must be outside the Git repository root to keep snapshots stable`);
   const info = await lstat(directory); if (!info.isDirectory() || info.isSymbolicLink()) fail(`${label} must be a real directory`);
+}
+const INVOCATION_COLLECTOR_PREFIX = ".collector-";
+type InvocationCollector = Readonly<{ store: LocalArtifactStore; close: () => Promise<void> }>;
+async function openInvocationCollector(artifactDir: string): Promise<InvocationCollector> {
+  const parent = await openSecureRoot(artifactDir);
+  const name = `${INVOCATION_COLLECTOR_PREFIX}${randomUUID()}`;
+  let created = false;
+  let store: LocalArtifactStore | undefined;
+  try {
+    secureMkdirAt(parent.fd, name, 0o700);
+    created = true;
+    store = new LocalArtifactStore({ rootDir: join(parent.rootDir, name), ephemeral: true });
+    const openedStore = store;
+    let closed = false;
+    return {
+      store: openedStore,
+      close: async () => {
+        if (closed) return;
+        closed = true;
+        const errors: unknown[] = [];
+        let destroyed = false;
+        try { await openedStore.destroyContents(); destroyed = true; } catch (error) { errors.push(error); }
+        if (destroyed) {
+          try { secureRmdirAt(parent.fd, name); } catch (error) { errors.push(error); }
+        }
+        try { await closeSecureRoot(parent); } catch (error) { errors.push(error); }
+        if (errors.length === 1) throw errors[0];
+        if (errors.length > 1) throw new AggregateError(errors, "collector cleanup failed");
+      },
+    };
+  } catch (error) {
+    const cleanupErrors: unknown[] = [];
+    let destroyed = false;
+    if (store) {
+      try { await store.destroyContents(); destroyed = true; } catch (cleanupError) { cleanupErrors.push(cleanupError); }
+    }
+    if (created && (!store || destroyed)) {
+      try { secureRmdirAt(parent.fd, name); } catch (cleanupError) { cleanupErrors.push(cleanupError); }
+    }
+    try { await closeSecureRoot(parent); } catch (cleanupError) { cleanupErrors.push(cleanupError); }
+    if (cleanupErrors.length > 0) throw new AggregateError([error, ...cleanupErrors], "invocation collector setup failed", { cause: error });
+    throw error;
+  }
 }
 function digest(value: unknown): string { return createHash("sha256").update(canonicalizeJson(value)).digest("hex"); }
 function localProducer(): Producer {
@@ -591,8 +636,22 @@ export function validateScreenshotArtifact(bytes: Uint8Array, artifactDigest: st
 }
 async function makeDependencies(options: CliOptions, request: VerificationRequest, manifest: VerifyManifest | undefined, repository: FileVerificationRepository, snapshotId: string, trustedPolicy: TrustedProducerPolicy | undefined): Promise<{ dependencies: VerificationRunDependencies; close: () => Promise<void> }> {
   const mainStore = new LocalArtifactStore(options.artifactDir);
-  const collectorStore = new LocalArtifactStore(join(options.artifactDir, "collector"));
-  const collector = new LocalShellCollector({ rootDir: options.rootDir, rootIdentity: request.project.rootIdentity, snapshotId, artifactStore: collectorStore, toolVersion: "traceknot-cli", envAllowlist: ["HOME", "TMPDIR", "LANG", "LC_ALL"] });
+  let invocationCollector: InvocationCollector;
+  try {
+    invocationCollector = await openInvocationCollector(options.artifactDir);
+  } catch (error) {
+    await mainStore.close().catch(() => undefined);
+    await repository.close().catch(() => undefined);
+    throw error;
+  }
+  const collectorStore = invocationCollector.store;
+  let collector: LocalShellCollector;
+  try {
+    collector = new LocalShellCollector({ rootDir: options.rootDir, rootIdentity: request.project.rootIdentity, snapshotId, artifactStore: collectorStore, toolVersion: "traceknot-cli", envAllowlist: ["HOME", "TMPDIR", "LANG", "LC_ALL"] });
+  } catch (error) {
+    await Promise.allSettled([invocationCollector.close(), mainStore.close(), repository.close()]);
+    throw error;
+  }
   const commands = new Map((manifest?.obligations ?? []).map(command => [command.id, command]));
   const executionAuthority = {
     atomicCanonicalBindingIdempotency: true as const,
@@ -703,22 +762,48 @@ async function makeDependencies(options: CliOptions, request: VerificationReques
 
     now: () => new Date(),
   };
-  return { dependencies, close: async () => { await collectorStore.close(); await mainStore.close(); await repository.close(); } };
+  return {
+    dependencies,
+    close: async () => {
+      const errors: unknown[] = [];
+      try { await invocationCollector.close(); } catch (error) { errors.push(error); }
+      try { await mainStore.close(); } catch (error) { errors.push(error); }
+      try { await repository.close(); } catch (error) { errors.push(error); }
+      if (errors.length === 1) throw errors[0];
+      if (errors.length > 1) throw new AggregateError(errors, "verification resource cleanup failed");
+    },
+  };
+}
+
+async function maintainDefaultCache(options: CliOptions, stderr: (text: string) => void, protectedRunIds: readonly string[] = []): Promise<void> {
+  if (!options.automaticCacheMaintenance) return;
+  try {
+    const report = await pruneStorage({ stateDir: options.stateDir, artifactDir: options.artifactDir, protectedRunIds, apply: true });
+    const deleted = Object.values(report.deleted).reduce((count, paths) => count + paths.length, 0);
+    if (deleted > 0) stderr(`Traceknot storage maintenance: deleted ${deleted} expired cache entries\n`);
+    for (const warning of report.warnings) stderr(`Traceknot storage maintenance: ${warning}\n`);
+  } catch (error) {
+    stderr(`Traceknot storage maintenance unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
 }
 
 async function generateBoardForResult(options: CliOptions, result: RunVerificationResult, stderr: (text: string) => void): Promise<void> {
   if (!options.board) return;
-  const artifactStore = new LocalArtifactStore(options.artifactDir);
+  await maintainDefaultCache(options, stderr, [result.run.runId]);
+  let published = false;
+  let artifactStore: LocalArtifactStore | undefined;
   try {
+    artifactStore = new LocalArtifactStore(options.artifactDir);
     const board = await writeQaBoardBundle({
       view: buildQaBoardView({ run: result.run, verdict: result.verdict, documents: result.documents }),
       invocationId: options.invocationId,
       stateDir: options.stateDir,
       sessionHost: options.sessionHost,
       sessionId: options.sessionId,
-      generatedAt: result.run.updatedAt,
+      generatedAt: new Date().toISOString(),
       artifactReader: artifactStore,
     });
+    published = true;
     const boardUri = pathToFileURL(board.entrypoint).href;
     stderr(`Traceknot Board: ${boardUri}\n`);
     if (!options.noNotify) {
@@ -732,8 +817,9 @@ async function generateBoardForResult(options: CliOptions, result: RunVerificati
   } catch (error) {
     stderr(`Traceknot Board unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
   } finally {
-    await artifactStore.close();
+    await artifactStore?.close().catch(error => stderr(`Traceknot Board cleanup failed: ${error instanceof Error ? error.message : String(error)}\n`));
   }
+  if (published) await maintainDefaultCache(options, stderr, [result.run.runId]);
 }
 
 async function loadReport(repository: FileVerificationRepository, runId: string, snapshot: Awaited<ReturnType<typeof captureGitSnapshotIdentity>>): Promise<CliReport> {
@@ -766,6 +852,7 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
       await assertExternalDirectory(options.rootDir, options.artifactDir, "artifact-dir");
     }
     const repository = new FileVerificationRepository(options.stateDir);
+    stores = repository;
     const requestInput = options.requestPath ? validateRequest(await readBoundedJson(options.requestPath)) : undefined;
     const trustedPolicy = await loadTrustedProducerPolicy();
     const runId = options.runId ?? requestInput?.requestId;
@@ -789,12 +876,8 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
       const freshnessAuthority = { atomicSameKeyIdempotency: true as const, issueFreshnessAuthority: async (binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["issueFreshnessAuthority"]>>[0]) => freshnessAuthorityFor(binding), verifyFreshnessAuthority: async (authority: FreshnessAuthority, binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["verifyFreshnessAuthority"]>>[1]) => authority.issuer === "traceknot-cli" && canonicalizeJson(authority.binding) === canonicalizeJson(binding) };
       const dependencies: VerificationRunDependencies = { repository, executor: {}, artifactStore: {}, capabilityProvider: { has: () => false }, executionAuthority, freshnessPolicy: { evaluateFreshness: () => "unknown" }, freshnessAuthority, snapshotVerifier: async () => { const current = await captureGitSnapshotIdentity(options.rootDir); return current.rootIdentity === persistedRequest.project.rootIdentity && current.snapshotId === persistedRequest.project.snapshotId; }, now: () => new Date() };
       const result = await validatePersistedVerificationRun({ runId, request: persistedRequest, dependencies });
-<<<<<<< HEAD
-      const report: CliReport = { schemaVersion: "traceknot-cli-report/v1", assurance: assuranceFor(persistedRequest, result.verdict, result.documents.plan), run: result.run, verdict: result.verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: result.documents };
-=======
       await generateBoardForResult(options, result, stderr);
-      const report: CliReport = { schemaVersion: "traceknot-cli-report/v1", run: result.run, verdict: result.verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: result.documents };
->>>>>>> dfc3326 (feat: add immutable QA Board bundles)
+      const report: CliReport = { schemaVersion: "traceknot-cli-report/v1", assurance: assuranceFor(persistedRequest, result.verdict, result.documents.plan), run: result.run, verdict: result.verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: result.documents };
       stdout(reportOutput(report, options.format));
       return exitForVerdict(result.verdict);
     }
@@ -820,12 +903,8 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
     }
     const dependenciesResult = await makeDependencies(options, request, manifest, repository, snapshot.snapshotId, trustedPolicy); stores = dependenciesResult;
     const result = await runVerification({ runId, request, dependencies: dependenciesResult.dependencies });
-<<<<<<< HEAD
-    const report: CliReport = { schemaVersion: "traceknot-cli-report/v1", assurance: assuranceFor(request, result.verdict, result.documents.plan), run: result.run, verdict: result.verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: result.documents };
-=======
     await generateBoardForResult(options, result, stderr);
-    const report: CliReport = { schemaVersion: "traceknot-cli-report/v1", run: result.run, verdict: result.verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: result.documents };
->>>>>>> dfc3326 (feat: add immutable QA Board bundles)
+    const report: CliReport = { schemaVersion: "traceknot-cli-report/v1", assurance: assuranceFor(request, result.verdict, result.documents.plan), run: result.run, verdict: result.verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: result.documents };
     stdout(reportOutput(report, options.format));
     return exitForVerdict(result.verdict);
   } catch (error) {

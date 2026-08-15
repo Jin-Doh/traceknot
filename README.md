@@ -239,6 +239,7 @@ Runnable updater commands, including active-layout and legacy-layout path select
 | Normative Observation → Claim → Evaluation → Outcome semantics | [Proof-carrying success](skill/references/proof-carrying-success.md) |
 | Components, responsibilities, adapters, and repository layout | [Architecture](docs/architecture.md) |
 | Evidence, capability, authority, and security boundaries | [Trust model](docs/trust-model.md) |
+| Static QA Board, storage inspection, retention, and cleanup | [QA Board](docs/qa-board.md) |
 | Translation ownership and synchronization | [Localization](docs/localization.md) |
 | Full-toolkit updater policy and recovery | [Automatic updates](docs/automatic-updates.md) |
 | Deterministic 1.0 quality, cache, and token-accounting gates | [Release readiness](docs/release-readiness.md) |

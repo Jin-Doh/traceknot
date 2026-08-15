@@ -56,6 +56,9 @@ describe("reusable governed GitHub Action", () => {
       "format",
       "artifact-name",
       "board",
+      "artifact-retention-days",
+      "board-retention-days",
+      "cleanup-local-after-upload",
       "sarif-path",
     ]);
     expect(steps.map((step) => step.id ?? step.name)).toEqual([
@@ -65,7 +68,9 @@ describe("reusable governed GitHub Action", () => {
       "verify",
       "summary",
       "artifact",
+      "board-artifact",
       "sarif",
+      "cleanup",
     ]);
     expect(steps.filter((step) => typeof step.uses === "string").every((step) =>
       /^[^@]+@[0-9a-f]{40}$/.test(String(step.uses).split(" #", 1)[0] ?? "")
@@ -80,10 +85,50 @@ describe("reusable governed GitHub Action", () => {
     expect(String(steps[3]?.run)).toContain("status.txt");
     expect(steps[4]?.if).toBe("always()");
     expect(steps[5]?.if).toBe("always()");
-    expect(object(steps[5]?.with, "artifact inputs").name).toContain(
-      "${{ steps.prepare.outputs.invocation-id }}",
-    );
-    expect(object(steps[5]?.with, "artifact inputs")["include-hidden-files"]).toBe(true);
+    expect(steps[6]?.if).toBe("${{ always() && inputs.board == 'true' }}");
+    expect(steps[7]?.if).toBe("${{ always() && inputs.sarif-path != '' }}");
+    expect(steps[8]?.if).toBe("${{ always() && inputs.cleanup-local-after-upload == 'true' && steps.prepare.outcome == 'success' && steps.artifact.outcome == 'success' && (steps['board-artifact'].outcome == 'success' || steps['board-artifact'].outcome == 'skipped') && (steps.sarif.outcome == 'success' || steps.sarif.outcome == 'skipped') }}");
+    expect(object(inputs["artifact-retention-days"], "artifact retention input").default).toBe("30");
+    expect(object(inputs["board-retention-days"], "Board retention input").default).toBe("14");
+    expect(object(inputs["cleanup-local-after-upload"], "local cleanup input").default).toBe("false");
+    const artifactInputs = object(steps[5]?.with, "artifact inputs");
+    expect(artifactInputs.name).toContain("${{ steps.prepare.outputs.invocation-id }}");
+    expect(String(artifactInputs.path)).toContain("!${{ steps.prepare.outputs.board-path }}/**/boards");
+    expect(String(artifactInputs.path)).toContain("!${{ steps.prepare.outputs.board-path }}/**/boards/**");
+    expect(String(artifactInputs.path)).not.toContain("!${{ steps.prepare.outputs.board-path }}\n");
+    expect(artifactInputs["include-hidden-files"]).toBe(true);
+    expect(artifactInputs["retention-days"]).toBe("${{ inputs.artifact-retention-days }}");
+    const boardInputs = object(steps[6]?.with, "Board artifact inputs");
+    expect(boardInputs.name).toContain("-board-${{ steps.prepare.outputs.invocation-id }}");
+    expect(boardInputs.path).toBe("${{ steps.prepare.outputs.board-path }}/**/boards/*-${{ steps.prepare.outputs.invocation-id }}/**");
+    expect(boardInputs["if-no-files-found"]).toBe("ignore");
+    expect(boardInputs["retention-days"]).toBe("${{ inputs.board-retention-days }}");
+    expect(String(steps[8]?.run)).toContain("rm -rf -- \"$TRACEKNOT_EVIDENCE\"");
+  });
+
+  test("rejects invalid retention inputs before verification", async () => {
+    const runner = await mkdtemp(join(tmpdir(), "traceknot-action-invalid-retention-"));
+    try {
+      const action = await yaml("action.yml");
+      const steps = object(action.runs, "action runs").steps as readonly YamlObject[];
+      const prepare = steps[2];
+      const result = Bun.spawn(["bash", "-c", String(prepare?.run)], {
+        cwd: resolve("."),
+        env: {
+          ...process.env,
+          RUNNER_TEMP: runner,
+          TRACEKNOT_ARTIFACT_RETENTION_DAYS: "0",
+          TRACEKNOT_BOARD_RETENTION_DAYS: "14",
+          TRACEKNOT_CLEANUP_LOCAL: "false",
+          TRACEKNOT_BOARD: "false",
+        },
+        stdout: "ignore",
+        stderr: "pipe",
+      });
+      expect(await result.exited).toBe(64);
+    } finally {
+      await rm(runner, { recursive: true, force: true });
+    }
   });
 
   test("binds every governed input to one immutable HEAD commit", async () => {
@@ -149,6 +194,9 @@ exit "$status"
           TRACEKNOT_MANIFEST: "manifest.json",
           TRACEKNOT_SARIF: "",
           TRACEKNOT_BOARD: "false",
+          TRACEKNOT_ARTIFACT_RETENTION_DAYS: "30",
+          TRACEKNOT_BOARD_RETENTION_DAYS: "14",
+          TRACEKNOT_CLEANUP_LOCAL: "false",
         },
         stdout: "ignore",
         stderr: "pipe",
@@ -217,6 +265,9 @@ exit "$status"
         TRACEKNOT_FORMAT: "json",
         TRACEKNOT_BOARD: "false",
         TRACEKNOT_SARIF: "",
+        TRACEKNOT_ARTIFACT_RETENTION_DAYS: "30",
+        TRACEKNOT_BOARD_RETENTION_DAYS: "14",
+        TRACEKNOT_CLEANUP_LOCAL: "false",
       };
       const preparation = Bun.spawn(["bash", "-c", String(prepare?.run)], {
         cwd: resolve("."),
