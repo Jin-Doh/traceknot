@@ -103,7 +103,14 @@ async function openBoardDirectories(root: SecureRootDescriptor, view: QaBoardVie
   try {
     runFd = openSecureDirectory(runsFd, view.runId);
     boardsFd = openOrCreateSecureDirectory(runFd, "boards");
-    secureMkdirAt(boardsFd, boardName, 0o700);
+    try {
+      secureMkdirAt(boardsFd, boardName, 0o700);
+    } catch (error) {
+      if (error instanceof Error && /\(errno 17\)$/.test(error.message)) {
+        throw new Error(`Board invocation already exists (${boardName}); choose a new --invocation-id`);
+      }
+      throw error;
+    }
     boardFd = openSecureDirectory(boardsFd, boardName);
     secureMkdirAt(boardFd, "evidence", 0o700);
     evidenceFd = openSecureDirectory(boardFd, "evidence");

@@ -67,6 +67,18 @@ test("creates a separate immutable directory for each invocation", async () => {
     await fixture.cleanup();
   }
 });
+test("explains duplicate invocation IDs without replacing the published Board", async () => {
+  const fixture = await stateFixture();
+  try {
+    const input = { view: viewWithScreenshot(), stateDir: fixture.root, invocationId: "invocation-duplicate", generatedAt: "2026-08-15T00:01:00Z", artifactReader: { readArtifact: async () => SCREENSHOT_BYTES } };
+    const first = await writeQaBoardBundle(input);
+    await expect(writeQaBoardBundle(input)).rejects.toThrow("Board invocation already exists (9-invocation-duplicate); choose a new --invocation-id");
+    expect(await readFile(join(first.directory, "index.html"), "utf8")).toContain("Board store fixture");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 
 test("rejects an existing run symlink", async () => {
   const fixture = await stateFixture();
