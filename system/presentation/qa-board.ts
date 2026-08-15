@@ -440,6 +440,9 @@ function visualPercent(covered: number, total: number): number | undefined {
   return total === 0 ? undefined : Math.round(covered / total * 100);
 }
 
+const FLOW_COVERAGE_KEYS = ["basis", "risks", "conditions"] as const;
+const COVERAGE_KEYS = [...FLOW_COVERAGE_KEYS, "mandatoryObligations"] as const;
+
 function visualizationHtml(view: QaBoardView, locale: QaBoardLocale): string {
   const copy = BOARD_COPY[locale];
   const healthTotal = view.counts.mandatory;
@@ -456,11 +459,14 @@ function visualizationHtml(view: QaBoardView, locale: QaBoardLocale): string {
     ? `<span class="distribution-empty">${escapeHtml(copy.none)}</span>`
     : distribution.filter(item => item.value > 0).map(item => `<span class="distribution-segment segment-${item.key.toLowerCase()}" style="width:${item.value / distributionTotal * 100}%" aria-hidden="true"></span>`).join("");
   const distributionLegend = distribution.map(item => `<span class="distribution-key status-${item.key.toLowerCase()}"><i aria-hidden="true"></i><strong>${item.value}</strong> ${escapeHtml(copy.status[item.key])}</span>`).join("");
-  const coverageStages = (Object.entries(view.coverage) as [string, { total: number; covered: number; uncoveredIds: readonly string[] }][]).map(([name, value]) => ({
-    label: coverageLabel(name, locale),
-    covered: value.covered,
-    total: value.total,
-  }));
+  const coverageStages = FLOW_COVERAGE_KEYS.map(name => {
+    const value = view.coverage[name];
+    return {
+      label: coverageLabel(name, locale),
+      covered: value.covered,
+      total: value.total,
+    };
+  });
   const evidenceTotal = distributionTotal;
   const evidencePassed = view.counts.passed;
   const flowStages = [
@@ -485,7 +491,8 @@ function visualizationHtml(view: QaBoardView, locale: QaBoardLocale): string {
 export function renderQaBoardHtml(view: QaBoardView, locale: QaBoardLocale = "en"): string {
   const copy = BOARD_COPY[locale];
   const attention = view.findings.filter(item => item.status !== "PASS");
-  const coverageRows = Object.entries(view.coverage).map(([name, value]) => {
+  const coverageRows = COVERAGE_KEYS.map(name => {
+    const value = view.coverage[name];
     const percent = visualPercent(value.covered, value.total);
     const label = coverageLabel(name, locale);
     const percentageLabel = percent === undefined ? copy.notApplicable : `${percent}%`;
