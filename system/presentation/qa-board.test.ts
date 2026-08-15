@@ -108,6 +108,13 @@ describe("QA Board projection", () => {
     expect(html).toContain(".findings::before");
   });
 
+  test("keeps the verification flow fully visible in its card", () => {
+    const html = renderQaBoardHtml(buildQaBoardView(source()));
+    expect(html).toContain(".flow{display:grid;grid-template-columns:28px minmax(0,1fr);gap:0 9px;overflow:visible}");
+    expect(html).toContain(".flow-step{grid-column:1 / -1;min-width:0}");
+    expect(html).toContain(".flow-connector{grid-column:1;width:2px;min-width:2px;height:18px;margin-left:12px}");
+  });
+
   test("keeps verification flow order independent of coverage object insertion order", () => {
     const initial = source();
     const coverage = initial.verdict.coverage;
