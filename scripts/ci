@@ -57,10 +57,11 @@ bun scripts/check-readme-contract.ts
 bun x --no-install tsc --ignoreConfig --noEmit --strict --types bun \
     --target ES2022 --module ESNext --moduleResolution Bundler \
     scripts/check-readme-contract.ts
+printf '%s\n' '==> portable Skill egress boundary'
+bun scripts/check-skill-egress.ts
 
 printf '%s\n' '==> prompt-injection risk'
 bun scripts/audit-prompt-injection.ts --threshold high
-
 printf '%s\n' '==> published prose quality'
 PROSE_REPORT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-prose.XXXXXX")
 PROSE_REPORT=$PROSE_REPORT_DIR/report.json
