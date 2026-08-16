@@ -113,7 +113,21 @@ function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
 
 function snapshotPayload<TPayload>(payload: TPayload): TPayload {
   if (payload === null || typeof payload !== "object") return payload;
-  return deepFreeze(structuredClone(payload));
+  if (typeof FormData !== "undefined" && payload instanceof FormData) {
+    const copy = new FormData();
+    for (const [name, value] of payload.entries()) copy.append(name, value);
+    return copy as TPayload;
+  }
+  if (typeof Request !== "undefined" && payload instanceof Request) return payload.clone() as TPayload;
+  if (typeof URLSearchParams !== "undefined" && payload instanceof URLSearchParams) return new URLSearchParams(payload) as TPayload;
+  if (typeof ReadableStream !== "undefined" && payload instanceof ReadableStream) {
+    throw new Error("ReadableStream payloads are not supported by governed egress");
+  }
+  try {
+    return deepFreeze(structuredClone(payload));
+  } catch (error) {
+    throw new Error("payload must be a supported snapshot-able transport body", { cause: error });
+  }
 }
 
 function nonEmpty(value: string, label: string): void {
@@ -276,11 +290,11 @@ export async function executeGovernedEgress<TPayload, TResult>(
   const scopeSnapshot = snapshotScope(scope);
   const fallbackIntent = malformedMandatoryIntent(intent);
   if (fallbackIntent !== undefined && (scopeSnapshot.origin === "skill" || scopeSnapshot.origin === "unknown")) {
-    validScope(scopeSnapshot);
     const decision = scopeSnapshot.origin === "skill" ? "deny" : "blocked";
     const reason = scopeSnapshot.origin === "skill" ? "SKILL_ORIGIN_EGRESS" : "ORIGIN_UNATTRIBUTABLE";
     const observation = observe(scopeSnapshot, fallbackIntent, decision, reason);
     await evidence.failed(observation);
+    validScope(scopeSnapshot);
     validIntent(intent);
     throw new GovernedEgressDeniedError(observation);
   }
@@ -323,12 +337,9 @@ export class UpdaterAuthority {
   private constructor() {}
   readonly #issuer = "updater-subsystem" as const;
   get issuer(): "updater-subsystem" { return this.#issuer; }
-  private static create(): UpdaterAuthority {
-    const authority = new UpdaterAuthority();
-    updaterAuthorities.add(authority);
-    return authority;
+  static {
+    updaterAuthorities.add(new UpdaterAuthority());
   }
-  private static readonly trusted = UpdaterAuthority.create();
 }
 
 export type UpdaterRequest<TPayload> = Readonly<{
