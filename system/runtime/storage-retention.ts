@@ -655,21 +655,24 @@ function candidatePlan(inventory: StorageInventory, policy: StorageRetentionPoli
     }
   }
   const runCandidates: StorageEntry[] = [];
-  let remainingRunBytes = runInfo.reduce((sum, item) => sum + item.bytes, 0);
+  const sharedDigests = new Set(Object.values(inventory.runReferences).flatMap(digests => digests));
+  const canonicalObjectBytes = inventory.objects
+    .filter(object => object.digest !== undefined && sharedDigests.has(object.digest) && !object.malformed)
+    .reduce((sum, object) => sum + object.bytes, 0);
+  let remainingCanonicalBytes = runInfo.reduce((sum, item) => sum + item.bytes, 0) + canonicalObjectBytes;
   const runOrder = [...runInfo].sort((a, b) => (a.logicalUpdatedAt ?? a.mtimeMs) - (b.logicalUpdatedAt ?? b.mtimeMs) || a.relativePath.localeCompare(b.relativePath));
   for (const run of runOrder) {
     if (run.malformed || run.protectedReason || protectedRunIds.has(run.runId!) || run.runId === newestTerminalId || run.logicalUpdatedAt === undefined || run.logicalUpdatedAt > now) continue;
-    if (now - run.logicalUpdatedAt >= policy.canonicalRunTtlMs) { runCandidates.push(run); remainingRunBytes -= run.bytes; }
+    if (now - run.logicalUpdatedAt >= policy.canonicalRunTtlMs) { runCandidates.push(run); remainingCanonicalBytes -= run.bytes; }
   }
-  if (remainingRunBytes > policy.canonicalQuotaBytes) {
+  if (remainingCanonicalBytes > policy.canonicalQuotaBytes) {
     for (const run of runOrder) {
       if (runCandidates.some(item => item.relativePath === run.relativePath) || run.malformed || run.protectedReason || protectedRunIds.has(run.runId!) || run.runId === newestTerminalId || run.logicalUpdatedAt === undefined || run.logicalUpdatedAt > now) continue;
       runCandidates.push(run);
-      remainingRunBytes -= run.bytes;
-      if (remainingRunBytes <= policy.canonicalQuotaBytes) break;
+      remainingCanonicalBytes -= run.bytes;
+      if (remainingCanonicalBytes <= policy.canonicalQuotaBytes) break;
     }
   }
-  const sharedDigests = new Set(Object.values(inventory.runReferences).flatMap(digests => digests));
   const matureMarks = new Map(Object.entries(gcMarks).filter(([digest, markedAt]) => DIGEST.test(digest) && Number.isFinite(markedAt) && markedAt <= now - policy.graceMs));
   const objectCandidates = gcMarksMalformed || inventory.counts.malformedRuns > 0 ? [] : inventory.objects.filter(object => {
     if (object.malformed || object.digest === undefined || sharedDigests.has(object.digest)) return false;

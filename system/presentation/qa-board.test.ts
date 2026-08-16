@@ -18,7 +18,7 @@ function source(overrides: Partial<BoardSource> = {}): BoardSource {
     snapshotId: SNAPSHOT,
     producer: { kind: "ci", identity: "fixture-ci", independence: "independent-producer" },
     execution: { kind: "browser", identity: "fixture-browser", startedAt: "2026-08-15T00:00:00Z", finishedAt: "2026-08-15T00:00:01Z", exitStatus: "passed" },
-    artifacts: [{ type: "screenshot", digest: SCREENSHOT, path: "/tmp/checkout.png" }],
+    artifacts: [{ type: "screenshot", digest: SCREENSHOT, path: "/tmp/checkout.png" }, { type: "verification-result", digest: "b".repeat(64) }],
   };
   const evaluation: EvidenceEvaluation = {
     schemaVersion: "evidence-evaluation/v1",
@@ -52,6 +52,18 @@ describe("QA Board projection", () => {
     expect(view.findings[0]).toMatchObject({ obligationId: "obligation:checkout", status: "PASS", expectedResults: ["Submit remains visible."] });
     expect(view.findings[0]?.screenshots).toEqual([{ digest: SCREENSHOT, observationId: OBSERVATION_ID }]);
     expect(view.assurance).toEqual({ context: "release", requiredIndependence: "independent-producer", releaseStatus: "satisfied" });
+  });
+  test("uses evaluated evidence status instead of raw executor verdict", () => {
+    const initial = source();
+    const evidence = initial.documents.evidence!;
+    const evaluation = evidence.evaluations[0]!;
+    const rejected = { ...evaluation, status: "REJECTED" as const, checks: { ...evaluation.checks, independenceSatisfied: false }, rejectionReasons: ["INDEPENDENCE_NOT_MET" as const] };
+    const view = buildQaBoardView({
+      ...initial,
+      verdict: { ...initial.verdict, qaVerdict: "BLOCKED", obligationSummary: { mandatory: 1, passed: 0, failed: 0, blocked: 1, incomplete: 0 } },
+      documents: { ...initial.documents, evidence: { ...evidence, evaluations: [rejected] } },
+    });
+    expect(view.findings[0]).toMatchObject({ status: "BLOCKED", evaluation: { status: "REJECTED", rejectionReasons: ["INDEPENDENCE_NOT_MET"] } });
   });
 
   test("sorts failures before blocked, incomplete, and pass", () => {
