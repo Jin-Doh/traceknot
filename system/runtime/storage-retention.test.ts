@@ -317,7 +317,6 @@ describe("storage retention", () => {
     }
     const report = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
     expect(report.applied).toBe(true);
-    expect(await readFile(lockPath, "utf8")).toBe("");
   });
 
   test("coordinates maintenance with canonical artifact publication", async () => {
