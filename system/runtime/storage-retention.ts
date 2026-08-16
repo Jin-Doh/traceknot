@@ -988,7 +988,8 @@ export async function pruneStorage(input: StorageMaintenanceOptions): Promise<St
       gcMarksState = artifactLock ? await loadGcMarks(inventory.directories.artifactDir, artifactLock.root) : { marks: {}, malformed: false };
       if (gcMarksState.malformed) warnings.push("GC marks are malformed; object deletion is disabled until they are repaired");
       const phasePlan = candidatePlan(inventory, policy, now, {}, gcMarksState.malformed, protectedRunIds);
-      plan = { candidates: { ...phasePlan.candidates, objects: [] }, protected: phasePlan.protected };
+      if (stateLock) assertSecureRoot(stateLock.root);
+      if (artifactLock) assertSecureRoot(artifactLock.root);
       const phaseDeleted = await applyCandidates(inventory, plan.candidates, stateLock, artifactLock);
       deleted = mergeDeleted(deleted, phaseDeleted);
       if (stateLock) assertSecureRoot(stateLock.root);
@@ -1001,7 +1002,8 @@ export async function pruneStorage(input: StorageMaintenanceOptions): Promise<St
         const marks = reconcileGcMarks(inventory, gcMarksState.marks, now, newlyUnreferenced);
         await writeGcMarks(artifactLock.root, marks);
         const objectPlan = candidatePlan(inventory, policy, now, marks, false, protectedRunIds);
-        plan = { candidates: { ...plan.candidates, objects: objectPlan.candidates.objects }, protected: objectPlan.protected };
+        if (stateLock) assertSecureRoot(stateLock.root);
+        assertSecureRoot(artifactLock.root);
         const objectDeleted = await applyCandidates(inventory, { boards: [], runs: [], objects: objectPlan.candidates.objects, collector: [], staging: [] }, stateLock, artifactLock);
         deleted = mergeDeleted(deleted, objectDeleted);
         if (stateLock) assertSecureRoot(stateLock.root);
