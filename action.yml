@@ -102,6 +102,10 @@ runs:
           chmod 600 "$destination"
         }
 
+        case "$TRACEKNOT_ASSURANCE" in
+          local|release) ;;
+          *) printf 'assurance must be local or release\n' >&2; exit 64 ;;
+        esac
         case "$TRACEKNOT_MODE" in
           self-hosting)
             report_path="${evidence_path}/report.json"
@@ -113,10 +117,6 @@ runs:
               json|markdown) ;;
               *) printf 'format must be json or markdown\n' >&2; exit 64 ;;
             esac
-            case "$TRACEKNOT_ASSURANCE" in
-              local|release) ;;
-              *) printf 'assurance must be local or release\n' >&2; exit 64 ;;
-            esac
             request_path="${input_path}/request.json"
             manifest_path="${input_path}/manifest.json"
             tracked_file "$TRACEKNOT_REQUEST" "$request_path"
@@ -125,7 +125,6 @@ runs:
             ;;
           *) printf 'mode must be self-hosting or manifest\n' >&2; exit 64 ;;
         esac
-
         sarif_path=''
         if test -n "$TRACEKNOT_SARIF"; then
           sarif_path="${input_path}/report.sarif"
