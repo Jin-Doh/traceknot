@@ -10,7 +10,6 @@ import {
   type EgressIntent,
   type GovernedTransport,
   type TrustedExecutionScope,
-  UpdaterAuthority,
 } from "./skill-egress-policy";
 
 const destination = canonicalizeDestination("https://example.test/qa");
@@ -131,16 +130,13 @@ describe("governed Skill egress boundary", () => {
     expect(evidence.events).toEqual(["PREPARED", "FAILED"]);
   });
 
-  test("keeps updater execution on a separate authority API", async () => {
-    const authority = UpdaterAuthority.issue();
-    const calls: string[] = [];
-    const result = await executeUpdaterEgress(authority, {
+  test("rejects unissued updater authorities", async () => {
+    const forgedAuthority = { issuer: "updater-subsystem" } as unknown as Parameters<typeof executeUpdaterEgress>[0];
+    await expect(executeUpdaterEgress(forgedAuthority, {
       destination,
       protocol: "https",
       payload: "release",
-    }, transport("updated", calls));
-    expect(result).toBe("updated");
-    expect(calls).toEqual(["example.test:release"]);
+    }, transport("updated"))).rejects.toThrow("invalid updater authority");
   });
   test("does not attach failure to an allowed observation", () => {
     const observation = evaluateGovernedEgress(scope, intent, authorization);

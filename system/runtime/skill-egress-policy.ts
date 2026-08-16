@@ -321,13 +321,14 @@ const updaterAuthorities = new WeakSet<UpdaterAuthority>();
 
 export class UpdaterAuthority {
   private constructor() {}
-  static issue(): UpdaterAuthority {
+  readonly #issuer = "updater-subsystem" as const;
+  get issuer(): "updater-subsystem" { return this.#issuer; }
+  private static create(): UpdaterAuthority {
     const authority = new UpdaterAuthority();
     updaterAuthorities.add(authority);
     return authority;
   }
-  readonly #issuer = "updater-subsystem" as const;
-  get issuer(): "updater-subsystem" { return this.#issuer; }
+  private static readonly trusted = UpdaterAuthority.create();
 }
 
 export type UpdaterRequest<TPayload> = Readonly<{
@@ -345,7 +346,7 @@ export async function executeUpdaterEgress<TPayload, TResult>(
   return transport.send(freeze({
     authorizationId: `updater:${crypto.randomUUID()}`,
     scopeId: "updater",
-    destination: request.destination,
+    destination: freeze({ ...request.destination }),
     protocol: request.protocol,
     executionSurface: "native-http-client",
     dataClasses: ["public"],
