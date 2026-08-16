@@ -14,6 +14,7 @@ const base: SkillEgressPolicyInput = {
   transport: "https",
   dataClasses: ["public"],
   authorizationBasisId: "basis-public-qa",
+  authorizedTransport: "https",
   authorizedDestination: "https://example.test/qa",
 };
 
@@ -23,6 +24,12 @@ describe("Skill-origin egress policy", () => {
       decision: "allow",
       reason: "AUTHORIZED_USER_TASK",
       origin: "user-task",
+    });
+  });
+  test("does not reuse authorization across transports", () => {
+    expect(decideSkillEgress({ ...base, transport: "subprocess" })).toMatchObject({
+      decision: "deny",
+      reason: "MISSING_AUTHORIZATION",
     });
   });
   test("snapshots data classes in the observation", () => {

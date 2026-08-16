@@ -50,6 +50,7 @@ export type SkillEgressPolicyInput = Readonly<{
   dataClasses: readonly EgressDataClass[];
   authorizationBasisId?: string;
   authorizedDestination?: string;
+  authorizedTransport?: EgressTransport;
   sensitiveDataAuthorized?: boolean;
   requestId?: string;
   obligationId?: string;
@@ -95,6 +96,9 @@ function validateInput(input: SkillEgressPolicyInput): void {
   nonEmpty(input.destination, "destination");
   if (input.authorizationBasisId !== undefined) nonEmpty(input.authorizationBasisId, "authorizationBasisId");
   if (input.authorizedDestination !== undefined) nonEmpty(input.authorizedDestination, "authorizedDestination");
+  if (input.authorizedTransport !== undefined && !EGRESS_TRANSPORTS.includes(input.authorizedTransport)) {
+    throw new Error("authorizedTransport is invalid");
+  }
   if (input.requestId !== undefined) nonEmpty(input.requestId, "requestId");
   if (input.obligationId !== undefined) nonEmpty(input.obligationId, "obligationId");
   if (input.mandatory === true && (input.requestId === undefined || input.obligationId === undefined)) {
@@ -166,6 +170,7 @@ function hasSensitiveData(dataClasses: readonly EgressDataClass[]): boolean {
 function authorizedDestination(input: SkillEgressPolicyInput): boolean {
   return input.authorizationBasisId !== undefined
     && input.authorizationBasisId.trim().length > 0
+    && input.authorizedTransport === input.transport
     && input.authorizedDestination === input.destination;
 }
 
