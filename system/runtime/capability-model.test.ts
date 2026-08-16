@@ -35,7 +35,8 @@ describe("shared host capability model", () => {
     const ajv = new Ajv2020({ strict: true });
     const validate = ajv.compile(recordSchema);
 
-    expect([...(modelSchema as { required: readonly string[] }).required]).toEqual([...CAPABILITY_NAMES]);
+    expect([...(modelSchema as { required: readonly string[] }).required]).toEqual([...CAPABILITY_NAMES.slice(0, -1)]);
+    expect((modelSchema as { properties: Record<string, unknown> }).properties.enforceSkillOriginEgressDeny).toEqual({ type: "boolean" });
     for (const adapterName of adapterNames) {
       const input = await json(`adapters/${adapterName}/capability.json`);
       expect(validate(input)).toBe(true);

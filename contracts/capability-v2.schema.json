@@ -33,8 +33,7 @@
         "persistEvidence",
         "approveExceptions",
         "isolatedReadOnlyReview",
-        "enforcedStructuredOutput",
-        "enforceSkillOriginEgressDeny"
+        "enforcedStructuredOutput"
       ],
       "properties": {
         "executeCommands": { "type": "boolean" },
