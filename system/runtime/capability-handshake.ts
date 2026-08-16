@@ -180,8 +180,13 @@ export function parseCapabilityHandshakeEnvelope(
     const advertised = name === "enforceSkillOriginEgressDeny"
       ? ("enforcementProfile" in record
         ? isHardenedEgressProfile(record.enforcementProfile)
-        : record.capabilities[name])
+        : false)
       : record.capabilities[name];
+    if (name === "enforceSkillOriginEgressDeny"
+      && !("enforcementProfile" in record)
+      && record.capabilities[name]) {
+      fail("CAPABILITY_ESCALATION", "legacy capability records cannot advertise Skill-origin egress enforcement");
+    }
     if (advertised && !expectation.allowedCapabilities[name]) {
       fail("CAPABILITY_ESCALATION", `capability ${name} exceeds the trusted integration ceiling`);
     }

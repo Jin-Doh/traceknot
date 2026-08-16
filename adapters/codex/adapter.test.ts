@@ -180,9 +180,11 @@ describe("Codex capability adapter", () => {
   });
 
   test("rejects unverified Skill-origin egress enforcement claims", async () => {
-    const handshake = runtimeHandshake(async (request) =>
-      envelope(request, runtimeRecord(runtimeCapabilities({ enforceSkillOriginEgressDeny: true }))));
-
+    const handshake = runtimeHandshake(
+      async (request) =>
+        envelope(request, runtimeRecord(runtimeCapabilities({ enforceSkillOriginEgressDeny: true }))),
+      { allowedCapabilities: runtimeCapabilities({ enforceSkillOriginEgressDeny: true }) },
+    );
     await expect(discoverCodexCapabilities(handshake)).rejects.toMatchObject({
       code: "CAPABILITY_ESCALATION",
     });
