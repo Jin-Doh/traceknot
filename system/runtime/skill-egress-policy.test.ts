@@ -88,6 +88,15 @@ describe("Skill-origin egress policy", () => {
       reason: "UPDATER_TRUST_BOUNDARY",
     });
   });
+  test("does not create an obligation failure for updater traffic", () => {
+    expect(decideSkillEgress({
+      ...base,
+      origin: "updater",
+      requestId: "request-updater",
+      obligationId: "obligation-updater",
+      mandatory: true,
+    })).not.toHaveProperty("failure");
+  });
 
   test("denies a request without an exact authorized destination", () => {
     expect(decideSkillEgress({ ...base, authorizedDestination: "https://other.test/qa" })).toMatchObject({

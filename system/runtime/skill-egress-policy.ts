@@ -117,7 +117,7 @@ function observation(
     ...(input.authorizationBasisId === undefined ? {} : { authorizationBasisId: input.authorizationBasisId }),
     ...(input.requestId === undefined ? {} : { requestId: input.requestId }),
     ...(input.obligationId === undefined ? {} : { obligationId: input.obligationId }),
-    ...(input.mandatory === true && decision !== "allow"
+    ...(input.mandatory === true && (decision === "deny" || decision === "blocked")
       ? {
         failure: {
           status: decision === "blocked" ? "BLOCKED" as const : "FAIL" as const,
