@@ -143,7 +143,7 @@ Follow `references/completion-report.md`. Report scope, basis, discovery mode an
 
 ## Host capability rule
 
-Default to `evidence-only`. A runtime handshake MAY advertise command execution, browser execution, artifact capture, snapshot binding, independent evidence, evidence persistence, or exception approval. The host name or model name never implies a capability or producer independence.
+Default to `evidence-only`. A runtime handshake MAY advertise command execution, browser execution, artifact capture, snapshot binding, independent evidence, evidence persistence, exception approval, isolated read-only review, enforced structured output, or Skill-origin egress denial enforcement. The host name or model name never implies a capability or producer independence.
 
 For the hardened execution profile, the Skill MUST NOT create, request, or require outbound data traffic. A host that cannot enforce Skill-origin egress denial before transmission cannot satisfy that profile and the obligation is `BLOCKED`; an observed Skill-origin attempt is `FAIL`, and lost egress evidence is `INCOMPLETE`. The repository updater is a separate trust boundary and is not part of Skill execution.
 

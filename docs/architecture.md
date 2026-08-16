@@ -80,6 +80,8 @@ A host or model name grants no capability. Profile selection follows the handsha
 
 The Codex adapter exposes a capability-record discovery primitive, not a native Codex transport. Without a handshake it loads the checked-in all-false manifest. For each discovery the adapter creates a non-repeating challenge. A trusted native integration may answer with an envelope bound to the host, session, snapshot, producer, challenge, validity window, explicit maximum lifetime, and capability ceiling. The portable adapter rejects mismatched, stale, replayed, malformed, overlong, or over-privileged envelopes.
 
+The `enforceSkillOriginEgressDeny` capability is conservative: every checked-in adapter advertises `false` until a host mediator can attribute a request to Skill execution, deny it before transmission, and preserve snapshot-bound evidence. Capability discovery alone never supplies the mediator.
+
 The Claude Code adapter uses the same canonical envelope and rejection semantics with a distinct `claude-code` host boundary. Hook events such as `Stop`, `TaskCompleted`, or `SubagentStop` remain observations and cannot stand in for a trusted producer or accepted evidence.
 
 ### Independent execution completion

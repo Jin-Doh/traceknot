@@ -61,6 +61,8 @@ describe("shared host capability model", () => {
     })).toThrow("executeCommands");
     const { executeCommands: _, ...partial } = base.capabilities;
     expect(() => parseCapabilityRecord({ ...base, capabilities: partial })).toThrow("capability keys");
+    const { enforceSkillOriginEgressDeny: __, ...missingEgressCapability } = base.capabilities;
+    expect(() => parseCapabilityRecord({ ...base, capabilities: missingEgressCapability })).toThrow("capability keys");
     expect(() => parseCapabilityRecord({
       ...base,
       capabilities: { ...base.capabilities, inventedCapability: false },

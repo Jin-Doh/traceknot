@@ -15,7 +15,8 @@
       "persistEvidence": true,
       "approveExceptions": false,
       "isolatedReadOnlyReview": false,
-      "enforcedStructuredOutput": false
+      "enforcedStructuredOutput": false,
+      "enforceSkillOriginEgressDeny": false
     },
     "limitations": ["The runtime has no independent review context."]
   },

@@ -16,6 +16,7 @@ const ALL_FALSE = Object.freeze({
   approveExceptions: false,
   isolatedReadOnlyReview: false,
   enforcedStructuredOutput: false,
+  enforceSkillOriginEgressDeny: false,
 } satisfies CapabilitySet);
 
 function capabilities(overrides: Partial<CapabilitySet> = {}): CapabilitySet {
@@ -127,6 +128,15 @@ describe("Claude Code capability adapter", () => {
   test("rejects capabilities above the integration ceiling", async () => {
     const runtime = handshake(async (request) =>
       envelope(request, record(capabilities({ approveExceptions: true }))));
+
+    await expect(discoverClaudeCodeCapabilities(runtime)).rejects.toMatchObject({
+      code: "CAPABILITY_ESCALATION",
+    });
+  });
+
+  test("rejects unverified Skill-origin egress enforcement claims", async () => {
+    const runtime = handshake(async (request) =>
+      envelope(request, record(capabilities({ enforceSkillOriginEgressDeny: true }))));
 
     await expect(discoverClaudeCodeCapabilities(runtime)).rejects.toMatchObject({
       code: "CAPABILITY_ESCALATION",

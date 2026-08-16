@@ -15,7 +15,8 @@
       "persistEvidence": true,
       "approveExceptions": true,
       "isolatedReadOnlyReview": true,
-      "enforcedStructuredOutput": true
+      "enforcedStructuredOutput": true,
+      "enforceSkillOriginEgressDeny": false
     },
     "limitations": [
       "The runtime cannot provide executeBrowser."
