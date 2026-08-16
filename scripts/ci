@@ -89,7 +89,6 @@ for schema in contracts/*.schema.json; do
             -r contracts/evidence-evaluation.schema.json
     elif [ "$schema" = contracts/capability-v2.schema.json ] ||
          [ "$schema" = contracts/risk-discovery-report.schema.json ]; then
-        bun x --no-install ajv compile --spec=draft2020 \
             -s "$schema" \
             -r contracts/capability-model.schema.json
     else

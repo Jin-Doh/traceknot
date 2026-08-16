@@ -5,9 +5,11 @@ import {
 } from "../core/canonical-time";
 import {
   CAPABILITY_NAMES,
+  isHardenedEgressProfile,
   parseCapabilityRecord,
   type CapabilityRecord,
   type CapabilitySet,
+  type EgressEnforcementProfile,
 } from "./capability-model";
 
 const ENVELOPE_KEYS = [
@@ -31,6 +33,7 @@ export type CapabilityHandshakeExpectation = Readonly<{
   request: CapabilityHandshakeRequest;
   trustedProducerId: string;
   allowedCapabilities: CapabilitySet;
+  allowedEnforcementProfile?: EgressEnforcementProfile;
   maxEnvelopeLifetimeMs: number;
   now: string;
 }>;
@@ -99,6 +102,28 @@ function expectEqual(
   if (actual !== expected) fail(code, `${field} does not match the trusted request context`);
 }
 
+function profileExceeds(
+  advertised: EgressEnforcementProfile,
+  allowed: EgressEnforcementProfile | undefined,
+): boolean {
+  if (allowed === undefined) {
+    return advertised.originAttribution !== "none"
+      || advertised.toolMediation !== "none"
+      || advertised.processIsolation !== "none"
+      || advertised.auditDurability !== "none";
+  }
+  const rank = {
+    originAttribution: { none: 0, "session-scope": 1, "host-attested": 2 },
+    toolMediation: { none: 0, "known-network-tools": 1, "all-tool-calls": 2 },
+    processIsolation: { none: 0, "managed-egress": 1, "network-denied": 2 },
+    auditDurability: { none: 0, "best-effort": 1, "pre-transmit-durable": 2 },
+  } as const;
+  return rank.originAttribution[advertised.originAttribution] > rank.originAttribution[allowed.originAttribution]
+    || rank.toolMediation[advertised.toolMediation] > rank.toolMediation[allowed.toolMediation]
+    || rank.processIsolation[advertised.processIsolation] > rank.processIsolation[allowed.processIsolation]
+    || rank.auditDurability[advertised.auditDurability] > rank.auditDurability[allowed.auditDurability];
+}
+
 export function parseCapabilityHandshakeEnvelope(
   value: unknown,
   expectation: CapabilityHandshakeExpectation,
@@ -152,9 +177,17 @@ export function parseCapabilityHandshakeEnvelope(
     fail("EXPIRED", "capability handshake envelope has expired");
   }
   for (const name of CAPABILITY_NAMES) {
-    if (record.capabilities[name] && !expectation.allowedCapabilities[name]) {
+    const advertised = name === "enforceSkillOriginEgressDeny"
+      ? ("enforcementProfile" in record
+        ? isHardenedEgressProfile(record.enforcementProfile)
+        : record.capabilities[name])
+      : record.capabilities[name];
+    if (advertised && !expectation.allowedCapabilities[name]) {
       fail("CAPABILITY_ESCALATION", `capability ${name} exceeds the trusted integration ceiling`);
     }
+  }
+  if ("enforcementProfile" in record && profileExceeds(record.enforcementProfile, expectation.allowedEnforcementProfile)) {
+    fail("CAPABILITY_ESCALATION", "enforcementProfile exceeds the trusted integration ceiling");
   }
   return record;
 }

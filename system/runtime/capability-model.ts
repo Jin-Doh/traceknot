@@ -1,4 +1,4 @@
-export const CAPABILITY_NAMES = [
+export const V2_CAPABILITY_NAMES = [
   "executeCommands",
   "executeBrowser",
   "captureArtifacts",
@@ -8,12 +8,31 @@ export const CAPABILITY_NAMES = [
   "approveExceptions",
   "isolatedReadOnlyReview",
   "enforcedStructuredOutput",
+] as const;
+
+export const CAPABILITY_NAMES = [
+  ...V2_CAPABILITY_NAMES,
   "enforceSkillOriginEgressDeny",
 ] as const;
 
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
+export type V2CapabilityName = (typeof V2_CAPABILITY_NAMES)[number];
 export type CapabilitySet = Readonly<Record<CapabilityName, boolean>>;
-export type CapabilityRecord = Readonly<{
+export type V2CapabilitySet = Readonly<Record<V2CapabilityName, boolean>>;
+
+export const EGRESS_ORIGIN_ATTRIBUTIONS = ["none", "session-scope", "host-attested"] as const;
+export const EGRESS_TOOL_MEDIATIONS = ["none", "known-network-tools", "all-tool-calls"] as const;
+export const EGRESS_PROCESS_ISOLATIONS = ["none", "network-denied", "managed-egress"] as const;
+export const EGRESS_AUDIT_DURABILITIES = ["none", "best-effort", "pre-transmit-durable"] as const;
+
+export type EgressEnforcementProfile = Readonly<{
+  originAttribution: (typeof EGRESS_ORIGIN_ATTRIBUTIONS)[number];
+  toolMediation: (typeof EGRESS_TOOL_MEDIATIONS)[number];
+  processIsolation: (typeof EGRESS_PROCESS_ISOLATIONS)[number];
+  auditDurability: (typeof EGRESS_AUDIT_DURABILITIES)[number];
+}>;
+
+export type CapabilityRecordV2 = Readonly<{
   schemaVersion: "quality-capability/v2";
   host: string;
   adapterVersion: string;
@@ -21,8 +40,20 @@ export type CapabilityRecord = Readonly<{
   limitations: readonly string[];
 }>;
 
-const LEGACY_CAPABILITY_NAMES = CAPABILITY_NAMES.slice(0, -1);
+export type CapabilityRecordV3 = Readonly<{
+  schemaVersion: "quality-capability/v3";
+  host: string;
+  adapterVersion: string;
+  capabilities: V2CapabilitySet;
+  enforcementProfile: EgressEnforcementProfile;
+  limitations: readonly string[];
+}>;
+
+export type CapabilityRecord = CapabilityRecordV2 | CapabilityRecordV3;
+
+const LEGACY_CAPABILITY_NAMES = V2_CAPABILITY_NAMES;
 const RECORD_KEYS = ["schemaVersion", "host", "adapterVersion", "capabilities", "limitations"] as const;
+const V3_RECORD_KEYS = ["schemaVersion", "host", "adapterVersion", "capabilities", "enforcementProfile", "limitations"] as const;
 
 function object(value: unknown, label: string): Readonly<Record<string, unknown>> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw Error(`${label} must be an object`);
@@ -62,6 +93,49 @@ function parseCapabilities(value: unknown): CapabilitySet {
   return Object.freeze(capabilities);
 }
 
+function parseV2Capabilities(value: unknown): V2CapabilitySet {
+  const input = object(value, "capabilities");
+  if (!exactKeys(input, V2_CAPABILITY_NAMES)) throw Error("v3 capability keys must exactly match the v2 model");
+  const capabilities = {} as Record<V2CapabilityName, boolean>;
+  for (const name of V2_CAPABILITY_NAMES) {
+    if (typeof input[name] !== "boolean") throw Error(`${name} must be boolean`);
+    capabilities[name] = input[name] as boolean;
+  }
+  return Object.freeze(capabilities);
+}
+
+function parseEnforcementProfile(value: unknown): EgressEnforcementProfile {
+  const input = object(value, "enforcementProfile");
+  if (!exactKeys(input, ["originAttribution", "toolMediation", "processIsolation", "auditDurability"])) {
+    throw Error("enforcementProfile keys are invalid");
+  }
+  if (!EGRESS_ORIGIN_ATTRIBUTIONS.includes(input.originAttribution as EgressEnforcementProfile["originAttribution"])) {
+    throw Error("enforcementProfile.originAttribution is invalid");
+  }
+  if (!EGRESS_TOOL_MEDIATIONS.includes(input.toolMediation as EgressEnforcementProfile["toolMediation"])) {
+    throw Error("enforcementProfile.toolMediation is invalid");
+  }
+  if (!EGRESS_PROCESS_ISOLATIONS.includes(input.processIsolation as EgressEnforcementProfile["processIsolation"])) {
+    throw Error("enforcementProfile.processIsolation is invalid");
+  }
+  if (!EGRESS_AUDIT_DURABILITIES.includes(input.auditDurability as EgressEnforcementProfile["auditDurability"])) {
+    throw Error("enforcementProfile.auditDurability is invalid");
+  }
+  return Object.freeze({
+    originAttribution: input.originAttribution as EgressEnforcementProfile["originAttribution"],
+    toolMediation: input.toolMediation as EgressEnforcementProfile["toolMediation"],
+    processIsolation: input.processIsolation as EgressEnforcementProfile["processIsolation"],
+    auditDurability: input.auditDurability as EgressEnforcementProfile["auditDurability"],
+  });
+}
+
+export function isHardenedEgressProfile(profile: EgressEnforcementProfile): boolean {
+  return profile.originAttribution !== "none"
+    && profile.toolMediation === "all-tool-calls"
+    && profile.processIsolation === "network-denied"
+    && profile.auditDurability === "pre-transmit-durable";
+}
+
 function parseLimitations(value: unknown): readonly string[] {
   if (value === undefined) return Object.freeze([]);
   if (!Array.isArray(value)) throw Error("limitations must be an array");
@@ -76,9 +150,18 @@ function parseLimitations(value: unknown): readonly string[] {
 
 export function parseCapabilityRecord(value: unknown): CapabilityRecord {
   const input = object(value, "capability record");
-  if (!exactKeys(input, ["schemaVersion", "host", "adapterVersion", "capabilities"], ["limitations"])) {
-    throw Error("capability record keys are invalid");
+  if (input.schemaVersion === "quality-capability/v3") {
+    if (!exactKeys(input, V3_RECORD_KEYS)) throw Error("v3 capability record keys are invalid");
+    return Object.freeze({
+      schemaVersion: "quality-capability/v3",
+      host: nonemptyString(input.host, "host"),
+      adapterVersion: nonemptyString(input.adapterVersion, "adapterVersion"),
+      capabilities: parseV2Capabilities(input.capabilities),
+      enforcementProfile: parseEnforcementProfile(input.enforcementProfile),
+      limitations: parseLimitations(input.limitations),
+    });
   }
+  if (!exactKeys(input, RECORD_KEYS, ["limitations"])) throw Error("capability record keys are invalid");
   if (input.schemaVersion !== "quality-capability/v2") throw Error("unsupported capability schemaVersion");
   return Object.freeze({
     schemaVersion: "quality-capability/v2",

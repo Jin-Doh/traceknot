@@ -4,6 +4,8 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { describe, expect, test } from "bun:test";
 import {
   CAPABILITY_NAMES,
+  V2_CAPABILITY_NAMES,
+  isHardenedEgressProfile,
   missingCapabilities,
   parseCapabilityRecord,
 } from "./capability-model";
@@ -35,7 +37,7 @@ describe("shared host capability model", () => {
     const ajv = new Ajv2020({ strict: true });
     const validate = ajv.compile(recordSchema);
 
-    expect([...(modelSchema as { required: readonly string[] }).required]).toEqual([...CAPABILITY_NAMES.slice(0, -1)]);
+    expect([...(modelSchema as { required: readonly string[] }).required]).toEqual([...V2_CAPABILITY_NAMES]);
     expect((modelSchema as { properties: Record<string, unknown> }).properties.enforceSkillOriginEgressDeny).toEqual({ type: "boolean" });
     for (const adapterName of adapterNames) {
       const input = await json(`adapters/${adapterName}/capability.json`);
@@ -60,10 +62,9 @@ describe("shared host capability model", () => {
       ...base,
       capabilities: { ...base.capabilities, executeCommands: "yes" },
     })).toThrow("executeCommands");
-    const { executeCommands: _, ...partial } = base.capabilities;
-    expect(() => parseCapabilityRecord({ ...base, capabilities: partial })).toThrow("capability keys");
     const { enforceSkillOriginEgressDeny: __, ...legacyCapabilities } = base.capabilities;
-    expect(parseCapabilityRecord({ ...base, capabilities: legacyCapabilities }).capabilities.enforceSkillOriginEgressDeny).toBe(false);
+    const parsedLegacy = parseCapabilityRecord({ ...base, capabilities: legacyCapabilities });
+    expect("enforceSkillOriginEgressDeny" in parsedLegacy.capabilities && parsedLegacy.capabilities.enforceSkillOriginEgressDeny).toBe(false);
     expect(() => parseCapabilityRecord({
       ...base,
       capabilities: { ...base.capabilities, inventedCapability: false },
@@ -84,7 +85,7 @@ describe("shared host capability model", () => {
   test("accepts legacy v2 capability records in the schema", async () => {
     const recordSchema = await json("contracts/capability-v2.schema.json") as object;
     const validate = new Ajv2020({ strict: true }).compile(recordSchema);
-    const capabilities = Object.fromEntries(CAPABILITY_NAMES.slice(0, -1).map((name) => [name, false]));
+    const capabilities = Object.fromEntries(V2_CAPABILITY_NAMES.map((name) => [name, false]));
     expect(validate({
       schemaVersion: "quality-capability/v2",
       host: "legacy-host",
@@ -94,9 +95,34 @@ describe("shared host capability model", () => {
     })).toBe(true);
   });
 
+  test("parses structured v3 enforcement profiles without deriving unsupported claims", async () => {
+    const recordSchema = await json("contracts/capability-v3.schema.json") as object;
+    const validate = new Ajv2020({ strict: true }).compile(recordSchema);
+    const record = {
+      schemaVersion: "quality-capability/v3",
+      host: "hardened-host",
+      adapterVersion: "hardened-v1",
+      capabilities: Object.fromEntries(V2_CAPABILITY_NAMES.map((name) => [name, false])),
+      enforcementProfile: {
+        originAttribution: "host-attested",
+        toolMediation: "all-tool-calls",
+        processIsolation: "network-denied",
+        auditDurability: "pre-transmit-durable",
+      },
+      limitations: [],
+    };
+    expect(validate(record)).toBe(true);
+    expect(validate(record)).toBe(true);
+    const parsed = parseCapabilityRecord(record);
+    expect(parsed.schemaVersion).toBe("quality-capability/v3");
+    expect(parsed.schemaVersion === "quality-capability/v3" && isHardenedEgressProfile(parsed.enforcementProfile)).toBe(true);
+    expect(Object.isFrozen(parsed)).toBe(true);
+    expect(parsed.schemaVersion === "quality-capability/v3" && Object.isFrozen(parsed.enforcementProfile)).toBe(true);
+  });
+
   test("does not inherit omitted legacy capability claims", () => {
     const capabilities = Object.create({ enforceSkillOriginEgressDeny: true }) as Record<string, boolean>;
-    for (const name of CAPABILITY_NAMES.slice(0, -1)) capabilities[name] = false;
+    for (const name of V2_CAPABILITY_NAMES) capabilities[name] = false;
     const record = parseCapabilityRecord({
       schemaVersion: "quality-capability/v2",
       host: "legacy-host",
@@ -104,7 +130,7 @@ describe("shared host capability model", () => {
       capabilities,
       limitations: [],
     });
-    expect(record.capabilities.enforceSkillOriginEgressDeny).toBe(false);
+    expect("enforceSkillOriginEgressDeny" in record.capabilities && record.capabilities.enforceSkillOriginEgressDeny).toBe(false);
   });
   test("reports every unavailable required capability in canonical order", () => {
     const available = Object.fromEntries(

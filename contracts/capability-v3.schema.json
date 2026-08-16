@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/capability.v3.json",
+  "title": "Traceknot host capability v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "host", "adapterVersion", "capabilities", "enforcementProfile"],
+  "properties": {
+    "schemaVersion": { "const": "quality-capability/v3" },
+    "host": { "type": "string", "minLength": 1 },
+    "adapterVersion": { "type": "string", "minLength": 1 },
+    "capabilities": { "$ref": "#/$defs/v2CapabilityModel" },
+    "enforcementProfile": { "$ref": "#/$defs/enforcementProfile" },
+    "limitations": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+  },
+  "$defs": {
+    "v2CapabilityModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executeCommands",
+        "executeBrowser",
+        "captureArtifacts",
+        "bindSnapshot",
+        "provideIndependentEvidence",
+        "persistEvidence",
+        "approveExceptions",
+        "isolatedReadOnlyReview",
+        "enforcedStructuredOutput"
+      ],
+      "properties": {
+        "executeCommands": { "type": "boolean" },
+        "executeBrowser": { "type": "boolean" },
+        "captureArtifacts": { "type": "boolean" },
+        "bindSnapshot": { "type": "boolean" },
+        "provideIndependentEvidence": { "type": "boolean" },
+        "persistEvidence": { "type": "boolean" },
+        "approveExceptions": { "type": "boolean" },
+        "isolatedReadOnlyReview": { "type": "boolean" },
+        "enforcedStructuredOutput": { "type": "boolean" }
+      }
+    },
+    "enforcementProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["originAttribution", "toolMediation", "processIsolation", "auditDurability"],
+      "properties": {
+        "originAttribution": { "enum": ["none", "session-scope", "host-attested"] },
+        "toolMediation": { "enum": ["none", "known-network-tools", "all-tool-calls"] },
+        "processIsolation": { "enum": ["none", "network-denied", "managed-egress"] },
+        "auditDurability": { "enum": ["none", "best-effort", "pre-transmit-durable"] }
+      }
+    }
+  }
+}
