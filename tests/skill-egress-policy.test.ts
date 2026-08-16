@@ -27,6 +27,23 @@ describe("portable Skill egress artifact policy", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+  test("rejects POSIX backslash names and undeclared artifacts", () => {
+    const root = mkdtempSync(join(tmpdir(), "traceknot-skill-egress-"));
+    try {
+      mkdirSync(join(root, "skill", "references"), { recursive: true });
+      writeFileSync(join(root, "skill", "SKILL.md"), "# Skill\n");
+      writeFileSync(join(root, "skill", "references\\payload.md"), "data\n");
+      writeFileSync(join(root, "skill", "references", "orphan.md"), "data\n");
+      const violations = inspectSkillTree(root);
+      expect(violations).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: "UNSAFE_PATH_NAME", path: "skill/references\\payload.md" }),
+        expect.objectContaining({ code: "UNEXPECTED_FILE", path: "skill/references\\payload.md" }),
+        expect.objectContaining({ code: "UNEXPECTED_FILE", path: "skill/references/orphan.md" }),
+      ]));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 
   test("rejects symlinks and special Skill roots", () => {
     const root = mkdtempSync(join(tmpdir(), "traceknot-skill-egress-"));
