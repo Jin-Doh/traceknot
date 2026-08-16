@@ -113,7 +113,7 @@ function observation(
     origin: input.origin,
     destination: input.destination,
     transport: input.transport,
-    dataClasses: input.dataClasses,
+    dataClasses: Object.freeze([...input.dataClasses]),
     ...(input.authorizationBasisId === undefined ? {} : { authorizationBasisId: input.authorizationBasisId }),
     ...(input.requestId === undefined ? {} : { requestId: input.requestId }),
     ...(input.obligationId === undefined ? {} : { obligationId: input.obligationId }),

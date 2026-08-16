@@ -4,6 +4,7 @@ import {
   decideSkillEgress,
   executeSkillEgress,
   SkillEgressDeniedError,
+  type EgressDataClass,
   type SkillEgressPolicyInput,
 } from "./skill-egress-policy";
 
@@ -23,6 +24,13 @@ describe("Skill-origin egress policy", () => {
       reason: "AUTHORIZED_USER_TASK",
       origin: "user-task",
     });
+  });
+  test("snapshots data classes in the observation", () => {
+    const dataClasses = ["public"] as EgressDataClass[];
+    const observation = decideSkillEgress({ ...base, dataClasses });
+    dataClasses.push("credential");
+    expect(observation.dataClasses).toEqual(["public"]);
+    expect(Object.isFrozen(observation.dataClasses)).toBe(true);
   });
 
   test("denies every Skill-origin transport before destination authorization", () => {
