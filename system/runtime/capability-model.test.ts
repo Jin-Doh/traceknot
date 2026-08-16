@@ -61,8 +61,8 @@ describe("shared host capability model", () => {
     })).toThrow("executeCommands");
     const { executeCommands: _, ...partial } = base.capabilities;
     expect(() => parseCapabilityRecord({ ...base, capabilities: partial })).toThrow("capability keys");
-    const { enforceSkillOriginEgressDeny: __, ...missingEgressCapability } = base.capabilities;
-    expect(() => parseCapabilityRecord({ ...base, capabilities: missingEgressCapability })).toThrow("capability keys");
+    const { enforceSkillOriginEgressDeny: __, ...legacyCapabilities } = base.capabilities;
+    expect(parseCapabilityRecord({ ...base, capabilities: legacyCapabilities }).capabilities.enforceSkillOriginEgressDeny).toBe(false);
     expect(() => parseCapabilityRecord({
       ...base,
       capabilities: { ...base.capabilities, inventedCapability: false },
@@ -78,6 +78,19 @@ describe("shared host capability model", () => {
       limitations: sparseLimitations,
     })).toThrow("limitation");
     expect(() => parseCapabilityRecord({ ...base, extra: true })).toThrow("record keys");
+  });
+
+  test("accepts legacy v2 capability records in the schema", async () => {
+    const recordSchema = await json("contracts/capability-v2.schema.json") as object;
+    const validate = new Ajv2020({ strict: true }).compile(recordSchema);
+    const capabilities = Object.fromEntries(CAPABILITY_NAMES.slice(0, -1).map((name) => [name, false]));
+    expect(validate({
+      schemaVersion: "quality-capability/v2",
+      host: "legacy-host",
+      adapterVersion: "legacy-v1",
+      capabilities,
+      limitations: [],
+    })).toBe(true);
   });
 
   test("reports every unavailable required capability in canonical order", () => {

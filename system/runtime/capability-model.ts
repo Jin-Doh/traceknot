@@ -21,6 +21,7 @@ export type CapabilityRecord = Readonly<{
   limitations: readonly string[];
 }>;
 
+const LEGACY_CAPABILITY_NAMES = CAPABILITY_NAMES.slice(0, -1);
 const RECORD_KEYS = ["schemaVersion", "host", "adapterVersion", "capabilities", "limitations"] as const;
 
 function object(value: unknown, label: string): Readonly<Record<string, unknown>> {
@@ -45,10 +46,16 @@ function nonemptyString(value: unknown, label: string): string {
 
 function parseCapabilities(value: unknown): CapabilitySet {
   const input = object(value, "capabilities");
-  if (!exactKeys(input, CAPABILITY_NAMES)) throw Error("capability keys must exactly match the shared model");
+  const currentModel = exactKeys(input, CAPABILITY_NAMES);
+  const legacyModel = exactKeys(input, LEGACY_CAPABILITY_NAMES);
+  if (!currentModel && !legacyModel) throw Error("capability keys must exactly match the shared model");
   const capabilities = {} as Record<CapabilityName, boolean>;
   for (const name of CAPABILITY_NAMES) {
     const enabled = input[name];
+    if (name === "enforceSkillOriginEgressDeny" && enabled === undefined && legacyModel) {
+      capabilities[name] = false;
+      continue;
+    }
     if (typeof enabled !== "boolean") throw Error(`${name} must be boolean`);
     capabilities[name] = enabled;
   }

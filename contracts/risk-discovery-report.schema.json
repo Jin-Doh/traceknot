@@ -1801,6 +1801,104 @@
     },
     {
       "if": {
+        "properties": {
+          "runtime": {
+            "type": "object",
+            "properties": {
+              "capabilities": {
+                "type": "object",
+                "properties": {
+                  "enforceSkillOriginEgressDeny": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "findings": {
+            "type": "object",
+            "patternProperties": {
+              "^.+$": {
+                "not": {
+                  "$ref": "#/$defs/capabilityLimitedEnforceSkillOriginEgressDeny"
+                }
+              }
+            }
+          },
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "blockingCapabilities": {
+                      "type": "array",
+                      "not": {
+                        "contains": {
+                          "const": "enforceSkillOriginEgressDeny"
+                        }
+                      }
+                    },
+                    "reviewerOutputs": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "result": {
+                            "type": "object",
+                            "properties": {
+                              "findings": {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^.+$": {
+                                    "not": {
+                                      "$ref": "#/$defs/capabilityLimitedEnforceSkillOriginEgressDeny"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "challenge": {
+                "type": "object",
+                "properties": {
+                  "limitation": {
+                    "type": "object",
+                    "properties": {
+                      "details": {
+                        "type": "object",
+                        "properties": {
+                          "capability": {
+                            "not": {
+                              "const": "enforceSkillOriginEgressDeny"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
         "type": "object",
         "properties": {
           "triggerScan": {
@@ -2390,6 +2488,60 @@
               "challenge": {
                 "type": "object",
                 "properties": {
+                  "limitation": {
+                    "type": "object",
+                    "properties": {
+                      "details": {
+                        "type": "object",
+                        "properties": {
+                          "capability": {
+                            "const": "enforceSkillOriginEgressDeny"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "triggeredProfiles": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "blockingCapabilities": {
+                      "type": "array",
+                      "contains": {
+                        "const": "enforceSkillOriginEgressDeny"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "triggerScan": {
+            "type": "object",
+            "properties": {
+              "challenge": {
+                "type": "object",
+                "properties": {
                   "outcome": {
                     "const": "NOT_REQUIRED"
                   }
@@ -2806,6 +2958,29 @@
           "properties": {
             "capability": {
               "const": "enforcedStructuredOutput"
+            }
+          }
+        }
+      }
+    },
+    "capabilityLimitedEnforceSkillOriginEgressDeny": {
+      "type": "object",
+      "required": [
+        "kind",
+        "details"
+      ],
+      "properties": {
+        "kind": {
+          "const": "CAPABILITY_LIMITED"
+        },
+        "details": {
+          "type": "object",
+          "required": [
+            "capability"
+          ],
+          "properties": {
+            "capability": {
+              "const": "enforceSkillOriginEgressDeny"
             }
           }
         }
