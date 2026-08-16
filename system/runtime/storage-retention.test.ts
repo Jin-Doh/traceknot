@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { closeSync, openSync } from "node:fs";
-import { mkdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -19,7 +19,7 @@ afterEach(async () => {
 });
 
 async function fixture(): Promise<{ root: string; state: string; artifacts: string }> {
-  const root = join(tmpdir(), `traceknot-retention-${randomUUID()}`);
+  const root = await mkdtemp(join(tmpdir(), "traceknot-retention-"));
   fixtureRoots.push(root);
   const state = join(root, "state");
   const artifacts = join(root, "artifacts");
