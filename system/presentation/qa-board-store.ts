@@ -56,9 +56,9 @@ export const QA_BOARD_LIMITS = Object.freeze({
   maxScreenshotBytes: 10 * 1024 * 1024,
   maxTotalPreviewBytes: 100 * 1024 * 1024,
 });
-
 const DIGEST = /^[0-9a-f]{64}$/;
 const SAFE_ENTRY = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const SAFE_BOARD_NAME = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
 const WRITE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0) | ((constants as Record<string, number | undefined>).O_CLOEXEC ?? 0);
 const LOCK_FLAGS = constants.O_RDWR | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0) | ((constants as Record<string, number | undefined>).O_CLOEXEC ?? 0);
 const LOCK_SH = 1;
@@ -228,7 +228,7 @@ export async function writeQaBoardBundle(input: BoardBundleInput): Promise<Board
   assertSafeEntry(invocationId, "invocation ID");
   if (!Number.isInteger(input.view.revision) || input.view.revision < 0) throw new Error("Board source revision must be a non-negative integer");
   const boardName = `${input.view.revision}-${invocationId}`;
-  assertSafeEntry(boardName, "Board directory");
+  if (!SAFE_BOARD_NAME.test(boardName)) throw new Error("Board directory contains unsafe characters");
   const pendingName = `.pending-${randomUUID()}`;
   const root = await openSecureRoot(resolve(input.stateDir));
   let maintenanceFd: number | undefined;

@@ -82,6 +82,16 @@ test("writes an immutable Board bundle and verifies screenshot bytes", async () 
     await fixture.cleanup();
   }
 });
+test("accepts the maximum invocation ID length", async () => {
+  const fixture = await stateFixture();
+  const invocationId = "a".repeat(128);
+  try {
+    const result = await writeQaBoardBundle({ view: viewWithScreenshot(), stateDir: fixture.root, invocationId, generatedAt: "2026-08-15T00:01:00Z", artifactReader: { readArtifact: async () => SCREENSHOT_BYTES } });
+    expect(result.entrypoint).toContain(`/boards/9-${invocationId}/index.html`);
+  } finally {
+    await fixture.cleanup();
+  }
+});
 
 test("creates a separate immutable directory for each invocation", async () => {
   const fixture = await stateFixture();

@@ -93,6 +93,21 @@ describe("storage retention", () => {
     expect(report.candidates.runs).not.toContain("runs/new/state.json");
   });
 
+  test("quota credits object bytes released by pruning the last run reference", async () => {
+    const { state, artifacts } = await fixture();
+    const firstDigest = "b".repeat(64);
+    const secondDigest = "c".repeat(64);
+    await run(state, "old-a", { state: "TERMINAL", updatedAt: OLD, digest: firstDigest });
+    await run(state, "old-b", { state: "TERMINAL", updatedAt: OLD, digest: secondDigest });
+    await run(state, "new", { state: "TERMINAL", updatedAt: NOW });
+    await writeFile(join(artifacts, ".objects", firstDigest), "0123456789");
+    await writeFile(join(artifacts, ".objects", secondDigest), "0123456789");
+    const inventory = await inspectStorage({ stateDir: state, artifactDir: artifacts, now: NOW });
+    const newestBytes = inventory.runs.find(item => item.runId === "new")!.bytes;
+    const oldBytes = inventory.runs.find(item => item.runId === "old-b")!.bytes;
+    const report = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, canonicalRunTtlMs: 10_000 * 24 * 60 * 60 * 1000, canonicalQuotaBytes: newestBytes + oldBytes + 10 } });
+    expect(report.candidates.runs.filter(path => path.includes("old-"))).toHaveLength(1);
+  });
   test("pins are durable and protect an old terminal run", async () => {
     const { state, artifacts } = await fixture();
     await run(state, "pinned", { state: "TERMINAL", updatedAt: OLD });
@@ -240,6 +255,16 @@ describe("storage retention", () => {
     expect(await readFile(join(state, "runs", "source", "state.json"), "utf8")).toContain("traceknot-state/v1");
   });
 
+  test("removes empty parents when a retained Board later expires", async () => {
+    const { state, artifacts } = await fixture();
+    await run(state, "old", { state: "TERMINAL", updatedAt: OLD });
+    await board(state, "old", "retained", NOW);
+    await run(state, "new", { state: "TERMINAL", updatedAt: NOW });
+    await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, boardQuotaBytes: 1024 * 1024, boardTtlMs: 365 * 24 * 60 * 60 * 1000 }, apply: true });
+    const expired = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: "2026-08-16T00:00:00.000Z", policy: { ...policy, boardQuotaBytes: 1024 * 1024, boardTtlMs: 1 }, apply: true });
+    expect(expired.deleted.boards).toContain("runs/old/boards/retained");
+    expect(await stat(join(state, "runs", "old")).catch(() => undefined)).toBeUndefined();
+  });
   test("expired canonical state does not remove retained Boards", async () => {
     const { state, artifacts } = await fixture();
     await run(state, "old", { state: "TERMINAL", updatedAt: OLD });
