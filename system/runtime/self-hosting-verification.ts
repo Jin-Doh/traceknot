@@ -2,13 +2,14 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { VerificationRequest } from "./verification-run";
+import type { AssuranceContext, VerificationRequest } from "./verification-run";
 
 export type SelfHostingCommand = Readonly<{
   rootDir: string;
   executable: string;
   argv: readonly string[];
   expectedHead?: string;
+  assuranceContext?: AssuranceContext;
 }>;
 export type SelfHostingManifest = Readonly<{
   schemaVersion: "verification-manifest/v1";
@@ -66,6 +67,7 @@ export function buildCanonicalSelfHostingCommand(
   bunExecutable = process.execPath,
   ghExecutable = Bun.which("gh"),
   expectedHead?: string,
+  assuranceContext?: AssuranceContext,
 ): SelfHostingCommand {
   const rootDir = resolve(root);
   if (!isAbsolute(bunExecutable)) throw Error("self-hosting Bun executable must be absolute");
@@ -87,6 +89,7 @@ export function buildCanonicalSelfHostingCommand(
       "--self-hosted-inner",
     ]),
     ...(expectedHead === undefined ? {} : { expectedHead }),
+    ...(assuranceContext === undefined ? {} : { assuranceContext }),
   });
 }
 
@@ -110,6 +113,7 @@ export function buildSelfHostingInputs(command: SelfHostingCommand): Readonly<{
       origin: "explicit",
       text: "The canonical repository gate passes against the immutable target snapshot.",
     })]),
+    ...(command.assuranceContext === undefined ? {} : { assuranceContext: command.assuranceContext }),
   });
   const manifest: SelfHostingManifest = Object.freeze({
     schemaVersion: "verification-manifest/v1",

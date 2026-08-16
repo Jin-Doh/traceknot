@@ -84,6 +84,13 @@ describe("canonical self-hosting verification", () => {
         text: "The canonical repository gate passes against the immutable target snapshot.",
       }],
     });
+    const localRecords = buildSelfHostingInputs({
+      rootDir: root,
+      executable: process.execPath,
+      argv: ["-e", "process.exit(0)"],
+      assuranceContext: "local",
+    });
+    expect(localRecords.request.assuranceContext).toBe("local");
     expect(records.manifest).toEqual({
       schemaVersion: "verification-manifest/v1",
       obligations: [{

@@ -736,6 +736,7 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
     }
     if (!requestInput || !options.manifestPath) fail("--request and --manifest are required unless --report-only is used");
     const request = { ...requestInput, assuranceContext: options.assuranceContext, project: { ...requestInput.project, rootIdentity: requestInput.project.rootIdentity === "auto" ? snapshot.rootIdentity : requestInput.project.rootIdentity, snapshotId: requestInput.project.snapshotId === "auto" ? snapshot.snapshotId : requestInput.project.snapshotId } } satisfies VerificationRequest;
+    if (request.project.rootIdentity !== snapshot.rootIdentity || request.project.snapshotId !== snapshot.snapshotId) fail("request project identity does not match current Git snapshot");
     if (requestInput.assuranceContext !== undefined && requestInput.assuranceContext !== options.assuranceContext) fail(`request assuranceContext ${requestInput.assuranceContext} does not match --assurance ${options.assuranceContext}`);
     const manifest = validateManifest(await readBoundedJson(options.manifestPath));
     const placeholder = {} as VerificationRunDependencies;
