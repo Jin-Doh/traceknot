@@ -172,6 +172,59 @@ describe("governed Skill egress boundary", () => {
       reason: "MISSING_AUTHORIZATION",
     });
   });
+  test("denies malformed authorization on mandatory Skill requests before dereferencing it", async () => {
+    const evidence = new Evidence();
+    const malformedAuthorization = { ...authorization, dataClasses: undefined } as unknown as EgressAuthorization;
+    await expect(executeGovernedEgress(
+      { ...scope, origin: "skill" },
+      { ...intent, mandatory: true, requestId: "request-2", obligationId: "obligation-2" },
+      malformedAuthorization,
+      transport("sent"),
+      "payload",
+      evidence,
+    )).rejects.toBeInstanceOf(GovernedEgressDeniedError);
+    expect(evidence.events).toEqual(["FAILED"]);
+  });
+
+  test("rejects non-boolean sensitive authorization flags", () => {
+    expect(evaluateGovernedEgress(scope, { ...intent, dataClasses: ["credential"] }, {
+      ...authorization,
+      dataClasses: ["credential"],
+      sensitiveDataAuthorized: "false",
+    } as unknown as EgressAuthorization)).toMatchObject({
+      decision: "deny",
+      reason: "MISSING_AUTHORIZATION",
+    });
+  });
+
+  test("rechecks freshness after prepared evidence", async () => {
+    let now = Date.now();
+    const originalNow = Date.now;
+    Date.now = () => now;
+    try {
+      const evidence: DurableEgressEvidenceStore = {
+        async prepared() {
+          now += 60_000;
+        },
+        async completed() {},
+        async failed() {},
+      };
+      const calls: string[] = [];
+      await expect(executeGovernedEgress(scope, intent, authorization, transport("sent", calls), "payload", evidence)).rejects.toBeInstanceOf(GovernedEgressDeniedError);
+      expect(calls).toEqual([]);
+    } finally {
+      Date.now = originalNow;
+    }
+  });
+
+  test("snapshots destinations in observations", () => {
+    const mutableDestination = { ...destination };
+    const observation = evaluateGovernedEgress(scope, { ...intent, destination: mutableDestination }, authorization);
+    mutableDestination.hostname = "attacker.test";
+    expect(observation.destination.hostname).toBe("example.test");
+    expect(Object.isFrozen(observation.destination)).toBe(true);
+  });
+
 
   test("snapshots authorization before prepared evidence can mutate it", async () => {
     const mutableAuthorization = {

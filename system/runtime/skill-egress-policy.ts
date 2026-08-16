@@ -155,6 +155,7 @@ function validAuthorization(intent: EgressIntent, scope: TrustedExecutionScope, 
   if (authorization.protocol !== intent.protocol) return "PROTOCOL_MISMATCH";
   if (authorization.executionSurface !== intent.executionSurface) return "MISSING_AUTHORIZATION";
   if (authorization.dataClasses.length !== intent.dataClasses.length || authorization.dataClasses.some((item, index) => item !== intent.dataClasses[index])) return "MISSING_AUTHORIZATION";
+  if (typeof authorization.sensitiveDataAuthorized !== "boolean") return "MISSING_AUTHORIZATION";
   const authorizationExpiry = Date.parse(authorization.expiresAt);
   if (Number.isNaN(authorizationExpiry) || authorizationExpiry <= Date.now()) return "MISSING_AUTHORIZATION";
   return undefined;
@@ -174,7 +175,7 @@ function observe(scope: TrustedExecutionScope, intent: EgressIntent, decision: E
     reason,
     scopeId: scope.scopeId,
     origin: scope.origin,
-    destination: intent.destination,
+    destination: freeze({ ...intent.destination }),
     protocol: intent.protocol,
     executionSurface: intent.executionSurface,
     dataClasses: freeze([...intent.dataClasses]),
@@ -232,6 +233,9 @@ function malformedMandatorySkillIntent(scope: TrustedExecutionScope, intent: Egr
     mandatory: true,
   };
 }
+function egressAuthorizationIsFresh(scope: TrustedExecutionScope, authorization: EgressAuthorization): boolean {
+  return Date.parse(scope.expiresAt) > Date.now() && Date.parse(authorization.expiresAt) > Date.now();
+}
 
 export async function executeGovernedEgress<TPayload, TResult>(
   scope: TrustedExecutionScope,
@@ -241,23 +245,26 @@ export async function executeGovernedEgress<TPayload, TResult>(
   payload: TPayload,
   evidence: DurableEgressEvidenceStore,
 ): Promise<Readonly<{ observation: EgressObservation; value: TResult }>> {
-  const authorizationSnapshot = snapshotAuthorization(authorization);
-  let observation: EgressObservation;
-  try {
-    observation = evaluateGovernedEgress(scope, intent, authorizationSnapshot);
-  } catch (error) {
-    const fallbackIntent = malformedMandatorySkillIntent(scope, intent);
-    if (fallbackIntent !== undefined) {
-      validScope(scope);
-      await evidence.failed(observe(scope, fallbackIntent, "deny", "SKILL_ORIGIN_EGRESS"));
-    }
-    throw error;
+  const fallbackIntent = malformedMandatorySkillIntent(scope, intent);
+  if (fallbackIntent !== undefined) {
+    validScope(scope);
+    const observation = observe(scope, fallbackIntent, "deny", "SKILL_ORIGIN_EGRESS");
+    await evidence.failed(observation);
+    validIntent(intent);
+    throw new GovernedEgressDeniedError(observation);
   }
+  const authorizationSnapshot = snapshotAuthorization(authorization);
+  const observation = evaluateGovernedEgress(scope, intent, authorizationSnapshot);
   if (observation.decision !== "allow") {
     if (observation.failure !== undefined) await evidence.failed(observation);
     throw new GovernedEgressDeniedError(observation);
   }
   await evidence.prepared(observation);
+  if (!egressAuthorizationIsFresh(scope, authorizationSnapshot)) {
+    const staleObservation = observe(scope, intent, "deny", "MISSING_AUTHORIZATION", authorizationSnapshot);
+    await evidence.failed(staleObservation);
+    throw new GovernedEgressDeniedError(staleObservation);
+  }
   try {
     const value = await transport.send(authorizationSnapshot, payload);
     if ((value as RedirectResult | undefined)?.kind === "redirect") {
