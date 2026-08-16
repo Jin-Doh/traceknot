@@ -656,20 +656,33 @@ function candidatePlan(inventory: StorageInventory, policy: StorageRetentionPoli
   }
   const runCandidates: StorageEntry[] = [];
   const sharedDigests = new Set(Object.values(inventory.runReferences).flatMap(digests => digests));
-  const canonicalObjectBytes = inventory.objects
-    .filter(object => object.digest !== undefined && sharedDigests.has(object.digest) && !object.malformed)
-    .reduce((sum, object) => sum + object.bytes, 0);
-  let remainingCanonicalBytes = runInfo.reduce((sum, item) => sum + item.bytes, 0) + canonicalObjectBytes;
+  const objectBytesByDigest = new Map(inventory.objects.filter(object => object.digest !== undefined && !object.malformed).map(object => [object.digest!, object.bytes] as const));
+  const digestReferenceCounts = new Map<string, number>();
+  for (const digests of Object.values(inventory.runReferences)) {
+    for (const digest of digests) digestReferenceCounts.set(digest, (digestReferenceCounts.get(digest) ?? 0) + 1);
+  }
+  let remainingCanonicalBytes = runInfo.reduce((sum, item) => sum + item.bytes, 0)
+    + [...digestReferenceCounts].reduce((sum, [digest, count]) => sum + (count > 0 ? objectBytesByDigest.get(digest) ?? 0 : 0), 0);
+  const releaseRun = (run: StorageEntry): void => {
+    remainingCanonicalBytes -= run.bytes;
+    for (const digest of inventory.runReferences[run.runId!] ?? []) {
+      const count = (digestReferenceCounts.get(digest) ?? 0) - 1;
+      if (count <= 0) {
+        digestReferenceCounts.delete(digest);
+        remainingCanonicalBytes -= objectBytesByDigest.get(digest) ?? 0;
+      } else digestReferenceCounts.set(digest, count);
+    }
+  };
   const runOrder = [...runInfo].sort((a, b) => (a.logicalUpdatedAt ?? a.mtimeMs) - (b.logicalUpdatedAt ?? b.mtimeMs) || a.relativePath.localeCompare(b.relativePath));
   for (const run of runOrder) {
     if (run.malformed || run.protectedReason || protectedRunIds.has(run.runId!) || run.runId === newestTerminalId || run.logicalUpdatedAt === undefined || run.logicalUpdatedAt > now) continue;
-    if (now - run.logicalUpdatedAt >= policy.canonicalRunTtlMs) { runCandidates.push(run); remainingCanonicalBytes -= run.bytes; }
+    if (now - run.logicalUpdatedAt >= policy.canonicalRunTtlMs) { runCandidates.push(run); releaseRun(run); }
   }
   if (remainingCanonicalBytes > policy.canonicalQuotaBytes) {
     for (const run of runOrder) {
       if (runCandidates.some(item => item.relativePath === run.relativePath) || run.malformed || run.protectedReason || protectedRunIds.has(run.runId!) || run.runId === newestTerminalId || run.logicalUpdatedAt === undefined || run.logicalUpdatedAt > now) continue;
       runCandidates.push(run);
-      remainingCanonicalBytes -= run.bytes;
+      releaseRun(run);
       if (remainingCanonicalBytes <= policy.canonicalQuotaBytes) break;
     }
   }
@@ -766,6 +779,25 @@ async function removeRelative(root: SecureRootDescriptor, relativePath: string):
     if (!stat.isDirectory) return false;
     return removeSnapshottedTree(root, relativePath);
   } finally { closeSecureDescriptor(parentFd); }
+}
+async function removeEmptyBoardParents(root: SecureRootDescriptor, relativePath: string): Promise<void> {
+  const components = relativePath.split("/");
+  if (components.length !== 4 || components[0] !== "runs" || components[2] !== "boards" || components.some(component => !safeEntry(component))) return;
+  const runRelativePath = components.slice(0, 2).join("/");
+  let runsFd: number | undefined;
+  let runFd: number | undefined;
+  try {
+    runsFd = openSecureDirectory(root.fd, "runs");
+    runFd = openSecureDirectory(runsFd, components[1]!);
+    const boardsPath = join(root.rootDir, runRelativePath, "boards");
+    if ((await readdir(boardsPath)).length === 0) secureRmdirAt(runFd, "boards");
+    if ((await readdir(join(root.rootDir, runRelativePath))).length === 0) secureRmdirAt(runsFd, components[1]!);
+  } catch {
+    // A retained Board or concurrent writer keeps the parent container.
+  } finally {
+    if (runFd !== undefined) closeSecureDescriptor(runFd);
+    if (runsFd !== undefined) closeSecureDescriptor(runsFd);
+  }
 }
 
 async function removeCanonicalRun(root: SecureRootDescriptor, statePath: string): Promise<boolean> {
@@ -888,7 +920,10 @@ async function applyCandidates(inventory: StorageInventory, candidates: StorageM
         : leasedEphemeralRoot
           ? await removeLeasedEphemeralRoot(lock.root, relativePath)
           : await removeRelative(lock.root, relativePath);
-      if (removed) deleted[key].push(relativePath);
+      if (removed) {
+        deleted[key].push(relativePath);
+        if (key === "boards") await removeEmptyBoardParents(lock.root, relativePath);
+      }
     }
   }
   for (const key of Object.keys(deleted) as (keyof typeof deleted)[]) deleted[key].sort();
