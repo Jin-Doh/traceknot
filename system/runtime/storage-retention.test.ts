@@ -49,6 +49,17 @@ function storageCli(args: readonly string[]): { exitCode: number; stdout: string
 
 
 describe("storage retention", () => {
+  test("rejects state roots nested beneath artifact storage", async () => {
+    const root = await mkdtemp(join(tmpdir(), "traceknot-retention-root-"));
+    try {
+      const artifactDir = join(root, "artifacts");
+      const stateDir = join(artifactDir, ".staging-state");
+      await mkdir(stateDir, { recursive: true });
+      await expect(inspectStorage({ stateDir, artifactDir, now: NOW })).rejects.toThrow("state directory must not be nested beneath artifact directory");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   test("inventory is deterministic and does not follow symlinks", async () => {
     const { state, artifacts } = await fixture();
     await run(state, "terminal", { state: "TERMINAL", updatedAt: NOW });
@@ -197,6 +208,7 @@ describe("storage retention", () => {
     expect(first.deleted.objects).not.toContain(`.objects/${digest}`);
     const second = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: "2026-08-15T00:00:01.002Z", policy: { ...policy, graceMs: 1000 }, apply: true });
     expect(second.deleted.objects).toContain(`.objects/${digest}`);
+    expect(second.candidates.objects).toContain(`.objects/${digest}`);
   });
   test("stale GC marks reset when pruning the last referencing run", async () => {
     const { state, artifacts } = await fixture();

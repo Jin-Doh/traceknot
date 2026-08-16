@@ -297,6 +297,10 @@ function assertAbsoluteRoot(path: string, label: string): string {
   if (!absolute.startsWith(sep)) throw new Error(`${label} must be absolute`);
   return absolute;
 }
+function isDescendantPath(parent: string, candidate: string): boolean {
+  return candidate !== parent && (parent === sep ? candidate.startsWith(sep) : candidate.startsWith(`${parent}${sep}`));
+}
+
 
 async function safeStat(path: string): Promise<{ bytes: number; allocatedBytes: number; mtimeMs: number; isFile: boolean; isDirectory: boolean; isSymlink: boolean } | undefined> {
   try {
@@ -576,6 +580,7 @@ export async function inspectStorage(input: StorageMaintenanceOptions): Promise<
   const stateDir = assertAbsoluteRoot(input.stateDir, "state directory");
   const artifactDir = assertAbsoluteRoot(input.artifactDir, "artifact directory");
   if (stateDir === artifactDir) throw new Error("state and artifact directories must be distinct");
+  if (isDescendantPath(artifactDir, stateDir)) throw new Error("state directory must not be nested beneath artifact directory");
   const state = await rootStatus(stateDir);
   const artifact = await rootStatus(artifactDir);
   if (state === "symlink" || state === "other") throw new Error("state directory must not be a symlink and must be a directory");
@@ -1006,6 +1011,7 @@ export async function pruneStorage(input: StorageMaintenanceOptions): Promise<St
         assertSecureRoot(artifactLock.root);
         const objectDeleted = await applyCandidates(inventory, { boards: [], runs: [], objects: objectPlan.candidates.objects, collector: [], staging: [] }, stateLock, artifactLock);
         deleted = mergeDeleted(deleted, objectDeleted);
+        plan = { candidates: { ...plan.candidates, objects: objectPlan.candidates.objects }, protected: objectPlan.protected };
         if (stateLock) assertSecureRoot(stateLock.root);
         assertSecureRoot(artifactLock.root);
         inventory = await inspectStorage({ ...input, policy });
