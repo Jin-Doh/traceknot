@@ -86,6 +86,7 @@ export type EgressObservation = Readonly<{
 
 export interface GovernedTransport<TPayload = unknown, TResult = unknown> {
   send(authorization: EgressAuthorization, payload: TPayload): Promise<TResult>;
+  redirect?(value: TResult): CanonicalDestination | undefined;
 }
 
 export interface DurableEgressEvidenceStore {
@@ -93,11 +94,6 @@ export interface DurableEgressEvidenceStore {
   completed(observation: EgressObservation): Promise<void>;
   failed(observation: EgressObservation): Promise<void>;
 }
-
-export type RedirectResult = Readonly<{
-  kind: "redirect";
-  destination: CanonicalDestination;
-}>;
 
 function freeze<T extends object>(value: T): Readonly<T> {
   return Object.freeze(value);
@@ -111,14 +107,30 @@ function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
   return Object.freeze(value);
 }
 
-function snapshotPayload<TPayload>(payload: TPayload): TPayload {
+async function snapshotPayload<TPayload>(payload: TPayload): Promise<TPayload> {
   if (payload === null || typeof payload !== "object") return payload;
   if (typeof FormData !== "undefined" && payload instanceof FormData) {
     const copy = new FormData();
     for (const [name, value] of payload.entries()) copy.append(name, value);
     return copy as TPayload;
   }
-  if (typeof Request !== "undefined" && payload instanceof Request) return payload.clone() as TPayload;
+  if (typeof Request !== "undefined" && payload instanceof Request) {
+    const clone = payload.clone();
+    if (clone.body === null) return clone as TPayload;
+    const body = await clone.arrayBuffer();
+    return new Request(payload.url, {
+      method: payload.method,
+      headers: payload.headers,
+      body: payload.method === "GET" || payload.method === "HEAD" ? undefined : body,
+      credentials: payload.credentials,
+      mode: payload.mode,
+      redirect: payload.redirect,
+      referrer: payload.referrer,
+      referrerPolicy: payload.referrerPolicy,
+      integrity: payload.integrity,
+      keepalive: payload.keepalive,
+    }) as TPayload;
+  }
   if (typeof URLSearchParams !== "undefined" && payload instanceof URLSearchParams) return new URLSearchParams(payload) as TPayload;
   if (typeof ReadableStream !== "undefined" && payload instanceof ReadableStream) {
     throw new Error("ReadableStream payloads are not supported by governed egress");
@@ -304,7 +316,7 @@ export async function executeGovernedEgress<TPayload, TResult>(
     if (observation.failure !== undefined) await evidence.failed(observation);
     throw new GovernedEgressDeniedError(observation);
   }
-  const payloadSnapshot = snapshotPayload(payload);
+  const payloadSnapshot = await snapshotPayload(payload);
   await evidence.prepared(observation);
   if (!egressAuthorizationIsFresh(scopeSnapshot, authorizationSnapshot)) {
     const staleObservation = observe(scopeSnapshot, intent, "deny", "MISSING_AUTHORIZATION", authorizationSnapshot);
@@ -314,7 +326,8 @@ export async function executeGovernedEgress<TPayload, TResult>(
   let terminalFailureRecorded = false;
   try {
     const value = await transport.send(authorizationSnapshot, payloadSnapshot);
-    if ((value as RedirectResult | undefined)?.kind === "redirect") {
+    const redirectDestination = transport.redirect?.(value);
+    if (redirectDestination !== undefined) {
       const redirectObservation = observe(scopeSnapshot, intent, "deny", "REDIRECT_REQUIRES_REAUTHORIZATION", authorizationSnapshot);
       terminalFailureRecorded = true;
       await evidence.failed(redirectObservation);
@@ -329,39 +342,4 @@ export async function executeGovernedEgress<TPayload, TResult>(
     }
     throw error;
   }
-}
-
-const updaterAuthorities = new WeakSet<UpdaterAuthority>();
-
-export class UpdaterAuthority {
-  private constructor() {}
-  readonly #issuer = "updater-subsystem" as const;
-  get issuer(): "updater-subsystem" { return this.#issuer; }
-  static {
-    updaterAuthorities.add(new UpdaterAuthority());
-  }
-}
-
-export type UpdaterRequest<TPayload> = Readonly<{
-  destination: CanonicalDestination;
-  protocol: NetworkProtocol;
-  payload: TPayload;
-}>;
-
-export async function executeUpdaterEgress<TPayload, TResult>(
-  authority: UpdaterAuthority,
-  request: UpdaterRequest<TPayload>,
-  transport: GovernedTransport<TPayload, TResult>,
-): Promise<TResult> {
-  if (!updaterAuthorities.has(authority) || authority.issuer !== "updater-subsystem") throw new Error("invalid updater authority");
-  return transport.send(freeze({
-    authorizationId: `updater:${crypto.randomUUID()}`,
-    scopeId: "updater",
-    destination: freeze({ ...request.destination }),
-    protocol: request.protocol,
-    executionSurface: "native-http-client",
-    dataClasses: ["public"],
-    sensitiveDataAuthorized: false,
-    expiresAt: new Date(Date.now() + 60_000).toISOString(),
-  }), request.payload);
 }

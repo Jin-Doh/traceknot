@@ -3,7 +3,6 @@ import {
   canonicalizeDestination,
   evaluateGovernedEgress,
   executeGovernedEgress,
-  executeUpdaterEgress,
   GovernedEgressDeniedError,
   type DurableEgressEvidenceStore,
   type EgressAuthorization,
@@ -123,21 +122,17 @@ describe("governed Skill egress boundary", () => {
     expect(evidence.events).toEqual(["PREPARED", "FAILED"]);
   });
 
-  test("requires fresh authorization for redirects instead of following them", async () => {
+  test("requires fresh authorization for explicit redirects", async () => {
     const evidence = new Evidence();
-    const redirect = { kind: "redirect" as const, destination: canonicalizeDestination("https://other.test/qa") };
-    await expect(executeGovernedEgress(scope, intent, authorization, transport(redirect), "payload", evidence)).rejects.toBeInstanceOf(GovernedEgressDeniedError);
+    const redirectDestination = canonicalizeDestination("https://other.test/qa");
+    const redirectTransport: GovernedTransport<string, string> = {
+      async send() { return "sent"; },
+      redirect() { return redirectDestination; },
+    };
+    await expect(executeGovernedEgress(scope, intent, authorization, redirectTransport, "payload", evidence)).rejects.toBeInstanceOf(GovernedEgressDeniedError);
     expect(evidence.events).toEqual(["PREPARED", "FAILED"]);
   });
 
-  test("rejects unissued updater authorities", async () => {
-    const forgedAuthority = { issuer: "updater-subsystem" } as unknown as Parameters<typeof executeUpdaterEgress>[0];
-    await expect(executeUpdaterEgress(forgedAuthority, {
-      destination,
-      protocol: "https",
-      payload: "release",
-    }, transport("updated"))).rejects.toThrow("invalid updater authority");
-  });
   test("does not attach failure to an allowed observation", () => {
     const observation = evaluateGovernedEgress(scope, intent, authorization);
     expect(observation.decision).toBe("allow");
@@ -154,6 +149,19 @@ describe("governed Skill egress boundary", () => {
       ...authorization,
       expiresAt: "not-a-timestamp",
     }).reason).toBe("MISSING_AUTHORIZATION");
+  });
+
+  test("records mandatory Skill failure before rejecting an expired scope", async () => {
+    const evidence = new Evidence();
+    await expect(executeGovernedEgress(
+      { ...scope, origin: "skill", expiresAt: new Date(Date.now() - 1_000).toISOString() },
+      { ...intent, mandatory: true, requestId: "request-expired", obligationId: "obligation-expired" },
+      authorization,
+      transport("sent"),
+      "payload",
+      evidence,
+    )).rejects.toThrow("scope.expiresAt is expired");
+    expect(evidence.events).toEqual(["FAILED"]);
   });
 
   test("records malformed mandatory Skill attempts before rethrowing validation errors", async () => {
