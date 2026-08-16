@@ -206,7 +206,6 @@ runs:
         TRACEKNOT_EXPECTED_HEAD: ${{ steps.prepare.outputs.head-oid }}
         TRACEKNOT_INVOCATION_ID: ${{ steps.prepare.outputs.invocation-id }}
         TRACEKNOT_BOARD: ${{ inputs.board }}
-        TRACEKNOT_INVOCATION_ID: ${{ steps.prepare.outputs.invocation-id }}
       run: |
         set -euo pipefail
         trap 'status=$?; printf "exit=%s\n" "$status" > "${TRACEKNOT_EVIDENCE}/status.txt"; chmod -R go-rwx "$TRACEKNOT_EVIDENCE"' EXIT
