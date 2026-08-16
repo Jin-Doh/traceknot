@@ -214,12 +214,18 @@ function nonempty(value: unknown): value is string {
 function nonnegativeInteger(value: unknown): boolean {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
+function validBoardAssurance(value: unknown): boolean {
+  if (!isRecord(value) || !exactKeys(value, ["context", "requiredIndependence", "releaseStatus"])) return false;
+  return (value.context === "local" || value.context === "release")
+    && (value.requiredIndependence === "separate-verification-context" || value.requiredIndependence === "independent-producer")
+    && (value.releaseStatus === "not-evaluated" || value.releaseStatus === "satisfied" || value.releaseStatus === "insufficient");
+}
 
 function validBoardManifest(value: unknown): value is JsonRecord {
-  if (!isRecord(value) || !exactKeys(value, ["schemaVersion", "runId", "requestId", "rootIdentity", "snapshotId", "sourceRevision", "sourceState", "sourceUpdatedAt", "generatedAt", "entrypoint", "authoritative", "verdict", "counts", "generatedBy", "files"])) return false;
+  if (!isRecord(value) || !exactKeys(value, ["schemaVersion", "runId", "requestId", "rootIdentity", "snapshotId", "sourceRevision", "sourceState", "sourceUpdatedAt", "generatedAt", "entrypoint", "authoritative", "assurance", "verdict", "counts", "generatedBy", "files"])) return false;
   if (value.schemaVersion !== "traceknot-qa-board/v1" || !nonempty(value.runId) || !nonempty(value.requestId) || !nonempty(value.rootIdentity) || !nonempty(value.snapshotId) || !nonnegativeInteger(value.sourceRevision)) return false;
   if (!["CREATED", "BASIS_ESTABLISHED", "DISCOVERY_COMPLETED", "PLANNED", "EXECUTING", "EVIDENCE_EVALUATED", "VERDICT_RESOLVED", "TERMINAL"].includes(String(value.sourceState))) return false;
-  if (typeof value.sourceUpdatedAt !== "string" || !ISO_UTC.test(value.sourceUpdatedAt) || typeof value.generatedAt !== "string" || !ISO_UTC.test(value.generatedAt) || value.entrypoint !== "index.html" || value.authoritative !== false || !["PASS", "PASS_WITH_ACCEPTED_RISK", "FAIL", "BLOCKED", "INCOMPLETE"].includes(String(value.verdict))) return false;
+  if (typeof value.sourceUpdatedAt !== "string" || !ISO_UTC.test(value.sourceUpdatedAt) || typeof value.generatedAt !== "string" || !ISO_UTC.test(value.generatedAt) || value.entrypoint !== "index.html" || value.authoritative !== false || !validBoardAssurance(value.assurance) || !["PASS", "PASS_WITH_ACCEPTED_RISK", "FAIL", "BLOCKED", "INCOMPLETE"].includes(String(value.verdict))) return false;
   if (!isRecord(value.counts) || !exactKeys(value.counts, ["mandatory", "passed", "failed", "blocked", "incomplete"]) || !Object.values(value.counts).every(nonnegativeInteger)) return false;
   if (!isRecord(value.generatedBy) || !exactKeys(value.generatedBy, ["invocationId", "sessionHost", "sessionRef"]) || !nonempty(value.generatedBy.invocationId) || !safeId(value.generatedBy.invocationId) || !nonempty(value.generatedBy.sessionHost) || value.generatedBy.sessionHost.length > 128 || !nonempty(value.generatedBy.sessionRef)) return false;
   if (!Array.isArray(value.files)) return false;
