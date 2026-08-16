@@ -24,6 +24,11 @@ export type SelfHostingManifest = Readonly<{
 }>;
 export type SelfHostingReport = Readonly<{
   schemaVersion: "traceknot-cli-report/v1";
+  assurance: Readonly<{
+    context: "local" | "release";
+    requiredIndependence: "separate-verification-context" | "independent-producer";
+    releaseStatus: "not-evaluated" | "satisfied" | "insufficient";
+  }>;
   run: Readonly<Record<string, unknown>>;
   verdict: Readonly<Record<string, unknown>>;
   snapshot: Readonly<Record<string, unknown>>;
@@ -132,6 +137,10 @@ function parseReport(value: string, label: string): SelfHostingReport {
   const report = parsed as Partial<SelfHostingReport>;
   if (
     report.schemaVersion !== "traceknot-cli-report/v1"
+    || !report.assurance || typeof report.assurance !== "object"
+    || (report.assurance.context !== "local" && report.assurance.context !== "release")
+    || (report.assurance.requiredIndependence !== "separate-verification-context" && report.assurance.requiredIndependence !== "independent-producer")
+    || (report.assurance.releaseStatus !== "not-evaluated" && report.assurance.releaseStatus !== "satisfied" && report.assurance.releaseStatus !== "insufficient")
     || !report.run || typeof report.run !== "object"
     || !report.verdict || typeof report.verdict !== "object"
     || !report.snapshot || typeof report.snapshot !== "object"

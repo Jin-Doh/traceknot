@@ -39,6 +39,7 @@
         }
       }
     },
+    "assuranceContext": { "enum": ["local", "release"] },
     "visualComposition": {
       "type": "object",
       "additionalProperties": false,

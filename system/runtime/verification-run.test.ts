@@ -1516,6 +1516,19 @@ describe("verification run orchestration", () => {
     expect(browserFakes.browserCalls).toBe(1);
     expect(browserFakes.executorCalls).toBe(0);
   });
+  test("keeps local UI assurance separate and requires independent producers for release", async () => {
+    const dependencies = makeDependencies().dependencies;
+    const releaseRequest = { ...makeCompositionRequest("release-assurance"), assuranceContext: "release" as const };
+    const localRequest = { ...makeCompositionRequest("local-assurance"), assuranceContext: "local" as const };
+    const releaseBasis = await establishTestBasis({ request: releaseRequest, dependencies });
+    const releaseDiscovery = await performRiskDiscovery({ request: releaseRequest, basis: releaseBasis, dependencies });
+    const releasePlan = await buildVerificationPlan({ request: releaseRequest, basis: releaseBasis, discovery: releaseDiscovery, dependencies });
+    const localBasis = await establishTestBasis({ request: localRequest, dependencies });
+    const localDiscovery = await performRiskDiscovery({ request: localRequest, basis: localBasis, dependencies });
+    const localPlan = await buildVerificationPlan({ request: localRequest, basis: localBasis, discovery: localDiscovery, dependencies });
+    expect(releasePlan.obligations.filter(item => item.visualCompositionRequirement || item.uiResilienceRequirement).every(item => item.independence === "independent-producer")).toBe(true);
+    expect(localPlan.obligations.filter(item => item.visualCompositionRequirement || item.uiResilienceRequirement).every(item => item.independence === "separate-verification-context")).toBe(true);
+  });
   test("accepts canonical discovery and rejects downgraded or foreign discovery at the direct plan API", async () => {
     const request = makeRequest("direct-plan-discovery");
     const fakes = makeDependencies();
