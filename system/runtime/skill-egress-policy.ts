@@ -1,60 +1,63 @@
-export const EGRESS_ORIGINS = [
-  "user-task",
-  "skill",
-  "repository-evidence",
-  "updater",
-  "unknown",
-] as const;
+export const EGRESS_ORIGINS = ["skill", "user-task", "repository-evidence", "unknown"] as const;
 export type EgressOrigin = (typeof EGRESS_ORIGINS)[number];
 
-export const EGRESS_TRANSPORTS = [
-  "dns",
-  "tcp",
-  "udp",
-  "http",
-  "https",
-  "websocket",
-  "browser",
-  "subprocess",
-] as const;
-export type EgressTransport = (typeof EGRESS_TRANSPORTS)[number];
+export const NETWORK_PROTOCOLS = ["dns", "tcp", "udp", "http", "https", "websocket"] as const;
+export type NetworkProtocol = (typeof NETWORK_PROTOCOLS)[number];
 
-export const EGRESS_DATA_CLASSES = [
-  "public",
-  "repository",
-  "artifact",
-  "conversation",
-  "environment",
-  "credential",
-] as const;
+export const EXECUTION_SURFACES = ["native-http-client", "browser", "subprocess", "mcp", "extension", "embedded-runtime"] as const;
+export type ExecutionSurface = (typeof EXECUTION_SURFACES)[number];
+
+export const EGRESS_DATA_CLASSES = ["public", "repository", "artifact", "log", "conversation", "environment", "credential"] as const;
 export type EgressDataClass = (typeof EGRESS_DATA_CLASSES)[number];
 
-export const EGRESS_DECISIONS = ["allow", "deny", "blocked", "out-of-scope"] as const;
+export const EGRESS_DECISIONS = ["allow", "deny", "blocked"] as const;
 export type EgressDecision = (typeof EGRESS_DECISIONS)[number];
 
 export const EGRESS_REASONS = [
-  "AUTHORIZED_USER_TASK",
-  "AUTHORIZED_REPOSITORY_EVIDENCE",
+  "AUTHORIZED_EGRESS",
   "SKILL_ORIGIN_EGRESS",
   "ORIGIN_UNATTRIBUTABLE",
   "UPDATER_TRUST_BOUNDARY",
   "MISSING_AUTHORIZATION",
   "SENSITIVE_DATA_UNAUTHORIZED",
+  "TARGET_MISMATCH",
+  "PROTOCOL_MISMATCH",
+  "REDIRECT_REQUIRES_REAUTHORIZATION",
 ] as const;
 export type EgressReason = (typeof EGRESS_REASONS)[number];
 
-export type SkillEgressPolicyInput = Readonly<{
-  origin: EgressOrigin;
-  destination: string;
-  transport: EgressTransport;
+export type CanonicalDestination = Readonly<{
+  scheme: string;
+  hostname: string;
+  port: number;
+  pathPrefix: string;
+}>;
+
+export type EgressIntent = Readonly<{
+  destination: CanonicalDestination;
+  protocol: NetworkProtocol;
+  executionSurface: ExecutionSurface;
   dataClasses: readonly EgressDataClass[];
-  authorizationBasisId?: string;
-  authorizedDestination?: string;
-  authorizedTransport?: EgressTransport;
-  sensitiveDataAuthorized?: boolean;
   requestId?: string;
   obligationId?: string;
   mandatory?: boolean;
+}>;
+
+export type TrustedExecutionScope = Readonly<{
+  scopeId: string;
+  origin: Exclude<EgressOrigin, "updater">;
+  issuedBy: "host-runtime";
+  expiresAt: string;
+}>;
+
+export type EgressAuthorization = Readonly<{
+  authorizationId: string;
+  scopeId: string;
+  destination: CanonicalDestination;
+  protocol: NetworkProtocol;
+  dataClasses: readonly EgressDataClass[];
+  sensitiveDataAuthorized: boolean;
+  expiresAt: string;
 }>;
 
 export type SkillEgressFailure = Readonly<{
@@ -64,174 +67,193 @@ export type SkillEgressFailure = Readonly<{
   reason: EgressReason;
 }>;
 
-export type SkillEgressObservation = Readonly<{
+export type EgressObservation = Readonly<{
   decision: EgressDecision;
   reason: EgressReason;
+  scopeId: string;
   origin: EgressOrigin;
-  destination: string;
-  transport: EgressTransport;
+  destination: CanonicalDestination;
+  protocol: NetworkProtocol;
+  executionSurface: ExecutionSurface;
   dataClasses: readonly EgressDataClass[];
-  authorizationBasisId?: string;
+  authorizationId?: string;
   requestId?: string;
   obligationId?: string;
   failure?: SkillEgressFailure;
 }>;
 
-const SENSITIVE_DATA_CLASSES: Readonly<Partial<Record<EgressDataClass, true>>> = {
-  conversation: true,
-  environment: true,
-  credential: true,
-};
+export interface GovernedTransport<TPayload = unknown, TResult = unknown> {
+  send(authorization: EgressAuthorization, payload: TPayload): Promise<TResult>;
+}
+
+export interface DurableEgressEvidenceStore {
+  prepared(observation: EgressObservation): Promise<void>;
+  completed(observation: EgressObservation): Promise<void>;
+  failed(observation: EgressObservation): Promise<void>;
+}
+
+export type RedirectResult = Readonly<{
+  kind: "redirect";
+  destination: CanonicalDestination;
+}>;
+
+function freeze<T extends object>(value: T): Readonly<T> {
+  return Object.freeze(value);
+}
 
 function nonEmpty(value: string, label: string): void {
   if (value.trim().length === 0 || value !== value.trim()) throw new Error(`${label} must be a non-empty trimmed string`);
 }
 
-function validateInput(input: SkillEgressPolicyInput): void {
-  if (!EGRESS_ORIGINS.includes(input.origin)) throw new Error("origin is invalid");
-  if (!EGRESS_TRANSPORTS.includes(input.transport)) throw new Error("transport is invalid");
-  if (input.dataClasses.length === 0 || input.dataClasses.some((dataClass) => !EGRESS_DATA_CLASSES.includes(dataClass))) {
-    throw new Error("dataClasses must contain known data classes");
-  }
-  nonEmpty(input.destination, "destination");
-  if (input.authorizationBasisId !== undefined) nonEmpty(input.authorizationBasisId, "authorizationBasisId");
-  if (input.authorizedDestination !== undefined) nonEmpty(input.authorizedDestination, "authorizedDestination");
-  if (input.authorizedTransport !== undefined && !EGRESS_TRANSPORTS.includes(input.authorizedTransport)) {
-    throw new Error("authorizedTransport is invalid");
-  }
-  if (input.requestId !== undefined) nonEmpty(input.requestId, "requestId");
-  if (input.obligationId !== undefined) nonEmpty(input.obligationId, "obligationId");
-  if (input.mandatory === true && (input.requestId === undefined || input.obligationId === undefined)) {
-    throw new Error("mandatory Skill egress requires requestId and obligationId");
-  }
+function iso(value: string, label: string): void {
+  nonEmpty(value, label);
+  if (Number.isNaN(Date.parse(value))) throw new Error(`${label} must be an ISO timestamp`);
 }
 
-function observation(
-  input: SkillEgressPolicyInput,
-  decision: EgressDecision,
-  reason: EgressReason,
-): SkillEgressObservation {
-  return {
+export function canonicalizeDestination(value: string): CanonicalDestination {
+  nonEmpty(value, "destination");
+  const url = new URL(value);
+  if (!url.hostname || url.username || url.password || url.hash) throw new Error("destination must have a canonical host without userinfo or fragment");
+  const scheme = url.protocol.slice(0, -1).toLowerCase();
+  const port = url.port === "" ? (scheme === "https" ? 443 : scheme === "http" ? 80 : 0) : Number(url.port);
+  return freeze({
+    scheme,
+    hostname: url.hostname.toLowerCase().replace(/\.$/u, ""),
+    port,
+    pathPrefix: url.pathname === "" ? "/" : url.pathname,
+  });
+}
+
+function sameDestination(left: CanonicalDestination, right: CanonicalDestination): boolean {
+  return left.scheme === right.scheme
+    && left.hostname === right.hostname
+    && left.port === right.port
+    && left.pathPrefix === right.pathPrefix;
+}
+
+function validIntent(intent: EgressIntent): void {
+  if (!NETWORK_PROTOCOLS.includes(intent.protocol)) throw new Error("protocol is invalid");
+  if (!EXECUTION_SURFACES.includes(intent.executionSurface)) throw new Error("executionSurface is invalid");
+  if (intent.dataClasses.length === 0 || intent.dataClasses.some((item) => !EGRESS_DATA_CLASSES.includes(item))) throw new Error("dataClasses must contain known data classes");
+  if (intent.requestId !== undefined) nonEmpty(intent.requestId, "requestId");
+  if (intent.obligationId !== undefined) nonEmpty(intent.obligationId, "obligationId");
+  if (intent.mandatory === true && (intent.requestId === undefined || intent.obligationId === undefined)) throw new Error("mandatory egress requires requestId and obligationId");
+  if ((intent.protocol === "http" || intent.protocol === "https") && intent.destination.scheme !== intent.protocol) throw new Error("protocol does not match destination scheme");
+}
+
+function validScope(scope: TrustedExecutionScope): void {
+  nonEmpty(scope.scopeId, "scopeId");
+  if (!EGRESS_ORIGINS.includes(scope.origin)) throw new Error("scope origin is invalid");
+  if (scope.issuedBy !== "host-runtime") throw new Error("scope issuer is invalid");
+  iso(scope.expiresAt, "scope.expiresAt");
+}
+
+function validAuthorization(intent: EgressIntent, scope: TrustedExecutionScope, authorization: EgressAuthorization): EgressReason | undefined {
+  if (authorization.scopeId !== scope.scopeId) return "MISSING_AUTHORIZATION";
+  if (!sameDestination(authorization.destination, intent.destination)) return "TARGET_MISMATCH";
+  if (authorization.protocol !== intent.protocol) return "PROTOCOL_MISMATCH";
+  if (authorization.dataClasses.length !== intent.dataClasses.length || authorization.dataClasses.some((item, index) => item !== intent.dataClasses[index])) return "MISSING_AUTHORIZATION";
+  if (Date.parse(authorization.expiresAt) <= Date.now()) return "MISSING_AUTHORIZATION";
+  return undefined;
+}
+
+function failure(intent: EgressIntent, reason: EgressReason, status: "FAIL" | "BLOCKED"): SkillEgressFailure | undefined {
+  return intent.mandatory === true && intent.requestId !== undefined && intent.obligationId !== undefined
+    ? freeze({ status, requestId: intent.requestId, obligationId: intent.obligationId, reason })
+    : undefined;
+}
+
+function observe(scope: TrustedExecutionScope, intent: EgressIntent, decision: EgressDecision, reason: EgressReason, authorization?: EgressAuthorization): EgressObservation {
+  const failureStatus = decision === "blocked" ? "BLOCKED" : "FAIL";
+  return freeze({
     decision,
     reason,
-    origin: input.origin,
-    destination: input.destination,
-    transport: input.transport,
-    dataClasses: Object.freeze([...input.dataClasses]),
-    ...(input.authorizationBasisId === undefined ? {} : { authorizationBasisId: input.authorizationBasisId }),
-    ...(input.requestId === undefined ? {} : { requestId: input.requestId }),
-    ...(input.obligationId === undefined ? {} : { obligationId: input.obligationId }),
-    ...(input.mandatory === true && (decision === "deny" || decision === "blocked")
-      ? {
-        failure: {
-          status: decision === "blocked" ? "BLOCKED" as const : "FAIL" as const,
-          requestId: input.requestId!,
-          obligationId: input.obligationId!,
-          reason,
-        },
-      }
-      : {}),
-  };
-}
-function hasValidMandatoryIdentifiers(input: SkillEgressPolicyInput): boolean {
-  return typeof input.requestId === "string"
-    && input.requestId.length > 0
-    && input.requestId === input.requestId.trim()
-    && typeof input.obligationId === "string"
-    && input.obligationId.length > 0
-    && input.obligationId === input.obligationId.trim();
+    scopeId: scope.scopeId,
+    origin: scope.origin,
+    destination: intent.destination,
+    protocol: intent.protocol,
+    executionSurface: intent.executionSurface,
+    dataClasses: freeze([...intent.dataClasses]),
+    ...(authorization === undefined ? {} : { authorizationId: authorization.authorizationId }),
+    ...(intent.requestId === undefined ? {} : { requestId: intent.requestId }),
+    ...(intent.obligationId === undefined ? {} : { obligationId: intent.obligationId }),
+    ...(failure(intent, reason, failureStatus) === undefined ? {} : { failure: failure(intent, reason, failureStatus) }),
+  });
 }
 
-function malformedObligationObservation(
-  input: SkillEgressPolicyInput,
-  origin: "skill" | "unknown",
-  decision: "deny" | "blocked",
-  reason: "SKILL_ORIGIN_EGRESS" | "ORIGIN_UNATTRIBUTABLE",
-): SkillEgressObservation {
-  const dataClasses = Array.isArray(input.dataClasses)
-    ? input.dataClasses.filter((dataClass): dataClass is EgressDataClass => EGRESS_DATA_CLASSES.includes(dataClass))
-    : [];
-  const transport = EGRESS_TRANSPORTS.includes(input.transport) ? input.transport : "subprocess";
-  const destination = typeof input.destination === "string" ? input.destination : "<invalid-destination>";
-  return observation({
-    origin,
-    destination,
-    transport,
-    dataClasses,
-    requestId: input.requestId!,
-    obligationId: input.obligationId!,
-    mandatory: true,
-  }, decision, reason);
-}
-function hasSensitiveData(dataClasses: readonly EgressDataClass[]): boolean {
-  return dataClasses.some((dataClass) => SENSITIVE_DATA_CLASSES[dataClass] === true);
-}
-
-function authorizedDestination(input: SkillEgressPolicyInput): boolean {
-  return input.authorizationBasisId !== undefined
-    && input.authorizationBasisId.trim().length > 0
-    && input.authorizedTransport === input.transport
-    && input.authorizedDestination === input.destination;
-}
-
-export function decideSkillEgress(input: SkillEgressPolicyInput): SkillEgressObservation {
-  validateInput(input);
-  if (input.origin === "skill") return observation(input, "deny", "SKILL_ORIGIN_EGRESS");
-  if (input.origin === "unknown") return observation(input, "blocked", "ORIGIN_UNATTRIBUTABLE");
-  if (input.origin === "updater") return observation(input, "out-of-scope", "UPDATER_TRUST_BOUNDARY");
-  if (!authorizedDestination(input)) return observation(input, "deny", "MISSING_AUTHORIZATION");
-  if (hasSensitiveData(input.dataClasses) && input.sensitiveDataAuthorized !== true) {
-    return observation(input, "deny", "SENSITIVE_DATA_UNAUTHORIZED");
+export function evaluateGovernedEgress(scope: TrustedExecutionScope, intent: EgressIntent, authorization: EgressAuthorization): EgressObservation {
+  validScope(scope);
+  validIntent(intent);
+  if (scope.origin === "skill") return observe(scope, intent, "deny", "SKILL_ORIGIN_EGRESS");
+  if (scope.origin === "unknown") return observe(scope, intent, "blocked", "ORIGIN_UNATTRIBUTABLE");
+  const authorizationFailure = validAuthorization(intent, scope, authorization);
+  if (authorizationFailure !== undefined) return observe(scope, intent, "deny", authorizationFailure);
+  if (intent.dataClasses.some((item) => item === "environment" || item === "credential" || item === "conversation" || item === "repository" || item === "artifact" || item === "log") && !authorization.sensitiveDataAuthorized) {
+    return observe(scope, intent, "deny", "SENSITIVE_DATA_UNAUTHORIZED", authorization);
   }
-  return observation(
-    input,
-    "allow",
-    input.origin === "user-task" ? "AUTHORIZED_USER_TASK" : "AUTHORIZED_REPOSITORY_EVIDENCE",
-  );
+  return observe(scope, intent, "allow", "AUTHORIZED_EGRESS", authorization);
 }
 
-export function assertSkillEgressAllowed(input: SkillEgressPolicyInput): SkillEgressObservation {
-  const result = decideSkillEgress(input);
-  if (result.decision === "deny" || result.decision === "blocked") {
-    throw new SkillEgressDeniedError(result);
-  }
-  return result;
-}
-
-export class SkillEgressDeniedError extends Error {
-  constructor(readonly observation: SkillEgressObservation) {
-    super(`Skill egress ${observation.decision}: ${observation.reason}`);
-    this.name = "SkillEgressDeniedError";
+export class GovernedEgressDeniedError extends Error {
+  constructor(readonly observation: EgressObservation) {
+    super(`Governed egress ${observation.decision}: ${observation.reason}`);
+    this.name = "GovernedEgressDeniedError";
   }
 }
 
-/**
- * `transmit` must use redirect: "error" (or the equivalent no-follow mode).
- * A redirect response is a new destination and must be re-authorized by a
- * separate executeSkillEgress call before any follow-up transmission.
- */
-export async function executeSkillEgress<T>(
-  input: SkillEgressPolicyInput,
-  transmit: (observation: SkillEgressObservation) => Promise<T>,
-): Promise<Readonly<{ observation: SkillEgressObservation; value: T }>> {
-  let allowedObservation: SkillEgressObservation;
+export async function executeGovernedEgress<TPayload, TResult>(
+  scope: TrustedExecutionScope,
+  intent: EgressIntent,
+  authorization: EgressAuthorization,
+  transport: GovernedTransport<TPayload, TResult>,
+  payload: TPayload,
+  evidence: DurableEgressEvidenceStore,
+): Promise<Readonly<{ observation: EgressObservation; value: TResult }>> {
+  const observation = evaluateGovernedEgress(scope, intent, authorization);
+  if (observation.decision !== "allow") {
+    if (observation.failure !== undefined) await evidence.failed(observation);
+    throw new GovernedEgressDeniedError(observation);
+  }
+  await evidence.prepared(observation);
   try {
-    allowedObservation = assertSkillEgressAllowed(input);
-  } catch (error) {
-    if (
-      input.mandatory === true
-      && hasValidMandatoryIdentifiers(input)
-      && (input.origin === "skill" || input.origin === "unknown")
-    ) {
-      const origin = input.origin;
-      throw new SkillEgressDeniedError(malformedObligationObservation(
-        input,
-        origin,
-        origin === "skill" ? "deny" : "blocked",
-        origin === "skill" ? "SKILL_ORIGIN_EGRESS" : "ORIGIN_UNATTRIBUTABLE",
-      ));
+    const value = await transport.send(authorization, payload);
+    if ((value as RedirectResult | undefined)?.kind === "redirect") {
+      const redirectObservation = observe(scope, intent, "deny", "REDIRECT_REQUIRES_REAUTHORIZATION", authorization);
+      await evidence.failed(redirectObservation);
+      throw new GovernedEgressDeniedError(redirectObservation);
     }
+    await evidence.completed(observation);
+    return freeze({ observation, value });
+  } catch (error) {
+    await evidence.failed(observation);
     throw error;
   }
-  return { observation: allowedObservation, value: await transmit(allowedObservation) };
+}
+
+export class UpdaterAuthority {
+  readonly #issuer = "updater-subsystem" as const;
+  get issuer(): "updater-subsystem" { return this.#issuer; }
+}
+
+export type UpdaterRequest<TPayload> = Readonly<{
+  destination: CanonicalDestination;
+  protocol: NetworkProtocol;
+  payload: TPayload;
+}>;
+
+export async function executeUpdaterEgress<TPayload, TResult>(
+  authority: UpdaterAuthority,
+  request: UpdaterRequest<TPayload>,
+  transport: GovernedTransport<TPayload, TResult>,
+): Promise<TResult> {
+  if (authority.issuer !== "updater-subsystem") throw new Error("invalid updater authority");
+  return transport.send(freeze({
+    authorizationId: `updater:${crypto.randomUUID()}`,
+    scopeId: "updater",
+    destination: request.destination,
+    protocol: request.protocol,
+    dataClasses: ["public"],
+    sensitiveDataAuthorized: false,
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  }), request.payload);
 }

@@ -9,7 +9,7 @@ Traceknot treats `.github/workflows/ci.yml` and `sh scripts/ci` as the enforced 
 | `SEC-P0-001` | CodeQL alerts with `security-severity >= 7.0` must have zero unexcepted results. | `bun scripts/check-codeql-sarif.ts --policy codeql-policy.json <sarif-path>` | Blocking |
 | `SEC-P0-004` | The portable Skill must contain only the approved Markdown tree and no symlinks, special files, or executable entries. | `bun scripts/check-skill-egress.ts` | Blocking |
 | `SEC-P0-005` | Skill content must not direct unrequested repository, environment, credential, conversation, artifact, or log data to an external destination. | `bun scripts/audit-prompt-injection.ts --threshold high` | Blocking |
-| `SEC-P0-006` | A Skill-origin outbound request must be denied before transmission and resolve the affected mandatory obligation to `FAIL`. | `system/runtime/skill-egress-policy.ts`; host must call `executeSkillEgress` before its transmitter. | Blocking |
+| `SEC-P0-006` | A Skill-origin outbound request must be denied before transmission and resolve the affected mandatory obligation to `FAIL`. | `system/runtime/skill-egress-policy.ts`; host-issued `TrustedExecutionScope`, `EgressAuthorization`, and `executeGovernedEgress` must precede a `GovernedTransport`. | Blocking |
 | `SEC-P1-002` | JavaScript and TypeScript must run the CodeQL `security-extended` suite. | `codeql` job in `.github/workflows/ci.yml` | Blocking |
 | `SEC-P1-003` | Known package vulnerabilities must be absent from the locked dependency graph. | `bun audit` through `sh scripts/ci` | Blocking |
 | `GOV-P1-001` | Every security exception must identify an owner, reason, mitigation, fingerprint, and expiry date. | `codeql-policy.json` schema and SARIF gate | Blocking |

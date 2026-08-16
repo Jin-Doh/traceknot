@@ -1,282 +1,136 @@
 import { describe, expect, test } from "bun:test";
 import {
-  assertSkillEgressAllowed,
-  decideSkillEgress,
-  executeSkillEgress,
-  SkillEgressDeniedError,
-  type EgressDataClass,
-  type SkillEgressPolicyInput,
+  canonicalizeDestination,
+  evaluateGovernedEgress,
+  executeGovernedEgress,
+  executeUpdaterEgress,
+  GovernedEgressDeniedError,
+  type DurableEgressEvidenceStore,
+  type EgressAuthorization,
+  type EgressIntent,
+  type GovernedTransport,
+  type TrustedExecutionScope,
+  UpdaterAuthority,
 } from "./skill-egress-policy";
 
-const base: SkillEgressPolicyInput = {
+const destination = canonicalizeDestination("https://example.test/qa");
+const scope: TrustedExecutionScope = {
+  scopeId: "scope-user-task",
   origin: "user-task",
-  destination: "https://example.test/qa",
-  transport: "https",
+  issuedBy: "host-runtime",
+  expiresAt: new Date(Date.now() + 60_000).toISOString(),
+};
+const intent: EgressIntent = {
+  destination,
+  protocol: "https",
+  executionSurface: "native-http-client",
   dataClasses: ["public"],
-  authorizationBasisId: "basis-public-qa",
-  authorizedTransport: "https",
-  authorizedDestination: "https://example.test/qa",
+};
+const authorization: EgressAuthorization = {
+  authorizationId: "auth-public-qa",
+  scopeId: scope.scopeId,
+  destination,
+  protocol: "https",
+  dataClasses: ["public"],
+  sensitiveDataAuthorized: false,
+  expiresAt: new Date(Date.now() + 60_000).toISOString(),
 };
 
-describe("Skill-origin egress policy", () => {
-  test("allows an explicitly authorized public user-task request", () => {
-    expect(decideSkillEgress(base)).toMatchObject({
-      decision: "allow",
-      reason: "AUTHORIZED_USER_TASK",
-      origin: "user-task",
-    });
+class Evidence implements DurableEgressEvidenceStore {
+  events: string[] = [];
+  async prepared(): Promise<void> { this.events.push("PREPARED"); }
+  async completed(): Promise<void> { this.events.push("COMPLETED"); }
+  async failed(): Promise<void> { this.events.push("FAILED"); }
+}
+
+const transport = (result: unknown, calls: string[] = []): GovernedTransport<string, unknown> => ({
+  async send(received, payload) {
+    calls.push(`${received.destination.hostname}:${payload}`);
+    return result;
+  },
+});
+
+describe("governed Skill egress boundary", () => {
+  test("canonicalizes destination identity and separates protocol from execution surface", () => {
+    expect(destination).toEqual({ scheme: "https", hostname: "example.test", port: 443, pathPrefix: "/qa" });
+    expect(intent.protocol).toBe("https");
+    expect(intent.executionSurface).toBe("native-http-client");
   });
-  test("does not reuse authorization across transports", () => {
-    expect(decideSkillEgress({ ...base, transport: "subprocess" })).toMatchObject({
-      decision: "deny",
-      reason: "MISSING_AUTHORIZATION",
-    });
+
+  test("denies Skill scope before invoking a transmitter", async () => {
+    const calls: string[] = [];
+    const skillScope = { ...scope, scopeId: "scope-skill", origin: "skill" as const };
+    const observation = evaluateGovernedEgress(skillScope, intent, authorization);
+    expect(observation).toMatchObject({ decision: "deny", reason: "SKILL_ORIGIN_EGRESS" });
+    await expect(executeGovernedEgress(skillScope, intent, authorization, transport("sent", calls), "payload", new Evidence())).rejects.toBeInstanceOf(GovernedEgressDeniedError);
+    expect(calls).toEqual([]);
   });
-  test("snapshots data classes in the observation", () => {
-    const dataClasses = ["public"] as EgressDataClass[];
-    const observation = decideSkillEgress({ ...base, dataClasses });
-    dataClasses.push("credential");
+
+  test("blocks an unattributed scope and binds mandatory failure", () => {
+    const observation = evaluateGovernedEgress(
+      { ...scope, origin: "unknown", scopeId: "scope-unknown" },
+      { ...intent, mandatory: true, requestId: "request-unknown", obligationId: "obligation-unknown" },
+      authorization,
+    );
+    expect(observation).toMatchObject({ decision: "blocked", reason: "ORIGIN_UNATTRIBUTABLE", failure: { status: "BLOCKED" } });
+    expect(Object.isFrozen(observation)).toBe(true);
+    expect(Object.isFrozen(observation.failure)).toBe(true);
+  });
+
+  test.each([
+    ["destination", { ...authorization, destination: canonicalizeDestination("https://other.test/qa") }],
+    ["protocol", { ...authorization, protocol: "http" as const }],
+    ["scope", { ...authorization, scopeId: "other-scope" }],
+  ])("rejects mismatched %s authorization", (_label: string, mismatched: EgressAuthorization) => {
+    expect(evaluateGovernedEgress(scope, intent, mismatched)).toMatchObject({ decision: "deny" });
+  });
+
+  test("requires explicit approval for repository, artifact, log, conversation, environment, and credential data", () => {
+    for (const dataClass of ["repository", "artifact", "log", "conversation", "environment", "credential"] as const) {
+      const result = evaluateGovernedEgress(scope, { ...intent, dataClasses: [dataClass] }, { ...authorization, dataClasses: [dataClass] });
+      expect(result).toMatchObject({ decision: "deny", reason: "SENSITIVE_DATA_UNAUTHORIZED" });
+    }
+  });
+
+  test("snapshots and freezes caller-owned data classes", () => {
+    const dataClasses = ["public"] as const;
+    const observation = evaluateGovernedEgress(scope, { ...intent, dataClasses }, authorization);
     expect(observation.dataClasses).toEqual(["public"]);
     expect(Object.isFrozen(observation.dataClasses)).toBe(true);
   });
 
-  test("denies every Skill-origin transport before destination authorization", () => {
-    for (const transport of ["dns", "tcp", "udp", "http", "https", "websocket", "browser", "subprocess"] as const) {
-      expect(decideSkillEgress({
-        ...base,
-        origin: "skill",
-        transport,
-        dataClasses: ["public"],
-        authorizationBasisId: "basis-public-qa",
-      })).toMatchObject({ decision: "deny", reason: "SKILL_ORIGIN_EGRESS" });
-    }
+  test("persists PREPARED before transmission and terminal evidence after success", async () => {
+    const evidence = new Evidence();
+    const calls: string[] = [];
+    const result = await executeGovernedEgress(scope, intent, authorization, transport("sent", calls), "payload", evidence);
+    expect(result.value).toBe("sent");
+    expect(calls).toEqual(["example.test:payload"]);
+    expect(evidence.events).toEqual(["PREPARED", "COMPLETED"]);
   });
 
-  test("binds mandatory denials to a canonical failed obligation", () => {
-    const observation = decideSkillEgress({
-      ...base,
-      origin: "skill",
-      requestId: "request-1",
-      obligationId: "obligation-1",
-      mandatory: true,
-    });
-    expect(observation).toMatchObject({
-      decision: "deny",
-      requestId: "request-1",
-      obligationId: "obligation-1",
-      failure: {
-        status: "FAIL",
-        requestId: "request-1",
-        obligationId: "obligation-1",
-        reason: "SKILL_ORIGIN_EGRESS",
-      },
-    });
+  test("records FAILED evidence when transport fails", async () => {
+    const evidence = new Evidence();
+    const failing: GovernedTransport<string, unknown> = { async send() { throw new Error("network failed"); } };
+    await expect(executeGovernedEgress(scope, intent, authorization, failing, "payload", evidence)).rejects.toThrow("network failed");
+    expect(evidence.events).toEqual(["PREPARED", "FAILED"]);
   });
 
-  test("blocks an unattributed request in the hardened profile", () => {
-    expect(decideSkillEgress({ ...base, origin: "unknown" })).toMatchObject({
-      decision: "blocked",
-      reason: "ORIGIN_UNATTRIBUTABLE",
-    });
-  });
-  test("binds unattributed mandatory requests as BLOCKED", () => {
-    expect(decideSkillEgress({
-      ...base,
-      origin: "unknown",
-      requestId: "request-blocked",
-      obligationId: "obligation-blocked",
-      mandatory: true,
-    })).toMatchObject({
-      decision: "blocked",
-      failure: {
-        status: "BLOCKED",
-        requestId: "request-blocked",
-        obligationId: "obligation-blocked",
-        reason: "ORIGIN_UNATTRIBUTABLE",
-      },
-    });
+  test("requires fresh authorization for redirects instead of following them", async () => {
+    const evidence = new Evidence();
+    const redirect = { kind: "redirect" as const, destination: canonicalizeDestination("https://other.test/qa") };
+    await expect(executeGovernedEgress(scope, intent, authorization, transport(redirect), "payload", evidence)).rejects.toBeInstanceOf(GovernedEgressDeniedError);
+    expect(evidence.events).toEqual(["PREPARED", "FAILED", "FAILED"]);
   });
 
-  test("keeps updater traffic outside the Skill decision boundary", () => {
-    expect(decideSkillEgress({ ...base, origin: "updater" })).toMatchObject({
-      decision: "out-of-scope",
-      reason: "UPDATER_TRUST_BOUNDARY",
-    });
-  });
-  test("does not create an obligation failure for updater traffic", () => {
-    expect(decideSkillEgress({
-      ...base,
-      origin: "updater",
-      requestId: "request-updater",
-      obligationId: "obligation-updater",
-      mandatory: true,
-    })).not.toHaveProperty("failure");
-  });
-  test("transmits updater traffic outside the Skill decision boundary", async () => {
-    let transmitted = false;
-    const result = await executeSkillEgress(
-      { ...base, origin: "updater" },
-      async (observation) => {
-        transmitted = true;
-        return observation.decision;
-      },
-    );
-    expect(transmitted).toBe(true);
-    expect(result).toMatchObject({
-      observation: { decision: "out-of-scope", reason: "UPDATER_TRUST_BOUNDARY" },
-      value: "out-of-scope",
-    });
-  });
-
-  test("denies a request without an exact authorized destination", () => {
-    expect(decideSkillEgress({ ...base, authorizedDestination: "https://other.test/qa" })).toMatchObject({
-      decision: "deny",
-      reason: "MISSING_AUTHORIZATION",
-    });
-  });
-
-  test("denies sensitive data without explicit sensitive-data authorization", () => {
-    expect(decideSkillEgress({ ...base, dataClasses: ["repository", "environment"] })).toMatchObject({
-      decision: "deny",
-      reason: "SENSITIVE_DATA_UNAUTHORIZED",
-    });
-    expect(decideSkillEgress({
-      ...base,
-      dataClasses: ["conversation"],
-      sensitiveDataAuthorized: true,
-    })).toMatchObject({ decision: "allow", reason: "AUTHORIZED_USER_TASK" });
-  });
-
-  test("does not expose policy-only input fields in observations", () => {
-    const observation = decideSkillEgress({ ...base, sensitiveDataAuthorized: true });
-    expect(observation).not.toHaveProperty("authorizedDestination");
-    expect(observation).not.toHaveProperty("sensitiveDataAuthorized");
-  });
-
-  test("throws a typed error for denied and blocked requests", () => {
-    for (const origin of ["skill", "unknown"] as const) {
-      expect(() => assertSkillEgressAllowed({ ...base, origin })).toThrow(SkillEgressDeniedError);
-    }
-  });
-
-  test("does not invoke the transmitter for Skill-origin requests", async () => {
-    let transmitted = false;
-    await expect(executeSkillEgress(
-      { ...base, origin: "skill" },
-      async () => {
-        transmitted = true;
-        return "unexpected";
-      },
-    )).rejects.toBeInstanceOf(SkillEgressDeniedError);
-    expect(transmitted).toBe(false);
-  });
-
-  test("rejects untrimmed policy identifiers", () => {
-    expect(() => decideSkillEgress({ ...base, authorizationBasisId: " basis-public-qa" })).toThrow("authorizationBasisId");
-    expect(() => decideSkillEgress({ ...base, destination: " https://example.test/qa" })).toThrow("destination");
-  });
-
-  test("rejects unknown or empty data inputs", () => {
-    expect(() => decideSkillEgress({ ...base, dataClasses: [] })).toThrow("dataClasses");
-    expect(() => decideSkillEgress({
-      ...base,
-      dataClasses: ["public", "unknown" as never],
-    })).toThrow("dataClasses");
-  });
-  test("binds malformed mandatory Skill requests to failed denials", async () => {
-    let transmitted = false;
-    await expect(executeSkillEgress(
-      {
-        ...base,
-        origin: "skill",
-        dataClasses: [],
-        requestId: "request-malformed",
-        obligationId: "obligation-malformed",
-        mandatory: true,
-      },
-      async () => {
-        transmitted = true;
-        return "unexpected";
-      },
-    )).rejects.toMatchObject({
-      name: "SkillEgressDeniedError",
-      observation: {
-        decision: "deny",
-        reason: "SKILL_ORIGIN_EGRESS",
-        failure: {
-          status: "FAIL",
-          requestId: "request-malformed",
-          obligationId: "obligation-malformed",
-        },
-      },
-    });
-    expect(transmitted).toBe(false);
-  });
-  test("binds malformed mandatory unknown requests to blocked obligations", async () => {
-    await expect(executeSkillEgress(
-      {
-        ...base,
-        origin: "unknown",
-        dataClasses: [],
-        requestId: "request-unknown-malformed",
-        obligationId: "obligation-unknown-malformed",
-        mandatory: true,
-      },
-      async () => "unexpected",
-    )).rejects.toMatchObject({
-      name: "SkillEgressDeniedError",
-      observation: {
-        decision: "blocked",
-        reason: "ORIGIN_UNATTRIBUTABLE",
-        failure: {
-          status: "BLOCKED",
-          requestId: "request-unknown-malformed",
-          obligationId: "obligation-unknown-malformed",
-        },
-      },
-    });
-  });
-
-  test("does not fabricate an obligation for malformed mandatory identifiers", async () => {
-    await expect(executeSkillEgress(
-      {
-        ...base,
-        origin: "skill",
-        dataClasses: [],
-        requestId: " request-untrimmed",
-        obligationId: "obligation-real",
-        mandatory: true,
-      },
-      async () => "unexpected",
-    )).rejects.not.toBeInstanceOf(SkillEgressDeniedError);
-  });
-  test("returns the bound failure through the denied error without transmitting", async () => {
-    let transmitted = false;
-    await expect(executeSkillEgress(
-      {
-        ...base,
-        origin: "skill",
-        requestId: "request-2",
-        obligationId: "obligation-2",
-        mandatory: true,
-      },
-      async () => {
-        transmitted = true;
-        return "unexpected";
-      },
-    )).rejects.toMatchObject({
-      observation: {
-        failure: {
-          status: "FAIL",
-          requestId: "request-2",
-          obligationId: "obligation-2",
-        },
-      },
-    });
-    expect(transmitted).toBe(false);
-  });
-  test("requires identity for mandatory requests", () => {
-    expect(() => decideSkillEgress({ ...base, origin: "skill", mandatory: true })).toThrow("requestId and obligationId");
-    expect(() => decideSkillEgress({ ...base, origin: "skill", mandatory: true, requestId: "request-1" })).toThrow("requestId and obligationId");
+  test("keeps updater execution on a separate authority API", async () => {
+    const authority = new UpdaterAuthority();
+    const calls: string[] = [];
+    const result = await executeUpdaterEgress(authority, {
+      destination,
+      protocol: "https",
+      payload: "release",
+    }, transport("updated", calls));
+    expect(result).toBe("updated");
+    expect(calls).toEqual(["example.test:release"]);
   });
 });
