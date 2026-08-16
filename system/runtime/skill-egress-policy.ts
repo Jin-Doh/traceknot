@@ -82,6 +82,7 @@ export type EgressObservation = Readonly<{
   requestId?: string;
   obligationId?: string;
   failure?: SkillEgressFailure;
+  redirectDestination?: CanonicalDestination;
 }>;
 
 export interface GovernedTransport<TPayload = unknown, TResult = unknown> {
@@ -140,6 +141,10 @@ async function snapshotPayload<TPayload>(payload: TPayload): Promise<TPayload> {
   } catch (error) {
     throw new Error("payload must be a supported snapshot-able transport body", { cause: error });
   }
+}
+function requestDestination(payload: unknown): CanonicalDestination | undefined {
+  if (typeof Request === "undefined" || !(payload instanceof Request)) return undefined;
+  return canonicalizeDestination(payload.url);
 }
 
 function nonEmpty(value: string, label: string): void {
@@ -208,8 +213,7 @@ function failure(intent: EgressIntent, reason: EgressReason, status: "FAIL" | "B
     ? freeze({ status, requestId: intent.requestId, obligationId: intent.obligationId, reason })
     : undefined;
 }
-
-function observe(scope: TrustedExecutionScope, intent: EgressIntent, decision: EgressDecision, reason: EgressReason, authorization?: EgressAuthorization): EgressObservation {
+function observe(scope: TrustedExecutionScope, intent: EgressIntent, decision: EgressDecision, reason: EgressReason, authorization?: EgressAuthorization, redirectDestination?: CanonicalDestination): EgressObservation {
   const failureStatus = decision === "blocked" ? "BLOCKED" : "FAIL";
   const failureRecord = decision === "allow" ? undefined : failure(intent, reason, failureStatus);
   return freeze({
@@ -223,6 +227,7 @@ function observe(scope: TrustedExecutionScope, intent: EgressIntent, decision: E
     dataClasses: freeze([...intent.dataClasses]),
     ...(authorization === undefined ? {} : { authorizationId: authorization.authorizationId }),
     ...(intent.requestId === undefined ? {} : { requestId: intent.requestId }),
+    ...(redirectDestination === undefined ? {} : { redirectDestination: freeze({ ...redirectDestination }) }),
     ...(intent.obligationId === undefined ? {} : { obligationId: intent.obligationId }),
     ...(failureRecord === undefined ? {} : { failure: failureRecord }),
   });
@@ -316,6 +321,12 @@ export async function executeGovernedEgress<TPayload, TResult>(
     if (observation.failure !== undefined) await evidence.failed(observation);
     throw new GovernedEgressDeniedError(observation);
   }
+  const requestTarget = requestDestination(payload);
+  if (requestTarget !== undefined && !sameDestination(requestTarget, intent.destination)) {
+    const mismatchObservation = observe(scopeSnapshot, intent, "deny", "TARGET_MISMATCH", authorizationSnapshot);
+    await evidence.failed(mismatchObservation);
+    throw new GovernedEgressDeniedError(mismatchObservation);
+  }
   const payloadSnapshot = await snapshotPayload(payload);
   await evidence.prepared(observation);
   if (!egressAuthorizationIsFresh(scopeSnapshot, authorizationSnapshot)) {
@@ -328,7 +339,7 @@ export async function executeGovernedEgress<TPayload, TResult>(
     const value = await transport.send(authorizationSnapshot, payloadSnapshot);
     const redirectDestination = transport.redirect?.(value);
     if (redirectDestination !== undefined) {
-      const redirectObservation = observe(scopeSnapshot, intent, "deny", "REDIRECT_REQUIRES_REAUTHORIZATION", authorizationSnapshot);
+      const redirectObservation = observe(scopeSnapshot, intent, "deny", "REDIRECT_REQUIRES_REAUTHORIZATION", authorizationSnapshot, redirectDestination);
       terminalFailureRecorded = true;
       await evidence.failed(redirectObservation);
       throw new GovernedEgressDeniedError(redirectObservation);

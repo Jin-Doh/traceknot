@@ -129,7 +129,13 @@ describe("governed Skill egress boundary", () => {
       async send() { return "sent"; },
       redirect() { return redirectDestination; },
     };
-    await expect(executeGovernedEgress(scope, intent, authorization, redirectTransport, "payload", evidence)).rejects.toBeInstanceOf(GovernedEgressDeniedError);
+    let thrown: GovernedEgressDeniedError | undefined;
+    try {
+      await executeGovernedEgress(scope, intent, authorization, redirectTransport, "payload", evidence);
+    } catch (error) {
+      thrown = error as GovernedEgressDeniedError;
+    }
+    expect(thrown?.observation.redirectDestination).toEqual(redirectDestination);
     expect(evidence.events).toEqual(["PREPARED", "FAILED"]);
   });
 
@@ -301,6 +307,16 @@ describe("governed Skill egress boundary", () => {
       },
     }, payload, evidence);
     expect([...received ?? []]).toEqual([1, 2]);
+  });
+  test("rejects Request payloads whose URL differs from the authorized destination", async () => {
+    const evidence = new Evidence();
+    const request = new Request("https://other.test/qa");
+    await expect(executeGovernedEgress(scope, intent, authorization, {
+      async send() { return "sent"; },
+    }, request, evidence)).rejects.toMatchObject({
+      observation: { reason: "TARGET_MISMATCH" },
+    });
+    expect(evidence.events).toEqual(["FAILED"]);
   });
 
 
