@@ -187,7 +187,9 @@ export function decideSkillEgress(input: SkillEgressPolicyInput): SkillEgressObs
 
 export function assertSkillEgressAllowed(input: SkillEgressPolicyInput): SkillEgressObservation {
   const result = decideSkillEgress(input);
-  if (result.decision !== "allow") throw new SkillEgressDeniedError(result);
+  if (result.decision === "deny" || result.decision === "blocked") {
+    throw new SkillEgressDeniedError(result);
+  }
   return result;
 }
 

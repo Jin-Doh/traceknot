@@ -105,6 +105,21 @@ describe("Skill-origin egress policy", () => {
       mandatory: true,
     })).not.toHaveProperty("failure");
   });
+  test("transmits updater traffic outside the Skill decision boundary", async () => {
+    let transmitted = false;
+    const result = await executeSkillEgress(
+      { ...base, origin: "updater" },
+      async (observation) => {
+        transmitted = true;
+        return observation.decision;
+      },
+    );
+    expect(transmitted).toBe(true);
+    expect(result).toMatchObject({
+      observation: { decision: "out-of-scope", reason: "UPDATER_TRUST_BOUNDARY" },
+      value: "out-of-scope",
+    });
+  });
 
   test("denies a request without an exact authorized destination", () => {
     expect(decideSkillEgress({ ...base, authorizedDestination: "https://other.test/qa" })).toMatchObject({
