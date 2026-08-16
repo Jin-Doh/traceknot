@@ -57,7 +57,7 @@ export type SkillEgressPolicyInput = Readonly<{
 }>;
 
 export type SkillEgressFailure = Readonly<{
-  status: "FAIL";
+  status: "FAIL" | "BLOCKED";
   requestId: string;
   obligationId: string;
   reason: EgressReason;
@@ -120,7 +120,7 @@ function observation(
     ...(input.mandatory === true && decision !== "allow"
       ? {
         failure: {
-          status: "FAIL" as const,
+          status: decision === "blocked" ? "BLOCKED" as const : "FAIL" as const,
           requestId: input.requestId!,
           obligationId: input.obligationId!,
           reason,

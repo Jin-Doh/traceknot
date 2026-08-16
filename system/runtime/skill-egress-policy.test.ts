@@ -64,6 +64,23 @@ describe("Skill-origin egress policy", () => {
       reason: "ORIGIN_UNATTRIBUTABLE",
     });
   });
+  test("binds unattributed mandatory requests as BLOCKED", () => {
+    expect(decideSkillEgress({
+      ...base,
+      origin: "unknown",
+      requestId: "request-blocked",
+      obligationId: "obligation-blocked",
+      mandatory: true,
+    })).toMatchObject({
+      decision: "blocked",
+      failure: {
+        status: "BLOCKED",
+        requestId: "request-blocked",
+        obligationId: "obligation-blocked",
+        reason: "ORIGIN_UNATTRIBUTABLE",
+      },
+    });
+  });
 
   test("keeps updater traffic outside the Skill decision boundary", () => {
     expect(decideSkillEgress({ ...base, origin: "updater" })).toMatchObject({
