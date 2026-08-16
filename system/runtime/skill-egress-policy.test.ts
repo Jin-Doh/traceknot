@@ -124,7 +124,7 @@ describe("governed Skill egress boundary", () => {
   });
 
   test("keeps updater execution on a separate authority API", async () => {
-    const authority = new UpdaterAuthority();
+    const authority = UpdaterAuthority.issue();
     const calls: string[] = [];
     const result = await executeUpdaterEgress(authority, {
       destination,
@@ -251,6 +251,26 @@ describe("governed Skill egress boundary", () => {
     mutableDestination.hostname = "attacker.test";
     expect(observation.destination.hostname).toBe("example.test");
     expect(Object.isFrozen(observation.destination)).toBe(true);
+  });
+
+  test("snapshots payload before prepared evidence", async () => {
+    const payload = { body: "public" };
+    const evidence: DurableEgressEvidenceStore = {
+      async prepared() {
+        payload.body = "credential";
+      },
+      async completed() {},
+      async failed() {},
+    };
+    let received: { body: string } | undefined;
+    await executeGovernedEgress(scope, intent, authorization, {
+      async send(_receivedAuthorization, receivedPayload) {
+        received = receivedPayload;
+        return "sent";
+      },
+    }, payload, evidence);
+    expect(received).toEqual({ body: "public" });
+    expect(Object.isFrozen(received)).toBe(true);
   });
 
 

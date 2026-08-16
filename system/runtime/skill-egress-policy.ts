@@ -101,6 +101,19 @@ export type RedirectResult = Readonly<{
 function freeze<T extends object>(value: T): Readonly<T> {
   return Object.freeze(value);
 }
+function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
+  if (value === null || typeof value !== "object" || seen.has(value)) return value;
+  seen.add(value);
+  for (const key of Reflect.ownKeys(value)) {
+    deepFreeze((value as Record<PropertyKey, unknown>)[key], seen);
+  }
+  return Object.freeze(value);
+}
+
+function snapshotPayload<TPayload>(payload: TPayload): TPayload {
+  if (payload === null || typeof payload !== "object") return payload;
+  return deepFreeze(structuredClone(payload));
+}
 
 function nonEmpty(value: string, label: string): void {
   if (value.trim().length === 0 || value !== value.trim()) throw new Error(`${label} must be a non-empty trimmed string`);
@@ -274,6 +287,7 @@ export async function executeGovernedEgress<TPayload, TResult>(
     if (observation.failure !== undefined) await evidence.failed(observation);
     throw new GovernedEgressDeniedError(observation);
   }
+  const payloadSnapshot = snapshotPayload(payload);
   await evidence.prepared(observation);
   if (!egressAuthorizationIsFresh(scopeSnapshot, authorizationSnapshot)) {
     const staleObservation = observe(scopeSnapshot, intent, "deny", "MISSING_AUTHORIZATION", authorizationSnapshot);
@@ -282,7 +296,7 @@ export async function executeGovernedEgress<TPayload, TResult>(
   }
   let terminalFailureRecorded = false;
   try {
-    const value = await transport.send(authorizationSnapshot, payload);
+    const value = await transport.send(authorizationSnapshot, payloadSnapshot);
     if ((value as RedirectResult | undefined)?.kind === "redirect") {
       const redirectObservation = observe(scopeSnapshot, intent, "deny", "REDIRECT_REQUIRES_REAUTHORIZATION", authorizationSnapshot);
       terminalFailureRecorded = true;
@@ -300,7 +314,15 @@ export async function executeGovernedEgress<TPayload, TResult>(
   }
 }
 
+const updaterAuthorities = new WeakSet<UpdaterAuthority>();
+
 export class UpdaterAuthority {
+  private constructor() {}
+  static issue(): UpdaterAuthority {
+    const authority = new UpdaterAuthority();
+    updaterAuthorities.add(authority);
+    return authority;
+  }
   readonly #issuer = "updater-subsystem" as const;
   get issuer(): "updater-subsystem" { return this.#issuer; }
 }
@@ -316,7 +338,7 @@ export async function executeUpdaterEgress<TPayload, TResult>(
   request: UpdaterRequest<TPayload>,
   transport: GovernedTransport<TPayload, TResult>,
 ): Promise<TResult> {
-  if (authority.issuer !== "updater-subsystem") throw new Error("invalid updater authority");
+  if (!updaterAuthorities.has(authority) || authority.issuer !== "updater-subsystem") throw new Error("invalid updater authority");
   return transport.send(freeze({
     authorizationId: `updater:${crypto.randomUUID()}`,
     scopeId: "updater",
