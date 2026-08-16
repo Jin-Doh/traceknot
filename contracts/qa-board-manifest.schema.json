@@ -4,7 +4,7 @@
   "title": "Traceknot QA Board manifest",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "runId", "requestId", "rootIdentity", "snapshotId", "sourceRevision", "sourceState", "sourceUpdatedAt", "generatedAt", "entrypoint", "authoritative", "verdict", "counts", "generatedBy", "files"],
+  "required": ["schemaVersion", "runId", "requestId", "rootIdentity", "snapshotId", "sourceRevision", "sourceState", "sourceUpdatedAt", "generatedAt", "entrypoint", "authoritative", "assurance", "verdict", "counts", "generatedBy", "files"],
   "properties": {
     "schemaVersion": { "const": "traceknot-qa-board/v1" },
     "runId": { "type": "string", "minLength": 1 },
@@ -17,6 +17,16 @@
     "generatedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$" },
     "entrypoint": { "const": "index.html" },
     "authoritative": { "const": false },
+    "assurance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["context", "requiredIndependence", "releaseStatus"],
+      "properties": {
+        "context": { "enum": ["local", "release"] },
+        "requiredIndependence": { "enum": ["separate-verification-context", "independent-producer"] },
+        "releaseStatus": { "enum": ["not-evaluated", "satisfied", "insufficient"] }
+      }
+    },
     "verdict": { "enum": ["PASS", "PASS_WITH_ACCEPTED_RISK", "FAIL", "BLOCKED", "INCOMPLETE"] },
     "counts": {
       "type": "object",

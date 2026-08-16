@@ -51,6 +51,7 @@ describe("QA Board projection", () => {
     expect(view.counts).toEqual({ mandatory: 1, passed: 1, failed: 0, blocked: 0, incomplete: 0 });
     expect(view.findings[0]).toMatchObject({ obligationId: "obligation:checkout", status: "PASS", expectedResults: ["Submit remains visible."] });
     expect(view.findings[0]?.screenshots).toEqual([{ digest: SCREENSHOT, observationId: OBSERVATION_ID }]);
+    expect(view.assurance).toEqual({ context: "release", requiredIndependence: "independent-producer", releaseStatus: "satisfied" });
   });
 
   test("sorts failures before blocked, incomplete, and pass", () => {
