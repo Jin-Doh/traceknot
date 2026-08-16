@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { parseCapabilityRecord, type CapabilitySet } from "../../system/runtime/capability-model";
+import { parseCapabilityRecord, type CapabilitySet, type EgressEnforcementProfile } from "../../system/runtime/capability-model";
 import { CapabilityHandshakeError } from "../../system/runtime/capability-handshake";
 import {
   discoverCodexCapabilities,
@@ -26,6 +26,24 @@ function runtimeRecord(capabilities: CapabilitySet, host = "codex"): unknown {
     host,
     adapterVersion: "codex-runtime-v1",
     capabilities,
+    limitations: [],
+  };
+}
+const HARDENED_PROFILE: EgressEnforcementProfile = {
+  originAttribution: "host-attested",
+  toolMediation: "all-tool-calls",
+  processIsolation: "network-denied",
+  auditDurability: "pre-transmit-durable",
+};
+
+function runtimeV3Record(): unknown {
+  const { enforceSkillOriginEgressDeny: _, ...capabilities } = runtimeCapabilities();
+  return {
+    schemaVersion: "quality-capability/v3",
+    host: "codex",
+    adapterVersion: "codex-runtime-v1",
+    capabilities,
+    enforcementProfile: HARDENED_PROFILE,
     limitations: [],
   };
 }
@@ -187,6 +205,19 @@ describe("Codex capability adapter", () => {
     );
     await expect(discoverCodexCapabilities(handshake)).rejects.toMatchObject({
       code: "CAPABILITY_ESCALATION",
+    });
+  });
+  test("accepts a hardened v3 profile under an explicit profile ceiling", async () => {
+    const handshake = runtimeHandshake(
+      async (request) => envelope(request, runtimeV3Record()),
+      { 
+        allowedCapabilities: runtimeCapabilities({ enforceSkillOriginEgressDeny: true }),
+        allowedEnforcementProfile: HARDENED_PROFILE,
+      },
+    );
+    await expect(discoverCodexCapabilities(handshake)).resolves.toMatchObject({
+      schemaVersion: "quality-capability/v3",
+      enforcementProfile: HARDENED_PROFILE,
     });
   });
 

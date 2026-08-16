@@ -6,6 +6,7 @@ import {
   parseCapabilityRecord,
   type CapabilityRecord,
   type CapabilitySet,
+  type EgressEnforcementProfile,
 } from "../../system/runtime/capability-model";
 
 export type CodexCapabilityHandshake = Readonly<{
@@ -13,6 +14,7 @@ export type CodexCapabilityHandshake = Readonly<{
   snapshotId: string;
   trustedProducerId: string;
   allowedCapabilities: CapabilitySet;
+  allowedEnforcementProfile?: EgressEnforcementProfile;
   maxEnvelopeLifetimeMs: number;
   now: () => string;
   readCapabilityEnvelope: (request: CapabilityHandshakeRequest) => Promise<unknown>;
@@ -51,6 +53,7 @@ export async function discoverCodexCapabilities(
     request,
     trustedProducerId: handshake.trustedProducerId,
     allowedCapabilities: handshake.allowedCapabilities,
+    allowedEnforcementProfile: handshake.allowedEnforcementProfile,
     maxEnvelopeLifetimeMs: handshake.maxEnvelopeLifetimeMs,
     now: handshake.now(),
   });
