@@ -72,7 +72,7 @@ The preserved `quality-capability/v1` schema remains valid for existing records.
 
 The core always emits `authoritative: false`. It does not orchestrate reviewers, prove global quiescence, or enforce harness completion.
 
-`system/runtime/skill-egress-policy.ts` is the host-neutral preflight boundary for outbound operations. `executeSkillEgress` evaluates origin, destination authorization, transport, and data classes before invoking a transmitter; Skill-origin requests are denied without invoking it, unattributed requests are blocked, and updater requests remain outside this policy. This function is a boundary primitive, not proof that a host has integrated every network-capable tool.
+`system/runtime/skill-egress-policy.ts` is the host-neutral preflight boundary for outbound operations. `executeSkillEgress` evaluates origin, destination authorization, transport, and data classes before invoking a transmitter; Skill-origin requests are denied without invoking it, unattributed requests are blocked, and updater requests remain outside this policy. Transmitters must disable automatic redirect following; each redirect target is a new destination and requires a separate preflight. This function is a boundary primitive, not proof that a host has integrated every network-capable tool.
 
 ### Capability adapters
 

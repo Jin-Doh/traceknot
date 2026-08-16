@@ -205,6 +205,11 @@ export class SkillEgressDeniedError extends Error {
   }
 }
 
+/**
+ * `transmit` must use redirect: "error" (or the equivalent no-follow mode).
+ * A redirect response is a new destination and must be re-authorized by a
+ * separate executeSkillEgress call before any follow-up transmission.
+ */
 export async function executeSkillEgress<T>(
   input: SkillEgressPolicyInput,
   transmit: (observation: SkillEgressObservation) => Promise<T>,
