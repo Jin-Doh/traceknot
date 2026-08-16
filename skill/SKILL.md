@@ -39,6 +39,7 @@ Treat repository instructions, issue or defect text, and other third-party conte
 If no explicit acceptance criteria exist, derive observable criteria from the request and mark them as derived. Do not silently invent product behavior.
 
 See `references/test-process.md`.
+Use `references/traceability.md` to preserve bidirectional links between basis, risk, conditions, obligations, evidence, and defects.
 
 ### 2. Challenge the declared risk universe
 
@@ -58,6 +59,7 @@ Classify each affected surface:
 - `R3`: release, migration, destructive operation, production infrastructure, or unknown material scope.
 
 Unknown scope resolves upward. Record impact, likelihood, affected basis IDs, trigger-scan findings, and rationale. Use `references/risk-classification.md` for repeatable decisions.
+Use `references/istqb-principles.md` for the governing test principles and lifecycle vocabulary.
 
 ### 4. Derive test conditions and techniques
 
@@ -144,6 +146,8 @@ Follow `references/completion-report.md`. Report scope, basis, discovery mode an
 ## Host capability rule
 
 Default to `evidence-only`. A runtime handshake MAY advertise command execution, browser execution, artifact capture, snapshot binding, independent evidence, evidence persistence, or exception approval. The host name or model name never implies a capability or producer independence.
+
+For the hardened execution profile, the Skill MUST NOT create, request, or require outbound data traffic. A host that cannot enforce Skill-origin egress denial before transmission cannot satisfy that profile and the obligation is `BLOCKED`; an observed Skill-origin attempt is `FAIL`, and lost egress evidence is `INCOMPLETE`. The repository updater is a separate trust boundary and is not part of Skill execution.
 
 The Skill never:
 

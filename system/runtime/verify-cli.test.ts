@@ -1,5 +1,5 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { mkdtemp, writeFile, readFile, rm, symlink } from "node:fs/promises";
+import { mkdtemp, readdir, writeFile, readFile, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
@@ -10,6 +10,7 @@ import { runVerify, validateFullTextAccessArtifact, validateScreenshotArtifact, 
 import { canonicalizeJson, type ExecutionAuthority, type VerificationExecutionAuthorityBinding, type VerificationExecutionCompletionEnvelope, type VerificationExecutionOutput } from "./verification-run";
 import { LocalArtifactStore } from "./local-artifact-store";
 import { uiFullTextAccessPayload, uiFullTextAccessPayloadDigest, uiVisualReviewApprovalPayloadDigest, type UiApplicabilityApprovalSubject, type UiResilienceOracle, type UiResilienceProfile, type UiVisualReview } from "../core/ui-resilience";
+import { pruneStorage } from "./storage-retention";
 
 type RepoFixture = Readonly<{ root: string; config: string; state: string; request: string; manifest: string; cleanup: () => Promise<void> }>;
 const gitEnv = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", GIT_AUTHOR_NAME: "Traceknot Test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "Traceknot Test", GIT_COMMITTER_EMAIL: "test@example.com" };
@@ -246,6 +247,20 @@ async function fixture(executable = "/usr/bin/true"): Promise<RepoFixture> {
   await writeFile(requestPath, JSON.stringify(request)); await writeFile(manifestPath, JSON.stringify(manifest));
   return { root, config, state, request: requestPath, manifest: manifestPath, cleanup: async () => { await Promise.all([rm(root, { recursive: true, force: true }), rm(config, { recursive: true, force: true }), rm(state, { recursive: true, force: true })]); } };
 }
+async function invocationCollectors(state: string): Promise<string[]> {
+  const entries = await readdir(join(state, "artifacts"), { withFileTypes: true });
+  return entries.filter(entry => entry.name.startsWith(".collector-")).map(entry => entry.name);
+}
+
+async function assertCanonicalArtifact(state: string, digest: string, expectedBytes: readonly number[]): Promise<void> {
+  const store = new LocalArtifactStore(join(state, "artifacts"));
+  try {
+    expect(await store.hasArtifact(digest)).toBe(true);
+    expect([...await store.readArtifact(digest)]).toEqual([...expectedBytes]);
+  } finally {
+    await store.close();
+  }
+}
 
 describe("traceknot verify CLI", () => {
   test("publishes manifest completion and trusted producer policy schema fields", async () => {
@@ -341,6 +356,82 @@ describe("traceknot verify CLI", () => {
       )).toBe(0);
       const report = JSON.parse(stdout.join("")) as { documents: { execution: { observations: Array<{ producer: { kind: string; identity: string; independence: string } }> } } };
       expect(report.documents.execution.observations[0]!.producer).toEqual({ kind: "harness-managed", identity: "traceknot-cli", independence: "separate-verification-context" });
+    } finally {
+      await fixtureValue.cleanup();
+    }
+  });
+  test("cleans invocation collectors while retaining canonical artifacts on pass, fail, and report errors", async () => {
+    const emptyDigest = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const pass = await fixture("/usr/bin/true");
+    try {
+      const stdout: string[] = [];
+      expect(await runVerify(["--root", pass.root, "--state-dir", pass.state, "--request", pass.request, "--manifest", pass.manifest], text => stdout.push(text), () => undefined)).toBe(0);
+      const report = JSON.parse(stdout.join("")) as { documents: { execution: { observations: Array<{ artifacts: Array<{ path?: string; digest: string; type: string }> }> } } };
+      const artifact = report.documents.execution.observations[0]!.artifacts.find(item => item.path === "stdout");
+      if (!artifact) throw new Error("pass report did not publish stdout artifact");
+      expect(artifact.type).toBe("verification-result");
+      await assertCanonicalArtifact(pass.state, artifact.digest, []);
+      expect(await invocationCollectors(pass.state)).toEqual([]);
+    } finally {
+      await pass.cleanup();
+    }
+
+    const fail = await fixture("/usr/bin/false");
+    try {
+      const stdout: string[] = [];
+      expect(await runVerify(["--root", fail.root, "--state-dir", fail.state, "--request", fail.request, "--manifest", fail.manifest], text => stdout.push(text), () => undefined)).toBe(1);
+      const report = JSON.parse(stdout.join("")) as { documents: { execution: { observations: Array<{ artifacts: Array<{ path?: string; digest: string; type: string }> }> } } };
+      const artifact = report.documents.execution.observations[0]!.artifacts.find(item => item.path === "stdout");
+      if (!artifact) throw new Error("fail report did not publish stdout artifact");
+      expect(artifact.type).toBe("verification-result");
+      await assertCanonicalArtifact(fail.state, artifact.digest, []);
+      expect(await invocationCollectors(fail.state)).toEqual([]);
+    } finally {
+      await fail.cleanup();
+    }
+
+    const reportError = await fixture("/usr/bin/true");
+    try {
+      const stderr: string[] = [];
+      expect(await runVerify(["--root", reportError.root, "--state-dir", reportError.state, "--request", reportError.request, "--manifest", reportError.manifest], () => { throw new Error("report sink failed"); }, text => stderr.push(text))).toBe(70);
+      expect(stderr.join("")).toContain("report sink failed");
+      await assertCanonicalArtifact(reportError.state, emptyDigest, []);
+      expect(await invocationCollectors(reportError.state)).toEqual([]);
+    } finally {
+      await reportError.cleanup();
+    }
+  });
+
+  test("releases collector leases after destruction failure so retention can recover", async () => {
+    const fixtureValue = await fixture("/bin/sh");
+    const artifactDir = join(fixtureValue.state, "artifacts");
+    try {
+      await writeFile(fixtureValue.manifest, JSON.stringify({
+        schemaVersion: "verification-manifest/v1",
+        obligations: [{
+          id: "obligation:condition:command",
+          executable: "/bin/sh",
+          argv: ["-c", "for collector in \"$1\"/.collector-*; do printf x > \"$collector/.objects/unexpected\"; done", "collector-inject", artifactDir],
+        }],
+      }));
+      const stderr: string[] = [];
+      expect(await runVerify(
+        ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest],
+        () => undefined,
+        text => stderr.push(text),
+      )).toBe(0);
+      expect(stderr.join("")).toContain("cleanup");
+      const residual = await invocationCollectors(fixtureValue.state);
+      expect(residual).toHaveLength(1);
+      const report = await pruneStorage({
+        stateDir: fixtureValue.state,
+        artifactDir,
+        now: new Date(Date.now() + 1000),
+        policy: { boardTtlMs: 0, boardMaxPerRun: 0, boardQuotaBytes: 0, canonicalRunTtlMs: 0, canonicalQuotaBytes: 0, graceMs: 0 },
+        apply: true,
+      });
+      expect(report.deleted.collector).toContain(residual[0]!);
+      expect(await invocationCollectors(fixtureValue.state)).toEqual([]);
     } finally {
       await fixtureValue.cleanup();
     }
@@ -534,6 +625,31 @@ describe("traceknot verify CLI", () => {
       const markdown: string[] = [];
       const reportStatus = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only", "--format", "markdown"], text => markdown.push(text), text => stderr.push(text));
       expect(reportStatus).toBe(0); expect(markdown.join("")).toContain("**PASS**"); expect(markdown.join("")).toContain("**release**");
+      const inRepositoryArtifact = join(fixtureValue.root, "report-only-artifact");
+      const boardError: string[] = [];
+      const boardStatus = await runVerify(
+        ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--artifact-dir", inRepositoryArtifact, "--run-id", "cli-e2e", "--report-only", "--board", "--no-notify"],
+        () => undefined,
+        text => boardError.push(text),
+      );
+      expect(boardStatus).toBe(64);
+      expect(boardError.join("")).toContain("artifact-dir must be outside the Git repository root");
+      await expect(stat(inRepositoryArtifact)).rejects.toThrow();
+      const aliasParent = await mkdtemp(join(tmpdir(), "traceknot-cli-artifact-alias-"));
+      try {
+        await symlink(fixtureValue.root, join(aliasParent, "repo-link"), "dir");
+        const aliasedArtifact = join(aliasParent, "repo-link", "report-only-artifact");
+        const aliasedBoardError: string[] = [];
+        const aliasedBoardStatus = await runVerify(
+          ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--artifact-dir", aliasedArtifact, "--run-id", "cli-e2e", "--report-only", "--board", "--no-notify"],
+          () => undefined,
+          text => aliasedBoardError.push(text),
+        );
+        expect(aliasedBoardStatus).toBe(64);
+        expect(aliasedBoardError.join("")).toContain("artifact-dir must be outside the Git repository root");
+      } finally {
+        await rm(aliasParent, { recursive: true, force: true });
+      }
       const localState = await mkdtemp(join(tmpdir(), "traceknot-cli-local-assurance-"));
       try {
         const localOutput: string[] = [];
@@ -543,6 +659,29 @@ describe("traceknot verify CLI", () => {
         await rm(localState, { recursive: true, force: true });
       }
     } finally { await fixtureValue.cleanup(); }
+  });
+  test("generates an immutable Board bundle without changing the verification exit contract", async () => {
+    const fixtureValue = await fixture();
+    try {
+      const stdout: string[] = [];
+      const stderr: string[] = [];
+      const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--board", "--board-locale", "zh-CN", "--no-notify", "--session-id", "raw-agent-session", "--session-host", "omp"], text => stdout.push(text), text => stderr.push(text));
+      expect(status).toBe(0);
+      expect(JSON.parse(stdout.join("")).verdict.qaVerdict).toBe("PASS");
+      expect(stderr.join("")).toMatch(/^Traceknot Board: file:\/\//);
+      const boardRoot = join(fixtureValue.state, "runs", "cli-e2e", "boards");
+      const entries = await readdir(boardRoot);
+      expect(entries).toHaveLength(1);
+      const boardDirectory = join(boardRoot, entries[0]!);
+      const manifest = JSON.parse(await readFile(join(boardDirectory, "manifest.json"), "utf8")) as { generatedBy: { sessionRef: string }; sourceRevision: number; files: Array<{ path: string; role: string }> };
+      expect(manifest.sourceRevision).toBeGreaterThanOrEqual(0);
+      expect(manifest.generatedBy.sessionRef).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(JSON.stringify(manifest)).not.toContain("raw-agent-session");
+      expect(manifest.files.filter(file => file.role === "localized-view").map(file => file.path)).toEqual(["index.en.html", "index.ko.html", "index.zh-CN.html"]);
+      expect(await readFile(join(boardDirectory, "index.html"), "utf8")).toContain('<html lang="zh-CN">');
+    } finally {
+      await fixtureValue.cleanup();
+    }
   });
 
   test("returns verdict exit codes and rejects a changed snapshot on report-only", async () => {
@@ -576,6 +715,7 @@ describe("traceknot verify CLI", () => {
       const stdout: string[] = []; const stderr: string[] = [];
       const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest], text => stdout.push(text), text => stderr.push(text));
       expect(status).toBe(2); expect(stdout).toEqual([]); expect(stderr.join("")).toContain("snapshot");
+      expect(await invocationCollectors(fixtureValue.state)).toEqual([]);
     } finally { await fixtureValue.cleanup(); }
   });
 

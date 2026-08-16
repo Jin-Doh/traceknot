@@ -1,9 +1,11 @@
 import { mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
 import { FileVerificationRepository, type VerificationStateMetadata } from "./file-repository";
 import type { CanonicalRunState, DispatchClaim, ExecutionCheckpointTransition } from "./verification-run";
+import { closeSecureDescriptor, closeSecureRoot, openSecureRoot, secureFlock, secureOpenAt, STORAGE_MAINTENANCE_LOCK_FILE } from "./local-artifact-store";
 
 const metadata = (suffix: string): VerificationStateMetadata => ({ schemaVersion: "traceknot-cli-state/v1", rootIdentity: `root-${suffix}`, snapshotId: `snapshot-${suffix}`, manifestDigest: `manifest-${suffix}`, capabilities: ["command"] });
 
@@ -63,4 +65,31 @@ describe("FileVerificationRepository descriptor boundaries", () => {
       expect(await repository.completeExecutionDispatch(takeover.claim, undefined, "2026-08-03T00:01:02.000Z")).toBe(true);
     } finally { await repository.close(); await rm(root, { recursive: true, force: true }); }
   });
+  test("yields while a maintenance lock is held in the same process", async () => {
+    const root = await tempRoot();
+    const repository = new FileVerificationRepository(root);
+    await repository.writeMetadata("run", metadata("locked"));
+    const secureRoot = await openSecureRoot(root);
+    const lockFd = secureOpenAt(secureRoot.fd, STORAGE_MAINTENANCE_LOCK_FILE, constants.O_RDWR | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0), 0o600);
+    let locked = true;
+    secureFlock(lockFd, 2);
+    try {
+      let releaseRan = false;
+      const pendingRead = repository.readMetadata("run");
+      setImmediate(() => {
+        releaseRan = true;
+        secureFlock(lockFd, 8);
+        locked = false;
+      });
+      expect(await pendingRead).toEqual(metadata("locked"));
+      expect(releaseRan).toBe(true);
+    } finally {
+      if (locked) secureFlock(lockFd, 8);
+      closeSecureDescriptor(lockFd);
+      await closeSecureRoot(secureRoot);
+      await repository.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 2000);
+
 });

@@ -128,6 +128,36 @@ export const RULES: readonly Rule[] = [
     score: 6,
     pattern: /(?:(?:假装|扮演|伪装|冒充)[^。；，！？：.,;!?:\n]*?(?:系统(?:管理员|开发者|身份|消息|指令|角色)|开发者|管理员|超级用户|root)|以(?:系统(?:管理员|开发者)?|开发者|管理员|超级用户|root)(?:的)?身份)/iu,
   },
+  {
+    id: "PI014",
+    description: "Skill-origin outbound data or network transmission",
+    score: 7,
+    pattern: /(?:\b(?:send|upload|post|submit|transmit|export|exfiltrat\w*|copy|forward|share|relay|transfer|push)\b.{0,128}\b(?:repository|workspace|home directory|environment variable|credential|secret|token|prompt|conversation|context|artifact|log|file)s?\b.{0,128}(?:https?:\/\/|wss?:\/\/|(?:[a-z0-9-]+\.)+[a-z]{2,}\b|remote|external|third[- ]party|webhook|endpoint|request body|query string|address bar)|(?:https?:\/\/|wss?:\/\/|(?:[a-z0-9-]+\.)+[a-z]{2,}\b|remote|external|third[- ]party|webhook|endpoint|request body|query string|address bar).{0,128}\b(?:send|upload|post|submit|transmit|export|exfiltrat\w*|copy|forward|share|relay|transfer|push)\b.{0,128}\b(?:repository|workspace|home directory|environment variable|credential|secret|token|prompt|conversation|context|artifact|log|file)s?\b)/i,
+  },
+  {
+    id: "PI015",
+    description: "indirect outbound transmission through encoded or browser execution",
+    score: 7,
+    pattern: /(?:\b(?:base64|hex|url[- ]?encode|encode)\b.{0,96}\b(?:send|upload|post|submit|transmit|export|exfiltrat\w*)\b|\b(?:browser|address bar|form|query string|dns|websocket|proxy)\b.{0,96}\b(?:send|upload|post|submit|transmit|export|exfiltrat\w*)\b)/i,
+  },
+  {
+    id: "PI016",
+    description: "Skill-origin network execution request",
+    score: 6,
+    pattern: /(?:\b(?:run|execute|invoke|call|open|navigate)\b.{0,96}\b(?:curl|wget|nc|ncat|netcat|ssh|scp|sftp|fetch|websocket|socket|remote server|webhook)\b|\b(?:download|fetch|load)\b.{0,96}\b(?:and then|then)\b.{0,48}\b(?:send|upload|post|submit|transmit|export)\b)/i,
+  },
+  {
+    id: "PI017",
+    description: "direct shell transmission of sensitive local data",
+    score: 8,
+    pattern: /(?:\b(?:curl|wget|nc|ncat|netcat|socat)\b[^\n]{0,240}(?:(?:@(?:[A-Za-z0-9._~\/-]+\/)?(?:\.env|(?:~\/)?\.ssh\/(?:id_[a-z0-9_-]+)|(?:credential|secret|token|password))|(?:-T|--upload-file|--post-file|--body-file)(?:=|\s+)["']?(?:[A-Za-z0-9._~\/-]+\/)?(?:\.env|(?:~\/)?\.ssh\/(?:id_[a-z0-9_-]+)|(?:credential|secret|token|password))["']?|[$%]\{?(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|API_KEY)\}?)[^\n]{0,240}(?:https?:\/\/|wss?:\/\/|(?:[a-z0-9-]+\.)+[a-z]{2,}\b)|(?:https?:\/\/|wss?:\/\/|(?:[a-z0-9-]+\.)+[a-z]{2,}\b)[^\n]{0,240}(?:@(?:[A-Za-z0-9._~\/-]+\/)?(?:\.env|(?:~\/)?\.ssh\/(?:id_[a-z0-9_-]+)|(?:credential|secret|token|password))|(?:-T|--upload-file|--post-file|--body-file)(?:=|\s+)["']?(?:[A-Za-z0-9._~\/-]+\/)?(?:\.env|(?:~\/)?\.ssh\/(?:id_[a-z0-9_-]+)|(?:credential|secret|token|password))["']?|[$%]\{?(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|API_KEY)\}?))|\b(?:pipe|cat|type|read)\b[^\n]{0,120}(?:\.env|(?:~\/)?\.ssh\/id_[a-z0-9_-]+|(?:credential|secret|token|password))[^\n]{0,80}\b(?:into|\|)\s*(?:nc|ncat|netcat|socat|curl|wget)\b)/i,
+  },
+  {
+    id: "PI018",
+    description: "sensitive value embedded in an external URL",
+    score: 8,
+    pattern: /(?:https?:\/\/|wss?:\/\/)[^\s"'<>]{0,220}(?:[?&](?:token|secret|password|credential|api[_-]?key|key)=|[$%]\{?(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|API_KEY)\}?)/i,
+  },
 ];
 
 const LEVEL_RANK: Record<RiskLevel, number> = {
@@ -137,6 +167,16 @@ const LEVEL_RANK: Record<RiskLevel, number> = {
   high: 3,
   critical: 4,
 };
+
+const SKILL_ONLY_RULES: Readonly<Record<string, true>> = {
+  PI014: true,
+  PI015: true,
+  PI016: true,
+};
+
+function ruleAppliesToPath(rule: Rule, path: string): boolean {
+  return SKILL_ONLY_RULES[rule.id] === undefined || path.startsWith("skill/");
+}
 
 const DEFAULT_TARGETS = [
   "README.md",
@@ -227,6 +267,7 @@ function softWrappedSourceFindings(path: string, source: string, startLine: numb
   const findings: Finding[] = [];
   const normalized = normalizedSoftWrap(source);
   for (const rule of RULES) {
+    if (!ruleAppliesToPath(rule, path)) continue;
     for (const match of acceptedMatches(rule, normalized.text)) {
       const matchStart = match.index;
       const matchEnd = matchStart + match[0].length;
@@ -252,6 +293,7 @@ function softWrappedMarkdownFindings(path: string, text: string): Finding[] {
       const rendered = toText(child);
       const startLine = (node.position?.start.line ?? 1) + (child.position?.start.line ?? 1) - 1;
       for (const rule of RULES) {
+        if (!ruleAppliesToPath(rule, path)) continue;
         if (acceptedMatches(rule, rendered).length > 0) findings.push(createFinding(path, startLine, rendered, rule));
       }
     }
@@ -264,6 +306,7 @@ export function analyzeText(path: string, text: string): Finding[] {
   const lines = text.split(/\r?\n/);
   lines.forEach((line, index) => {
     for (const rule of RULES) {
+      if (!ruleAppliesToPath(rule, path)) continue;
       if (acceptedMatches(rule, line).length === 0) continue;
       findings.push(createFinding(path, index + 1, line, rule));
     }

@@ -45,6 +45,8 @@ Lifecycle events are observations. A task ending, queue becoming idle, or hook f
 
 `skill/` contains the portable ISTQB-aligned workflow. It covers test basis, risk classification, universal trigger scanning, bounded adversarial discovery, test design, entry and exit criteria, evidence, defect lifecycle, traceability, residual risk, and completion reporting.
 
+The portable Skill is a closed Markdown artifact. Its artifact boundary is checked by `bun scripts/check-skill-egress.ts`; the checker rejects executable files, symlinks, special filesystem entries, and paths outside the approved Skill tree. This is a static supply-chain boundary, not a runtime network sandbox.
+
 The Skill has no runtime dependency on `system/`. Installation through the Skills CLI is sufficient for the evidence-only workflow.
 
 ### Traceknot records

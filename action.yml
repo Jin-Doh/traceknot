@@ -29,6 +29,22 @@ inputs:
     description: Prefix for the invocation-unique retained canonical evidence artifact.
     required: false
     default: traceknot-evidence
+  board:
+    description: Generate a static QA Board bundle in manifest mode.
+    required: false
+    default: 'false'
+  artifact-retention-days:
+    description: Retention in days for the canonical evidence artifact (1-90).
+    required: false
+    default: '30'
+  board-retention-days:
+    description: Retention in days for the separate QA Board artifact (1-90).
+    required: false
+    default: '14'
+  cleanup-local-after-upload:
+    description: Remove the local evidence directory after summary, uploads, and SARIF complete.
+    required: false
+    default: 'false'
   sarif-path:
     description: Optional tracked SARIF file path in the caller HEAD.
     required: false
@@ -40,6 +56,9 @@ outputs:
   evidence-path:
     description: Absolute retained evidence directory on the runner.
     value: ${{ steps.prepare.outputs.evidence-path }}
+  board-path:
+    description: Root directory containing generated Board revisions on the runner.
+    value: ${{ steps.prepare.outputs.board-path }}
 runs:
   using: composite
   steps:
@@ -69,13 +88,39 @@ runs:
       shell: bash
       env:
         TRACEKNOT_MODE: ${{ inputs.mode }}
-        TRACEKNOT_REQUEST: ${{ inputs.request }}
         TRACEKNOT_ASSURANCE: ${{ inputs.assurance }}
+        TRACEKNOT_REQUEST: ${{ inputs.request }}
         TRACEKNOT_MANIFEST: ${{ inputs.manifest }}
         TRACEKNOT_FORMAT: ${{ inputs.format }}
         TRACEKNOT_SARIF: ${{ inputs.sarif-path }}
+        TRACEKNOT_BOARD: ${{ inputs.board }}
+        TRACEKNOT_ARTIFACT_RETENTION_DAYS: ${{ inputs.artifact-retention-days }}
+        TRACEKNOT_BOARD_RETENTION_DAYS: ${{ inputs.board-retention-days }}
+        TRACEKNOT_CLEANUP_LOCAL: ${{ inputs.cleanup-local-after-upload }}
       run: |
         set -euo pipefail
+        validate_retention_days() {
+          label="$1"
+          value="$2"
+          case "$value" in
+            [1-9]|[1-8][0-9]|90) ;;
+            *) printf '%s must be an integer from 1 through 90\n' "$label" >&2; return 64 ;;
+          esac
+        }
+        validate_retention_days artifact-retention-days "$TRACEKNOT_ARTIFACT_RETENTION_DAYS"
+        validate_retention_days board-retention-days "$TRACEKNOT_BOARD_RETENTION_DAYS"
+        case "$TRACEKNOT_CLEANUP_LOCAL" in
+          true|false) ;;
+          *) printf 'cleanup-local-after-upload must be true or false\n' >&2; exit 64 ;;
+        esac
+        case "$TRACEKNOT_ASSURANCE" in
+          local|release) ;;
+          *) printf 'assurance must be local or release\n' >&2; exit 64 ;;
+        esac
+        case "$TRACEKNOT_BOARD" in
+          true|false) ;;
+          *) printf 'board must be true or false\n' >&2; exit 64 ;;
+        esac
         umask 077
         evidence_path="$(mktemp -d "${RUNNER_TEMP}/traceknot-governed.XXXXXX")"
         invocation_id="${evidence_path##*.}"
@@ -140,6 +185,7 @@ runs:
           printf 'manifest-path=%s\n' "$manifest_path"
           printf 'sarif-path=%s\n' "$sarif_path"
           printf 'invocation-id=%s\n' "$invocation_id"
+          printf 'board-path=%s\n' "${state_path}/runs"
           printf 'head-oid=%s\n' "$head_oid"
         } >> "$GITHUB_OUTPUT"
 
@@ -147,9 +193,9 @@ runs:
       name: Run governed verification
       shell: bash
       env:
+        TRACEKNOT_ASSURANCE: ${{ inputs.assurance }}
         TRACEKNOT_MODE: ${{ inputs.mode }}
         TRACEKNOT_RUN_ID: ${{ inputs.run-id }}
-        TRACEKNOT_ASSURANCE: ${{ inputs.assurance }}
         TRACEKNOT_FORMAT: ${{ inputs.format }}
         TRACEKNOT_REPORT: ${{ steps.prepare.outputs.report-path }}
         TRACEKNOT_EVIDENCE: ${{ steps.prepare.outputs.evidence-path }}
@@ -158,6 +204,8 @@ runs:
         TRACEKNOT_REQUEST: ${{ steps.prepare.outputs.request-path }}
         TRACEKNOT_MANIFEST: ${{ steps.prepare.outputs.manifest-path }}
         TRACEKNOT_EXPECTED_HEAD: ${{ steps.prepare.outputs.head-oid }}
+        TRACEKNOT_INVOCATION_ID: ${{ steps.prepare.outputs.invocation-id }}
+        TRACEKNOT_BOARD: ${{ inputs.board }}
       run: |
         set -euo pipefail
         trap 'status=$?; printf "exit=%s\n" "$status" > "${TRACEKNOT_EVIDENCE}/status.txt"; chmod -R go-rwx "$TRACEKNOT_EVIDENCE"' EXIT
@@ -173,11 +221,14 @@ runs:
               --request "$TRACEKNOT_REQUEST"
               --manifest "$TRACEKNOT_MANIFEST"
               --format "$TRACEKNOT_FORMAT"
-              --expected-head "$TRACEKNOT_EXPECTED_HEAD"
               --assurance "$TRACEKNOT_ASSURANCE"
+              --expected-head "$TRACEKNOT_EXPECTED_HEAD"
             )
             if test -n "$TRACEKNOT_RUN_ID"; then
               args+=(--run-id "$TRACEKNOT_RUN_ID")
+            fi
+            if test "$TRACEKNOT_BOARD" = true; then
+              args+=(--board --no-notify --invocation-id "$TRACEKNOT_INVOCATION_ID" --session-host github-actions)
             fi
             bun "$GITHUB_ACTION_PATH/bin/traceknot" verify "${args[@]}" | tee "$TRACEKNOT_REPORT"
             ;;
@@ -212,10 +263,24 @@ runs:
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: ${{ inputs.artifact-name }}-${{ steps.prepare.outputs.invocation-id }}
-        path: ${{ steps.prepare.outputs.evidence-path }}
+        path: |
+          ${{ steps.prepare.outputs.evidence-path }}
+          !${{ steps.prepare.outputs.board-path }}/**/boards
+          !${{ steps.prepare.outputs.board-path }}/**/boards/**
         if-no-files-found: error
         include-hidden-files: true
-        retention-days: 30
+        retention-days: ${{ inputs.artifact-retention-days }}
+
+    - id: board-artifact
+      name: Retain QA Board bundle
+      if: ${{ always() && inputs.board == 'true' }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ inputs.artifact-name }}-board-${{ steps.prepare.outputs.invocation-id }}
+        path: ${{ steps.prepare.outputs.board-path }}/**/boards/*-${{ steps.prepare.outputs.invocation-id }}/**
+        if-no-files-found: ignore
+        include-hidden-files: true
+        retention-days: ${{ inputs.board-retention-days }}
 
     - id: sarif
       name: Upload optional SARIF
@@ -223,3 +288,17 @@ runs:
       uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
       with:
         sarif_file: ${{ steps.prepare.outputs.sarif-path }}
+
+    - id: cleanup
+      name: Clean up local evidence
+      if: ${{ always() && inputs.cleanup-local-after-upload == 'true' && steps.prepare.outcome == 'success' && steps.summary.outcome == 'success' && steps.artifact.outcome == 'success' && (steps['board-artifact'].outcome == 'success' || steps['board-artifact'].outcome == 'skipped') && (steps.sarif.outcome == 'success' || steps.sarif.outcome == 'skipped') }}
+      shell: bash
+      env:
+        TRACEKNOT_EVIDENCE: ${{ steps.prepare.outputs.evidence-path }}
+      run: |
+        set -euo pipefail
+        case "$TRACEKNOT_EVIDENCE" in
+          "$RUNNER_TEMP"/traceknot-governed.*) ;;
+          *) printf 'refusing to clean an unexpected evidence path\n' >&2; exit 64 ;;
+        esac
+        rm -rf -- "$TRACEKNOT_EVIDENCE"

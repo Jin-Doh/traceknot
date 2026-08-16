@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { constants, fstatSync, readSync, realpathSync, statSync, writeSync } from "node:fs";
+import { constants, fstatSync, futimesSync, readSync, realpathSync, statSync, writeSync } from "node:fs";
 import { open, type FileHandle } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { dlopen, FFIType, read as ffiRead } from "bun:ffi";
@@ -14,6 +14,10 @@ const O_NONBLOCK = constants.O_NONBLOCK ?? 0;
 const AT_FDCWD = -2;
 const LOCK_EX = 2;
 const LOCK_UN = 8;
+const LOCK_NB = 4;
+export const ARTIFACT_CANONICAL_LOCK_FILE = ".artifact.lock";
+export const STORAGE_MAINTENANCE_LOCK_FILE = ".traceknot-storage.lock";
+const EPHEMERAL_LEASE_FILE = ".ephemeral.lease";
 const MAX_TYPE_BYTES = 1 << 20;
 const MAX_ARTIFACT_BYTES = 256 << 20;
 const MAGIC = new TextEncoder().encode("TRACEKNOT-ARTIFACT-V1\0");
@@ -77,7 +81,7 @@ function loadNative(): Native | undefined {
 
 const NATIVE = loadNative();
 
-export type LocalArtifactStoreOptions = Readonly<{ rootDir: string; fsync?: boolean }>;
+export type LocalArtifactStoreOptions = Readonly<{ rootDir: string; fsync?: boolean; ephemeral?: true }>;
 
 export class ArtifactStoreError extends Error {
   readonly code: string;
@@ -212,9 +216,31 @@ export function secureRenameAt(oldDirectoryFd: number, oldName: string, newDirec
 export function secureUnlinkAt(directoryFd: number, name: string): void {
   check(native().symbols.unlinkat(directoryFd, validateName(name), 0), `unlink ${name}`);
 }
+
+const AT_REMOVEDIR = process.platform === "darwin" ? 0x80 : 0x200;
+
+export function secureRmdirAt(directoryFd: number, name: string): void {
+  check(native().symbols.unlinkat(directoryFd, validateName(name), AT_REMOVEDIR), `remove directory ${name}`);
+}
 export function secureFsync(descriptor: number): void { check(native().symbols.fsync(descriptor), "fsync"); }
 export function secureChmod(descriptor: number, mode: number): void { check(native().symbols.fchmod(descriptor, mode), "chmod"); }
 export function secureFlock(descriptor: number, operation: number): void { check(native().symbols.flock(descriptor, operation), "flock"); }
+function lockBusy(error: unknown): boolean {
+  return error instanceof Error && (error.message.includes("errno 11") || error.message.includes("errno 35"));
+}
+export async function acquireSecureFlock(descriptor: number, operation: number, label = "advisory lock", timeoutMs = 30_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      secureFlock(descriptor, operation | LOCK_NB);
+      return;
+    } catch (error) {
+      if (!lockBusy(error)) throw error;
+      if (Date.now() >= deadline) throw new ArtifactPathError(`timed out waiting for ${label}`);
+      await new Promise<void>(resolvePromise => setTimeout(resolvePromise, 50));
+    }
+  }
+}
 
 export function openSecureRegularFile(rootFd: number, relativePath: string): number {
   const components = validateComponents(relativePath);
@@ -312,7 +338,6 @@ export function openOrCreateSecureDirectoryPath(rootDir: string): number {
     return current;
   } catch (error) {
     closeFd(current);
-    if (error instanceof ArtifactStoreError) throw error;
     throw new ArtifactPathError(`artifact root cannot be opened: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
@@ -327,7 +352,7 @@ export function openOrCreateSecureDirectory(parentFd: number, name: string): num
 }
 function openLock(rootFd: number): number {
   const n = native();
-  const fd = check(n.symbols.openat(rootFd, cstring(".artifact.lock"), constants.O_RDWR | constants.O_CREAT | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC, 0o600), "artifact lock open");
+  const fd = check(n.symbols.openat(rootFd, cstring(ARTIFACT_CANONICAL_LOCK_FILE), constants.O_RDWR | constants.O_CREAT | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC, 0o600), "artifact lock open");
   if (!fstatSync(fd).isFile()) {
     closeFd(fd);
     throw new ArtifactPathError("artifact lock must be a regular file");
@@ -335,17 +360,12 @@ function openLock(rootFd: number): number {
   check(n.symbols.fchmod(fd, 0o600), "artifact lock permissions");
   return fd;
 }
-function withLock<T>(
-  lockFd: number,
-  operation: () => T,
-  ...promiseGuard: T extends PromiseLike<unknown> ? [never] : []
-): T {
-  const n = native();
-  check(n.symbols.flock(lockFd, LOCK_EX), "artifact lock acquire");
+async function withLock<T>(lockFd: number, operation: () => T): Promise<T> {
+  await acquireSecureFlock(lockFd, LOCK_EX, "artifact store lock");
   try {
     return operation();
   } finally {
-    check(n.symbols.flock(lockFd, LOCK_UN), "artifact lock release");
+    secureFlock(lockFd, LOCK_UN);
   }
 }
 
@@ -430,6 +450,16 @@ function readObject(objectsFd: number, digest: string): DecodedFrame | undefined
     closeFd(fd);
   }
 }
+function touchObject(objectsFd: number, digest: string): void {
+  const fd = check(native().symbols.openat(objectsFd, cstring(digest), constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC, 0), "artifact object touch open");
+  try {
+    if (!fstatSync(fd).isFile()) throw new ArtifactPathError("artifact object must be a regular file");
+    const touchedAt = new Date();
+    futimesSync(fd, touchedAt, touchedAt);
+  } finally {
+    closeFd(fd);
+  }
+}
 function publishObject(objectsFd: number, digest: string, frame: Uint8Array, fsync: boolean, symbols: Native["symbols"]): void {
   const temp = `.tmp-${digest}-${randomUUID()}`;
   const fd = check(symbols.openat(objectsFd, cstring(temp), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600), "artifact temporary open");
@@ -469,30 +499,40 @@ export class LocalArtifactStore implements ArtifactStore {
   readonly atomicSameKeyIdempotency = true;
   readonly rootDir: string;
   readonly fsync: boolean;
+  private readonly ephemeral: boolean;
+  private readonly publishedDigests = new Set<string>();
   private readonly rootFd: number;
   private readonly symbols: Native["symbols"];
   private readonly objectsFd: number;
   private readonly lockFd: number;
+  private readonly leaseFd: number | undefined;
   private operationTail: Promise<void> = Promise.resolve();
   private closed = false;
   constructor(rootDirOrOptions: string | LocalArtifactStoreOptions) {
     const n = native();
     this.symbols = n.symbols;
     const rootDir = typeof rootDirOrOptions === "string" ? rootDirOrOptions : rootDirOrOptions.rootDir;
+    this.ephemeral = typeof rootDirOrOptions === "string" ? false : rootDirOrOptions.ephemeral === true;
     if (typeof rootDir !== "string" || rootDir.length === 0) throw new ArtifactPathError("artifact root is required");
     this.rootDir = resolve(rootDir);
     this.fsync = typeof rootDirOrOptions === "string" ? true : rootDirOrOptions.fsync !== false;
     const rootFd = openOrCreateSecureDirectoryPath(this.rootDir);
     let objectsFd: number | undefined;
     let lockFd: number | undefined;
+    let leaseFd: number | undefined;
     try {
       objectsFd = openOrCreateSecureDirectory(rootFd, ".objects");
       lockFd = openLock(rootFd);
+      if (this.ephemeral) {
+        leaseFd = secureOpenAt(rootFd, EPHEMERAL_LEASE_FILE, constants.O_RDWR | constants.O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600);
+        secureFlock(leaseFd, LOCK_EX | LOCK_NB);
+      }
       this.rootFd = rootFd;
       this.objectsFd = objectsFd;
       this.lockFd = lockFd;
+      this.leaseFd = leaseFd;
     } catch (error) {
-      closeFd(lockFd); closeFd(objectsFd); closeFd(rootFd);
+      closeFd(leaseFd); closeFd(lockFd); closeFd(objectsFd); closeFd(rootFd);
       if (error instanceof ArtifactStoreError) throw error;
       throw new ArtifactPathError(`artifact store cannot be opened: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -510,12 +550,14 @@ export class LocalArtifactStore implements ArtifactStore {
     if (existing) {
       if (bytes && (!compareBytes(existing.bytes, bytes) || existing.type !== artifact.type)) throw new ArtifactCollisionError("content-addressed target has a digest collision or was modified");
       if (!bytes && existing.type !== artifact.type) throw new ArtifactCollisionError("content-addressed target type mismatch");
+      touchObject(this.objectsFd, artifact.digest);
       return outputArtifact(artifact);
     }
     if (!bytes) throw new ArtifactPathError("stored artifact does not exist");
     publishObject(this.objectsFd, artifact.digest, encodeFrame(artifact.digest, artifact.type, bytes), this.fsync, this.symbols);
     const published = readObject(this.objectsFd, artifact.digest);
     if (!published || published.type !== artifact.type || !compareBytes(published.bytes, bytes)) throw new ArtifactCollisionError("artifact readback verification failed");
+    if (this.ephemeral) this.publishedDigests.add(artifact.digest);
     return outputArtifact(artifact);
   }
   async storeVerificationResultArtifact(artifact: CanonicalStoredArtifact, _input: VerificationExecutionRequest): Promise<Artifact> { return this.persist(artifact as ArtifactLike); }
@@ -551,11 +593,44 @@ export class LocalArtifactStore implements ArtifactStore {
       return withLock(this.lockFd, () => readObject(this.objectsFd, digest) !== undefined);
     });
   }
+  async destroyContents(): Promise<void> {
+    if (!this.ephemeral) throw new ArtifactPathError("destroyContents requires an ephemeral artifact store");
+    await this.serialized(async () => {
+      if (this.closed) return;
+      const errors: unknown[] = [];
+      try {
+        await withLock(this.lockFd, () => {
+          for (const digest of this.publishedDigests) secureUnlinkAt(this.objectsFd, digest);
+          secureRmdirAt(this.rootFd, ".objects");
+          secureUnlinkAt(this.rootFd, ".artifact.lock");
+        });
+      } catch (error) {
+        errors.push(error);
+      }
+      if (this.leaseFd !== undefined) {
+        try { secureUnlinkAt(this.rootFd, EPHEMERAL_LEASE_FILE); } catch (error) { errors.push(error); }
+        try { secureFlock(this.leaseFd, LOCK_UN); } catch (error) { errors.push(error); }
+        closeFd(this.leaseFd);
+      }
+      this.publishedDigests.clear();
+      this.closed = true;
+      closeFd(this.lockFd); closeFd(this.objectsFd); closeFd(this.rootFd);
+      if (errors.length === 1) throw errors[0];
+      if (errors.length > 1) throw new AggregateError(errors, "ephemeral artifact destruction failed");
+    });
+  }
   async close(): Promise<void> {
     await this.serialized(async () => {
       if (this.closed) return;
+      const errors: unknown[] = [];
       this.closed = true;
+      if (this.leaseFd !== undefined) {
+        try { secureFlock(this.leaseFd, LOCK_UN); } catch (error) { errors.push(error); }
+        closeFd(this.leaseFd);
+      }
       closeFd(this.lockFd); closeFd(this.objectsFd); closeFd(this.rootFd);
+      if (errors.length === 1) throw errors[0];
+      if (errors.length > 1) throw new AggregateError(errors, "artifact store close failed");
     });
   }
 }
