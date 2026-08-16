@@ -188,9 +188,15 @@ function isRecord(value: unknown): value is JsonRecord {
 function safeId(value: string): boolean {
   return SAFE_ID.test(value) && !value.includes("..");
 }
-
 function safeEntry(value: string): boolean {
   return safeId(value) || (/^\.[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value) && !value.includes(".."));
+}
+const SAFE_BOARD_ENTRY = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
+function safeStoragePath(relativePath: string): boolean {
+  const components = relativePath.split("/");
+  return components.every((component, index) => index === 3 && components[0] === "runs" && components[2] === "boards"
+    ? SAFE_BOARD_ENTRY.test(component)
+    : safeEntry(component));
 }
 
 function errorCode(error: unknown): string | undefined {
@@ -468,7 +474,7 @@ async function inspectRuns(stateDir: string, pins: ReadonlySet<string>, pinsMalf
     for (const boardEntry of boardEntries.sort((a, b) => a.name.localeCompare(b.name))) {
       const boardId = boardEntry.name;
       const boardPath = join(boardsPath, boardId);
-      if (!safeId(boardId)) {
+      if (!SAFE_BOARD_ENTRY.test(boardId)) {
         if (boardEntry.isSymbolicLink()) { symlinks.push(`runs/${runId}/boards/${boardId}`); continue; }
         if (!boardId.startsWith(".pending-") && !boardId.startsWith(".staging-")) continue;
         const pendingStat = await safeStat(boardPath);
@@ -721,7 +727,7 @@ function entryDepth(relativePath: string): number {
 
 function removeKnownEntry(root: SecureRootDescriptor, relativePath: string, directory: boolean): void {
   const components = relativePath.split("/");
-  if (components.some(component => !safeEntry(component))) throw new Error("storage entry contains unsafe characters");
+  if (!safeStoragePath(relativePath)) throw new Error("storage entry contains unsafe characters");
   const name = components.pop();
   if (!name) throw new Error("storage entry is empty");
   const parentFd = openSecureDirectory(root.fd, components.join("/"));
@@ -768,7 +774,7 @@ async function removeLeasedEphemeralRoot(root: SecureRootDescriptor, relativePat
 
 async function removeRelative(root: SecureRootDescriptor, relativePath: string): Promise<boolean> {
   const components = relativePath.split("/");
-  if (components.some(component => !safeEntry(component))) return false;
+  if (!safeStoragePath(relativePath)) return false;
   const name = components.pop();
   if (!name) return false;
   const parentFd = openSecureDirectory(root.fd, components.join("/"));
@@ -782,7 +788,7 @@ async function removeRelative(root: SecureRootDescriptor, relativePath: string):
 }
 async function removeEmptyBoardParents(root: SecureRootDescriptor, relativePath: string): Promise<void> {
   const components = relativePath.split("/");
-  if (components.length !== 4 || components[0] !== "runs" || components[2] !== "boards" || components.some(component => !safeEntry(component))) return;
+  if (components.length !== 4 || components[0] !== "runs" || components[2] !== "boards" || !safeStoragePath(relativePath)) return;
   const runRelativePath = components.slice(0, 2).join("/");
   let runsFd: number | undefined;
   let runFd: number | undefined;
