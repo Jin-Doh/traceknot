@@ -51,7 +51,7 @@ function parseCapabilities(value: unknown): CapabilitySet {
   if (!currentModel && !legacyModel) throw Error("capability keys must exactly match the shared model");
   const capabilities = {} as Record<CapabilityName, boolean>;
   for (const name of CAPABILITY_NAMES) {
-    const enabled = input[name];
+    const enabled = Object.hasOwn(input, name) ? input[name] : undefined;
     if (name === "enforceSkillOriginEgressDeny" && enabled === undefined && legacyModel) {
       capabilities[name] = false;
       continue;

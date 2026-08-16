@@ -94,6 +94,18 @@ describe("shared host capability model", () => {
     })).toBe(true);
   });
 
+  test("does not inherit omitted legacy capability claims", () => {
+    const capabilities = Object.create({ enforceSkillOriginEgressDeny: true }) as Record<string, boolean>;
+    for (const name of CAPABILITY_NAMES.slice(0, -1)) capabilities[name] = false;
+    const record = parseCapabilityRecord({
+      schemaVersion: "quality-capability/v2",
+      host: "legacy-host",
+      adapterVersion: "legacy-v1",
+      capabilities,
+      limitations: [],
+    });
+    expect(record.capabilities.enforceSkillOriginEgressDeny).toBe(false);
+  });
   test("reports every unavailable required capability in canonical order", () => {
     const available = Object.fromEntries(
       CAPABILITY_NAMES.map((name) => [name, name === "executeCommands"]),
