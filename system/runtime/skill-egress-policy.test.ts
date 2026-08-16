@@ -190,6 +190,44 @@ describe("Skill-origin egress policy", () => {
     });
     expect(transmitted).toBe(false);
   });
+  test("binds malformed mandatory unknown requests to blocked obligations", async () => {
+    await expect(executeSkillEgress(
+      {
+        ...base,
+        origin: "unknown",
+        dataClasses: [],
+        requestId: "request-unknown-malformed",
+        obligationId: "obligation-unknown-malformed",
+        mandatory: true,
+      },
+      async () => "unexpected",
+    )).rejects.toMatchObject({
+      name: "SkillEgressDeniedError",
+      observation: {
+        decision: "blocked",
+        reason: "ORIGIN_UNATTRIBUTABLE",
+        failure: {
+          status: "BLOCKED",
+          requestId: "request-unknown-malformed",
+          obligationId: "obligation-unknown-malformed",
+        },
+      },
+    });
+  });
+
+  test("does not fabricate an obligation for malformed mandatory identifiers", async () => {
+    await expect(executeSkillEgress(
+      {
+        ...base,
+        origin: "skill",
+        dataClasses: [],
+        requestId: " request-untrimmed",
+        obligationId: "obligation-real",
+        mandatory: true,
+      },
+      async () => "unexpected",
+    )).rejects.not.toBeInstanceOf(SkillEgressDeniedError);
+  });
   test("returns the bound failure through the denied error without transmitting", async () => {
     let transmitted = false;
     await expect(executeSkillEgress(

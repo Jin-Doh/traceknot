@@ -129,27 +129,35 @@ function observation(
       : {}),
   };
 }
-function malformedSkillObservation(input: SkillEgressPolicyInput): SkillEgressObservation {
+function hasValidMandatoryIdentifiers(input: SkillEgressPolicyInput): boolean {
+  return typeof input.requestId === "string"
+    && input.requestId.length > 0
+    && input.requestId === input.requestId.trim()
+    && typeof input.obligationId === "string"
+    && input.obligationId.length > 0
+    && input.obligationId === input.obligationId.trim();
+}
+
+function malformedObligationObservation(
+  input: SkillEgressPolicyInput,
+  origin: "skill" | "unknown",
+  decision: "deny" | "blocked",
+  reason: "SKILL_ORIGIN_EGRESS" | "ORIGIN_UNATTRIBUTABLE",
+): SkillEgressObservation {
   const dataClasses = Array.isArray(input.dataClasses)
     ? input.dataClasses.filter((dataClass): dataClass is EgressDataClass => EGRESS_DATA_CLASSES.includes(dataClass))
     : [];
   const transport = EGRESS_TRANSPORTS.includes(input.transport) ? input.transport : "subprocess";
   const destination = typeof input.destination === "string" ? input.destination : "<invalid-destination>";
-  const requestId = typeof input.requestId === "string" && input.requestId.trim().length > 0
-    ? input.requestId
-    : "<invalid-request-id>";
-  const obligationId = typeof input.obligationId === "string" && input.obligationId.trim().length > 0
-    ? input.obligationId
-    : "<invalid-obligation-id>";
   return observation({
-    origin: "skill",
+    origin,
     destination,
     transport,
     dataClasses,
-    requestId,
-    obligationId,
+    requestId: input.requestId!,
+    obligationId: input.obligationId!,
     mandatory: true,
-  }, "deny", "SKILL_ORIGIN_EGRESS");
+  }, decision, reason);
 }
 function hasSensitiveData(dataClasses: readonly EgressDataClass[]): boolean {
   return dataClasses.some((dataClass) => SENSITIVE_DATA_CLASSES[dataClass] === true);
@@ -198,8 +206,18 @@ export async function executeSkillEgress<T>(
   try {
     allowedObservation = assertSkillEgressAllowed(input);
   } catch (error) {
-    if (input.origin === "skill" && input.mandatory === true) {
-      throw new SkillEgressDeniedError(malformedSkillObservation(input));
+    if (
+      input.mandatory === true
+      && hasValidMandatoryIdentifiers(input)
+      && (input.origin === "skill" || input.origin === "unknown")
+    ) {
+      const origin = input.origin;
+      throw new SkillEgressDeniedError(malformedObligationObservation(
+        input,
+        origin,
+        origin === "skill" ? "deny" : "blocked",
+        origin === "skill" ? "SKILL_ORIGIN_EGRESS" : "ORIGIN_UNATTRIBUTABLE",
+      ));
     }
     throw error;
   }
