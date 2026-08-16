@@ -192,6 +192,7 @@ runs:
         TRACEKNOT_MANIFEST: ${{ steps.prepare.outputs.manifest-path }}
         TRACEKNOT_EXPECTED_HEAD: ${{ steps.prepare.outputs.head-oid }}
         TRACEKNOT_BOARD: ${{ inputs.board }}
+        TRACEKNOT_INVOCATION_ID: ${{ steps.prepare.outputs.invocation-id }}
       run: |
         set -euo pipefail
         trap 'status=$?; printf "exit=%s\n" "$status" > "${TRACEKNOT_EVIDENCE}/status.txt"; chmod -R go-rwx "$TRACEKNOT_EVIDENCE"' EXIT
@@ -213,7 +214,7 @@ runs:
               args+=(--run-id "$TRACEKNOT_RUN_ID")
             fi
             if test "$TRACEKNOT_BOARD" = true; then
-              args+=(--board --no-notify --invocation-id "${{ steps.prepare.outputs.invocation-id }}" --session-host github-actions)
+              args+=(--board --no-notify --invocation-id "$TRACEKNOT_INVOCATION_ID" --session-host github-actions)
             fi
             bun "$GITHUB_ACTION_PATH/bin/traceknot" verify "${args[@]}" | tee "$TRACEKNOT_REPORT"
             ;;

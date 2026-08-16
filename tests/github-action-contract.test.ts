@@ -81,6 +81,9 @@ describe("reusable governed GitHub Action", () => {
     expect(String(steps[2]?.run)).toContain("report-path=");
     expect(String(steps[3]?.run)).toContain("self-verify.ts");
     expect(String(steps[3]?.run)).toContain("--expected-head");
+    expect(String(steps[3]?.run)).toContain("$TRACEKNOT_INVOCATION_ID");
+    expect(String(steps[3]?.run)).not.toContain("${{ steps.prepare.outputs.invocation-id }}");
+    expect(object(steps[3]?.env, "verification environment").TRACEKNOT_INVOCATION_ID).toBe("${{ steps.prepare.outputs.invocation-id }}");
     expect(String(steps[3]?.run)).toContain("status.txt");
     expect(steps[4]?.if).toBe("always()");
     expect(steps[5]?.if).toBe("always()");
