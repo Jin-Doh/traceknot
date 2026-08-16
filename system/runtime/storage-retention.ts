@@ -987,7 +987,7 @@ export async function pruneStorage(input: StorageMaintenanceOptions): Promise<St
       const referencedBeforeRunPrune = new Set(Object.values(inventory.runReferences).flatMap(digests => digests));
       gcMarksState = artifactLock ? await loadGcMarks(inventory.directories.artifactDir, artifactLock.root) : { marks: {}, malformed: false };
       if (gcMarksState.malformed) warnings.push("GC marks are malformed; object deletion is disabled until they are repaired");
-      const phasePlan = candidatePlan(inventory, policy, now, {}, gcMarksState.malformed, protectedRunIds);
+      plan = candidatePlan(inventory, policy, now, {}, gcMarksState.malformed, protectedRunIds);
       if (stateLock) assertSecureRoot(stateLock.root);
       if (artifactLock) assertSecureRoot(artifactLock.root);
       const phaseDeleted = await applyCandidates(inventory, plan.candidates, stateLock, artifactLock);
