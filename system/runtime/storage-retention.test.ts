@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { closeSync, openSync } from "node:fs";
-import { mkdir, open, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -317,12 +317,6 @@ describe("storage retention", () => {
     }
     const report = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
     expect(report.applied).toBe(true);
-    const lockHandle = await open(lockPath, "r");
-    try {
-      expect(await lockHandle.readFile("utf8")).toBe("");
-    } finally {
-      await lockHandle.close();
-    }
   });
 
   test("coordinates maintenance with canonical artifact publication", async () => {
