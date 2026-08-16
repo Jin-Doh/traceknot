@@ -290,6 +290,7 @@ describe("risk discovery report contract", () => {
     "approveExceptions",
     "isolatedReadOnlyReview",
     "enforcedStructuredOutput",
+    "enforceSkillOriginEgressDeny",
   ] as const;
   for (const capabilityName of capabilityNames) {
     test(`rejects an inline limitation when only ${capabilityName} is advertised`, () => {
