@@ -31,6 +31,7 @@ const authorization: EgressAuthorization = {
   scopeId: scope.scopeId,
   destination,
   protocol: "https",
+  executionSurface: "native-http-client",
   dataClasses: ["public"],
   sensitiveDataAuthorized: false,
   expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -132,5 +133,65 @@ describe("governed Skill egress boundary", () => {
     }, transport("updated", calls));
     expect(result).toBe("updated");
     expect(calls).toEqual(["example.test:release"]);
+  });
+  test("does not attach failure to an allowed observation", () => {
+    const observation = evaluateGovernedEgress(scope, intent, authorization);
+    expect(observation.decision).toBe("allow");
+    expect(observation.failure).toBeUndefined();
+  });
+
+  test("rejects expired scopes and malformed authorization expirations", () => {
+    expect(() => evaluateGovernedEgress(
+      { ...scope, expiresAt: new Date(Date.now() - 1_000).toISOString() },
+      intent,
+      authorization,
+    )).toThrow("scope.expiresAt is expired");
+    expect(evaluateGovernedEgress(scope, intent, {
+      ...authorization,
+      expiresAt: "not-a-timestamp",
+    }).reason).toBe("MISSING_AUTHORIZATION");
+  });
+
+  test("records malformed mandatory Skill attempts before rethrowing validation errors", async () => {
+    const evidence = new Evidence();
+    const malformedIntent = { ...intent, executionSurface: "invalid", mandatory: true, requestId: "request-1", obligationId: "obligation-1" } as unknown as EgressIntent;
+    await expect(executeGovernedEgress(
+      { ...scope, origin: "skill" },
+      malformedIntent,
+      authorization,
+      transport("sent"),
+      "payload",
+      evidence,
+    )).rejects.toThrow("executionSurface is invalid");
+    expect(evidence.events).toEqual(["FAILED"]);
+  });
+
+  test("binds authorization to the execution surface", () => {
+    expect(evaluateGovernedEgress(scope, { ...intent, executionSurface: "browser" }, authorization)).toMatchObject({
+      decision: "deny",
+      reason: "MISSING_AUTHORIZATION",
+    });
+  });
+
+  test("snapshots authorization before prepared evidence can mutate it", async () => {
+    const mutableAuthorization = {
+      ...authorization,
+      destination: { ...authorization.destination },
+    } as EgressAuthorization & { destination: { hostname: string } };
+    const evidence: DurableEgressEvidenceStore = {
+      async prepared() {
+        mutableAuthorization.destination.hostname = "attacker.test";
+      },
+      async completed() {},
+      async failed() {},
+    };
+    const destinations: string[] = [];
+    await executeGovernedEgress(scope, intent, mutableAuthorization, {
+      async send(received) {
+        destinations.push(received.destination.hostname);
+        return "sent";
+      },
+    }, "payload", evidence);
+    expect(destinations).toEqual(["example.test"]);
   });
 });

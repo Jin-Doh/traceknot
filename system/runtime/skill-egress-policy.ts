@@ -55,6 +55,7 @@ export type EgressAuthorization = Readonly<{
   scopeId: string;
   destination: CanonicalDestination;
   protocol: NetworkProtocol;
+  executionSurface: ExecutionSurface;
   dataClasses: readonly EgressDataClass[];
   sensitiveDataAuthorized: boolean;
   expiresAt: string;
@@ -146,14 +147,16 @@ function validScope(scope: TrustedExecutionScope): void {
   if (!EGRESS_ORIGINS.includes(scope.origin)) throw new Error("scope origin is invalid");
   if (scope.issuedBy !== "host-runtime") throw new Error("scope issuer is invalid");
   iso(scope.expiresAt, "scope.expiresAt");
+  if (Date.parse(scope.expiresAt) <= Date.now()) throw new Error("scope.expiresAt is expired");
 }
-
 function validAuthorization(intent: EgressIntent, scope: TrustedExecutionScope, authorization: EgressAuthorization): EgressReason | undefined {
   if (authorization.scopeId !== scope.scopeId) return "MISSING_AUTHORIZATION";
   if (!sameDestination(authorization.destination, intent.destination)) return "TARGET_MISMATCH";
   if (authorization.protocol !== intent.protocol) return "PROTOCOL_MISMATCH";
+  if (authorization.executionSurface !== intent.executionSurface) return "MISSING_AUTHORIZATION";
   if (authorization.dataClasses.length !== intent.dataClasses.length || authorization.dataClasses.some((item, index) => item !== intent.dataClasses[index])) return "MISSING_AUTHORIZATION";
-  if (Date.parse(authorization.expiresAt) <= Date.now()) return "MISSING_AUTHORIZATION";
+  const authorizationExpiry = Date.parse(authorization.expiresAt);
+  if (Number.isNaN(authorizationExpiry) || authorizationExpiry <= Date.now()) return "MISSING_AUTHORIZATION";
   return undefined;
 }
 
@@ -165,6 +168,7 @@ function failure(intent: EgressIntent, reason: EgressReason, status: "FAIL" | "B
 
 function observe(scope: TrustedExecutionScope, intent: EgressIntent, decision: EgressDecision, reason: EgressReason, authorization?: EgressAuthorization): EgressObservation {
   const failureStatus = decision === "blocked" ? "BLOCKED" : "FAIL";
+  const failureRecord = decision === "allow" ? undefined : failure(intent, reason, failureStatus);
   return freeze({
     decision,
     reason,
@@ -177,7 +181,7 @@ function observe(scope: TrustedExecutionScope, intent: EgressIntent, decision: E
     ...(authorization === undefined ? {} : { authorizationId: authorization.authorizationId }),
     ...(intent.requestId === undefined ? {} : { requestId: intent.requestId }),
     ...(intent.obligationId === undefined ? {} : { obligationId: intent.obligationId }),
-    ...(failure(intent, reason, failureStatus) === undefined ? {} : { failure: failure(intent, reason, failureStatus) }),
+    ...(failureRecord === undefined ? {} : { failure: failureRecord }),
   });
 }
 
@@ -201,6 +205,34 @@ export class GovernedEgressDeniedError extends Error {
   }
 }
 
+function snapshotAuthorization(authorization: EgressAuthorization): EgressAuthorization {
+  return freeze({
+    ...authorization,
+    destination: freeze({ ...authorization.destination }),
+    dataClasses: freeze([...authorization.dataClasses]),
+  });
+}
+
+function malformedMandatorySkillIntent(scope: TrustedExecutionScope, intent: EgressIntent): EgressIntent | undefined {
+  if (scope.origin !== "skill" || intent.mandatory !== true || typeof intent.requestId !== "string" || typeof intent.obligationId !== "string") {
+    return undefined;
+  }
+  const dataClasses = Array.isArray(intent.dataClasses)
+    ? intent.dataClasses.filter((item): item is EgressDataClass => EGRESS_DATA_CLASSES.includes(item))
+    : [];
+  return {
+    destination: intent.destination && typeof intent.destination === "object"
+      ? intent.destination
+      : canonicalizeDestination("https://invalid.invalid/"),
+    protocol: NETWORK_PROTOCOLS.includes(intent.protocol) ? intent.protocol : "https",
+    executionSurface: EXECUTION_SURFACES.includes(intent.executionSurface) ? intent.executionSurface : "native-http-client",
+    dataClasses: dataClasses.length > 0 ? dataClasses : ["public"],
+    requestId: intent.requestId,
+    obligationId: intent.obligationId,
+    mandatory: true,
+  };
+}
+
 export async function executeGovernedEgress<TPayload, TResult>(
   scope: TrustedExecutionScope,
   intent: EgressIntent,
@@ -209,16 +241,27 @@ export async function executeGovernedEgress<TPayload, TResult>(
   payload: TPayload,
   evidence: DurableEgressEvidenceStore,
 ): Promise<Readonly<{ observation: EgressObservation; value: TResult }>> {
-  const observation = evaluateGovernedEgress(scope, intent, authorization);
+  const authorizationSnapshot = snapshotAuthorization(authorization);
+  let observation: EgressObservation;
+  try {
+    observation = evaluateGovernedEgress(scope, intent, authorizationSnapshot);
+  } catch (error) {
+    const fallbackIntent = malformedMandatorySkillIntent(scope, intent);
+    if (fallbackIntent !== undefined) {
+      validScope(scope);
+      await evidence.failed(observe(scope, fallbackIntent, "deny", "SKILL_ORIGIN_EGRESS"));
+    }
+    throw error;
+  }
   if (observation.decision !== "allow") {
     if (observation.failure !== undefined) await evidence.failed(observation);
     throw new GovernedEgressDeniedError(observation);
   }
   await evidence.prepared(observation);
   try {
-    const value = await transport.send(authorization, payload);
+    const value = await transport.send(authorizationSnapshot, payload);
     if ((value as RedirectResult | undefined)?.kind === "redirect") {
-      const redirectObservation = observe(scope, intent, "deny", "REDIRECT_REQUIRES_REAUTHORIZATION", authorization);
+      const redirectObservation = observe(scope, intent, "deny", "REDIRECT_REQUIRES_REAUTHORIZATION", authorizationSnapshot);
       await evidence.failed(redirectObservation);
       throw new GovernedEgressDeniedError(redirectObservation);
     }
@@ -252,6 +295,7 @@ export async function executeUpdaterEgress<TPayload, TResult>(
     scopeId: "updater",
     destination: request.destination,
     protocol: request.protocol,
+    executionSurface: "native-http-client",
     dataClasses: ["public"],
     sensitiveDataAuthorized: false,
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
