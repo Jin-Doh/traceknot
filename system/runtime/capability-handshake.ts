@@ -7,6 +7,7 @@ import {
   CAPABILITY_NAMES,
   isHardenedEgressProfile,
   parseCapabilityRecord,
+  parseEnforcementProfile,
   type CapabilityRecord,
   type CapabilitySet,
   type EgressEnforcementProfile,
@@ -176,6 +177,17 @@ export function parseCapabilityHandshakeEnvelope(
   if (compareCanonicalUtcTimestamps(expiresAt, now) <= 0) {
     fail("EXPIRED", "capability handshake envelope has expired");
   }
+  let allowedEnforcementProfile: EgressEnforcementProfile | undefined;
+  if (expectation.allowedEnforcementProfile !== undefined) {
+    try {
+      allowedEnforcementProfile = parseEnforcementProfile(expectation.allowedEnforcementProfile);
+    } catch (error) {
+      fail(
+        "MALFORMED_ENVELOPE",
+        `allowedEnforcementProfile is invalid: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
   for (const name of CAPABILITY_NAMES) {
     const advertised = name === "enforceSkillOriginEgressDeny"
       ? ("enforcementProfile" in record
@@ -191,7 +203,7 @@ export function parseCapabilityHandshakeEnvelope(
       fail("CAPABILITY_ESCALATION", `capability ${name} exceeds the trusted integration ceiling`);
     }
   }
-  if ("enforcementProfile" in record && profileExceeds(record.enforcementProfile, expectation.allowedEnforcementProfile)) {
+  if ("enforcementProfile" in record && profileExceeds(record.enforcementProfile, allowedEnforcementProfile)) {
     fail("CAPABILITY_ESCALATION", "enforcementProfile exceeds the trusted integration ceiling");
   }
   return record;

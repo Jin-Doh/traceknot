@@ -220,6 +220,19 @@ describe("Codex capability adapter", () => {
       enforcementProfile: HARDENED_PROFILE,
     });
   });
+  test("rejects malformed egress profile ceilings", async () => {
+    const handshake = runtimeHandshake(
+      async (request) => envelope(request, runtimeV3Record()),
+      {
+        allowedCapabilities: runtimeCapabilities({ enforceSkillOriginEgressDeny: true }),
+        allowedEnforcementProfile: {} as EgressEnforcementProfile,
+      },
+    );
+
+    await expect(discoverCodexCapabilities(handshake)).rejects.toMatchObject({
+      code: "MALFORMED_ENVELOPE",
+    });
+  });
 
   test("rejects malformed handshake records instead of granting capabilities", async () => {
     const handshake = runtimeHandshake(async (request) =>

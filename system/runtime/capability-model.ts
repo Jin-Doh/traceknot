@@ -104,7 +104,7 @@ function parseV2Capabilities(value: unknown): V2CapabilitySet {
   return Object.freeze(capabilities);
 }
 
-function parseEnforcementProfile(value: unknown): EgressEnforcementProfile {
+export function parseEnforcementProfile(value: unknown): EgressEnforcementProfile {
   const input = object(value, "enforcementProfile");
   if (!exactKeys(input, ["originAttribution", "toolMediation", "processIsolation", "auditDurability"])) {
     throw Error("enforcementProfile keys are invalid");
