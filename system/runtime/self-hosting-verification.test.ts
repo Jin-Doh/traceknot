@@ -123,7 +123,9 @@ describe("canonical self-hosting verification", () => {
         rootDir: root,
         executable: process.execPath,
         argv: ["-e", "process.exit(0)"],
+        assuranceContext: "local",
       });
+      expect(result.executed.assurance.context).toBe("local");
       expect(result.executed.run).toMatchObject({ state: "TERMINAL" });
       expect(result.executed.verdict).toMatchObject({ qaVerdict: "PASS" });
       expect(result.reportOnly.run).toMatchObject({

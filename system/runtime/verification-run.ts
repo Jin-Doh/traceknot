@@ -323,7 +323,8 @@ export async function buildVerificationPlan(input: BuildVerificationPlanInput): 
   const obligations = conditions.map(item => {
     const compositionReview = item.techniques.includes("visual-composition");
     const resilienceReview = item.techniques.includes("ui-resilience");
-    const requiresIndependentProducer = input.request.assuranceContext !== "local" && (compositionReview || resilienceReview || item.techniques.includes("independent-producer"));
+    const explicitIndependentProducer = item.techniques.includes("independent-producer");
+    const requiresIndependentProducer = explicitIndependentProducer || (input.request.assuranceContext !== "local" && (compositionReview || resilienceReview));
     const independence = requiresIndependentProducer ? "independent-producer" as const : "separate-verification-context" as const;
     const id = `obligation:${item.id}`;
     const visualCompositionRequirement = item.techniques.includes("visual-composition") && input.request.visualComposition

@@ -208,6 +208,7 @@ export async function runSelfHostingVerification(
       "--state-dir", stateDir,
       "--artifact-dir", artifactDir,
       ...(command.expectedHead === undefined ? [] : ["--expected-head", command.expectedHead]),
+      ...(command.assuranceContext === undefined ? [] : ["--assurance", command.assuranceContext]),
     ];
     const executed = await runCli(traceknotExecutable, command.rootDir, [
       ...common,
