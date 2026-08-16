@@ -71,6 +71,21 @@ describe("storage retention", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+  test("rejects artifact roots beneath managed runs through symlinked ancestors", async () => {
+    const root = await mkdtemp(join(tmpdir(), "traceknot-retention-root-"));
+    try {
+      const stateDir = join(root, "state");
+      const realArtifactDir = join(stateDir, "runs", "run", "boards", "board");
+      const aliasParent = join(root, "alias-parent");
+      const artifactDir = join(aliasParent, "state-link", "runs", "run", "boards", "board");
+      await mkdir(realArtifactDir, { recursive: true });
+      await mkdir(aliasParent, { recursive: true });
+      await symlink(stateDir, join(aliasParent, "state-link"), "dir");
+      await expect(inspectStorage({ stateDir, artifactDir, now: NOW })).rejects.toThrow("artifact directory must not be nested beneath state runs directory");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   test("inventory is deterministic and does not follow symlinks", async () => {
     const { state, artifacts } = await fixture();
     await run(state, "terminal", { state: "TERMINAL", updatedAt: NOW });

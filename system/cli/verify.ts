@@ -1,6 +1,6 @@
 import { createHash, createPublicKey, randomUUID, verify as verifySignature } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, type FileHandle } from "node:fs/promises";
+import { lstat, mkdir, open, realpath, type FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -461,13 +461,34 @@ function validateRequest(value: unknown): VerificationRequest {
   return request;
 }
 function isInside(base: string, candidate: string): boolean { const rel = relative(base, candidate); return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel)); }
+async function canonicalizePath(path: string): Promise<string> {
+  const missing: string[] = [];
+  let current = path;
+  while (true) {
+    try {
+      let canonical = await realpath(current);
+      for (const component of missing.reverse()) canonical = join(canonical, component);
+      return canonical;
+    } catch (error) {
+      if ((error as { code?: string }).code !== "ENOENT") throw error;
+      const parent = dirname(current);
+      if (parent === current) throw error;
+      missing.push(basename(current));
+      current = parent;
+    }
+  }
+}
 async function assertExternalDirectory(rootDir: string, directory: string, label: string): Promise<void> {
-  if (isInside(rootDir, directory)) fail(`${label} must be outside the Git repository root to keep snapshots stable`);
+  const rootCanonical = await realpath(rootDir);
+  const directoryCanonical = await canonicalizePath(directory);
+  if (isInside(rootCanonical, directoryCanonical)) fail(`${label} must be outside the Git repository root to keep snapshots stable`);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const info = await lstat(directory); if (!info.isDirectory() || info.isSymbolicLink()) fail(`${label} must be a real directory`);
 }
 async function assertExistingExternalDirectory(rootDir: string, directory: string, label: string): Promise<void> {
-  if (isInside(rootDir, directory)) fail(`${label} must be outside the Git repository root to keep snapshots stable`);
+  const rootCanonical = await realpath(rootDir);
+  const directoryCanonical = await canonicalizePath(directory);
+  if (isInside(rootCanonical, directoryCanonical)) fail(`${label} must be outside the Git repository root to keep snapshots stable`);
   const info = await lstat(directory); if (!info.isDirectory() || info.isSymbolicLink()) fail(`${label} must be a real directory`);
 }
 const INVOCATION_COLLECTOR_PREFIX = ".collector-";

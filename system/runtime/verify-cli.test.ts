@@ -635,6 +635,21 @@ describe("traceknot verify CLI", () => {
       expect(boardStatus).toBe(64);
       expect(boardError.join("")).toContain("artifact-dir must be outside the Git repository root");
       await expect(stat(inRepositoryArtifact)).rejects.toThrow();
+      const aliasParent = await mkdtemp(join(tmpdir(), "traceknot-cli-artifact-alias-"));
+      try {
+        await symlink(fixtureValue.root, join(aliasParent, "repo-link"), "dir");
+        const aliasedArtifact = join(aliasParent, "repo-link", "report-only-artifact");
+        const aliasedBoardError: string[] = [];
+        const aliasedBoardStatus = await runVerify(
+          ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--artifact-dir", aliasedArtifact, "--run-id", "cli-e2e", "--report-only", "--board", "--no-notify"],
+          () => undefined,
+          text => aliasedBoardError.push(text),
+        );
+        expect(aliasedBoardStatus).toBe(64);
+        expect(aliasedBoardError.join("")).toContain("artifact-dir must be outside the Git repository root");
+      } finally {
+        await rm(aliasParent, { recursive: true, force: true });
+      }
       const localState = await mkdtemp(join(tmpdir(), "traceknot-cli-local-assurance-"));
       try {
         const localOutput: string[] = [];

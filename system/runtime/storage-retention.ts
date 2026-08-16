@@ -1,6 +1,6 @@
 import { constants, type Dirent, writeSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { lstat, readdir, readFile } from "node:fs/promises";
+import { lstat, readdir, readFile, realpath } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { ARTIFACT_CANONICAL_LOCK_FILE, ArtifactNotFoundError, assertSecureRoot, closeSecureDescriptor, closeSecureRoot, openOrCreateSecureDirectoryPath, openSecureDirectory, openSecureRoot, readSecureRegularFile, secureFlock, secureFsync, secureOpenAt, secureRenameAt, secureRmdirAt, secureUnlinkAt, STORAGE_MAINTENANCE_LOCK_FILE, type SecureRootDescriptor } from "./local-artifact-store";
 import { assertCanonicalRun } from "./verification-run";
@@ -577,8 +577,8 @@ function boardEntry(board: BoardInfo): StorageEntry {
 }
 
 export async function inspectStorage(input: StorageMaintenanceOptions): Promise<StorageInventory> {
-  const stateDir = assertAbsoluteRoot(input.stateDir, "state directory");
-  const artifactDir = assertAbsoluteRoot(input.artifactDir, "artifact directory");
+  let stateDir = assertAbsoluteRoot(input.stateDir, "state directory");
+  let artifactDir = assertAbsoluteRoot(input.artifactDir, "artifact directory");
   if (stateDir === artifactDir) throw new Error("state and artifact directories must be distinct");
   if (isDescendantPath(artifactDir, stateDir)) throw new Error("state directory must not be nested beneath artifact directory");
   const runsRoot = join(stateDir, "runs");
@@ -587,6 +587,14 @@ export async function inspectStorage(input: StorageMaintenanceOptions): Promise<
   const artifact = await rootStatus(artifactDir);
   if (state === "symlink" || state === "other") throw new Error("state directory must not be a symlink and must be a directory");
   if (artifact === "symlink" || artifact === "other") throw new Error("artifact directory must not be a symlink and must be a directory");
+  if (state === "directory" && artifact === "directory") {
+    stateDir = await realpath(stateDir);
+    artifactDir = await realpath(artifactDir);
+    if (stateDir === artifactDir) throw new Error("state and artifact directories must be distinct");
+    if (isDescendantPath(artifactDir, stateDir)) throw new Error("state directory must not be nested beneath artifact directory");
+    const canonicalRunsRoot = join(stateDir, "runs");
+    if (artifactDir === canonicalRunsRoot || isDescendantPath(canonicalRunsRoot, artifactDir)) throw new Error("artifact directory must not be nested beneath state runs directory");
+  }
   const now = nowMs(input.now);
   const pins = state === "directory" ? await loadPins(stateDir) : { pins: new Set<string>(), malformed: false };
   const runData = state === "directory" ? await inspectRuns(stateDir, pins.pins, pins.malformed, now) : { runs: [], boards: [], staging: [], symlinks: [], references: {} };
