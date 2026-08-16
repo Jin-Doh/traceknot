@@ -20,8 +20,8 @@ import {
 import {
   buildVerificationPlan,
   canonicalizeJson,
-  type ExecutionAuthority,
   type AssuranceContext,
+  type ExecutionAuthority,
   type FreshnessAuthority,
   type VerificationExecutionAuthorityBinding,
   type VerificationExecutionCompletionEnvelope,
@@ -94,6 +94,7 @@ function usage(): string {
     "  --format json|markdown   Report format (default: json)",
     "  --assurance LEVEL       Verification assurance: local or release (default: release)",
     "  --invocation-id ID      Durable Board invocation identifier",
+    "  --assurance LEVEL       Verification assurance: local or release (default: release)",
     "  --board                 Generate a static QA Board bundle",
     "  --board-locale LOCALE   Board language: auto, en, ko, or zh-CN (default: auto)",
     "  --no-notify             Suppress desktop notification after Board generation",
@@ -318,8 +319,8 @@ function parseArgs(argv: readonly string[]): CliOptions {
   let runId: string | undefined;
   let invocationId: string | undefined;
   let expectedHead: string | undefined;
-  let format: "json" | "markdown" = "json";
   let assuranceContext: AssuranceContext = "release";
+  let format: "json" | "markdown" = "json";
   let reportOnly = false;
   let board = false;
   let boardLocale = resolveQaBoardLocale(process.env.LC_ALL, process.env.LC_MESSAGES, process.env.LANG);
@@ -837,7 +838,8 @@ async function loadReport(repository: FileVerificationRepository, runId: string,
   const verdict = await repository.loadStageDocument(runId, "verdict");
   if (!request || !verdict) fail("run is missing persisted request or verdict");
   if (!metadata || metadata.rootIdentity !== snapshot.rootIdentity || metadata.snapshotId !== snapshot.snapshotId || run.rootIdentity !== snapshot.rootIdentity || run.snapshotId !== snapshot.snapshotId) fail("current Git snapshot or persisted run metadata does not match the persisted run");
-  return { schemaVersion: "traceknot-cli-report/v1", assurance: assuranceFor(request as VerificationRequest, verdict, undefined), run, verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: { request, basis: await repository.loadStageDocument(runId, "basis"), discovery: await repository.loadStageDocument(runId, "discovery"), plan: await repository.loadStageDocument(runId, "plan"), execution: await repository.loadStageDocument(runId, "execution"), evidence: await repository.loadStageDocument(runId, "evidence"), residualRisk: await repository.loadStageDocument(runId, "residual-risk"), verdict } };
+  const documents = { request, basis: await repository.loadStageDocument(runId, "basis"), discovery: await repository.loadStageDocument(runId, "discovery"), plan: await repository.loadStageDocument(runId, "plan"), execution: await repository.loadStageDocument(runId, "execution"), evidence: await repository.loadStageDocument(runId, "evidence"), residualRisk: await repository.loadStageDocument(runId, "residual-risk"), verdict };
+  return { schemaVersion: "traceknot-cli-report/v1", assurance: assuranceFor(request as VerificationRequest, verdict, documents.plan), run, verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents };
 }
 
 export async function runVerify(argv: readonly string[], stdout: (text: string) => void = text => process.stdout.write(text), stderr: (text: string) => void = text => process.stderr.write(text)): Promise<number> {
@@ -890,9 +892,10 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
       return exitForVerdict(result.verdict);
     }
     if (!requestInput || !options.manifestPath) fail("--request and --manifest are required unless --report-only is used");
+
+    if (requestInput.assuranceContext !== undefined && requestInput.assuranceContext !== options.assuranceContext) fail(`request assuranceContext ${requestInput.assuranceContext} does not match --assurance ${options.assuranceContext}`);
     const request = { ...requestInput, assuranceContext: options.assuranceContext, project: { ...requestInput.project, rootIdentity: requestInput.project.rootIdentity === "auto" ? snapshot.rootIdentity : requestInput.project.rootIdentity, snapshotId: requestInput.project.snapshotId === "auto" ? snapshot.snapshotId : requestInput.project.snapshotId } } satisfies VerificationRequest;
     if (request.project.rootIdentity !== snapshot.rootIdentity || request.project.snapshotId !== snapshot.snapshotId) fail("request project identity does not match current Git snapshot");
-    if (requestInput.assuranceContext !== undefined && requestInput.assuranceContext !== options.assuranceContext) fail(`request assuranceContext ${requestInput.assuranceContext} does not match --assurance ${options.assuranceContext}`);
     const manifest = validateManifest(await readBoundedJson(options.manifestPath));
     const placeholder = {} as VerificationRunDependencies;
     const basis = await establishTestBasis({ request, dependencies: placeholder });

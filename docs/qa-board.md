@@ -32,6 +32,15 @@ The CLI preserves the verification verdict exit code. Board generation, notifica
 
 Every bundle includes English, Korean, and Simplified Chinese views. The language switcher moves between those local static pages without scripts or network access. Only interface labels are localized; persisted summaries, evidence, identifiers, and verdict rationale remain byte-for-byte faithful to the canonical run.
 
+## Assurance context
+
+The CLI defaults to `release` assurance and accepts `--assurance local|release`. The selected context is persisted in the request, CLI report, Board view, and Board manifest:
+
+- `local` records a development verification path. UI composition and resilience obligations require a `separate-verification-context`; the report marks release assurance as `not-evaluated`.
+- `release` is the publication gate. UI composition and resilience obligations require an `independent-producer`; a release report is `satisfied` only for `PASS` or `PASS_WITH_ACCEPTED_RISK`.
+
+The CLI rejects a request whose persisted `assuranceContext` disagrees with `--assurance`. Assurance metadata does not upgrade a QA verdict, complete harness work, or replace signed external execution evidence.
+
 ## Visual presentation
 
 Each localized page is a static projection of persisted verification data:

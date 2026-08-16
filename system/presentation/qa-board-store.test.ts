@@ -34,6 +34,7 @@ function viewWithScreenshot(): QaBoardView {
     sourceState: "TERMINAL",
     sourceUpdatedAt: "2026-08-15T00:00:03Z",
     changeSummary: "Board store fixture",
+    assurance: { context: "release", requiredIndependence: "independent-producer", releaseStatus: "satisfied" },
     verdict: "PASS",
     authoritative: false,
     rationale: "The fixture passed.",

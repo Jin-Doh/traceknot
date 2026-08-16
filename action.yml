@@ -88,8 +88,8 @@ runs:
       shell: bash
       env:
         TRACEKNOT_MODE: ${{ inputs.mode }}
-        TRACEKNOT_REQUEST: ${{ inputs.request }}
         TRACEKNOT_ASSURANCE: ${{ inputs.assurance }}
+        TRACEKNOT_REQUEST: ${{ inputs.request }}
         TRACEKNOT_MANIFEST: ${{ inputs.manifest }}
         TRACEKNOT_FORMAT: ${{ inputs.format }}
         TRACEKNOT_SARIF: ${{ inputs.sarif-path }}
@@ -112,6 +112,10 @@ runs:
         case "$TRACEKNOT_CLEANUP_LOCAL" in
           true|false) ;;
           *) printf 'cleanup-local-after-upload must be true or false\n' >&2; exit 64 ;;
+        esac
+        case "$TRACEKNOT_ASSURANCE" in
+          local|release) ;;
+          *) printf 'assurance must be local or release\n' >&2; exit 64 ;;
         esac
         case "$TRACEKNOT_BOARD" in
           true|false) ;;
@@ -189,9 +193,9 @@ runs:
       name: Run governed verification
       shell: bash
       env:
+        TRACEKNOT_ASSURANCE: ${{ inputs.assurance }}
         TRACEKNOT_MODE: ${{ inputs.mode }}
         TRACEKNOT_RUN_ID: ${{ inputs.run-id }}
-        TRACEKNOT_ASSURANCE: ${{ inputs.assurance }}
         TRACEKNOT_FORMAT: ${{ inputs.format }}
         TRACEKNOT_REPORT: ${{ steps.prepare.outputs.report-path }}
         TRACEKNOT_EVIDENCE: ${{ steps.prepare.outputs.evidence-path }}
@@ -216,8 +220,8 @@ runs:
               --request "$TRACEKNOT_REQUEST"
               --manifest "$TRACEKNOT_MANIFEST"
               --format "$TRACEKNOT_FORMAT"
-              --expected-head "$TRACEKNOT_EXPECTED_HEAD"
               --assurance "$TRACEKNOT_ASSURANCE"
+              --expected-head "$TRACEKNOT_EXPECTED_HEAD"
             )
             if test -n "$TRACEKNOT_RUN_ID"; then
               args+=(--run-id "$TRACEKNOT_RUN_ID")
