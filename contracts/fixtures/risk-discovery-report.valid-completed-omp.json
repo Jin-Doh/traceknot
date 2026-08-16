@@ -15,7 +15,8 @@
       "persistEvidence": true,
       "approveExceptions": false,
       "isolatedReadOnlyReview": true,
-      "enforcedStructuredOutput": true
+      "enforcedStructuredOutput": true,
+      "enforceSkillOriginEgressDeny": false
     },
     "limitations": []
   },

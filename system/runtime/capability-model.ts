@@ -8,6 +8,7 @@ export const CAPABILITY_NAMES = [
   "approveExceptions",
   "isolatedReadOnlyReview",
   "enforcedStructuredOutput",
+  "enforceSkillOriginEgressDeny",
 ] as const;
 
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];

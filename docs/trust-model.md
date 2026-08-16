@@ -20,7 +20,7 @@ The exported `resolveQaVerdict` path remains a legacy compatibility resolver. It
 
 Runtime capability comes from an explicit handshake. A host name, model name, new session, worktree, or lifecycle event grants no capability by itself.
 
-The host-neutral capability vocabulary includes command execution, browser execution, artifact capture, snapshot binding, independent evidence, evidence persistence, exception approval, isolated read-only review, and enforced structured output.
+The host-neutral capability vocabulary includes command execution, browser execution, artifact capture, snapshot binding, independent evidence, evidence persistence, exception approval, isolated read-only review, enforced structured output, and Skill-origin egress denial enforcement.
 
 ### Skill-origin egress boundary
 

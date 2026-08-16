@@ -13,7 +13,8 @@
     "persistEvidence",
     "approveExceptions",
     "isolatedReadOnlyReview",
-    "enforcedStructuredOutput"
+    "enforcedStructuredOutput",
+    "enforceSkillOriginEgressDeny"
   ],
   "properties": {
     "executeCommands": { "type": "boolean" },
@@ -24,6 +25,7 @@
     "persistEvidence": { "type": "boolean" },
     "approveExceptions": { "type": "boolean" },
     "isolatedReadOnlyReview": { "type": "boolean" },
-    "enforcedStructuredOutput": { "type": "boolean" }
+    "enforcedStructuredOutput": { "type": "boolean" },
+    "enforceSkillOriginEgressDeny": { "type": "boolean" }
   }
 }

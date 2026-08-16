@@ -15,7 +15,8 @@
       "persistEvidence": true,
       "approveExceptions": false,
       "isolatedReadOnlyReview": false,
-      "enforcedStructuredOutput": false
+      "enforcedStructuredOutput": false,
+      "enforceSkillOriginEgressDeny": false
     },
     "limitations": [
       "No browser session is available in this runtime.",

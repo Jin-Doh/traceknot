@@ -17,6 +17,7 @@ const ALL_FALSE = Object.freeze({
   approveExceptions: false,
   isolatedReadOnlyReview: false,
   enforcedStructuredOutput: false,
+  enforceSkillOriginEgressDeny: false,
 } satisfies CapabilitySet);
 
 function runtimeRecord(capabilities: CapabilitySet, host = "codex"): unknown {
@@ -172,6 +173,15 @@ describe("Codex capability adapter", () => {
         request,
         runtimeRecord(runtimeCapabilities({ approveExceptions: true })),
       ));
+
+    await expect(discoverCodexCapabilities(handshake)).rejects.toMatchObject({
+      code: "CAPABILITY_ESCALATION",
+    });
+  });
+
+  test("rejects unverified Skill-origin egress enforcement claims", async () => {
+    const handshake = runtimeHandshake(async (request) =>
+      envelope(request, runtimeRecord(runtimeCapabilities({ enforceSkillOriginEgressDeny: true }))));
 
     await expect(discoverCodexCapabilities(handshake)).rejects.toMatchObject({
       code: "CAPABILITY_ESCALATION",

@@ -15,7 +15,8 @@
       "persistEvidence": true,
       "approveExceptions": false,
       "isolatedReadOnlyReview": false,
-      "enforcedStructuredOutput": false
+      "enforcedStructuredOutput": false,
+      "enforceSkillOriginEgressDeny": false
     },
     "limitations": [
       "A second independent evidence producer is unavailable."
