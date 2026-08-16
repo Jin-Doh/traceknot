@@ -17,6 +17,10 @@ inputs:
     description: Optional durable run identifier.
     required: false
     default: ''
+  assurance:
+    description: Verification assurance context, local or release.
+    required: false
+    default: release
   format:
     description: json or markdown report format in manifest mode.
     required: false
@@ -66,6 +70,7 @@ runs:
       env:
         TRACEKNOT_MODE: ${{ inputs.mode }}
         TRACEKNOT_REQUEST: ${{ inputs.request }}
+        TRACEKNOT_ASSURANCE: ${{ inputs.assurance }}
         TRACEKNOT_MANIFEST: ${{ inputs.manifest }}
         TRACEKNOT_FORMAT: ${{ inputs.format }}
         TRACEKNOT_SARIF: ${{ inputs.sarif-path }}
@@ -97,6 +102,10 @@ runs:
           chmod 600 "$destination"
         }
 
+        case "$TRACEKNOT_ASSURANCE" in
+          local|release) ;;
+          *) printf 'assurance must be local or release\n' >&2; exit 64 ;;
+        esac
         case "$TRACEKNOT_MODE" in
           self-hosting)
             report_path="${evidence_path}/report.json"
@@ -116,7 +125,6 @@ runs:
             ;;
           *) printf 'mode must be self-hosting or manifest\n' >&2; exit 64 ;;
         esac
-
         sarif_path=''
         if test -n "$TRACEKNOT_SARIF"; then
           sarif_path="${input_path}/report.sarif"
@@ -141,6 +149,7 @@ runs:
       env:
         TRACEKNOT_MODE: ${{ inputs.mode }}
         TRACEKNOT_RUN_ID: ${{ inputs.run-id }}
+        TRACEKNOT_ASSURANCE: ${{ inputs.assurance }}
         TRACEKNOT_FORMAT: ${{ inputs.format }}
         TRACEKNOT_REPORT: ${{ steps.prepare.outputs.report-path }}
         TRACEKNOT_EVIDENCE: ${{ steps.prepare.outputs.evidence-path }}
@@ -165,6 +174,7 @@ runs:
               --manifest "$TRACEKNOT_MANIFEST"
               --format "$TRACEKNOT_FORMAT"
               --expected-head "$TRACEKNOT_EXPECTED_HEAD"
+              --assurance "$TRACEKNOT_ASSURANCE"
             )
             if test -n "$TRACEKNOT_RUN_ID"; then
               args+=(--run-id "$TRACEKNOT_RUN_ID")

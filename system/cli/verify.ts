@@ -20,6 +20,7 @@ import {
   buildVerificationPlan,
   canonicalizeJson,
   type ExecutionAuthority,
+  type AssuranceContext,
   type FreshnessAuthority,
   type VerificationExecutionAuthorityBinding,
   type VerificationExecutionCompletionEnvelope,
@@ -63,8 +64,8 @@ type ManifestCommand = Readonly<{
   toolVersion?: string;
 }>;
 type VerifyManifest = Readonly<{ schemaVersion: "verification-manifest/v1"; obligations: readonly ManifestCommand[] }>;
-type CliOptions = Readonly<{ requestPath?: string; manifestPath?: string; rootDir: string; stateDir: string; artifactDir: string; runId?: string; expectedHead?: string; format: "json" | "markdown"; reportOnly: boolean; help: boolean }>;
-type CliReport = Readonly<{ schemaVersion: "traceknot-cli-report/v1"; run: unknown; verdict: unknown; snapshot: Readonly<{ rootIdentity: string; snapshotId: string; head: string; dirty: boolean }>; documents?: unknown }>;
+type CliOptions = Readonly<{ requestPath?: string; manifestPath?: string; rootDir: string; stateDir: string; artifactDir: string; runId?: string; expectedHead?: string; assuranceContext: AssuranceContext; format: "json" | "markdown"; reportOnly: boolean; help: boolean }>;
+type CliReport = Readonly<{ schemaVersion: "traceknot-cli-report/v1"; assurance: Readonly<{ context: AssuranceContext; requiredIndependence: "separate-verification-context" | "independent-producer"; releaseStatus: "not-evaluated" | "satisfied" | "insufficient" }>; run: unknown; verdict: unknown; snapshot: Readonly<{ rootIdentity: string; snapshotId: string; head: string; dirty: boolean }>; documents?: unknown }>;
 export type TrustedProducerPolicy = Readonly<{
   schemaVersion: "trusted-producer-policy/v1";
   issuer: string;
@@ -84,7 +85,7 @@ function usage(): string {
     "  --run-id ID             Durable run identifier (default: requestId)",
     "  --expected-head OID      Require this clean Git HEAD commit",
     "  --format json|markdown   Report format (default: json)",
-    "  --report-only           Read an existing run without executing commands",
+    "  --assurance LEVEL       Verification assurance: local or release (default: release)",
     "  --help                  Show this message",
   ].join("\n");
 }
@@ -302,6 +303,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
   let runId: string | undefined;
   let expectedHead: string | undefined;
   let format: "json" | "markdown" = "json";
+  let assuranceContext: AssuranceContext = "release";
   let reportOnly = false;
   let help = false;
   for (let i = 0; i < argv.length; i += 1) {
@@ -316,6 +318,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
     else if (arg === "--run-id") runId = next();
     else if (arg === "--expected-head") expectedHead = next();
     else if (arg === "--format") { const value = next(); if (value !== "json" && value !== "markdown") fail("--format must be json or markdown"); format = value; }
+    else if (arg === "--assurance") { const value = next(); if (value !== "local" && value !== "release") fail("--assurance must be local or release"); assuranceContext = value; }
     else if (arg === "--report-only") reportOnly = true;
     else fail(`unknown option: ${arg}`);
   }
@@ -324,7 +327,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
   if (!artifactDir) artifactDir = join(stateDir, "artifacts");
   if (runId !== undefined && !SAFE_ID.test(runId)) fail("run-id contains unsafe characters");
   if (expectedHead !== undefined && !GIT_OBJECT_ID.test(expectedHead)) fail("expected-head must be a lowercase Git object ID");
-  return { requestPath, manifestPath, rootDir: absoluteRoot, stateDir: resolve(stateDir), artifactDir: resolve(artifactDir), runId, expectedHead, format, reportOnly, help };
+  return { requestPath, manifestPath, rootDir: absoluteRoot, stateDir: resolve(stateDir), artifactDir: resolve(artifactDir), runId, expectedHead, assuranceContext, format, reportOnly, help };
 }
 function requireString(value: unknown, label: string): string { if (typeof value !== "string" || !value || value.includes("\0")) fail(`${label} must be a non-empty NUL-free string`); return value; }
 function validateManifest(value: unknown): VerifyManifest {
@@ -416,6 +419,7 @@ function validateRequest(value: unknown): VerificationRequest {
   requireString(request.change.summary, "request.change.summary");
   request.change.paths.forEach(path => requireString(path, "request.change.paths"));
   if (!Array.isArray(request.testBasis) || request.testBasis.length === 0) fail("request.testBasis must not be empty");
+  if (request.assuranceContext !== undefined && request.assuranceContext !== "local" && request.assuranceContext !== "release") fail("request.assuranceContext must be local or release");
   return request;
 }
 function isInside(base: string, candidate: string): boolean { const rel = relative(base, candidate); return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel)); }
@@ -481,10 +485,22 @@ function validateExecutionCompletion(value: unknown): VerificationExecutionCompl
 function freshnessAuthorityFor(binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["issueFreshnessAuthority"]>>[0]): FreshnessAuthority {
   return { schemaVersion: "verification-freshness-authority/v1", authorityId: `freshness:${digest(binding).slice(0, 48)}`, issuer: "traceknot-cli", binding };
 }
+function assuranceFor(request: VerificationRequest, verdict: unknown, plan?: unknown): CliReport["assurance"] {
+  const context = request.assuranceContext ?? "release";
+  const planObligations = (plan as { obligations?: readonly unknown[] } | undefined)?.obligations;
+  const requiredIndependence = planObligations?.some(item => (item as { independence?: unknown } | undefined)?.independence === "independent-producer")
+    ? "independent-producer" as const
+    : "separate-verification-context" as const;
+  const qaVerdict = (verdict as { qaVerdict?: unknown } | undefined)?.qaVerdict;
+  const releaseStatus = context === "release"
+    ? qaVerdict === "PASS" || qaVerdict === "PASS_WITH_ACCEPTED_RISK" ? "satisfied" as const : "insufficient" as const
+    : "not-evaluated" as const;
+  return { context, requiredIndependence, releaseStatus };
+}
 function renderMarkdown(report: CliReport): string {
   const verdict = report.verdict as Record<string, unknown>;
   const run = report.run as Record<string, unknown>;
-  const lines = [`# Traceknot verification`, ``, `- Verdict: **${String(verdict.qaVerdict ?? "UNKNOWN")}**`, `- Run: \`${String(run.runId ?? "unknown")}\``, `- State: \`${String(run.state ?? "unknown")}\``, `- Snapshot: \`${report.snapshot.snapshotId}\``, `- Repository: \`${report.snapshot.rootIdentity}\``, ``, `## Rationale`, ``, String(verdict.rationale ?? "No rationale was persisted.")];
+  const lines = [`# Traceknot verification`, ``, `- Verdict: **${String(verdict.qaVerdict ?? "UNKNOWN")}**`, `- Assurance: **${report.assurance.context}**`, `- Release assurance: **${report.assurance.releaseStatus}**`, `- Required independence: \`${report.assurance.requiredIndependence}\``, `- Run: \`${String(run.runId ?? "unknown")}\``, `- State: \`${String(run.state ?? "unknown")}\``, `- Snapshot: \`${report.snapshot.snapshotId}\``, `- Repository: \`${report.snapshot.rootIdentity}\``, ``, `## Rationale`, ``, String(verdict.rationale ?? "No rationale was persisted.")];
   return lines.join("\n") + "\n";
 }
 function reportOutput(report: CliReport, format: "json" | "markdown"): string { return format === "markdown" ? renderMarkdown(report) : JSON.stringify(report, null, 2) + "\n"; }
@@ -668,7 +684,7 @@ async function loadReport(repository: FileVerificationRepository, runId: string,
   const verdict = await repository.loadStageDocument(runId, "verdict");
   if (!request || !verdict) fail("run is missing persisted request or verdict");
   if (!metadata || metadata.rootIdentity !== snapshot.rootIdentity || metadata.snapshotId !== snapshot.snapshotId || run.rootIdentity !== snapshot.rootIdentity || run.snapshotId !== snapshot.snapshotId) fail("current Git snapshot or persisted run metadata does not match the persisted run");
-  return { schemaVersion: "traceknot-cli-report/v1", run, verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: { request, basis: await repository.loadStageDocument(runId, "basis"), discovery: await repository.loadStageDocument(runId, "discovery"), plan: await repository.loadStageDocument(runId, "plan"), execution: await repository.loadStageDocument(runId, "execution"), evidence: await repository.loadStageDocument(runId, "evidence"), residualRisk: await repository.loadStageDocument(runId, "residual-risk"), verdict } };
+  return { schemaVersion: "traceknot-cli-report/v1", assurance: assuranceFor(request as VerificationRequest, verdict, undefined), run, verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: { request, basis: await repository.loadStageDocument(runId, "basis"), discovery: await repository.loadStageDocument(runId, "discovery"), plan: await repository.loadStageDocument(runId, "plan"), execution: await repository.loadStageDocument(runId, "execution"), evidence: await repository.loadStageDocument(runId, "evidence"), residualRisk: await repository.loadStageDocument(runId, "residual-risk"), verdict } };
 }
 
 export async function runVerify(argv: readonly string[], stdout: (text: string) => void = text => process.stdout.write(text), stderr: (text: string) => void = text => process.stderr.write(text)): Promise<number> {
@@ -714,13 +730,14 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
       const freshnessAuthority = { atomicSameKeyIdempotency: true as const, issueFreshnessAuthority: async (binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["issueFreshnessAuthority"]>>[0]) => freshnessAuthorityFor(binding), verifyFreshnessAuthority: async (authority: FreshnessAuthority, binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["verifyFreshnessAuthority"]>>[1]) => authority.issuer === "traceknot-cli" && canonicalizeJson(authority.binding) === canonicalizeJson(binding) };
       const dependencies: VerificationRunDependencies = { repository, executor: {}, artifactStore: {}, capabilityProvider: { has: () => false }, executionAuthority, freshnessPolicy: { evaluateFreshness: () => "unknown" }, freshnessAuthority, snapshotVerifier: async () => { const current = await captureGitSnapshotIdentity(options.rootDir); return current.rootIdentity === persistedRequest.project.rootIdentity && current.snapshotId === persistedRequest.project.snapshotId; }, now: () => new Date() };
       const result = await validatePersistedVerificationRun({ runId, request: persistedRequest, dependencies });
-      const report: CliReport = { schemaVersion: "traceknot-cli-report/v1", run: result.run, verdict: result.verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: result.documents };
+      const report: CliReport = { schemaVersion: "traceknot-cli-report/v1", assurance: assuranceFor(persistedRequest, result.verdict, result.documents.plan), run: result.run, verdict: result.verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: result.documents };
       stdout(reportOutput(report, options.format));
       return exitForVerdict(result.verdict);
     }
     if (!requestInput || !options.manifestPath) fail("--request and --manifest are required unless --report-only is used");
-    const request = { ...requestInput, project: { ...requestInput.project, rootIdentity: requestInput.project.rootIdentity === "auto" ? snapshot.rootIdentity : requestInput.project.rootIdentity, snapshotId: requestInput.project.snapshotId === "auto" ? snapshot.snapshotId : requestInput.project.snapshotId } } satisfies VerificationRequest;
+    const request = { ...requestInput, assuranceContext: options.assuranceContext, project: { ...requestInput.project, rootIdentity: requestInput.project.rootIdentity === "auto" ? snapshot.rootIdentity : requestInput.project.rootIdentity, snapshotId: requestInput.project.snapshotId === "auto" ? snapshot.snapshotId : requestInput.project.snapshotId } } satisfies VerificationRequest;
     if (request.project.rootIdentity !== snapshot.rootIdentity || request.project.snapshotId !== snapshot.snapshotId) fail("request project identity does not match current Git snapshot");
+    if (requestInput.assuranceContext !== undefined && requestInput.assuranceContext !== options.assuranceContext) fail(`request assuranceContext ${requestInput.assuranceContext} does not match --assurance ${options.assuranceContext}`);
     const manifest = validateManifest(await readBoundedJson(options.manifestPath));
     const placeholder = {} as VerificationRunDependencies;
     const basis = await establishTestBasis({ request, dependencies: placeholder });
@@ -739,7 +756,7 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
     }
     const dependenciesResult = await makeDependencies(options, request, manifest, repository, snapshot.snapshotId, trustedPolicy); stores = dependenciesResult;
     const result = await runVerification({ runId, request, dependencies: dependenciesResult.dependencies });
-    const report: CliReport = { schemaVersion: "traceknot-cli-report/v1", run: result.run, verdict: result.verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: result.documents };
+    const report: CliReport = { schemaVersion: "traceknot-cli-report/v1", assurance: assuranceFor(request, result.verdict, result.documents.plan), run: result.run, verdict: result.verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: result.documents };
     stdout(reportOutput(report, options.format));
     return exitForVerdict(result.verdict);
   } catch (error) {

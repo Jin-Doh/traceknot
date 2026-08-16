@@ -86,6 +86,10 @@ The local Verify CLI collector is never promoted to `independent-producer` merel
 
 The CLI authenticates that binding with Ed25519 against the administrator-installed `/etc/traceknot/trusted-producer.json` policy. The policy is accepted only as a root-owned regular file without group or world write permission, and its key identifier must equal the SHA-256 digest of the configured public key. Imported completions are persisted under the same generation-fenced dispatch claim as local results, so crash replay cannot rerun the producer or substitute a later envelope. Missing policy, invalid signature, binding drift, and provider failure all fail closed; a failed import releases the live claim instead of leaving a false completed result.
 
+### Assurance context
+
+The Verify CLI carries an explicit `assuranceContext`: `local` for development verification and `release` for a release gate. The default is `release`; request, report, and Board projections preserve the selected value. Plan construction is anti-escalatory: local UI composition and resilience obligations require a separate verification context, while release UI obligations require an independent producer. A local run is never represented as release-satisfied, and a release report is satisfied only by a passing terminal verdict.
+
 ### GitHub governance
 
 The root composite `action.yml` supports self-hosting and explicit request/manifest modes. Both modes retain their report; manifest mode also retains durable state and content-addressed artifacts even when verification fails. The governed workflow publishes separate lifecycle and verdict jobs plus an `always()` aggregate job suitable for branch protection; a missing, cancelled, blocked, incomplete, or failed verdict cannot satisfy that aggregate.

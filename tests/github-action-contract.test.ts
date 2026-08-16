@@ -52,6 +52,7 @@ describe("reusable governed GitHub Action", () => {
       "request",
       "manifest",
       "run-id",
+      "assurance",
       "format",
       "artifact-name",
       "sarif-path",
@@ -142,6 +143,7 @@ exit "$status"
           TRACEKNOT_MODE: "manifest",
           TRACEKNOT_RUN_ID: "",
           TRACEKNOT_FORMAT: "json",
+          TRACEKNOT_ASSURANCE: "release",
           TRACEKNOT_REQUEST: "request.json",
           TRACEKNOT_MANIFEST: "manifest.json",
           TRACEKNOT_SARIF: "",
@@ -209,6 +211,7 @@ exit "$status"
         GITHUB_WORKSPACE: workspace,
         TRACEKNOT_MODE: "manifest",
         TRACEKNOT_RUN_ID: "",
+        TRACEKNOT_ASSURANCE: "release",
         TRACEKNOT_FORMAT: "json",
         TRACEKNOT_SARIF: "",
       };

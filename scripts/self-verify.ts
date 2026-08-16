@@ -21,6 +21,11 @@ try {
         process.execPath,
         Bun.which("gh"),
         process.env.TRACEKNOT_EXPECTED_HEAD,
+        process.env.TRACEKNOT_ASSURANCE === "local"
+          ? "local"
+          : process.env.TRACEKNOT_ASSURANCE === "release"
+            ? "release"
+            : undefined,
       ),
       cacheRoot,
     );

@@ -528,11 +528,20 @@ describe("traceknot verify CLI", () => {
       const stdout: string[] = []; const stderr: string[] = [];
       const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest], text => stdout.push(text), text => stderr.push(text));
       expect(status).toBe(0); expect(stderr).toEqual([]);
-      const report = JSON.parse(stdout.join("")) as { verdict: { qaVerdict: string }; run: { state: string } };
+      const report = JSON.parse(stdout.join("")) as { assurance: { context: string; requiredIndependence: string; releaseStatus: string }; verdict: { qaVerdict: string }; run: { state: string } };
       expect(report.verdict.qaVerdict).toBe("PASS"); expect(report.run.state).toBe("TERMINAL");
+      expect(report.assurance).toEqual({ context: "release", requiredIndependence: "separate-verification-context", releaseStatus: "satisfied" });
       const markdown: string[] = [];
       const reportStatus = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only", "--format", "markdown"], text => markdown.push(text), text => stderr.push(text));
-      expect(reportStatus).toBe(0); expect(markdown.join("")).toContain("**PASS**");
+      expect(reportStatus).toBe(0); expect(markdown.join("")).toContain("**PASS**"); expect(markdown.join("")).toContain("**release**");
+      const localState = await mkdtemp(join(tmpdir(), "traceknot-cli-local-assurance-"));
+      try {
+        const localOutput: string[] = [];
+        expect(await runVerify(["--root", fixtureValue.root, "--state-dir", localState, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--assurance", "local"], text => localOutput.push(text), () => undefined)).toBe(0);
+        expect((JSON.parse(localOutput.join("")) as { assurance: { context: string; requiredIndependence: string; releaseStatus: string } }).assurance).toEqual({ context: "local", requiredIndependence: "separate-verification-context", releaseStatus: "not-evaluated" });
+      } finally {
+        await rm(localState, { recursive: true, force: true });
+      }
     } finally { await fixtureValue.cleanup(); }
   });
 

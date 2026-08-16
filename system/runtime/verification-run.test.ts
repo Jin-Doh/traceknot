@@ -1516,6 +1516,19 @@ describe("verification run orchestration", () => {
     expect(browserFakes.browserCalls).toBe(1);
     expect(browserFakes.executorCalls).toBe(0);
   });
+  test("keeps local UI assurance separate and requires independent producers for release", async () => {
+    const dependencies = makeDependencies().dependencies;
+    const releaseRequest = { ...makeCompositionRequest("release-assurance"), assuranceContext: "release" as const };
+    const localRequest = { ...makeCompositionRequest("local-assurance"), assuranceContext: "local" as const };
+    const releaseBasis = await establishTestBasis({ request: releaseRequest, dependencies });
+    const releaseDiscovery = await performRiskDiscovery({ request: releaseRequest, basis: releaseBasis, dependencies });
+    const releasePlan = await buildVerificationPlan({ request: releaseRequest, basis: releaseBasis, discovery: releaseDiscovery, dependencies });
+    const localBasis = await establishTestBasis({ request: localRequest, dependencies });
+    const localDiscovery = await performRiskDiscovery({ request: localRequest, basis: localBasis, dependencies });
+    const localPlan = await buildVerificationPlan({ request: localRequest, basis: localBasis, discovery: localDiscovery, dependencies });
+    expect(releasePlan.obligations.filter(item => item.visualCompositionRequirement || item.uiResilienceRequirement).every(item => item.independence === "independent-producer")).toBe(true);
+    expect(localPlan.obligations.filter(item => item.visualCompositionRequirement || item.uiResilienceRequirement).every(item => item.independence === "separate-verification-context")).toBe(true);
+  });
   test("accepts canonical discovery and rejects downgraded or foreign discovery at the direct plan API", async () => {
     const request = makeRequest("direct-plan-discovery");
     const fakes = makeDependencies();
@@ -1543,6 +1556,12 @@ describe("verification run orchestration", () => {
     expect(discovery.risks[0]?.level).toBe("R3");
     expect(discovery.conditions[0]?.techniques).toContain("independent-producer");
     expect(plan.obligations[0]?.independence).toBe("independent-producer");
+    const localRequest = { ...request, requestId: "local-r3", assuranceContext: "local" as const };
+    const localBasis = await establishTestBasis({ request: localRequest, dependencies });
+    const localDiscovery = await performRiskDiscovery({ request: localRequest, basis: localBasis, dependencies });
+    const localPlan = await buildVerificationPlan({ request: localRequest, basis: localBasis, discovery: localDiscovery, dependencies });
+    expect(localDiscovery.conditions[0]?.techniques).toContain("independent-producer");
+    expect(localPlan.obligations[0]?.independence).toBe("independent-producer");
   });
   test.each(["auth", "authentication", "authorization", "credential", "credentials", "injection", "injected"] as const)("derives R3 independent-producer obligations from %s basis material", async signal => {
     const request = { ...makeRequest(`basis-signal-${signal}`), change: { summary: "Apply a neutral verification change.", paths: ["src/neutral-check.ts"] }, testBasis: [{ id: "neutral", kind: "request" as const, origin: "explicit" as const, text: `The neutral basis includes ${signal}.` }] } satisfies VerificationRequest;

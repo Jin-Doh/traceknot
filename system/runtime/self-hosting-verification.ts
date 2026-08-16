@@ -2,13 +2,14 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { VerificationRequest } from "./verification-run";
+import type { AssuranceContext, VerificationRequest } from "./verification-run";
 
 export type SelfHostingCommand = Readonly<{
   rootDir: string;
   executable: string;
   argv: readonly string[];
   expectedHead?: string;
+  assuranceContext?: AssuranceContext;
 }>;
 export type SelfHostingManifest = Readonly<{
   schemaVersion: "verification-manifest/v1";
@@ -24,6 +25,11 @@ export type SelfHostingManifest = Readonly<{
 }>;
 export type SelfHostingReport = Readonly<{
   schemaVersion: "traceknot-cli-report/v1";
+  assurance: Readonly<{
+    context: "local" | "release";
+    requiredIndependence: "separate-verification-context" | "independent-producer";
+    releaseStatus: "not-evaluated" | "satisfied" | "insufficient";
+  }>;
   run: Readonly<Record<string, unknown>>;
   verdict: Readonly<Record<string, unknown>>;
   snapshot: Readonly<Record<string, unknown>>;
@@ -61,6 +67,7 @@ export function buildCanonicalSelfHostingCommand(
   bunExecutable = process.execPath,
   ghExecutable = Bun.which("gh"),
   expectedHead?: string,
+  assuranceContext?: AssuranceContext,
 ): SelfHostingCommand {
   const rootDir = resolve(root);
   if (!isAbsolute(bunExecutable)) throw Error("self-hosting Bun executable must be absolute");
@@ -82,6 +89,7 @@ export function buildCanonicalSelfHostingCommand(
       "--self-hosted-inner",
     ]),
     ...(expectedHead === undefined ? {} : { expectedHead }),
+    ...(assuranceContext === undefined ? {} : { assuranceContext }),
   });
 }
 
@@ -105,6 +113,7 @@ export function buildSelfHostingInputs(command: SelfHostingCommand): Readonly<{
       origin: "explicit",
       text: "The canonical repository gate passes against the immutable target snapshot.",
     })]),
+    ...(command.assuranceContext === undefined ? {} : { assuranceContext: command.assuranceContext }),
   });
   const manifest: SelfHostingManifest = Object.freeze({
     schemaVersion: "verification-manifest/v1",
@@ -132,6 +141,10 @@ function parseReport(value: string, label: string): SelfHostingReport {
   const report = parsed as Partial<SelfHostingReport>;
   if (
     report.schemaVersion !== "traceknot-cli-report/v1"
+    || !report.assurance || typeof report.assurance !== "object"
+    || (report.assurance.context !== "local" && report.assurance.context !== "release")
+    || (report.assurance.requiredIndependence !== "separate-verification-context" && report.assurance.requiredIndependence !== "independent-producer")
+    || (report.assurance.releaseStatus !== "not-evaluated" && report.assurance.releaseStatus !== "satisfied" && report.assurance.releaseStatus !== "insufficient")
     || !report.run || typeof report.run !== "object"
     || !report.verdict || typeof report.verdict !== "object"
     || !report.snapshot || typeof report.snapshot !== "object"
@@ -195,6 +208,7 @@ export async function runSelfHostingVerification(
       "--state-dir", stateDir,
       "--artifact-dir", artifactDir,
       ...(command.expectedHead === undefined ? [] : ["--expected-head", command.expectedHead]),
+      ...(command.assuranceContext === undefined ? [] : ["--assurance", command.assuranceContext]),
     ];
     const executed = await runCli(traceknotExecutable, command.rootDir, [
       ...common,
