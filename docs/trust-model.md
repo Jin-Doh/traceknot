@@ -22,6 +22,10 @@ Runtime capability comes from an explicit handshake. A host name, model name, ne
 
 The host-neutral capability vocabulary includes command execution, browser execution, artifact capture, snapshot binding, independent evidence, evidence persistence, exception approval, isolated read-only review, and enforced structured output.
 
+### Skill-origin egress boundary
+
+The portable Skill must not create a new outbound-data capability. Static artifact and instruction checks are blocking release controls. They do not provide runtime interception: a host that cannot deny Skill-origin egress before transmission cannot claim the hardened execution profile. An observed Skill-origin attempt is a `FAIL`, missing enforcement is `BLOCKED`, and lost egress evidence is `INCOMPLETE`. Updater traffic remains a separate release trust boundary.
+
 An evidence producer may create observations or candidate claims. It cannot accept its own claim merely by reporting PASS. Evaluation must still check expected results, scope, freshness, integrity, traceability, and required independence.
 
 Static manifests under `adapters/` set every capability to `false`. They document a conservative baseline; they are not native integrations.
