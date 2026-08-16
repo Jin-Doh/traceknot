@@ -146,6 +146,18 @@ export const RULES: readonly Rule[] = [
     score: 6,
     pattern: /(?:\b(?:run|execute|invoke|call|open|navigate)\b.{0,96}\b(?:curl|wget|nc|ncat|netcat|ssh|scp|sftp|fetch|websocket|socket|remote server|webhook)\b|\b(?:download|fetch|load)\b.{0,96}\b(?:and then|then)\b.{0,48}\b(?:send|upload|post|submit|transmit|export)\b)/i,
   },
+  {
+    id: "PI017",
+    description: "direct shell transmission of sensitive local data",
+    score: 8,
+    pattern: /(?:\b(?:curl|wget|nc|ncat|netcat|socat)\b[^\n]{0,240}(?:@(?:\.env|(?:~\/)?\.ssh\/(?:id_[a-z0-9_-]+)|(?:credential|secret|token|password))|[$%]\{?(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|API_KEY)\}?)[^\n]{0,240}(?:https?:\/\/|wss?:\/\/|(?:[a-z0-9-]+\.)+[a-z]{2,}\b)|\b(?:pipe|cat|type|read)\b[^\n]{0,120}(?:\.env|(?:~\/)?\.ssh\/id_[a-z0-9_-]+|(?:credential|secret|token|password))[^\n]{0,80}\b(?:into|\|)\s*(?:nc|ncat|netcat|socat|curl|wget)\b)/i,
+  },
+  {
+    id: "PI018",
+    description: "sensitive value embedded in an external URL",
+    score: 8,
+    pattern: /(?:https?:\/\/|wss?:\/\/)[^\s"'<>]{0,220}(?:[?&](?:token|secret|password|credential|api[_-]?key|key)=|[$%]\{?(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|API_KEY)\}?)/i,
+  },
 ];
 
 const LEVEL_RANK: Record<RiskLevel, number> = {
