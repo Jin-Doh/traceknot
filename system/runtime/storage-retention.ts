@@ -1,5 +1,5 @@
 import { constants, type Dirent, writeSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { lstat, readdir, readFile, realpath } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { ARTIFACT_CANONICAL_LOCK_FILE, ArtifactNotFoundError, assertSecureRoot, closeSecureDescriptor, closeSecureRoot, openOrCreateSecureDirectoryPath, openSecureDirectory, openSecureRoot, readSecureRegularFile, secureFlock, secureFsync, secureOpenAt, secureRenameAt, secureRmdirAt, secureUnlinkAt, STORAGE_MAINTENANCE_LOCK_FILE, type SecureRootDescriptor } from "./local-artifact-store";
@@ -243,6 +243,49 @@ function validBoardManifest(value: unknown): value is JsonRecord {
     && nonnegativeInteger(file.bytes)
     && (file.artifactDigest === undefined || typeof file.artifactDigest === "string" && DIGEST.test(file.artifactDigest))
     && (file.observationId === undefined || nonempty(file.observationId)));
+}
+async function validBoardContents(boardPath: string, manifest: unknown): Promise<boolean> {
+  if (!validBoardManifest(manifest) || !Array.isArray(manifest.files)) return false;
+  const declared = manifest.files as readonly JsonRecord[];
+  const declaredPaths = declared.map(file => String(file.path));
+  if (new Set(declaredPaths).size !== declaredPaths.length || !declaredPaths.includes("index.html")) return false;
+  const expectedDirs = new Set<string>();
+  for (const path of declaredPaths) {
+    const components = path.split("/");
+    for (let index = 1; index < components.length; index += 1) expectedDirs.add(components.slice(0, index).join("/"));
+  }
+  const actualFiles = new Map<string, { bytes: number; sha256: string }>();
+  const actualDirs = new Set<string>();
+  let invalid = false;
+  const visit = async (directory: string, relativePath = ""): Promise<void> => {
+    let entries;
+    try { entries = await readdir(directory, { withFileTypes: true }); } catch { invalid = true; return; }
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const path = join(directory, entry.name);
+      const child = relativePath ? `${relativePath}/${entry.name}` : entry.name;
+      if (entry.isSymbolicLink()) { invalid = true; continue; }
+      if (entry.isDirectory()) {
+        actualDirs.add(child);
+        await visit(path, child);
+      } else if (entry.isFile()) {
+        try {
+          const bytes = await readFile(path);
+          actualFiles.set(child, { bytes: bytes.byteLength, sha256: createHash("sha256").update(bytes).digest("hex") });
+        } catch { invalid = true; }
+      } else {
+        invalid = true;
+      }
+    }
+  };
+  await visit(boardPath);
+  if (invalid || !actualFiles.has("manifest.json") || actualFiles.size !== declaredPaths.length + 1 || actualDirs.size !== expectedDirs.size) return false;
+  for (const file of declared) {
+    const path = String(file.path);
+    const actual = actualFiles.get(path);
+    if (!actual || actual.bytes !== file.bytes || actual.sha256 !== file.sha256) return false;
+  }
+  actualFiles.delete("manifest.json");
+  return true;
 }
 
 function iso(value: number): string {
@@ -499,7 +542,7 @@ async function inspectRuns(stateDir: string, pins: ReadonlySet<string>, pinsMalf
       const manifest = await readJson(join(boardPath, "manifest.json"));
       const generatedAt = isRecord(manifest) ? asTimestamp(manifest.generatedAt) : undefined;
       const sourceUpdatedAt = isRecord(manifest) ? asTimestamp(manifest.sourceUpdatedAt) : undefined;
-      const malformed = !validBoardManifest(manifest);
+      const malformed = !(await validBoardContents(boardPath, manifest));
       boards.push({ runId, boardId, path: boardPath, relativePath: `runs/${runId}/boards/${boardId}`, bytes: boardSize.bytes, allocatedBytes: boardSize.allocatedBytes, mtimeMs: Math.max(boardStat.mtimeMs, boardSize.mtimeMs), generatedAt, sourceUpdatedAt, malformed, future: generatedAt !== undefined && generatedAt > now });
       symlinks.push(...boardSize.symlinks.map(item => `runs/${runId}/boards/${boardId}/${item}`));
     }

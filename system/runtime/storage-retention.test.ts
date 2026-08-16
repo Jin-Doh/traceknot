@@ -3,7 +3,7 @@ import { closeSync, openSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { LocalArtifactStore, secureFlock } from "./local-artifact-store";
 import { inspectStorage, pinRun, pruneStorage, unpinRun, type StorageRetentionPolicy } from "./storage-retention";
 import Ajv2020 from "ajv/dist/2020";
@@ -39,7 +39,7 @@ async function board(state: string, runId: string, boardId: string, generatedAt 
   const path = join(state, "runs", runId, "boards", boardId);
   await mkdir(path, { recursive: true });
   await writeFile(join(path, "index.html"), "<html></html>");
-  await writeFile(join(path, "manifest.json"), JSON.stringify({ schemaVersion: "traceknot-qa-board/v1", runId, requestId: "request", rootIdentity: "root", snapshotId: "snapshot", sourceRevision: 1, sourceState: "TERMINAL", sourceUpdatedAt: generatedAt, generatedAt, entrypoint: "index.html", authoritative: false, assurance: { context: "release", requiredIndependence: "separate-verification-context", releaseStatus: "satisfied" }, verdict: "PASS", counts: { mandatory: 0, passed: 0, failed: 0, blocked: 0, incomplete: 0 }, generatedBy: { invocationId: boardId.length > 128 && boardId.startsWith("9-") ? boardId.slice(2) : boardId, sessionHost: "test", sessionRef: "test" }, files: [{ path: "index.html", role: "entrypoint", sha256: digest, bytes: 13 }] }));
+  await writeFile(join(path, "manifest.json"), JSON.stringify({ schemaVersion: "traceknot-qa-board/v1", runId, requestId: "request", rootIdentity: "root", snapshotId: "snapshot", sourceRevision: 1, sourceState: "TERMINAL", sourceUpdatedAt: generatedAt, generatedAt, entrypoint: "index.html", authoritative: false, assurance: { context: "release", requiredIndependence: "separate-verification-context", releaseStatus: "satisfied" }, verdict: "PASS", counts: { mandatory: 0, passed: 0, failed: 0, blocked: 0, incomplete: 0 }, generatedBy: { invocationId: boardId.length > 128 && boardId.startsWith("9-") ? boardId.slice(2) : boardId, sessionHost: "test", sessionRef: "test" }, files: [{ path: "index.html", role: "entrypoint", sha256: createHash("sha256").update("<html></html>").digest("hex"), bytes: 13 }] }));
   await utimes(path, new Date(OLD), new Date(OLD));
 }
 function storageCli(args: readonly string[]): { exitCode: number; stdout: string; stderr: string } {
@@ -214,6 +214,15 @@ describe("storage retention", () => {
     const report = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy });
     expect(report.candidates.boards).toEqual([]);
     expect(report.protected.malformed).toContain("runs/active/boards/missing-assurance");
+  });
+  test("Boards with undeclared files remain protected from automatic deletion", async () => {
+    const { state, artifacts } = await fixture();
+    await run(state, "active", { state: "EXECUTING", updatedAt: NOW });
+    await board(state, "active", "extra-file", OLD);
+    await writeFile(join(state, "runs", "active", "boards", "extra-file", "unexpected.txt"), "unexpected");
+    const report = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy });
+    expect(report.candidates.boards).toEqual([]);
+    expect(report.protected.malformed).toContain("runs/active/boards/extra-file");
   });
 
   test("board max zero does not retain any publication", async () => {
