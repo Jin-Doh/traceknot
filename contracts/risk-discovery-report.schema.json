@@ -2604,7 +2604,7 @@
   "$defs": {
     "capabilityModel": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "$id": "https://traceknot.kyungho.info/schemas/capability-model.v1.json",
+      "$id": "https://traceknot.kyungho.info/schemas/risk-discovery-capability-model.v1.json",
       "title": "Traceknot shared host capability set",
       "type": "object",
       "additionalProperties": false,
@@ -2629,7 +2629,7 @@
         "approveExceptions": { "type": "boolean" },
         "isolatedReadOnlyReview": { "type": "boolean" },
         "enforcedStructuredOutput": { "type": "boolean" },
-        "enforceSkillOriginEgressDeny": { "const": false }
+        "enforceSkillOriginEgressDeny": { "type": "boolean" }
       }
     },
     "legacyCapabilityModel": {

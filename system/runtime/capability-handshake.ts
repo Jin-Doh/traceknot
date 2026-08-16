@@ -136,6 +136,20 @@ export function parseCapabilityHandshakeEnvelope(
     return fail("MALFORMED_ENVELOPE", "maxEnvelopeLifetimeMs must be a positive safe integer");
   }
   const input = recordInput(value);
+  const rawRecord = input.record;
+  if (
+    typeof rawRecord === "object"
+    && rawRecord !== null
+    && !Array.isArray(rawRecord)
+    && (rawRecord as Record<string, unknown>).schemaVersion === "quality-capability/v2"
+    && typeof (rawRecord as Record<string, unknown>).capabilities === "object"
+    && (rawRecord as Record<string, unknown>).capabilities !== null
+    && !Array.isArray((rawRecord as Record<string, unknown>).capabilities)
+    && ((rawRecord as Record<string, unknown>).capabilities as Record<string, unknown>).enforceSkillOriginEgressDeny === true
+  ) {
+    fail("CAPABILITY_ESCALATION", "legacy capability records cannot advertise Skill-origin egress enforcement");
+  }
+
   const sessionId = nonEmptyString(input.sessionId, "sessionId");
   const snapshotId = nonEmptyString(input.snapshotId, "snapshotId");
   const producerId = nonEmptyString(input.producerId, "producerId");
@@ -144,7 +158,6 @@ export function parseCapabilityHandshakeEnvelope(
   const expiresAt = canonicalTimestamp(input.expiresAt, "expiresAt");
   const now = canonicalTimestamp(expectation.now, "now");
   const record = parseCapabilityRecord(input.record);
-
   expectEqual(record.host, expectation.request.host, "HOST_MISMATCH", "host");
   expectEqual(sessionId, expectation.request.sessionId, "SESSION_MISMATCH", "sessionId");
   expectEqual(snapshotId, expectation.request.snapshotId, "SNAPSHOT_MISMATCH", "snapshotId");

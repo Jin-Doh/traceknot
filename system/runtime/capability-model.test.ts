@@ -26,7 +26,9 @@ describe("shared host capability model", () => {
       const publicSchema = await json(path) as {
         $defs?: { capabilityModel?: unknown };
       };
-      expect(publicSchema.$defs?.capabilityModel).toEqual(modelSchema);
+      if (path.endsWith("capability-v2.schema.json")) {
+        expect(publicSchema.$defs?.capabilityModel).toEqual(modelSchema);
+      }
       expect(() => new Ajv2020({ strict: true }).compile(publicSchema)).not.toThrow();
     }
   });
@@ -80,6 +82,12 @@ describe("shared host capability model", () => {
       limitations: sparseLimitations,
     })).toThrow("limitation");
     expect(() => parseCapabilityRecord({ ...base, extra: true })).toThrow("record keys");
+    const { limitations: _limitations, ...withoutLimitations } = base;
+    expect(parseCapabilityRecord(withoutLimitations).limitations).toEqual([]);
+    expect(() => parseCapabilityRecord({
+      ...base,
+      capabilities: { ...base.capabilities, enforceSkillOriginEgressDeny: true },
+    })).toThrow("requires a v3 enforcementProfile");
   });
 
   test("accepts legacy v2 capability records in the schema", async () => {

@@ -52,7 +52,7 @@ export type CapabilityRecordV3 = Readonly<{
 export type CapabilityRecord = CapabilityRecordV2 | CapabilityRecordV3;
 
 const LEGACY_CAPABILITY_NAMES = V2_CAPABILITY_NAMES;
-const RECORD_KEYS = ["schemaVersion", "host", "adapterVersion", "capabilities", "limitations"] as const;
+const RECORD_KEYS = ["schemaVersion", "host", "adapterVersion", "capabilities"] as const;
 const V3_RECORD_KEYS = ["schemaVersion", "host", "adapterVersion", "capabilities", "enforcementProfile"] as const;
 
 function object(value: unknown, label: string): Readonly<Record<string, unknown>> {
@@ -88,6 +88,9 @@ function parseCapabilities(value: unknown): CapabilitySet {
       continue;
     }
     if (typeof enabled !== "boolean") throw Error(`${name} must be boolean`);
+    if (name === "enforceSkillOriginEgressDeny" && enabled) {
+      throw Error("enforceSkillOriginEgressDeny requires a v3 enforcementProfile");
+    }
     capabilities[name] = enabled;
   }
   return Object.freeze(capabilities);
