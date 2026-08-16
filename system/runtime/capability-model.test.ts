@@ -118,6 +118,10 @@ describe("shared host capability model", () => {
     expect(parsed.schemaVersion === "quality-capability/v3" && isHardenedEgressProfile(parsed.enforcementProfile)).toBe(true);
     expect(Object.isFrozen(parsed)).toBe(true);
     expect(parsed.schemaVersion === "quality-capability/v3" && Object.isFrozen(parsed.enforcementProfile)).toBe(true);
+    const { limitations: _limitations, ...withoutLimitations } = record;
+    expect(validate(withoutLimitations)).toBe(true);
+    const parsedWithoutLimitations = parseCapabilityRecord(withoutLimitations);
+    expect(parsedWithoutLimitations.limitations).toEqual([]);
   });
 
   test("does not inherit omitted legacy capability claims", () => {

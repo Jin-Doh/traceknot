@@ -53,7 +53,7 @@ export type CapabilityRecord = CapabilityRecordV2 | CapabilityRecordV3;
 
 const LEGACY_CAPABILITY_NAMES = V2_CAPABILITY_NAMES;
 const RECORD_KEYS = ["schemaVersion", "host", "adapterVersion", "capabilities", "limitations"] as const;
-const V3_RECORD_KEYS = ["schemaVersion", "host", "adapterVersion", "capabilities", "enforcementProfile", "limitations"] as const;
+const V3_RECORD_KEYS = ["schemaVersion", "host", "adapterVersion", "capabilities", "enforcementProfile"] as const;
 
 function object(value: unknown, label: string): Readonly<Record<string, unknown>> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw Error(`${label} must be an object`);
@@ -151,7 +151,7 @@ function parseLimitations(value: unknown): readonly string[] {
 export function parseCapabilityRecord(value: unknown): CapabilityRecord {
   const input = object(value, "capability record");
   if (input.schemaVersion === "quality-capability/v3") {
-    if (!exactKeys(input, V3_RECORD_KEYS)) throw Error("v3 capability record keys are invalid");
+    if (!exactKeys(input, V3_RECORD_KEYS, ["limitations"])) throw Error("v3 capability record keys are invalid");
     return Object.freeze({
       schemaVersion: "quality-capability/v3",
       host: nonemptyString(input.host, "host"),
