@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Artifact, EvidenceEvaluation, Observation, Producer, QaVerdict } from "../core/qa-core";
+import { resolveObligationOutcome, type Artifact, type EvidenceEvaluation, type Observation, type Producer, type QaVerdict } from "../core/qa-core";
 import type {
   AssuranceContext,
   CanonicalRunState,
@@ -122,6 +122,27 @@ function expectedResults(obligationId: string, plan: PlanDocument | undefined): 
 }
 
 function statusFor(obligationId: string, documents: VerificationRunDocuments): BoardFindingStatus {
+  const evidence = evidenceFor(obligationId, documents);
+  if (!evidence) return "INCOMPLETE";
+  const plan = documents.plan;
+  const execution = documents.execution;
+  const evidenceDocument = documents.evidence;
+  const obligation = plan?.obligations.find(item => item.id === obligationId);
+  const claim = execution?.claims.find(item => item.obligationId === obligationId);
+  const evaluation = claim === undefined ? undefined : evidenceDocument?.evaluations.find(item => item.claimId === claim.claimId);
+  if (plan && execution && evidenceDocument && obligation && claim && evaluation) {
+    const criterionId = `criterion:${obligation.id}`;
+    const outcome = resolveObligationOutcome({
+      requestId: plan.requestId,
+      snapshotId: plan.snapshotId,
+      obligation: { id: obligation.id, mandatory: obligation.mandatory, criterionIds: [criterionId], requiredIndependence: obligation.independence },
+      criteria: [{ schemaVersion: "success-criterion/v1", criterionId, kind: "structured-assertion", expected: { assertions: [{ field: "execution.exitStatus", operator: "equals", value: "passed" }] }, requiredScope: { kind: "repository-canonical", selectors: [plan.requestId] }, requiredIndependence: obligation.independence, requiredArtifacts: ["verification-result"] }],
+      claims: execution.claims,
+      evaluations: evidenceDocument.evaluations,
+      observations: execution.observations.filter(item => item.execution.exitStatus !== "cancelled"),
+    }).outcome;
+    return outcome === "PASSED" ? "PASS" : outcome === "FAILED" ? "FAIL" : outcome === "BLOCKED" ? "BLOCKED" : "INCOMPLETE";
+  }
   return evidenceFor(obligationId, documents)?.result.verdict ?? "INCOMPLETE";
 }
 function assuranceFor(source: BoardSource, plan: PlanDocument | undefined): QaBoardAssurance {

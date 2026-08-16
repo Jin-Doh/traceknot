@@ -83,6 +83,15 @@ describe("storage retention", () => {
     expect(dry.candidates.objects).not.toContain(`.objects/${digest}`);
     expect(applied.deleted.objects).not.toContain(`.objects/${digest}`);
   });
+  test("canonical quota includes deduplicated referenced object bytes", async () => {
+    const { state, artifacts } = await fixture();
+    await run(state, "old", { state: "TERMINAL", updatedAt: NOW, digest });
+    await run(state, "new", { state: "TERMINAL", updatedAt: NOW, digest });
+    await writeFile(join(artifacts, ".objects", digest), "0123456789");
+    const report = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, canonicalRunTtlMs: 365 * 24 * 60 * 60 * 1000, canonicalQuotaBytes: 1 } });
+    expect(report.candidates.runs).toContain("runs/old/state.json");
+    expect(report.candidates.runs).not.toContain("runs/new/state.json");
+  });
 
   test("pins are durable and protect an old terminal run", async () => {
     const { state, artifacts } = await fixture();
