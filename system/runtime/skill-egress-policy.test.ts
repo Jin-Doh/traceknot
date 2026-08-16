@@ -37,6 +37,27 @@ describe("Skill-origin egress policy", () => {
     }
   });
 
+  test("binds mandatory denials to a canonical failed obligation", () => {
+    const observation = decideSkillEgress({
+      ...base,
+      origin: "skill",
+      requestId: "request-1",
+      obligationId: "obligation-1",
+      mandatory: true,
+    });
+    expect(observation).toMatchObject({
+      decision: "deny",
+      requestId: "request-1",
+      obligationId: "obligation-1",
+      failure: {
+        status: "FAIL",
+        requestId: "request-1",
+        obligationId: "obligation-1",
+        reason: "SKILL_ORIGIN_EGRESS",
+      },
+    });
+  });
+
   test("blocks an unattributed request in the hardened profile", () => {
     expect(decideSkillEgress({ ...base, origin: "unknown" })).toMatchObject({
       decision: "blocked",
@@ -105,5 +126,34 @@ describe("Skill-origin egress policy", () => {
       ...base,
       dataClasses: ["public", "unknown" as never],
     })).toThrow("dataClasses");
+  });
+  test("returns the bound failure through the denied error without transmitting", async () => {
+    let transmitted = false;
+    await expect(executeSkillEgress(
+      {
+        ...base,
+        origin: "skill",
+        requestId: "request-2",
+        obligationId: "obligation-2",
+        mandatory: true,
+      },
+      async () => {
+        transmitted = true;
+        return "unexpected";
+      },
+    )).rejects.toMatchObject({
+      observation: {
+        failure: {
+          status: "FAIL",
+          requestId: "request-2",
+          obligationId: "obligation-2",
+        },
+      },
+    });
+    expect(transmitted).toBe(false);
+  });
+  test("requires identity for mandatory requests", () => {
+    expect(() => decideSkillEgress({ ...base, origin: "skill", mandatory: true })).toThrow("requestId and obligationId");
+    expect(() => decideSkillEgress({ ...base, origin: "skill", mandatory: true, requestId: "request-1" })).toThrow("requestId and obligationId");
   });
 });

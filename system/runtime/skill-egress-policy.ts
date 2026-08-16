@@ -51,6 +51,16 @@ export type SkillEgressPolicyInput = Readonly<{
   authorizationBasisId?: string;
   authorizedDestination?: string;
   sensitiveDataAuthorized?: boolean;
+  requestId?: string;
+  obligationId?: string;
+  mandatory?: boolean;
+}>;
+
+export type SkillEgressFailure = Readonly<{
+  status: "FAIL";
+  requestId: string;
+  obligationId: string;
+  reason: EgressReason;
 }>;
 
 export type SkillEgressObservation = Readonly<{
@@ -61,6 +71,9 @@ export type SkillEgressObservation = Readonly<{
   transport: EgressTransport;
   dataClasses: readonly EgressDataClass[];
   authorizationBasisId?: string;
+  requestId?: string;
+  obligationId?: string;
+  failure?: SkillEgressFailure;
 }>;
 
 const SENSITIVE_DATA_CLASSES: Readonly<Partial<Record<EgressDataClass, true>>> = {
@@ -82,6 +95,11 @@ function validateInput(input: SkillEgressPolicyInput): void {
   nonEmpty(input.destination, "destination");
   if (input.authorizationBasisId !== undefined) nonEmpty(input.authorizationBasisId, "authorizationBasisId");
   if (input.authorizedDestination !== undefined) nonEmpty(input.authorizedDestination, "authorizedDestination");
+  if (input.requestId !== undefined) nonEmpty(input.requestId, "requestId");
+  if (input.obligationId !== undefined) nonEmpty(input.obligationId, "obligationId");
+  if (input.mandatory === true && (input.requestId === undefined || input.obligationId === undefined)) {
+    throw new Error("mandatory Skill egress requires requestId and obligationId");
+  }
 }
 
 function observation(
@@ -97,6 +115,18 @@ function observation(
     transport: input.transport,
     dataClasses: input.dataClasses,
     ...(input.authorizationBasisId === undefined ? {} : { authorizationBasisId: input.authorizationBasisId }),
+    ...(input.requestId === undefined ? {} : { requestId: input.requestId }),
+    ...(input.obligationId === undefined ? {} : { obligationId: input.obligationId }),
+    ...(input.mandatory === true && decision !== "allow"
+      ? {
+        failure: {
+          status: "FAIL" as const,
+          requestId: input.requestId!,
+          obligationId: input.obligationId!,
+          reason,
+        },
+      }
+      : {}),
   };
 }
 function hasSensitiveData(dataClasses: readonly EgressDataClass[]): boolean {
