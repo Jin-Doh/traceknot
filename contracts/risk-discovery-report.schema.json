@@ -2630,6 +2630,35 @@
         "enforceSkillOriginEgressDeny": { "type": "boolean" }
       }
     },
+    "legacyCapabilityModel": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://traceknot.kyungho.info/schemas/capability-model.legacy.v1.json",
+      "title": "Traceknot legacy host capability set",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executeCommands",
+        "executeBrowser",
+        "captureArtifacts",
+        "bindSnapshot",
+        "provideIndependentEvidence",
+        "persistEvidence",
+        "approveExceptions",
+        "isolatedReadOnlyReview",
+        "enforcedStructuredOutput"
+      ],
+      "properties": {
+        "executeCommands": { "type": "boolean" },
+        "executeBrowser": { "type": "boolean" },
+        "captureArtifacts": { "type": "boolean" },
+        "bindSnapshot": { "type": "boolean" },
+        "provideIndependentEvidence": { "type": "boolean" },
+        "persistEvidence": { "type": "boolean" },
+        "approveExceptions": { "type": "boolean" },
+        "isolatedReadOnlyReview": { "type": "boolean" },
+        "enforcedStructuredOutput": { "type": "boolean" }
+      }
+    },
     "nonmaterialFindingMap": {
       "type": "object",
       "patternProperties": {
@@ -3015,7 +3044,10 @@
           ]
         },
         "capabilities": {
-          "$ref": "#/$defs/capabilityModel"
+          "anyOf": [
+            { "$ref": "#/$defs/capabilityModel" },
+            { "$ref": "#/$defs/legacyCapabilityModel" }
+          ]
         },
         "limitations": {
           "type": "array",
