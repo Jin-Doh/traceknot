@@ -25,6 +25,6 @@
     "approveExceptions": { "type": "boolean" },
     "isolatedReadOnlyReview": { "type": "boolean" },
     "enforcedStructuredOutput": { "type": "boolean" },
-    "enforceSkillOriginEgressDeny": { "type": "boolean" }
+    "enforceSkillOriginEgressDeny": { "const": false }
   }
 }
