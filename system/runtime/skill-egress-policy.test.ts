@@ -53,9 +53,17 @@ const transport = (result: unknown, calls: string[] = []): GovernedTransport<str
 
 describe("governed Skill egress boundary", () => {
   test("canonicalizes destination identity and separates protocol from execution surface", () => {
-    expect(destination).toEqual({ scheme: "https", hostname: "example.test", port: 443, pathPrefix: "/qa" });
+    expect(destination).toEqual({ scheme: "https", hostname: "example.test", port: 443, pathPrefix: "/qa", query: "" });
     expect(intent.protocol).toBe("https");
     expect(intent.executionSurface).toBe("native-http-client");
+  });
+  test("binds query-specific destination identity", () => {
+    const queryIntent = { ...intent, destination: canonicalizeDestination("https://example.test/qa?id=1") };
+    const queryAuthorization = { ...authorization, destination: canonicalizeDestination("https://example.test/qa?id=2") };
+    expect(evaluateGovernedEgress(scope, queryIntent, queryAuthorization)).toMatchObject({
+      decision: "deny",
+      reason: "TARGET_MISMATCH",
+    });
   });
 
   test("denies Skill scope before invoking a transmitter", async () => {
@@ -271,6 +279,24 @@ describe("governed Skill egress boundary", () => {
     }, payload, evidence);
     expect(received).toEqual({ body: "public" });
     expect(Object.isFrozen(received)).toBe(true);
+  });
+  test("snapshots binary payloads without freezing typed-array views", async () => {
+    const payload = new Uint8Array([1, 2]);
+    const evidence: DurableEgressEvidenceStore = {
+      async prepared() {
+        payload[0] = 9;
+      },
+      async completed() {},
+      async failed() {},
+    };
+    let received: Uint8Array | undefined;
+    await executeGovernedEgress(scope, intent, authorization, {
+      async send(_receivedAuthorization, receivedPayload) {
+        received = receivedPayload;
+        return "sent";
+      },
+    }, payload, evidence);
+    expect([...received ?? []]).toEqual([1, 2]);
   });
 
 

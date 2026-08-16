@@ -31,6 +31,7 @@ export type CanonicalDestination = Readonly<{
   hostname: string;
   port: number;
   pathPrefix: string;
+  query: string;
 }>;
 
 export type EgressIntent = Readonly<{
@@ -102,7 +103,7 @@ function freeze<T extends object>(value: T): Readonly<T> {
   return Object.freeze(value);
 }
 function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
-  if (value === null || typeof value !== "object" || seen.has(value)) return value;
+  if (value === null || typeof value !== "object" || ArrayBuffer.isView(value) || seen.has(value)) return value;
   seen.add(value);
   for (const key of Reflect.ownKeys(value)) {
     deepFreeze((value as Record<PropertyKey, unknown>)[key], seen);
@@ -135,6 +136,7 @@ export function canonicalizeDestination(value: string): CanonicalDestination {
     hostname: url.hostname.toLowerCase().replace(/\.$/u, ""),
     port,
     pathPrefix: url.pathname === "" ? "/" : url.pathname,
+    query: url.search,
   });
 }
 
@@ -142,7 +144,8 @@ function sameDestination(left: CanonicalDestination, right: CanonicalDestination
   return left.scheme === right.scheme
     && left.hostname === right.hostname
     && left.port === right.port
-    && left.pathPrefix === right.pathPrefix;
+    && left.pathPrefix === right.pathPrefix
+    && left.query === right.query;
 }
 
 function validIntent(intent: EgressIntent): void {
