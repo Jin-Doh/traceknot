@@ -132,7 +132,7 @@ export const RULES: readonly Rule[] = [
     id: "PI014",
     description: "Skill-origin outbound data or network transmission",
     score: 7,
-    pattern: /(?:\b(?:send|upload|post|submit|transmit|export|exfiltrat\w*)\b.{0,96}\b(?:repository|workspace|home directory|environment variable|credential|secret|token|prompt|conversation|context|artifact|log)s?\b|\b(?:curl|wget|nc|ncat|netcat|ssh|scp|sftp|fetch|websocket|socket)\b.{0,96}\b(?:send|upload|post|submit|transmit|export|exfiltrat\w*|outside|remote|external|webhook)\b)/i,
+    pattern: /(?:\b(?:send|upload|post|submit|transmit|export|exfiltrat\w*|copy|forward|share|relay|transfer|push)\b.{0,128}\b(?:repository|workspace|home directory|environment variable|credential|secret|token|prompt|conversation|context|artifact|log|file)s?\b.{0,128}(?:https?:\/\/|wss?:\/\/|(?:[a-z0-9-]+\.)+[a-z]{2,}\b|remote|external|third[- ]party|webhook|endpoint|request body|query string|address bar)|(?:https?:\/\/|wss?:\/\/|(?:[a-z0-9-]+\.)+[a-z]{2,}\b|remote|external|third[- ]party|webhook|endpoint|request body|query string|address bar).{0,128}\b(?:send|upload|post|submit|transmit|export|exfiltrat\w*|copy|forward|share|relay|transfer|push)\b.{0,128}\b(?:repository|workspace|home directory|environment variable|credential|secret|token|prompt|conversation|context|artifact|log|file)s?\b)/i,
   },
   {
     id: "PI015",
