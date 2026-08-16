@@ -39,7 +39,7 @@ async function board(state: string, runId: string, boardId: string, generatedAt 
   const path = join(state, "runs", runId, "boards", boardId);
   await mkdir(path, { recursive: true });
   await writeFile(join(path, "index.html"), "<html></html>");
-  await writeFile(join(path, "manifest.json"), JSON.stringify({ schemaVersion: "traceknot-qa-board/v1", runId, requestId: "request", rootIdentity: "root", snapshotId: "snapshot", sourceRevision: 1, sourceState: "TERMINAL", sourceUpdatedAt: generatedAt, generatedAt, entrypoint: "index.html", authoritative: false, assurance: { context: "release", requiredIndependence: "separate-verification-context", releaseStatus: "satisfied" }, verdict: "PASS", counts: { mandatory: 0, passed: 0, failed: 0, blocked: 0, incomplete: 0 }, generatedBy: { invocationId: boardId, sessionHost: "test", sessionRef: "test" }, files: [{ path: "index.html", role: "entrypoint", sha256: digest, bytes: 13 }] }));
+  await writeFile(join(path, "manifest.json"), JSON.stringify({ schemaVersion: "traceknot-qa-board/v1", runId, requestId: "request", rootIdentity: "root", snapshotId: "snapshot", sourceRevision: 1, sourceState: "TERMINAL", sourceUpdatedAt: generatedAt, generatedAt, entrypoint: "index.html", authoritative: false, assurance: { context: "release", requiredIndependence: "separate-verification-context", releaseStatus: "satisfied" }, verdict: "PASS", counts: { mandatory: 0, passed: 0, failed: 0, blocked: 0, incomplete: 0 }, generatedBy: { invocationId: boardId.length > 128 && boardId.startsWith("9-") ? boardId.slice(2) : boardId, sessionHost: "test", sessionRef: "test" }, files: [{ path: "index.html", role: "entrypoint", sha256: digest, bytes: 13 }] }));
   await utimes(path, new Date(OLD), new Date(OLD));
 }
 function storageCli(args: readonly string[]): { exitCode: number; stdout: string; stderr: string } {
@@ -128,6 +128,18 @@ describe("storage retention", () => {
     const report = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, boardQuotaBytes: 1024 * 1024 } });
     expect(report.candidates.boards).toEqual(["runs/active/boards/1-old"]);
     expect(report.candidates.boards).not.toContain("runs/active/boards/2-new");
+  });
+  test("retains maximum-length Board names through inventory and deletion", async () => {
+    const { state, artifacts } = await fixture();
+    const boardId = `9-${"a".repeat(128)}`;
+    await run(state, "active", { state: "EXECUTING", updatedAt: NOW });
+    await board(state, "active", boardId, OLD);
+    const inventory = await inspectStorage({ stateDir: state, artifactDir: artifacts, now: NOW });
+    expect(inventory.boards.map(item => item.relativePath)).toContain(`runs/active/boards/${boardId}`);
+    const report = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, boardQuotaBytes: 1024 * 1024 } });
+    expect(report.candidates.boards).toContain(`runs/active/boards/${boardId}`);
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, boardQuotaBytes: 1024 * 1024 }, apply: true });
+    expect(applied.deleted.boards).toContain(`runs/active/boards/${boardId}`);
   });
 
   test("Board TTL and global quota apply independently of per-run count", async () => {
