@@ -206,6 +206,10 @@ export class GovernedEgressDeniedError extends Error {
   }
 }
 
+function snapshotScope(scope: TrustedExecutionScope): TrustedExecutionScope {
+  return freeze({ ...scope });
+}
+
 function snapshotAuthorization(authorization: EgressAuthorization): EgressAuthorization {
   return freeze({
     ...authorization,
@@ -214,8 +218,16 @@ function snapshotAuthorization(authorization: EgressAuthorization): EgressAuthor
   });
 }
 
-function malformedMandatorySkillIntent(scope: TrustedExecutionScope, intent: EgressIntent): EgressIntent | undefined {
-  if (scope.origin !== "skill" || intent.mandatory !== true || typeof intent.requestId !== "string" || typeof intent.obligationId !== "string") {
+function malformedMandatoryIntent(intent: EgressIntent): EgressIntent | undefined {
+  if (
+    intent.mandatory !== true
+    || typeof intent.requestId !== "string"
+    || intent.requestId.trim().length === 0
+    || intent.requestId !== intent.requestId.trim()
+    || typeof intent.obligationId !== "string"
+    || intent.obligationId.trim().length === 0
+    || intent.obligationId !== intent.obligationId.trim()
+  ) {
     return undefined;
   }
   const dataClasses = Array.isArray(intent.dataClasses)
@@ -245,37 +257,45 @@ export async function executeGovernedEgress<TPayload, TResult>(
   payload: TPayload,
   evidence: DurableEgressEvidenceStore,
 ): Promise<Readonly<{ observation: EgressObservation; value: TResult }>> {
-  const fallbackIntent = malformedMandatorySkillIntent(scope, intent);
-  if (fallbackIntent !== undefined) {
-    validScope(scope);
-    const observation = observe(scope, fallbackIntent, "deny", "SKILL_ORIGIN_EGRESS");
+  const scopeSnapshot = snapshotScope(scope);
+  const fallbackIntent = malformedMandatoryIntent(intent);
+  if (fallbackIntent !== undefined && (scopeSnapshot.origin === "skill" || scopeSnapshot.origin === "unknown")) {
+    validScope(scopeSnapshot);
+    const decision = scopeSnapshot.origin === "skill" ? "deny" : "blocked";
+    const reason = scopeSnapshot.origin === "skill" ? "SKILL_ORIGIN_EGRESS" : "ORIGIN_UNATTRIBUTABLE";
+    const observation = observe(scopeSnapshot, fallbackIntent, decision, reason);
     await evidence.failed(observation);
     validIntent(intent);
     throw new GovernedEgressDeniedError(observation);
   }
   const authorizationSnapshot = snapshotAuthorization(authorization);
-  const observation = evaluateGovernedEgress(scope, intent, authorizationSnapshot);
+  const observation = evaluateGovernedEgress(scopeSnapshot, intent, authorizationSnapshot);
   if (observation.decision !== "allow") {
     if (observation.failure !== undefined) await evidence.failed(observation);
     throw new GovernedEgressDeniedError(observation);
   }
   await evidence.prepared(observation);
-  if (!egressAuthorizationIsFresh(scope, authorizationSnapshot)) {
-    const staleObservation = observe(scope, intent, "deny", "MISSING_AUTHORIZATION", authorizationSnapshot);
+  if (!egressAuthorizationIsFresh(scopeSnapshot, authorizationSnapshot)) {
+    const staleObservation = observe(scopeSnapshot, intent, "deny", "MISSING_AUTHORIZATION", authorizationSnapshot);
     await evidence.failed(staleObservation);
     throw new GovernedEgressDeniedError(staleObservation);
   }
+  let terminalFailureRecorded = false;
   try {
     const value = await transport.send(authorizationSnapshot, payload);
     if ((value as RedirectResult | undefined)?.kind === "redirect") {
-      const redirectObservation = observe(scope, intent, "deny", "REDIRECT_REQUIRES_REAUTHORIZATION", authorizationSnapshot);
+      const redirectObservation = observe(scopeSnapshot, intent, "deny", "REDIRECT_REQUIRES_REAUTHORIZATION", authorizationSnapshot);
+      terminalFailureRecorded = true;
       await evidence.failed(redirectObservation);
       throw new GovernedEgressDeniedError(redirectObservation);
     }
     await evidence.completed(observation);
     return freeze({ observation, value });
   } catch (error) {
-    await evidence.failed(observation);
+    if (!terminalFailureRecorded) {
+      terminalFailureRecorded = true;
+      await evidence.failed(observation);
+    }
     throw error;
   }
 }

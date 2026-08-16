@@ -120,7 +120,7 @@ describe("governed Skill egress boundary", () => {
     const evidence = new Evidence();
     const redirect = { kind: "redirect" as const, destination: canonicalizeDestination("https://other.test/qa") };
     await expect(executeGovernedEgress(scope, intent, authorization, transport(redirect), "payload", evidence)).rejects.toBeInstanceOf(GovernedEgressDeniedError);
-    expect(evidence.events).toEqual(["PREPARED", "FAILED", "FAILED"]);
+    expect(evidence.events).toEqual(["PREPARED", "FAILED"]);
   });
 
   test("keeps updater execution on a separate authority API", async () => {
@@ -184,6 +184,34 @@ describe("governed Skill egress boundary", () => {
       evidence,
     )).rejects.toBeInstanceOf(GovernedEgressDeniedError);
     expect(evidence.events).toEqual(["FAILED"]);
+  });
+
+  test("records unattributed mandatory failures before dereferencing malformed authorization", async () => {
+    const evidence = new Evidence();
+    const malformedAuthorization = { ...authorization, dataClasses: undefined } as unknown as EgressAuthorization;
+    await expect(executeGovernedEgress(
+      { ...scope, origin: "unknown" },
+      { ...intent, mandatory: true, requestId: "request-3", obligationId: "obligation-3" },
+      malformedAuthorization,
+      transport("sent"),
+      "payload",
+      evidence,
+    )).rejects.toBeInstanceOf(GovernedEgressDeniedError);
+    expect(evidence.events).toEqual(["FAILED"]);
+  });
+
+  test("does not persist fallback failures for malformed obligation identifiers", async () => {
+    const evidence = new Evidence();
+    const malformedIntent = { ...intent, mandatory: true, requestId: " request-4", obligationId: "obligation-4" };
+    await expect(executeGovernedEgress(
+      { ...scope, origin: "skill" },
+      malformedIntent,
+      authorization,
+      transport("sent"),
+      "payload",
+      evidence,
+    )).rejects.toThrow("requestId must be a non-empty trimmed string");
+    expect(evidence.events).toEqual([]);
   });
 
   test("rejects non-boolean sensitive authorization flags", () => {
