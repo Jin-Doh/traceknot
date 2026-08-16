@@ -161,6 +161,35 @@ describe("Skill-origin egress policy", () => {
       dataClasses: ["public", "unknown" as never],
     })).toThrow("dataClasses");
   });
+  test("binds malformed mandatory Skill requests to failed denials", async () => {
+    let transmitted = false;
+    await expect(executeSkillEgress(
+      {
+        ...base,
+        origin: "skill",
+        dataClasses: [],
+        requestId: "request-malformed",
+        obligationId: "obligation-malformed",
+        mandatory: true,
+      },
+      async () => {
+        transmitted = true;
+        return "unexpected";
+      },
+    )).rejects.toMatchObject({
+      name: "SkillEgressDeniedError",
+      observation: {
+        decision: "deny",
+        reason: "SKILL_ORIGIN_EGRESS",
+        failure: {
+          status: "FAIL",
+          requestId: "request-malformed",
+          obligationId: "obligation-malformed",
+        },
+      },
+    });
+    expect(transmitted).toBe(false);
+  });
   test("returns the bound failure through the denied error without transmitting", async () => {
     let transmitted = false;
     await expect(executeSkillEgress(

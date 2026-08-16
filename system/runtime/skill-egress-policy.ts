@@ -129,6 +129,28 @@ function observation(
       : {}),
   };
 }
+function malformedSkillObservation(input: SkillEgressPolicyInput): SkillEgressObservation {
+  const dataClasses = Array.isArray(input.dataClasses)
+    ? input.dataClasses.filter((dataClass): dataClass is EgressDataClass => EGRESS_DATA_CLASSES.includes(dataClass))
+    : [];
+  const transport = EGRESS_TRANSPORTS.includes(input.transport) ? input.transport : "subprocess";
+  const destination = typeof input.destination === "string" ? input.destination : "<invalid-destination>";
+  const requestId = typeof input.requestId === "string" && input.requestId.trim().length > 0
+    ? input.requestId
+    : "<invalid-request-id>";
+  const obligationId = typeof input.obligationId === "string" && input.obligationId.trim().length > 0
+    ? input.obligationId
+    : "<invalid-obligation-id>";
+  return observation({
+    origin: "skill",
+    destination,
+    transport,
+    dataClasses,
+    requestId,
+    obligationId,
+    mandatory: true,
+  }, "deny", "SKILL_ORIGIN_EGRESS");
+}
 function hasSensitiveData(dataClasses: readonly EgressDataClass[]): boolean {
   return dataClasses.some((dataClass) => SENSITIVE_DATA_CLASSES[dataClass] === true);
 }
@@ -172,6 +194,14 @@ export async function executeSkillEgress<T>(
   input: SkillEgressPolicyInput,
   transmit: (observation: SkillEgressObservation) => Promise<T>,
 ): Promise<Readonly<{ observation: SkillEgressObservation; value: T }>> {
-  const observation = assertSkillEgressAllowed(input);
-  return { observation, value: await transmit(observation) };
+  let allowedObservation: SkillEgressObservation;
+  try {
+    allowedObservation = assertSkillEgressAllowed(input);
+  } catch (error) {
+    if (input.origin === "skill" && input.mandatory === true) {
+      throw new SkillEgressDeniedError(malformedSkillObservation(input));
+    }
+    throw error;
+  }
+  return { observation: allowedObservation, value: await transmit(allowedObservation) };
 }
