@@ -857,6 +857,7 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
     }
     if (options.reportOnly) {
       await assertExistingExternalDirectory(options.rootDir, options.stateDir, "state-dir");
+      if (options.board) await assertExistingExternalDirectory(options.rootDir, options.artifactDir, "artifact-dir");
     } else {
       await assertExternalDirectory(options.rootDir, options.stateDir, "state-dir");
       await assertExternalDirectory(options.rootDir, options.artifactDir, "artifact-dir");

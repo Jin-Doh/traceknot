@@ -60,6 +60,17 @@ describe("storage retention", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+  test("rejects artifact roots nested beneath managed runs", async () => {
+    const root = await mkdtemp(join(tmpdir(), "traceknot-retention-root-"));
+    try {
+      const stateDir = join(root, "state");
+      const artifactDir = join(stateDir, "runs", "run", "boards", "board");
+      await mkdir(artifactDir, { recursive: true });
+      await expect(inspectStorage({ stateDir, artifactDir, now: NOW })).rejects.toThrow("artifact directory must not be nested beneath state runs directory");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   test("inventory is deterministic and does not follow symlinks", async () => {
     const { state, artifacts } = await fixture();
     await run(state, "terminal", { state: "TERMINAL", updatedAt: NOW });

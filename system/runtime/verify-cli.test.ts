@@ -1,5 +1,5 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { mkdtemp, readdir, writeFile, readFile, rm, symlink } from "node:fs/promises";
+import { mkdtemp, readdir, writeFile, readFile, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
@@ -625,6 +625,16 @@ describe("traceknot verify CLI", () => {
       const markdown: string[] = [];
       const reportStatus = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only", "--format", "markdown"], text => markdown.push(text), text => stderr.push(text));
       expect(reportStatus).toBe(0); expect(markdown.join("")).toContain("**PASS**"); expect(markdown.join("")).toContain("**release**");
+      const inRepositoryArtifact = join(fixtureValue.root, "report-only-artifact");
+      const boardError: string[] = [];
+      const boardStatus = await runVerify(
+        ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--artifact-dir", inRepositoryArtifact, "--run-id", "cli-e2e", "--report-only", "--board", "--no-notify"],
+        () => undefined,
+        text => boardError.push(text),
+      );
+      expect(boardStatus).toBe(64);
+      expect(boardError.join("")).toContain("artifact-dir must be outside the Git repository root");
+      await expect(stat(inRepositoryArtifact)).rejects.toThrow();
       const localState = await mkdtemp(join(tmpdir(), "traceknot-cli-local-assurance-"));
       try {
         const localOutput: string[] = [];

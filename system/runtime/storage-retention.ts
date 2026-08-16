@@ -581,6 +581,8 @@ export async function inspectStorage(input: StorageMaintenanceOptions): Promise<
   const artifactDir = assertAbsoluteRoot(input.artifactDir, "artifact directory");
   if (stateDir === artifactDir) throw new Error("state and artifact directories must be distinct");
   if (isDescendantPath(artifactDir, stateDir)) throw new Error("state directory must not be nested beneath artifact directory");
+  const runsRoot = join(stateDir, "runs");
+  if (artifactDir === runsRoot || isDescendantPath(runsRoot, artifactDir)) throw new Error("artifact directory must not be nested beneath state runs directory");
   const state = await rootStatus(stateDir);
   const artifact = await rootStatus(artifactDir);
   if (state === "symlink" || state === "other") throw new Error("state directory must not be a symlink and must be a directory");
