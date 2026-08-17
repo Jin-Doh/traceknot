@@ -26,7 +26,8 @@
 
 <p align="center">
   <a href="https://traceknot.kyungho.info">웹사이트</a> ·
-  <a href="BRAND.ko.md">브랜드 시스템</a>
+  <a href="BRAND.ko.md">브랜드 시스템</a> ·
+  <a href="https://github.com/Jin-Doh/traceknot">GitHub에서 Star</a>
 </p>
 
 Traceknot(트레이스노트)은 OMP, Codex, Claude Code, OpenCode, GajaeCode 같은 코딩 에이전트 하네스를 위한 ISTQB 기반 QA 프레임워크입니다. Portable Skill은 테스트 절차를 정의하고, 선택 사항인 호스트 중립 코어는 표준 기록을 검증해 판정을 계산합니다.

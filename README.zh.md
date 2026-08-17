@@ -26,7 +26,8 @@
 
 <p align="center">
   <a href="https://traceknot.kyungho.info">网站</a> ·
-  <a href="BRAND.md">品牌规范</a>
+  <a href="BRAND.md">品牌规范</a> ·
+  <a href="https://github.com/Jin-Doh/traceknot">在 GitHub 上加星</a>
 </p>
 
 Traceknot 是一个面向 OMP、Codex、Claude Code、OpenCode 和 GajaeCode 等编码智能体运行框架的 ISTQB 对齐 QA 框架。可移植 Skill 定义测试流程；可选的宿主中立核心验证规范记录并解析判定。

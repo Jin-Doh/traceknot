@@ -26,7 +26,8 @@
 
 <p align="center">
   <a href="https://traceknot.kyungho.info">Website</a> ·
-  <a href="BRAND.md">Brand system</a>
+  <a href="BRAND.md">Brand system</a> ·
+  <a href="https://github.com/Jin-Doh/traceknot">Star on GitHub</a>
 </p>
 
 Traceknot is an ISTQB-aligned QA framework for coding-agent harnesses such as OMP, Codex, Claude Code, OpenCode, and GajaeCode. Its portable Skill defines the test process; its optional host-neutral core validates canonical records and resolves verdicts.
