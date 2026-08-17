@@ -177,6 +177,27 @@ export function assertSecureRoot(root: SecureRootDescriptor): void {
 
 export function assertPrivateRootPath(root: SecureRootDescriptor, label = "storage"): void {
   const currentUid = process.geteuid?.();
+  let lexical = root.rootDir;
+  let lexicalRoot = true;
+  for (;;) {
+    const info = lstatSync(lexical);
+    if (info.isSymbolicLink()) {
+      if (lexicalRoot) throw new ArtifactPathError(`${label} path must contain only real directories`);
+    } else {
+      if (!info.isDirectory()) throw new ArtifactPathError(`${label} path must contain only real directories`);
+      if (currentUid !== undefined && info.uid !== currentUid && info.uid !== 0) {
+        throw new ArtifactPathError(`${label} path must be owned by the current user or root`);
+      }
+      if (lexicalRoot && (info.mode & 0o022) !== 0) throw new ArtifactPathError(`${label} root must not be group- or world-writable`);
+      if (!lexicalRoot && (info.mode & 0o022) !== 0 && (info.mode & 0o1000) === 0) {
+        throw new ArtifactPathError(`${label} path must not contain group- or world-writable directories without the sticky bit`);
+      }
+    }
+    const parent = dirname(lexical);
+    if (parent === lexical) break;
+    lexical = parent;
+    lexicalRoot = false;
+  }
   let current = root.canonical;
   let privateRoot = true;
   for (;;) {

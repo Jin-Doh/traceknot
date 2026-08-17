@@ -91,6 +91,25 @@ describe("storage retention", () => {
     await chmod(state, 0o777);
     await expect(pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true })).rejects.toThrow("storage root must not be group- or world-writable");
   });
+  test("rejects roots reached through symlinks below untrusted ancestors", async () => {
+    const root = await mkdtemp(join(tmpdir(), "traceknot-retention-lexical-"));
+    const target = join(root, "target");
+    const aliasParent = join(root, "alias-parent");
+    const alias = join(aliasParent, "target-link");
+    const state = join(alias, "state");
+    const artifacts = join(alias, "artifacts");
+    try {
+      await mkdir(join(target, "state"), { recursive: true });
+      await mkdir(join(target, "artifacts"), { recursive: true });
+      await mkdir(aliasParent);
+      await symlink(target, alias, "dir");
+      await chmod(aliasParent, 0o777);
+      await expect(pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true })).rejects.toThrow("storage path must not contain group- or world-writable directories without the sticky bit");
+    } finally {
+      await chmod(aliasParent, 0o700).catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   test("inventory is deterministic and does not follow symlinks", async () => {
     const { state, artifacts } = await fixture();
     await run(state, "terminal", { state: "TERMINAL", updatedAt: NOW });
