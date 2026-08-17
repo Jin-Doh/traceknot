@@ -26,7 +26,7 @@ traceknot verify \
   --no-notify
 ```
 
-`--open-board` implies `--board` and asks the platform opener to open the generated `file://` URI. `--board-locale auto|en|ko|zh-CN` selects the language of `index.html`; `auto` is the default and resolves `LC_ALL`, then `LC_MESSAGES`, then `LANG`, with English as the fallback. `--session-id` is never written raw; the manifest stores a SHA-256 session reference. `--invocation-id` is optional and must be a safe identifier; CI uses it to make the Board directory deterministic for that action invocation.
+`Board` generation is enabled by default for CLI verification. Use `--no-board` to disable it; `--board` remains accepted as an explicit enable flag. `--open-board` implies Board generation and asks the platform opener to open the generated `file://` URI. `--board-locale auto|en|ko|zh-CN` selects the language of `index.html`; `auto` is the default and resolves `LC_ALL`, then `LC_MESSAGES`, then `LANG`, with English as the fallback. `--session-id` is never written raw; the manifest stores a SHA-256 session reference. `--invocation-id` is optional and must be a safe identifier; CI uses it to make the Board directory deterministic for that action invocation.
 
 The CLI preserves the verification verdict exit code. Board generation, notification, and opening are isolated: failures emit a `Traceknot Board unavailable:` or platform warning on stderr and do not convert a completed verification verdict into an internal error.
 
@@ -78,7 +78,7 @@ The writer uses descriptor-pinned secure filesystem primitives, rejects unsafe I
 
 ## Desktop integration
 
-Notifications are opt-in by omission of `--no-notify` and are best-effort:
+Desktop notifications are opt-in with `--notify`; `--no-notify` remains an explicit suppression flag. Board generation and browser opening do not imply a notification:
 
 - macOS: `osascript` with user values passed as arguments, not interpolated into AppleScript source.
 - Linux: `notify-send` when a desktop display is available.
@@ -88,11 +88,11 @@ Notifications are opt-in by omission of `--no-notify` and are best-effort:
 
 ## GitHub Action
 
-The composite Action exposes `board: true|false` (default `false`). In manifest mode, `board: true` passes `--board`, `--no-notify`, a bounded invocation ID, and `--session-host github-actions`. The generated Board remains immutable below the retained run state, and the Board artifact selects only the published `<revision>-<invocation-id>` bundle, never a private pending tree. With `board: false`, no Board upload is attempted. Canonical evidence upload excludes only the Board directories while retaining canonical run-state metadata.
+The composite Action exposes `board: true|false` (default `true`). Set `board: false` to pass `--no-board` and disable Board generation. In manifest mode, `board: true` passes `--board`, `--no-notify`, a bounded invocation ID, and `--session-host github-actions`. The generated Board remains immutable below the retained run state, and the Board artifact selects only the published `<revision>-<invocation-id>` bundle, never a private pending tree. With `board: false`, no Board upload is attempted. Canonical evidence upload excludes only the Board directories while retaining canonical run-state metadata.
 
 The canonical artifact name is `${artifact-name}-${invocation-id}` and the Board artifact name is `${artifact-name}-board-${invocation-id}`. Both names are invocation-unique. `artifact-retention-days` defaults to `30`, and `board-retention-days` defaults to `14`; both must be integers from `1` through `90`. Validation occurs before verification starts.
 
-Summary publication runs first, followed by canonical evidence upload, Board upload (when enabled and generated), optional SARIF upload, and finally optional local cleanup. Set `cleanup-local-after-upload: true` to remove the private evidence directory after all publication steps succeed; if any required upload fails, local evidence remains available for recovery. The default is `false`, so `report-path`, `evidence-path`, and `board-path` remain valid on the runner after the Action finishes.
+Summary publication runs first, followed by canonical evidence upload, Board upload (when enabled and generated), optional SARIF upload, and finally optional local cleanup. Board upload is skipped unless input preparation succeeded, so it never consumes missing invocation-scoped paths. Set `cleanup-local-after-upload: true` to remove the private evidence directory after all publication steps succeed; if any required upload fails, local evidence remains available for recovery. The default is `false`, so `report-path`, `evidence-path`, and `board-path` remain valid on the runner after the Action finishes.
 
 On persistent self-hosted runners, provide a private, writable `RUNNER_TEMP` on the runner volume and restrict access to the runner service account. The default keeps each invocation's local evidence for post-step inspection; use `cleanup-local-after-upload: true` when local inspection is not needed, and separately schedule host-level cleanup for abandoned directories after interrupted jobs. Artifact retention controls GitHub-hosted copies and does not replace local runner cleanup.
 

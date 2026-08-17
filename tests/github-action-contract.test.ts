@@ -89,11 +89,12 @@ describe("reusable governed GitHub Action", () => {
     expect(String(steps[3]?.run)).toContain("status.txt");
     expect(steps[4]?.if).toBe("always()");
     expect(steps[5]?.if).toBe("always()");
-    expect(steps[6]?.if).toBe("${{ always() && inputs.board == 'true' }}");
+    expect(steps[6]?.if).toBe("${{ always() && steps.prepare.outcome == 'success' && inputs.board == 'true' }}");
     expect(steps[7]?.if).toBe("${{ always() && inputs.sarif-path != '' }}");
     expect(steps[8]?.if).toBe("${{ always() && inputs.cleanup-local-after-upload == 'true' && steps.prepare.outcome == 'success' && steps.summary.outcome == 'success' && steps.artifact.outcome == 'success' && (steps['board-artifact'].outcome == 'success' || steps['board-artifact'].outcome == 'skipped') && (steps.sarif.outcome == 'success' || steps.sarif.outcome == 'skipped') }}");
     expect(object(inputs["artifact-retention-days"], "artifact retention input").default).toBe("30");
     expect(object(inputs["board-retention-days"], "Board retention input").default).toBe("14");
+    expect(object(inputs.board, "Board input").default).toBe("true");
     expect(object(inputs["cleanup-local-after-upload"], "local cleanup input").default).toBe("false");
     const artifactInputs = object(steps[5]?.with, "artifact inputs");
     expect(artifactInputs.name).toContain("${{ steps.prepare.outputs.invocation-id }}");
@@ -108,6 +109,10 @@ describe("reusable governed GitHub Action", () => {
     expect(boardInputs["if-no-files-found"]).toBe("ignore");
     expect(boardInputs["retention-days"]).toBe("${{ inputs.board-retention-days }}");
     expect(String(steps[8]?.run)).toContain("rm -rf -- \"$TRACEKNOT_EVIDENCE\"");
+    const verifyRun = String(steps[3]?.run);
+    expect(verifyRun).toMatch(/if test "\$TRACEKNOT_BOARD" = true; then\s+args\+=\(--board --no-notify --invocation-id "\$TRACEKNOT_INVOCATION_ID" --session-host github-actions\)\s+else\s+args\+=\(--no-board\)\s+fi/);
+    expect(verifyRun.match(/args\+=\(--board /g)).toHaveLength(1);
+    expect(verifyRun.match(/args\+=\(--no-board\)/g)).toHaveLength(1);
   });
 
   test("rejects invalid retention inputs before verification", async () => {

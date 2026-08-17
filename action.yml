@@ -30,9 +30,9 @@ inputs:
     required: false
     default: traceknot-evidence
   board:
-    description: Generate a static QA Board bundle in manifest mode.
+    description: Generate a static QA Board bundle in manifest mode (default true).
     required: false
-    default: 'false'
+    default: 'true'
   artifact-retention-days:
     description: Retention in days for the canonical evidence artifact (1-90).
     required: false
@@ -229,6 +229,8 @@ runs:
             fi
             if test "$TRACEKNOT_BOARD" = true; then
               args+=(--board --no-notify --invocation-id "$TRACEKNOT_INVOCATION_ID" --session-host github-actions)
+            else
+              args+=(--no-board)
             fi
             bun "$GITHUB_ACTION_PATH/bin/traceknot" verify "${args[@]}" | tee "$TRACEKNOT_REPORT"
             ;;
@@ -273,7 +275,7 @@ runs:
 
     - id: board-artifact
       name: Retain QA Board bundle
-      if: ${{ always() && inputs.board == 'true' }}
+      if: ${{ always() && steps.prepare.outcome == 'success' && inputs.board == 'true' }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: ${{ inputs.artifact-name }}-board-${{ steps.prepare.outputs.invocation-id }}
