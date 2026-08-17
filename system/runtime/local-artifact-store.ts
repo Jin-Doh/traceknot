@@ -181,7 +181,7 @@ export function assertPrivateRootPath(root: SecureRootDescriptor, label = "stora
   let lexicalRoot = true;
   for (;;) {
     const info = lstatSync(lexical);
-    if (info.isSymbolicLink() && !(process.platform === "darwin" && lexical === "/var")) {
+    if (info.isSymbolicLink() && !(process.platform === "darwin" && (lexical === "/var" || lexical === "/tmp"))) {
       throw new ArtifactPathError(`${label} path must contain only real directories`);
     }
     if (!info.isDirectory() && !info.isSymbolicLink()) {
