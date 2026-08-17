@@ -73,6 +73,7 @@ type ManifestCommand = Readonly<{
 type VerifyManifest = Readonly<{ schemaVersion: "verification-manifest/v1"; obligations: readonly ManifestCommand[] }>;
 type CliOptions = Readonly<{ requestPath?: string; manifestPath?: string; rootDir: string; stateDir: string; artifactDir: string; automaticCacheMaintenance: boolean; runId?: string; invocationId?: string; expectedHead?: string; assuranceContext: AssuranceContext; format: "json" | "markdown"; reportOnly: boolean; board: boolean; boardLocale: QaBoardLocale; noNotify: boolean; openBoard: boolean; sessionId?: string; sessionHost: string; help: boolean }>;
 type BoardRuntime = Readonly<{
+  notifyBoard: typeof notifyBoard;
   openBoard: typeof openBoard;
   markProjectSupportSeen: typeof markProjectSupportSeen;
 }>;
@@ -832,7 +833,7 @@ async function maintainDefaultCache(options: CliOptions, stderr: (text: string) 
   }
 }
 
-async function generateBoardForResult(options: CliOptions, result: RunVerificationResult, stderr: (text: string) => void, runtime: BoardRuntime = { openBoard, markProjectSupportSeen }): Promise<void> {
+async function generateBoardForResult(options: CliOptions, result: RunVerificationResult, stderr: (text: string) => void, runtime: BoardRuntime = { notifyBoard, openBoard, markProjectSupportSeen }): Promise<void> {
   if (!options.board) return;
   await maintainDefaultCache(options, stderr, [result.run.runId]);
   let published = false;
@@ -850,14 +851,15 @@ async function generateBoardForResult(options: CliOptions, result: RunVerificati
       artifactReader: artifactStore,
     });
     published = true;
-    if (!options.noNotify || options.openBoard) await verifyQaBoardBundleForOpen(options.stateDir, board);
     const boardUri = pathToFileURL(board.entrypoint).href;
     stderr(`Traceknot Board: ${boardUri}\n`);
     if (!options.noNotify) {
-      const notification = await notifyBoard({ title: "Traceknot QA finished", message: `${result.verdict.qaVerdict}: ${result.verdict.obligationSummary.failed} failed`, boardUri });
+      await verifyQaBoardBundleForOpen(options.stateDir, board);
+      const notification = await runtime.notifyBoard({ title: "Traceknot QA finished", message: `${result.verdict.qaVerdict}: ${result.verdict.obligationSummary.failed} failed`, boardUri });
       if (notification === "failed") stderr("Traceknot Board: desktop notification failed\n");
     }
     if (options.openBoard) {
+      await verifyQaBoardBundleForOpen(options.stateDir, board);
       const opened = await runtime.openBoard(boardUri);
       if (opened === "failed") stderr("Traceknot Board: browser opener failed\n");
       if (opened === "opened" && board.projectSupportIncluded) {
@@ -883,7 +885,7 @@ async function loadReport(repository: FileVerificationRepository, runId: string,
   return { schemaVersion: "traceknot-cli-report/v1", assurance: assuranceFor(request as VerificationRequest, verdict, documents.plan), run, verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents };
 }
 
-export async function runVerify(argv: readonly string[], stdout: (text: string) => void = text => process.stdout.write(text), stderr: (text: string) => void = text => process.stderr.write(text), runtime: BoardRuntime = { openBoard, markProjectSupportSeen }): Promise<number> {
+export async function runVerify(argv: readonly string[], stdout: (text: string) => void = text => process.stdout.write(text), stderr: (text: string) => void = text => process.stderr.write(text), runtime: BoardRuntime = { notifyBoard, openBoard, markProjectSupportSeen }): Promise<number> {
   let options: CliOptions;
   try { options = parseArgs(argv); } catch (error) { stderr(`${String(error instanceof Error ? error.message : error)}\n${usage()}\n`); return VERIFY_EXIT_CODES.USAGE; }
   if (options.help) { stdout(`${usage()}\n`); return VERIFY_EXIT_CODES.PASS; }

@@ -722,6 +722,9 @@ describe("traceknot verify CLI", () => {
       let openCalls = 0;
       let markCalls = 0;
       const runtime = {
+        notifyBoard: async () => {
+          throw new Error("notification should not run when --no-notify is set");
+        },
         openBoard: async (uri: string) => {
           openCalls += 1;
           expect(uri).toMatch(/^file:\/\//);
