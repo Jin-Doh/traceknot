@@ -932,6 +932,18 @@ async function removeCanonicalRun(root: SecureRootDescriptor, statePath: string)
 }
 
 type RootLock = Readonly<{ root: SecureRootDescriptor; release: () => Promise<void> }>;
+async function assertPrivateRootIfPresent(rootPath: string, label: string): Promise<void> {
+  const status = await rootStatus(rootPath);
+  if (status === "missing") return;
+  if (status !== "directory") throw new Error(`${label} must be a non-symlink directory: ${rootPath}`);
+  const root = await openSecureRoot(rootPath);
+  try {
+    assertPrivateRootPath(root);
+    assertSecureRoot(root);
+  } finally {
+    await closeSecureRoot(root);
+  }
+}
 
 async function acquireLock(rootPath: string, coordinateArtifactStore = false): Promise<RootLock | undefined> {
   const status = await rootStatus(rootPath);
@@ -1024,10 +1036,14 @@ export async function pruneStorage(input: StorageMaintenanceOptions): Promise<St
   const now = nowMs(input.now);
   const protectedRunIds = new Set(input.protectedRunIds ?? []);
   if ([...protectedRunIds].some(runId => !safeId(runId))) throw new Error("protected run ID contains unsafe characters");
+  const dryRun = input.apply !== true;
+  if (!dryRun) {
+    await assertPrivateRootIfPresent(input.stateDir, "state storage root");
+    await assertPrivateRootIfPresent(input.artifactDir, "artifact storage root");
+  }
   let inventory = await inspectStorage({ ...input, policy });
   let gcMarksState = await loadGcMarks(inventory.directories.artifactDir);
   let plan = candidatePlan(inventory, policy, now, gcMarksState.marks, gcMarksState.malformed, protectedRunIds);
-  const dryRun = input.apply !== true;
   let deleted: StorageMaintenanceReport["deleted"] = { boards: [], runs: [], objects: [], collector: [], staging: [] };
   let stateLock: RootLock | undefined;
   let artifactLock: RootLock | undefined;
