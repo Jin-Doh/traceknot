@@ -99,10 +99,11 @@ function usage(): string {
     "  --format json|markdown   Report format (default: json)",
     "  --assurance LEVEL       Verification assurance: local or release (default: release)",
     "  --invocation-id ID      Durable Board invocation identifier",
-    "  --assurance LEVEL       Verification assurance: local or release (default: release)",
-    "  --board                 Generate a static QA Board bundle",
+    "  --board                 Generate a static QA Board bundle (default)",
+    "  --no-board              Disable QA Board generation",
     "  --board-locale LOCALE   Board language: auto, en, ko, or zh-CN (default: auto)",
-    "  --no-notify             Suppress desktop notification after Board generation",
+    "  --no-notify             Suppress desktop notification after Board generation (default)",
+    "  --notify                Enable desktop notification after Board generation",
     "  --open-board            Open the generated Board in the desktop browser",
     "  --session-id ID         Hash this agent session identifier in the Board manifest",
     "  --session-host HOST     Record the agent session host in the Board manifest",
@@ -327,9 +328,9 @@ function parseArgs(argv: readonly string[]): CliOptions {
   let assuranceContext: AssuranceContext = "release";
   let format: "json" | "markdown" = "json";
   let reportOnly = false;
-  let board = false;
+  let board = true;
   let boardLocale = resolveQaBoardLocale(process.env.LC_ALL, process.env.LC_MESSAGES, process.env.LANG);
-  let noNotify = false;
+  let noNotify = true;
   let openBoard = false;
   let sessionId: string | undefined;
   let sessionHost = "unavailable";
@@ -350,12 +351,14 @@ function parseArgs(argv: readonly string[]): CliOptions {
     else if (arg === "--assurance") { const value = next(); if (value !== "local" && value !== "release") fail("--assurance must be local or release"); assuranceContext = value; }
     else if (arg === "--report-only") reportOnly = true;
     else if (arg === "--board") board = true;
+    else if (arg === "--no-board") { board = false; openBoard = false; }
     else if (arg === "--board-locale") {
       const value = next();
       if (value !== "auto" && value !== "en" && value !== "ko" && value !== "zh-CN") fail("--board-locale must be auto, en, ko, or zh-CN");
       boardLocale = value === "auto" ? resolveQaBoardLocale(process.env.LC_ALL, process.env.LC_MESSAGES, process.env.LANG) : value;
     }
     else if (arg === "--no-notify") noNotify = true;
+    else if (arg === "--notify") noNotify = false;
     else if (arg === "--open-board") { openBoard = true; board = true; }
     else if (arg === "--session-id") sessionId = next();
     else if (arg === "--session-host") sessionHost = next();
@@ -839,6 +842,7 @@ async function generateBoardForResult(options: CliOptions, result: RunVerificati
   let published = false;
   let artifactStore: LocalArtifactStore | undefined;
   try {
+    if (options.reportOnly) await assertExternalDirectory(options.rootDir, options.artifactDir, "artifact-dir");
     artifactStore = new LocalArtifactStore(options.artifactDir);
     const board = await writeQaBoardBundle({
       view: buildQaBoardView({ run: result.run, verdict: result.verdict, documents: result.documents }),
@@ -900,7 +904,6 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
     }
     if (options.reportOnly) {
       await assertExistingExternalDirectory(options.rootDir, options.stateDir, "state-dir");
-      if (options.board) await assertExistingExternalDirectory(options.rootDir, options.artifactDir, "artifact-dir");
     } else {
       await assertExternalDirectory(options.rootDir, options.stateDir, "state-dir");
       await assertExternalDirectory(options.rootDir, options.artifactDir, "artifact-dir");
