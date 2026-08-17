@@ -22,6 +22,12 @@ Runtime capability comes from an explicit handshake. A host name, model name, ne
 
 The host-neutral capability vocabulary includes command execution, browser execution, artifact capture, snapshot binding, independent evidence, evidence persistence, exception approval, isolated read-only review, and enforced structured output.
 
+### Local command execution boundary
+
+Manifest executables run with the invoking OS account's privileges. Traceknot constrains argv, environment propagation, working-directory traversal, output size, timeout, and evidence ingestion; it is not a process sandbox. A manifest and every executable it selects must therefore be trusted at the invoking-account boundary. Run untrusted test programs in an OS sandbox, container, VM, or dedicated account before admitting their outputs as evidence.
+
+CLI state and artifact roots reject foreign ownership, writable final roots, and non-sticky writable ancestors. Those controls isolate other OS accounts and accidental path substitution. They cannot isolate a hostile process already running as the same account: such a process can alter any user-owned path, ignore advisory maintenance locks, and interfere with desktop file resolution. Same-account hostile-code isolation is a host/runtime responsibility rather than a property claimed by Traceknot.
+
 ### Skill-origin egress boundary
 
 The portable Skill must not create a new outbound-data capability. Static artifact and instruction checks are blocking release controls. They do not provide runtime interception: a host that cannot deny Skill-origin egress before transmission cannot claim the hardened execution profile. An observed Skill-origin attempt is a `FAIL`, missing enforcement is `BLOCKED`, and lost egress evidence is `INCOMPLETE`. Updater traffic remains a separate release trust boundary.

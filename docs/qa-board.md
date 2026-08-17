@@ -51,6 +51,12 @@ Each localized page is a static projection of persisted verification data:
 
 The layout is responsive at desktop and mobile widths, supports the three bundled locales, and does not require JavaScript, network access, or remote assets.
 
+### Optional project support
+
+The first locally opened Board may include a separate, non-authoritative project-support panel with a fixed link to the Traceknot GitHub repository. It is not a verification finding, does not enter attention lists, counts, coverage, verdicts, manifests, or exit codes, and does not query GitHub, `gh`, authentication, or star status.
+
+When the Board is opened successfully with `--open-board`, the CLI creates an empty `presentation/star-cta-v1.seen` marker below `--state-dir`. Future Board bundles omit the panel. Board generation without `--open-board`, headless environments, opener failure, and marker-write failure do not affect the verification result. Marker access is descriptor-relative, symlink-resistant, idempotent, and stores no user or account data.
+
 ## Bundle layout
 
 Boards are immutable invocation directories below the durable run state:
@@ -66,7 +72,7 @@ runs/<run-id>/boards/<revision>-<invocation-id>/
     └── <sha256>.png
 ```
 
-The writer uses descriptor-pinned secure filesystem primitives, rejects unsafe IDs and symlink traversal, writes files through temporary files plus rename, fsyncs file and directory updates, and never overwrites a published Board revision. Screenshot previews are copied from the canonical artifact store only after byte-level SHA-256 verification and bounded by the Board preview limits.
+The writer uses descriptor-pinned secure filesystem primitives, rejects unsafe IDs and symlink traversal, and requires the state root itself to have no group or world write access. Canonical ancestors must be owned by the current user or root; a writable ancestor is accepted only with the sticky bit, as with `/tmp`. The writer checks the project-support marker without opening the entry, writes files through temporary files plus rename, fsyncs file and directory updates, and never overwrites a published Board revision. Screenshot previews are copied from the canonical artifact store only after byte-level SHA-256 verification and bounded by the Board preview limits.
 
 `manifest.json` records source run identity, snapshot identity, revision, verdict, counts, generated-by metadata, and file digests. It declares `authoritative: false`. HTML escapes untrusted text and uses a restrictive default-deny CSP; the Board does not fetch remote resources or execute user-provided scripts.
 
@@ -78,7 +84,7 @@ Notifications are opt-in by omission of `--no-notify` and are best-effort:
 - Linux: `notify-send` when a desktop display is available.
 - CI, SSH, non-desktop, unsupported, or unavailable command environments: suppressed or reported as unavailable.
 
-`--open-board` uses `open` on macOS and `xdg-open` on Linux. It accepts only local `file://` URIs.
+`--open-board` uses `open` on macOS and `xdg-open` on Linux. It accepts only local `file://` URIs. Immediately before a desktop notification or opener handoff, the CLI reopens the private state root and checks every published Board file against the byte count and SHA-256 digest in `manifest.json`; a mismatch suppresses desktop exposure and leaves the canonical verdict unchanged.
 
 ## GitHub Action
 

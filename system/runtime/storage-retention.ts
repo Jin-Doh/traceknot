@@ -2,7 +2,7 @@ import { constants, type Dirent, writeSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, readdir, readFile, realpath } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
-import { ARTIFACT_CANONICAL_LOCK_FILE, ArtifactNotFoundError, assertSecureRoot, closeSecureDescriptor, closeSecureRoot, openOrCreateSecureDirectoryPath, openSecureDirectory, openSecureRoot, readSecureRegularFile, secureFlock, secureFsync, secureOpenAt, secureRenameAt, secureRmdirAt, secureUnlinkAt, STORAGE_MAINTENANCE_LOCK_FILE, type SecureRootDescriptor } from "./local-artifact-store";
+import { ARTIFACT_CANONICAL_LOCK_FILE, ArtifactNotFoundError, assertPrivateRootPath, assertSecureRoot, closeSecureDescriptor, closeSecureRoot, openOrCreateSecureDirectoryPath, openSecureDirectory, openSecureRoot, readSecureRegularFile, secureFlock, secureFsync, secureOpenAt, secureRenameAt, secureRmdirAt, secureUnlinkAt, STORAGE_MAINTENANCE_LOCK_FILE, type SecureRootDescriptor } from "./local-artifact-store";
 import { assertCanonicalRun } from "./verification-run";
 
 const DIGEST = /^[0-9a-f]{64}$/;
@@ -932,6 +932,18 @@ async function removeCanonicalRun(root: SecureRootDescriptor, statePath: string)
 }
 
 type RootLock = Readonly<{ root: SecureRootDescriptor; release: () => Promise<void> }>;
+async function assertPrivateRootIfPresent(rootPath: string, label: string): Promise<void> {
+  const status = await rootStatus(rootPath);
+  if (status === "missing") return;
+  if (status !== "directory") throw new Error(`${label} must be a non-symlink directory: ${rootPath}`);
+  const root = await openSecureRoot(rootPath);
+  try {
+    assertPrivateRootPath(root);
+    assertSecureRoot(root);
+  } finally {
+    await closeSecureRoot(root);
+  }
+}
 
 async function acquireLock(rootPath: string, coordinateArtifactStore = false): Promise<RootLock | undefined> {
   const status = await rootStatus(rootPath);
@@ -941,6 +953,7 @@ async function acquireLock(rootPath: string, coordinateArtifactStore = false): P
   let lockFd: number | undefined;
   let artifactLockFd: number | undefined;
   try {
+    assertPrivateRootPath(root);
     assertSecureRoot(root);
     const acquiredFd = secureOpenAt(root.fd, STORAGE_MAINTENANCE_LOCK_FILE, constants.O_RDWR | constants.O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600);
     lockFd = acquiredFd;
@@ -1023,10 +1036,14 @@ export async function pruneStorage(input: StorageMaintenanceOptions): Promise<St
   const now = nowMs(input.now);
   const protectedRunIds = new Set(input.protectedRunIds ?? []);
   if ([...protectedRunIds].some(runId => !safeId(runId))) throw new Error("protected run ID contains unsafe characters");
+  const dryRun = input.apply !== true;
+  if (!dryRun) {
+    await assertPrivateRootIfPresent(input.stateDir, "state storage root");
+    await assertPrivateRootIfPresent(input.artifactDir, "artifact storage root");
+  }
   let inventory = await inspectStorage({ ...input, policy });
   let gcMarksState = await loadGcMarks(inventory.directories.artifactDir);
   let plan = candidatePlan(inventory, policy, now, gcMarksState.marks, gcMarksState.malformed, protectedRunIds);
-  const dryRun = input.apply !== true;
   let deleted: StorageMaintenanceReport["deleted"] = { boards: [], runs: [], objects: [], collector: [], staging: [] };
   let stateLock: RootLock | undefined;
   let artifactLock: RootLock | undefined;

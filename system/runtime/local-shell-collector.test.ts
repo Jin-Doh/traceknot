@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, realpath, rename, rm, symlink, unlink, watch, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, realpath, rename, rm, symlink, unlink, watch, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -167,6 +167,12 @@ describe("LocalShellCollector", () => {
       await writeFile(path, Buffer.from("actual"));
       await expect(collectorFor(root, store).collect({ ...requestFor(root), argv: [], declaredArtifacts: [{ type: "structured", digest: "0".repeat(64), path: "result.bin" }] })).rejects.toMatchObject({ code: "DECLARED_ARTIFACT_MISMATCH" });
       await expect(collectorFor(root, store).collect({ ...requestFor(root), argv: [], timeoutMs: 0 })).rejects.toMatchObject({ code: "LIMIT_INVALID" });
+      const descriptorDirectory = process.platform === "linux" ? "/proc/self/fd" : "/dev/fd";
+      const descriptorsBefore = (await readdir(descriptorDirectory)).length;
+      for (let attempt = 0; attempt < 16; attempt++) {
+        await expect(collectorFor(root, store).collect({ ...requestFor(root), argv: [], timeoutMs: 0 })).rejects.toMatchObject({ code: "LIMIT_INVALID" });
+      }
+      expect((await readdir(descriptorDirectory)).length).toBeLessThanOrEqual(descriptorsBefore + 1);
       const missing = [{ type: "structured", digest: "1".repeat(64), path: "missing.bin" }];
       await expect(collectorFor(root, store).collect({ ...requestFor(root), argv: ["-e", ""], declaredArtifacts: missing, bestEffortDeclaredArtifactsOnFailure: true })).rejects.toMatchObject({ code: "ARTIFACT_READ_FAILED" });
       const failed = await collectorFor(root, store).collect({ ...requestFor(root), argv: ["-e", "process.exit(7)"], declaredArtifacts: missing, bestEffortDeclaredArtifactsOnFailure: true });

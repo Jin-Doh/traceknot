@@ -53,6 +53,32 @@ describe("QA Board projection", () => {
     expect(view.findings[0]?.screenshots).toEqual([{ digest: SCREENSHOT, observationId: OBSERVATION_ID }]);
     expect(view.assurance).toEqual({ context: "release", requiredIndependence: "independent-producer", releaseStatus: "satisfied" });
   });
+  test("resolves each evaluated finding without leaking sibling claims", () => {
+    const initial = source();
+    const plan = initial.documents.plan!;
+    const execution = initial.documents.execution!;
+    const evidence = initial.documents.evidence!;
+    const siblingObservation = { ...execution.observations[0]!, observationId: "observation:sibling" };
+    const siblingClaim = { ...execution.claims[0]!, claimId: "claim:sibling", obligationId: "obligation:sibling", criterionId: "criterion:obligation:sibling", observationIds: [siblingObservation.observationId] };
+    const siblingEvaluation = { ...evidence.evaluations[0]!, evaluationId: "evaluation:sibling", claimId: siblingClaim.claimId, status: "REJECTED" as const, checks: { ...evidence.evaluations[0]!.checks, independenceSatisfied: false }, rejectionReasons: ["INDEPENDENCE_NOT_MET" as const] };
+    const siblingCondition = { ...plan.conditions[0]!, id: "condition:sibling", expectedResult: "Sibling check passes." };
+    const siblingObligation = { ...plan.obligations[0]!, id: "obligation:sibling", conditionIds: [siblingCondition.id] };
+    const siblingEvidence = { ...execution.evidence[0]!, evidenceId: "evidence:sibling", obligationId: siblingObligation.id };
+    const view = buildQaBoardView({
+      ...initial,
+      documents: {
+        ...initial.documents,
+        plan: { ...plan, conditions: [...plan.conditions, siblingCondition], obligations: [...plan.obligations, siblingObligation] },
+        execution: { ...execution, observations: [...execution.observations, siblingObservation], claims: [...execution.claims, siblingClaim], evidence: [...execution.evidence, siblingEvidence] },
+        evidence: { ...evidence, evaluations: [...evidence.evaluations, siblingEvaluation] },
+      },
+    });
+    expect(view.findings.map(finding => [finding.obligationId, finding.status])).toEqual([
+      ["obligation:sibling", "BLOCKED"],
+      ["obligation:checkout", "PASS"],
+    ]);
+  });
+
   test("uses evaluated evidence status instead of raw executor verdict", () => {
     const initial = source();
     const evidence = initial.documents.evidence!;
@@ -83,6 +109,17 @@ describe("QA Board projection", () => {
     expect(html).not.toContain("http://");
     expect(html).not.toContain("https://");
     expect(html).toContain("read-only projection");
+  });
+  test("keeps optional project support outside verification output", () => {
+    const view = buildQaBoardView(source());
+    const withoutSupport = renderQaBoardHtml(view);
+    const withSupport = renderQaBoardHtml(view, "en", { showProjectSupport: true });
+    expect(withoutSupport).not.toContain("Project support");
+    expect(withSupport).toContain("Project support");
+    expect(withSupport).toContain('href="https://github.com/Jin-Doh/traceknot" target="_blank" rel="noopener noreferrer"');
+    expect(withSupport).toContain("Star on GitHub");
+    expect(withSupport).not.toContain("CONSIDER");
+    expect(withSupport.match(/Project support/g)).toHaveLength(1);
   });
 
   test("is deterministic for the same source", () => {

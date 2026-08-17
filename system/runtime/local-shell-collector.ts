@@ -290,11 +290,15 @@ export class LocalShellCollector {
     let root: SecureRootDescriptor;
     try {
       root = await openSecureRoot(this.rootDir);
-      assertSecureRoot(root);
     } catch (error) {
       throw new ShellCollectorError("ROOT_INVALID", `collector root cannot be securely opened: ${String(error)}`, { cause: error });
     }
     try {
+      try {
+        assertSecureRoot(root);
+      } catch (error) {
+        throw new ShellCollectorError("ROOT_INVALID", `collector root cannot be securely opened: ${String(error)}`, { cause: error });
+      }
       return await this.collectAtRoot(root, request);
     } finally {
       await closeSecureRoot(root);
@@ -316,12 +320,6 @@ export class LocalShellCollector {
     if (argv.some(value => typeof value !== "string" || value.includes("\0"))) throw new ShellCollectorError("REQUEST_INVALID", "argv values must be NUL-free strings");
     const cwdRelative = relativePath(root.canonical, root.rootDir, request.cwd, "cwd");
     const cwd = resolve(root.canonical, cwdRelative);
-    let cwdDescriptor: number;
-    try {
-      cwdDescriptor = openSecureDirectory(root.fd, cwdRelative);
-    } catch (error) {
-      throw new ShellCollectorError("PATH_INVALID", `cwd cannot be securely opened: ${String(error)}`, { cause: error });
-    }
     const timeoutMs = boundedNumber(request.timeoutMs, this.defaultTimeoutMs, MAX_TIMEOUT_MS, "timeoutMs");
     const maxOutputBytes = boundedNumber(request.maxOutputBytes, this.defaultOutputBytes, DEFAULT_ARTIFACT_BYTES, "maxOutputBytes");
     const maxArtifactBytes = boundedNumber(request.maxArtifactBytes, this.maxArtifactBytes, this.maxArtifactBytes, "maxArtifactBytes");
@@ -339,15 +337,19 @@ export class LocalShellCollector {
     env.PATH = SAFE_PATH;
     const producer = request.producer ?? { kind: "self", identity: "traceknot-local-shell", independence: "self-check" } satisfies Producer;
     if (!producer || typeof producer !== "object" || typeof producer.kind !== "string" || typeof producer.identity !== "string" || typeof producer.independence !== "string") {
-      closeSecureDescriptor(cwdDescriptor);
       throw new ShellCollectorError("PRODUCER_INVALID", "producer must be a valid producer object");
     }
     if (producer.kind === "self" && producer.independence !== "self-check") {
-      closeSecureDescriptor(cwdDescriptor);
       throw new ShellCollectorError("PRODUCER_INVALID", "self producer must use self-check independence");
     }
     const startedAt = asDateString(this.clock);
     const executionIdentity = `local-shell:${JSON.stringify([executable, argv])}`;
+    let cwdDescriptor: number;
+    try {
+      cwdDescriptor = openSecureDirectory(root.fd, cwdRelative);
+    } catch (error) {
+      throw new ShellCollectorError("PATH_INVALID", `cwd cannot be securely opened: ${String(error)}`, { cause: error });
+    }
     let child: Bun.Subprocess;
     try {
       child = await spawnInDirectory(cwdDescriptor, executable, argv, env);

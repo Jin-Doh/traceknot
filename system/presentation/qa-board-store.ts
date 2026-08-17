@@ -1,13 +1,17 @@
-import { constants, writeSync } from "node:fs";
+import { constants, fstatSync, writeSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import {
   acquireSecureFlock,
+  assertPrivateRootPath,
+  assertSecureRoot,
   closeSecureDescriptor,
   closeSecureRoot,
   openOrCreateSecureDirectory,
+  secureEntryExistsAt,
   openSecureDirectory,
   openSecureRoot,
+  readSecureRegularFile,
   secureFsync,
   secureMkdirAt,
   secureOpenAt,
@@ -27,6 +31,7 @@ import {
   type QaBoardLocale,
   type QaBoardManifest,
   type QaBoardManifestFile,
+  type QaBoardRenderOptions,
   type QaBoardView,
 
 } from "./qa-board";
@@ -49,7 +54,30 @@ export type BoardBundleResult = Readonly<{
   directory: string;
   entrypoint: string;
   manifest: QaBoardManifest;
+  projectSupportIncluded: boolean;
 }>;
+
+export async function verifyQaBoardBundleForOpen(stateDir: string, bundle: BoardBundleResult): Promise<void> {
+  const root = await openSecureRoot(resolve(stateDir));
+  try {
+    assertPrivateRootPath(root, "Board state");
+    const directory = relative(root.canonical, bundle.directory);
+    for (const file of bundle.manifest.files) {
+      const bytes = await readSecureRegularFile(root.fd, join(directory, file.path), file.bytes);
+      if (bytes.byteLength !== file.bytes || sha256(bytes) !== file.sha256) {
+        throw new Error(`Board file changed before open: ${file.path}`);
+      }
+    }
+    const manifestBytes = await readSecureRegularFile(root.fd, join(directory, "manifest.json"), 1024 * 1024);
+    const persistedManifest = JSON.parse(new TextDecoder().decode(manifestBytes)) as unknown;
+    if (JSON.stringify(persistedManifest) !== JSON.stringify(bundle.manifest)) {
+      throw new Error("Board manifest changed before open");
+    }
+    assertSecureRoot(root);
+  } finally {
+    await closeSecureRoot(root);
+  }
+}
 
 export const QA_BOARD_LIMITS = Object.freeze({
   maxScreenshotCount: 20,
@@ -61,6 +89,10 @@ const SAFE_ENTRY = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SAFE_BOARD_NAME = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
 const WRITE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0) | ((constants as Record<string, number | undefined>).O_CLOEXEC ?? 0);
 const LOCK_FLAGS = constants.O_RDWR | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0) | ((constants as Record<string, number | undefined>).O_CLOEXEC ?? 0);
+const PROJECT_SUPPORT_DIRECTORY = "presentation";
+const PROJECT_SUPPORT_MARKER = "star-cta-v1.seen";
+const MARKER_DIRECTORY_FLAGS = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | (constants.O_NOFOLLOW ?? 0) | ((constants as Record<string, number | undefined>).O_CLOEXEC ?? 0);
+const MARKER_WRITE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0) | ((constants as Record<string, number | undefined>).O_CLOEXEC ?? 0);
 const LOCK_SH = 1;
 const LOCK_UN = 8;
 
@@ -74,6 +106,46 @@ function hasErrno(error: unknown, value: number): boolean {
 
 function isExistingTarget(error: unknown): boolean {
   return hasErrno(error, 17) || hasErrno(error, 39) || hasErrno(error, 66);
+}
+
+
+function shouldShowProjectSupport(rootFd: number): boolean {
+  let presentationFd: number | undefined;
+  try {
+    presentationFd = secureOpenAt(rootFd, PROJECT_SUPPORT_DIRECTORY, MARKER_DIRECTORY_FLAGS);
+  } catch (error) {
+    return hasErrno(error, 2);
+  }
+  try {
+    return !secureEntryExistsAt(presentationFd, PROJECT_SUPPORT_MARKER);
+  } catch {
+    return false;
+  } finally {
+    closeSecureDescriptor(presentationFd);
+  }
+}
+export async function markProjectSupportSeen(stateDir: string): Promise<void> {
+  const root = await openSecureRoot(resolve(stateDir));
+  let presentationFd: number | undefined;
+  let markerFd: number | undefined;
+  try {
+    assertPrivateRootPath(root, "Board state");
+    presentationFd = openOrCreateSecureDirectory(root.fd, PROJECT_SUPPORT_DIRECTORY);
+    try {
+      markerFd = secureOpenAt(presentationFd, PROJECT_SUPPORT_MARKER, MARKER_WRITE_FLAGS, 0o600);
+    } catch (error) {
+      if (isExistingTarget(error)) return;
+      throw error;
+    }
+    secureFsync(markerFd);
+    closeSecureDescriptor(markerFd);
+    markerFd = undefined;
+    secureFsync(presentationFd);
+  } finally {
+    if (markerFd !== undefined) closeSecureDescriptor(markerFd);
+    if (presentationFd !== undefined) closeSecureDescriptor(presentationFd);
+    await closeSecureRoot(root);
+  }
 }
 
 function writeBytes(fd: number, bytes: Uint8Array): void {
@@ -233,6 +305,7 @@ export async function writeQaBoardBundle(input: BoardBundleInput): Promise<Board
   const root = await openSecureRoot(resolve(input.stateDir));
   let maintenanceFd: number | undefined;
   try {
+    assertPrivateRootPath(root, "Board state");
     maintenanceFd = secureOpenAt(root.fd, STORAGE_MAINTENANCE_LOCK_FILE, LOCK_FLAGS, 0o600);
     await acquireSecureFlock(maintenanceFd, LOCK_SH, "Board publication maintenance lock");
   } catch (error) {
@@ -275,12 +348,14 @@ export async function writeQaBoardBundle(input: BoardBundleInput): Promise<Board
     }
     const view = availableScreenshots(input.view, copied);
     const locale = input.locale ?? "en";
-    const html = new TextEncoder().encode(renderQaBoardHtml(view, locale));
+    const showProjectSupport = shouldShowProjectSupport(root.fd);
+    const renderOptions: QaBoardRenderOptions = { showProjectSupport };
+    const html = new TextEncoder().encode(renderQaBoardHtml(view, locale, renderOptions));
     await writeAtomic(directories.boardFd, "index.html", html);
     const pageFiles: QaBoardManifestFile[] = [{ path: "index.html", role: "entrypoint", sha256: sha256(html), bytes: html.byteLength }];
     for (const pageLocale of QA_BOARD_LOCALES) {
       const path = `index.${pageLocale}.html`;
-      const localizedHtml = new TextEncoder().encode(renderQaBoardHtml(view, pageLocale));
+      const localizedHtml = new TextEncoder().encode(renderQaBoardHtml(view, pageLocale, renderOptions));
       await writeAtomic(directories.boardFd, path, localizedHtml);
       pageFiles.push({ path, role: "localized-view", sha256: sha256(localizedHtml), bytes: localizedHtml.byteLength });
     }
@@ -295,7 +370,7 @@ export async function writeQaBoardBundle(input: BoardBundleInput): Promise<Board
       if (isExistingTarget(error)) throw new Error(`Board invocation already exists (${boardName}); choose a new --invocation-id`);
       throw error;
     }
-    result = { directory, entrypoint, manifest };
+    result = { directory, entrypoint, manifest, projectSupportIncluded: showProjectSupport };
   } catch (error) {
     failure = error;
     failed = true;

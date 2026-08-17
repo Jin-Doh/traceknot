@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { closeSync, openSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -83,6 +83,30 @@ describe("storage retention", () => {
       await symlink(stateDir, join(aliasParent, "state-link"), "dir");
       await expect(inspectStorage({ stateDir, artifactDir, now: NOW })).rejects.toThrow("artifact directory must not be nested beneath state runs directory");
     } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  test("rejects writable storage roots before inventory or deletion", async () => {
+    const { state, artifacts } = await fixture();
+    await chmod(state, 0o777);
+    await expect(pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true })).rejects.toThrow("storage root must not be group- or world-writable");
+  });
+  test("rejects roots reached through symlinked lexical ancestors", async () => {
+    const root = await mkdtemp(join(tmpdir(), "traceknot-retention-lexical-"));
+    const target = join(root, "target");
+    const aliasParent = join(root, "alias-parent");
+    const alias = join(aliasParent, "target-link");
+    const state = join(alias, "state");
+    const artifacts = join(alias, "artifacts");
+    try {
+      await mkdir(join(target, "state"), { recursive: true });
+      await mkdir(join(target, "artifacts"), { recursive: true });
+      await mkdir(aliasParent);
+      await symlink(target, alias, "dir");
+      await chmod(aliasParent, 0o1777);
+      await expect(pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true })).rejects.toThrow("storage path must contain only real directories");
+    } finally {
+      await chmod(aliasParent, 0o700).catch(() => undefined);
       await rm(root, { recursive: true, force: true });
     }
   });
