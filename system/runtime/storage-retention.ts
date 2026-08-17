@@ -2,7 +2,7 @@ import { constants, type Dirent, writeSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, readdir, readFile, realpath } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
-import { ARTIFACT_CANONICAL_LOCK_FILE, ArtifactNotFoundError, assertSecureRoot, closeSecureDescriptor, closeSecureRoot, openOrCreateSecureDirectoryPath, openSecureDirectory, openSecureRoot, readSecureRegularFile, secureFlock, secureFsync, secureOpenAt, secureRenameAt, secureRmdirAt, secureUnlinkAt, STORAGE_MAINTENANCE_LOCK_FILE, type SecureRootDescriptor } from "./local-artifact-store";
+import { ARTIFACT_CANONICAL_LOCK_FILE, ArtifactNotFoundError, assertPrivateRootPath, assertSecureRoot, closeSecureDescriptor, closeSecureRoot, openOrCreateSecureDirectoryPath, openSecureDirectory, openSecureRoot, readSecureRegularFile, secureFlock, secureFsync, secureOpenAt, secureRenameAt, secureRmdirAt, secureUnlinkAt, STORAGE_MAINTENANCE_LOCK_FILE, type SecureRootDescriptor } from "./local-artifact-store";
 import { assertCanonicalRun } from "./verification-run";
 
 const DIGEST = /^[0-9a-f]{64}$/;
@@ -941,6 +941,7 @@ async function acquireLock(rootPath: string, coordinateArtifactStore = false): P
   let lockFd: number | undefined;
   let artifactLockFd: number | undefined;
   try {
+    assertPrivateRootPath(root);
     assertSecureRoot(root);
     const acquiredFd = secureOpenAt(root.fd, STORAGE_MAINTENANCE_LOCK_FILE, constants.O_RDWR | constants.O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600);
     lockFd = acquiredFd;

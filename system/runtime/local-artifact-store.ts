@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { constants, fstatSync, futimesSync, readSync, realpathSync, statSync, writeSync } from "node:fs";
+import { constants, fstatSync, futimesSync, lstatSync, readSync, realpathSync, statSync, writeSync } from "node:fs";
 import { open, type FileHandle } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { dlopen, FFIType, read as ffiRead } from "bun:ffi";
@@ -28,6 +28,7 @@ type ArtifactLike = Artifact & Readonly<{ bytes?: ArtifactContent; data?: Artifa
 type Native = {
   symbols: {
     openat: (dirfd: number, path: Buffer, flags: number, mode: number) => number;
+    faccessat: (dirfd: number, path: Buffer, mode: number, flags: number) => number;
     mkdirat: (dirfd: number, path: Buffer, mode: number) => number;
     renameat: (oldfd: number, oldpath: Buffer, newfd: number, newpath: Buffer) => number;
     linkat: (oldfd: number, oldpath: Buffer, newfd: number, newpath: Buffer, flags: number) => number;
@@ -49,6 +50,7 @@ function loadNative(): Native | undefined {
   try {
     const loaded = dlopen(library, {
       openat: { args: [FFIType.i32, FFIType.cstring, FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+      faccessat: { args: [FFIType.i32, FFIType.cstring, FFIType.i32, FFIType.i32], returns: FFIType.i32 },
       mkdirat: { args: [FFIType.i32, FFIType.cstring, FFIType.i32], returns: FFIType.i32 },
       renameat: { args: [FFIType.i32, FFIType.cstring, FFIType.i32, FFIType.cstring], returns: FFIType.i32 },
       unlinkat: { args: [FFIType.i32, FFIType.cstring, FFIType.i32], returns: FFIType.i32 },
@@ -63,6 +65,7 @@ function loadNative(): Native | undefined {
     return {
       symbols: {
         openat: symbols.openat,
+        faccessat: symbols.faccessat,
         mkdirat: symbols.mkdirat,
         renameat: symbols.renameat,
         linkat: symbols.linkat,
@@ -155,9 +158,9 @@ export async function openSecureRoot(rootDir: string): Promise<SecureRootDescrip
     handle = await open(candidate, DIRECTORY_FLAGS);
     const descriptorStat = fstatSync(handle.fd);
     if (!descriptorStat.isDirectory()) throw new ArtifactPathError("root directory must be a directory");
-    const pathStat = statSync(candidate);
-    if (pathStat.dev !== descriptorStat.dev || pathStat.ino !== descriptorStat.ino) throw new ArtifactPathError("root directory changed while opening");
     const canonical = realpathSync(candidate);
+    const canonicalStat = statSync(canonical);
+    if (canonicalStat.dev !== descriptorStat.dev || canonicalStat.ino !== descriptorStat.ino) throw new ArtifactPathError("root directory changed while opening");
     return { rootDir: candidate, canonical, fd: handle.fd, device: descriptorStat.dev, inode: descriptorStat.ino, handle };
   } catch (error) {
     await handle?.close().catch(() => undefined);
@@ -170,6 +173,27 @@ export function assertSecureRoot(root: SecureRootDescriptor): void {
   let pathStat;
   try { pathStat = statSync(root.rootDir); } catch (error) { throw new ArtifactPathError(`root directory changed: ${error instanceof Error ? error.message : String(error)}`); }
   if (pathStat.dev !== root.device || pathStat.ino !== root.inode) throw new ArtifactPathError("root directory changed");
+}
+
+export function assertPrivateRootPath(root: SecureRootDescriptor, label = "storage"): void {
+  const currentUid = process.geteuid?.();
+  let current = root.canonical;
+  let privateRoot = true;
+  for (;;) {
+    const info = lstatSync(current);
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new ArtifactPathError(`${label} path must contain only real directories`);
+    if (currentUid !== undefined && info.uid !== currentUid && info.uid !== 0) {
+      throw new ArtifactPathError(`${label} path must be owned by the current user or root`);
+    }
+    if (privateRoot && (info.mode & 0o022) !== 0) throw new ArtifactPathError(`${label} root must not be group- or world-writable`);
+    if (!privateRoot && (info.mode & 0o022) !== 0 && (info.mode & 0o1000) === 0) {
+      throw new ArtifactPathError(`${label} path must not contain group- or world-writable directories without the sticky bit`);
+    }
+    const parent = dirname(current);
+    if (parent === current) return;
+    current = parent;
+    privateRoot = false;
+  }
 }
 
 export async function closeSecureRoot(root: SecureRootDescriptor): Promise<void> {
@@ -204,8 +228,22 @@ function validateName(name: string): Buffer {
 }
 export function secureOpenAt(directoryFd: number, name: string, flags: number, mode = 0o600): number {
   const descriptor = check(native().symbols.openat(directoryFd, validateName(name), flags, mode), `open ${name}`);
-  if ((flags & constants.O_CREAT) !== 0) secureChmod(descriptor, mode);
-  return descriptor;
+  try {
+    if ((flags & constants.O_CREAT) !== 0) secureChmod(descriptor, mode);
+    return descriptor;
+  } catch (error) {
+    closeFd(descriptor);
+    throw error;
+  }
+}
+const AT_SYMLINK_NOFOLLOW = process.platform === "darwin" ? 0x20 : 0x100;
+
+export function secureEntryExistsAt(directoryFd: number, name: string): boolean {
+  const symbols = native().symbols;
+  if (symbols.faccessat(directoryFd, validateName(name), constants.F_OK, AT_SYMLINK_NOFOLLOW) === 0) return true;
+  const error = errnoFrom(symbols);
+  if (error === 2) return false;
+  throw new ArtifactPathError(`inspect ${name} failed (errno ${error})`);
 }
 export function secureMkdirAt(directoryFd: number, name: string, mode = 0o700): void {
   check(native().symbols.mkdirat(directoryFd, validateName(name), mode), `mkdir ${name}`);
@@ -248,12 +286,13 @@ export function openSecureRegularFile(rootFd: number, relativePath: string): num
   const parent = openSecureDirectory(rootFd, components.join("/"));
   try {
     const descriptor = check(native().symbols.openat(parent, cstring(name), FILE_FLAGS, 0), `open file ${name}`);
-    const descriptorStat = fstatSync(descriptor);
-    if (!descriptorStat.isFile()) {
+    try {
+      if (!fstatSync(descriptor).isFile()) throw new ArtifactPathError("artifact must be a regular file");
+      return descriptor;
+    } catch (error) {
       closeFd(descriptor);
-      throw new ArtifactPathError("artifact must be a regular file");
+      throw error;
     }
-    return descriptor;
   } finally {
     closeFd(parent);
   }
@@ -353,12 +392,14 @@ export function openOrCreateSecureDirectory(parentFd: number, name: string): num
 function openLock(rootFd: number): number {
   const n = native();
   const fd = check(n.symbols.openat(rootFd, cstring(ARTIFACT_CANONICAL_LOCK_FILE), constants.O_RDWR | constants.O_CREAT | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC, 0o600), "artifact lock open");
-  if (!fstatSync(fd).isFile()) {
+  try {
+    if (!fstatSync(fd).isFile()) throw new ArtifactPathError("artifact lock must be a regular file");
+    check(n.symbols.fchmod(fd, 0o600), "artifact lock permissions");
+    return fd;
+  } catch (error) {
     closeFd(fd);
-    throw new ArtifactPathError("artifact lock must be a regular file");
+    throw error;
   }
-  check(n.symbols.fchmod(fd, 0o600), "artifact lock permissions");
-  return fd;
 }
 async function withLock<T>(lockFd: number, operation: () => T): Promise<T> {
   await acquireSecureFlock(lockFd, LOCK_EX, "artifact store lock");

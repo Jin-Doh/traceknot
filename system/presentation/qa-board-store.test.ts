@@ -1,10 +1,11 @@
-import { mkdtemp, mkdir, readFile, readlink, readdir, rm, stat, symlink } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, readlink, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "bun:test";
 import type { QaBoardView } from "./qa-board";
 import { sha256 } from "./qa-board";
-import { writeQaBoardBundle } from "./qa-board-store";
+import { markProjectSupportSeen, verifyQaBoardBundleForOpen, writeQaBoardBundle } from "./qa-board-store";
 import { pruneStorage } from "../runtime/storage-retention";
 
 const SCREENSHOT_BYTES = new TextEncoder().encode("screenshot-bytes");
@@ -82,6 +83,85 @@ test("writes an immutable Board bundle and verifies screenshot bytes", async () 
     await fixture.cleanup();
   }
 });
+test("shows project support once and records only a local marker", async () => {
+  const fixture = await stateFixture();
+  try {
+    const input = { view: viewWithScreenshot(), stateDir: fixture.root, generatedAt: "2026-08-15T00:01:00Z", artifactReader: { readArtifact: async () => SCREENSHOT_BYTES } };
+    const first = await writeQaBoardBundle({ ...input, invocationId: "support-first" });
+    expect(first.projectSupportIncluded).toBe(true);
+    expect(await readFile(join(first.directory, "index.html"), "utf8")).toContain("Project support");
+    await markProjectSupportSeen(fixture.root);
+    await markProjectSupportSeen(fixture.root);
+    expect(await readFile(join(fixture.root, "presentation", "star-cta-v1.seen"), "utf8")).toBe("");
+    const second = await writeQaBoardBundle({ ...input, invocationId: "support-second" });
+    expect(second.projectSupportIncluded).toBe(false);
+    expect(await readFile(join(second.directory, "index.html"), "utf8")).not.toContain("Project support");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("fails closed when the support marker is a symlink", async () => {
+  const fixture = await stateFixture();
+  const attacker = await mkdtemp(join(tmpdir(), "traceknot-support-attacker-"));
+  try {
+    await mkdir(join(fixture.root, "presentation"), { mode: 0o700 });
+    await symlink(join(attacker, "marker"), join(fixture.root, "presentation", "star-cta-v1.seen"));
+    const result = await writeQaBoardBundle({ view: viewWithScreenshot(), stateDir: fixture.root, invocationId: "support-symlink", generatedAt: "2026-08-15T00:01:00Z", artifactReader: { readArtifact: async () => SCREENSHOT_BYTES } });
+    expect(result.projectSupportIncluded).toBe(false);
+    expect(await stat(join(attacker, "marker")).catch(() => undefined)).toBeUndefined();
+  } finally {
+    await fixture.cleanup();
+    await rm(attacker, { recursive: true, force: true });
+  }
+});
+test("fails closed without blocking when the support marker is a FIFO", async () => {
+  const fixture = await stateFixture();
+  try {
+    await mkdir(join(fixture.root, "presentation"), { mode: 0o700 });
+    const marker = join(fixture.root, "presentation", "star-cta-v1.seen");
+    const created = spawnSync("mkfifo", [marker]);
+    expect(created.status).toBe(0);
+    const result = await writeQaBoardBundle({ view: viewWithScreenshot(), stateDir: fixture.root, invocationId: "support-fifo", generatedAt: "2026-08-15T00:01:00Z", artifactReader: { readArtifact: async () => SCREENSHOT_BYTES } });
+    expect(result.projectSupportIncluded).toBe(false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+test("fails closed when the support marker is a directory", async () => {
+  const fixture = await stateFixture();
+  try {
+    await mkdir(join(fixture.root, "presentation", "star-cta-v1.seen"), { recursive: true, mode: 0o700 });
+    const result = await writeQaBoardBundle({ view: viewWithScreenshot(), stateDir: fixture.root, invocationId: "support-directory", generatedAt: "2026-08-15T00:01:00Z", artifactReader: { readArtifact: async () => SCREENSHOT_BYTES } });
+    expect(result.projectSupportIncluded).toBe(false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+
+test("rejects a writable state root even when it has the sticky bit", async () => {
+  const fixture = await stateFixture();
+  try {
+    for (const mode of [0o777, 0o1777]) {
+      await chmod(fixture.root, mode);
+      await expect(writeQaBoardBundle({ view: viewWithScreenshot(), stateDir: fixture.root, invocationId: `support-untrusted-root-${mode}`, generatedAt: "2026-08-15T00:01:00Z", artifactReader: { readArtifact: async () => SCREENSHOT_BYTES } })).rejects.toThrow("Board state root must not be group- or world-writable");
+    }
+  } finally {
+    await fixture.cleanup();
+  }
+});
+test("rejects a private state root below an untrusted ancestor", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "traceknot-board-parent-"));
+  const root = join(parent, "state");
+  try {
+    await mkdir(join(root, "runs", "run-1"), { recursive: true, mode: 0o700 });
+    await chmod(parent, 0o777);
+    await expect(writeQaBoardBundle({ view: viewWithScreenshot(), stateDir: root, invocationId: "support-untrusted-parent", generatedAt: "2026-08-15T00:01:00Z", artifactReader: { readArtifact: async () => SCREENSHOT_BYTES } })).rejects.toThrow("Board state path must not contain group- or world-writable directories without the sticky bit");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
 test("accepts the maximum invocation ID length", async () => {
   const fixture = await stateFixture();
   const invocationId = "a".repeat(128);
@@ -92,6 +172,19 @@ test("accepts the maximum invocation ID length", async () => {
     await fixture.cleanup();
   }
 });
+test("revalidates every published Board file before desktop exposure", async () => {
+  const fixture = await stateFixture();
+  try {
+    const result = await writeQaBoardBundle({ view: viewWithScreenshot(), stateDir: fixture.root, invocationId: "open-validation", generatedAt: "2026-08-15T00:01:00Z", artifactReader: { readArtifact: async () => SCREENSHOT_BYTES } });
+    await verifyQaBoardBundleForOpen(fixture.root, result);
+    await chmod(result.entrypoint, 0o600);
+    await writeFile(result.entrypoint, "replaced");
+    await expect(verifyQaBoardBundleForOpen(fixture.root, result)).rejects.toThrow("Board file changed before open: index.html");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 
 test("creates a separate immutable directory for each invocation", async () => {
   const fixture = await stateFixture();

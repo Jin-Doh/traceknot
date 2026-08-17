@@ -1,5 +1,5 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { mkdtemp, readdir, writeFile, readFile, rm, stat, symlink } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, writeFile, readFile, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
@@ -613,6 +613,38 @@ describe("traceknot verify CLI", () => {
     }
   });
 
+  test("rejects writable state roots and untrusted writable ancestors before persistence", async () => {
+    const fixtureValue = await fixture();
+    const parent = await mkdtemp(join(tmpdir(), "traceknot-cli-untrusted-parent-"));
+    const nestedState = join(parent, "state");
+    try {
+      await chmod(fixtureValue.state, 0o777);
+      const writableErrors: string[] = [];
+      expect(await runVerify(
+        ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest],
+        () => undefined,
+        text => writableErrors.push(text),
+      )).toBe(64);
+      expect(writableErrors.join("")).toContain("state-dir root must not be group- or world-writable");
+      expect(await readdir(fixtureValue.state)).toEqual([]);
+
+      await chmod(fixtureValue.state, 0o700);
+      await mkdir(nestedState, { mode: 0o700 });
+      await chmod(parent, 0o777);
+      const ancestorErrors: string[] = [];
+      expect(await runVerify(
+        ["--root", fixtureValue.root, "--state-dir", nestedState, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest],
+        () => undefined,
+        text => ancestorErrors.push(text),
+      )).toBe(64);
+      expect(ancestorErrors.join("")).toContain("state-dir path must not contain group- or world-writable directories without the sticky bit");
+      expect(await readdir(nestedState)).toEqual([]);
+    } finally {
+      await chmod(parent, 0o700).catch(() => undefined);
+      await Promise.all([fixtureValue.cleanup(), rm(parent, { recursive: true, force: true })]);
+    }
+  });
+
   test("runs a real Git repository command, persists, and supports report-only", async () => {
     const fixtureValue = await fixture();
     try {
@@ -679,6 +711,31 @@ describe("traceknot verify CLI", () => {
       expect(JSON.stringify(manifest)).not.toContain("raw-agent-session");
       expect(manifest.files.filter(file => file.role === "localized-view").map(file => file.path)).toEqual(["index.en.html", "index.ko.html", "index.zh-CN.html"]);
       expect(await readFile(join(boardDirectory, "index.html"), "utf8")).toContain('<html lang="zh-CN">');
+      expect(await stat(join(fixtureValue.state, "presentation", "star-cta-v1.seen")).catch(() => undefined)).toBeUndefined();
+    } finally {
+      await fixtureValue.cleanup();
+    }
+  });
+  test("marks support as seen only after a successful Board open", async () => {
+    const fixtureValue = await fixture();
+    try {
+      let openCalls = 0;
+      let markCalls = 0;
+      const runtime = {
+        openBoard: async (uri: string) => {
+          openCalls += 1;
+          expect(uri).toMatch(/^file:\/\//);
+          return "opened" as const;
+        },
+        markProjectSupportSeen: async (stateDir: string) => {
+          markCalls += 1;
+          expect(stateDir).toBe(fixtureValue.state);
+        },
+      };
+      const stdout: string[] = [];
+      expect(await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--board", "--open-board", "--no-notify"], text => stdout.push(text), () => undefined, runtime)).toBe(0);
+      expect(openCalls).toBe(1);
+      expect(markCalls).toBe(1);
     } finally {
       await fixtureValue.cleanup();
     }

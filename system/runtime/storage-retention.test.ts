@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { closeSync, openSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -85,6 +85,11 @@ describe("storage retention", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+  test("rejects writable storage roots before inventory or deletion", async () => {
+    const { state, artifacts } = await fixture();
+    await chmod(state, 0o777);
+    await expect(pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true })).rejects.toThrow("storage root must not be group- or world-writable");
   });
   test("inventory is deterministic and does not follow symlinks", async () => {
     const { state, artifacts } = await fixture();

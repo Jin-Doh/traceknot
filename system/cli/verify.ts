@@ -35,13 +35,13 @@ import {
   performRiskDiscovery,
 } from "../runtime/verification-run";
 import { captureGitSnapshotIdentity } from "../runtime/git-snapshot";
-import { ArtifactNotFoundError, closeSecureRoot, LocalArtifactStore, openSecureRoot, readSecureRegularFile, secureMkdirAt, secureRmdirAt } from "../runtime/local-artifact-store";
+import { ArtifactNotFoundError, assertPrivateRootPath, assertSecureRoot, closeSecureRoot, LocalArtifactStore, openSecureRoot, readSecureRegularFile, secureMkdirAt, secureRmdirAt } from "../runtime/local-artifact-store";
 import { LocalShellCollector, type ShellArtifactDeclaration } from "../runtime/local-shell-collector";
 import { pruneStorage } from "../runtime/storage-retention";
 import { FileVerificationRepository } from "../runtime/file-repository";
 import { buildQaBoardView, resolveQaBoardLocale, type QaBoardLocale } from "../presentation/qa-board";
 import { openBoard } from "../presentation/board-opener";
-import { writeQaBoardBundle } from "../presentation/qa-board-store";
+import { markProjectSupportSeen, verifyQaBoardBundleForOpen, writeQaBoardBundle } from "../presentation/qa-board-store";
 import { notifyBoard } from "../presentation/user-notifier";
 
 export const VERIFY_EXIT_CODES = Object.freeze({ PASS: 0, FAIL: 1, BLOCKED: 2, INCOMPLETE: 3, USAGE: 64, INTERNAL: 70 });
@@ -72,6 +72,10 @@ type ManifestCommand = Readonly<{
 }>;
 type VerifyManifest = Readonly<{ schemaVersion: "verification-manifest/v1"; obligations: readonly ManifestCommand[] }>;
 type CliOptions = Readonly<{ requestPath?: string; manifestPath?: string; rootDir: string; stateDir: string; artifactDir: string; automaticCacheMaintenance: boolean; runId?: string; invocationId?: string; expectedHead?: string; assuranceContext: AssuranceContext; format: "json" | "markdown"; reportOnly: boolean; board: boolean; boardLocale: QaBoardLocale; noNotify: boolean; openBoard: boolean; sessionId?: string; sessionHost: string; help: boolean }>;
+type BoardRuntime = Readonly<{
+  openBoard: typeof openBoard;
+  markProjectSupportSeen: typeof markProjectSupportSeen;
+}>;
 type CliReport = Readonly<{ schemaVersion: "traceknot-cli-report/v1"; assurance: Readonly<{ context: AssuranceContext; requiredIndependence: "separate-verification-context" | "independent-producer"; releaseStatus: "not-evaluated" | "satisfied" | "insufficient" }>; run: unknown; verdict: unknown; snapshot: Readonly<{ rootIdentity: string; snapshotId: string; head: string; dirty: boolean }>; documents?: unknown }>;
 export type TrustedProducerPolicy = Readonly<{
   schemaVersion: "trusted-producer-policy/v1";
@@ -478,18 +482,30 @@ async function canonicalizePath(path: string): Promise<string> {
     }
   }
 }
+async function assertPrivateExternalRoot(rootCanonical: string, directory: string, label: string): Promise<void> {
+  const opened = await openSecureRoot(directory);
+  try {
+    if (isInside(rootCanonical, opened.canonical)) fail(`${label} must be outside the Git repository root to keep snapshots stable`);
+    assertPrivateRootPath(opened, label);
+    assertSecureRoot(opened);
+  } finally {
+    await closeSecureRoot(opened);
+  }
+}
 async function assertExternalDirectory(rootDir: string, directory: string, label: string): Promise<void> {
   const rootCanonical = await realpath(rootDir);
   const directoryCanonical = await canonicalizePath(directory);
   if (isInside(rootCanonical, directoryCanonical)) fail(`${label} must be outside the Git repository root to keep snapshots stable`);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const info = await lstat(directory); if (!info.isDirectory() || info.isSymbolicLink()) fail(`${label} must be a real directory`);
+  await assertPrivateExternalRoot(rootCanonical, directory, label);
 }
 async function assertExistingExternalDirectory(rootDir: string, directory: string, label: string): Promise<void> {
   const rootCanonical = await realpath(rootDir);
   const directoryCanonical = await canonicalizePath(directory);
   if (isInside(rootCanonical, directoryCanonical)) fail(`${label} must be outside the Git repository root to keep snapshots stable`);
   const info = await lstat(directory); if (!info.isDirectory() || info.isSymbolicLink()) fail(`${label} must be a real directory`);
+  await assertPrivateExternalRoot(rootCanonical, directory, label);
 }
 const INVOCATION_COLLECTOR_PREFIX = ".collector-";
 type InvocationCollector = Readonly<{ store: LocalArtifactStore; close: () => Promise<void> }>;
@@ -816,7 +832,7 @@ async function maintainDefaultCache(options: CliOptions, stderr: (text: string) 
   }
 }
 
-async function generateBoardForResult(options: CliOptions, result: RunVerificationResult, stderr: (text: string) => void): Promise<void> {
+async function generateBoardForResult(options: CliOptions, result: RunVerificationResult, stderr: (text: string) => void, runtime: BoardRuntime = { openBoard, markProjectSupportSeen }): Promise<void> {
   if (!options.board) return;
   await maintainDefaultCache(options, stderr, [result.run.runId]);
   let published = false;
@@ -834,6 +850,7 @@ async function generateBoardForResult(options: CliOptions, result: RunVerificati
       artifactReader: artifactStore,
     });
     published = true;
+    if (!options.noNotify || options.openBoard) await verifyQaBoardBundleForOpen(options.stateDir, board);
     const boardUri = pathToFileURL(board.entrypoint).href;
     stderr(`Traceknot Board: ${boardUri}\n`);
     if (!options.noNotify) {
@@ -841,8 +858,11 @@ async function generateBoardForResult(options: CliOptions, result: RunVerificati
       if (notification === "failed") stderr("Traceknot Board: desktop notification failed\n");
     }
     if (options.openBoard) {
-      const opened = await openBoard(boardUri);
+      const opened = await runtime.openBoard(boardUri);
       if (opened === "failed") stderr("Traceknot Board: browser opener failed\n");
+      if (opened === "opened" && board.projectSupportIncluded) {
+        await runtime.markProjectSupportSeen(options.stateDir).catch(error => stderr(`Traceknot Board support marker unavailable: ${error instanceof Error ? error.message : String(error)}\n`));
+      }
     }
   } catch (error) {
     stderr(`Traceknot Board unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
@@ -863,7 +883,7 @@ async function loadReport(repository: FileVerificationRepository, runId: string,
   return { schemaVersion: "traceknot-cli-report/v1", assurance: assuranceFor(request as VerificationRequest, verdict, documents.plan), run, verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents };
 }
 
-export async function runVerify(argv: readonly string[], stdout: (text: string) => void = text => process.stdout.write(text), stderr: (text: string) => void = text => process.stderr.write(text)): Promise<number> {
+export async function runVerify(argv: readonly string[], stdout: (text: string) => void = text => process.stdout.write(text), stderr: (text: string) => void = text => process.stderr.write(text), runtime: BoardRuntime = { openBoard, markProjectSupportSeen }): Promise<number> {
   let options: CliOptions;
   try { options = parseArgs(argv); } catch (error) { stderr(`${String(error instanceof Error ? error.message : error)}\n${usage()}\n`); return VERIFY_EXIT_CODES.USAGE; }
   if (options.help) { stdout(`${usage()}\n`); return VERIFY_EXIT_CODES.PASS; }
@@ -908,7 +928,7 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
       const freshnessAuthority = { atomicSameKeyIdempotency: true as const, issueFreshnessAuthority: async (binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["issueFreshnessAuthority"]>>[0]) => freshnessAuthorityFor(binding), verifyFreshnessAuthority: async (authority: FreshnessAuthority, binding: Parameters<NonNullable<VerificationRunDependencies["freshnessAuthority"]["verifyFreshnessAuthority"]>>[1]) => authority.issuer === "traceknot-cli" && canonicalizeJson(authority.binding) === canonicalizeJson(binding) };
       const dependencies: VerificationRunDependencies = { repository, executor: {}, artifactStore: {}, capabilityProvider: { has: () => false }, executionAuthority, freshnessPolicy: { evaluateFreshness: () => "unknown" }, freshnessAuthority, snapshotVerifier: async () => { const current = await captureGitSnapshotIdentity(options.rootDir); return current.rootIdentity === persistedRequest.project.rootIdentity && current.snapshotId === persistedRequest.project.snapshotId; }, now: () => new Date() };
       const result = await validatePersistedVerificationRun({ runId, request: persistedRequest, dependencies });
-      await generateBoardForResult(options, result, stderr);
+      await generateBoardForResult(options, result, stderr, runtime);
       const report: CliReport = { schemaVersion: "traceknot-cli-report/v1", assurance: assuranceFor(persistedRequest, result.verdict, result.documents.plan), run: result.run, verdict: result.verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: result.documents };
       stdout(reportOutput(report, options.format));
       return exitForVerdict(result.verdict);
@@ -936,7 +956,7 @@ export async function runVerify(argv: readonly string[], stdout: (text: string) 
     }
     const dependenciesResult = await makeDependencies(options, request, manifest, repository, snapshot.snapshotId, trustedPolicy); stores = dependenciesResult;
     const result = await runVerification({ runId, request, dependencies: dependenciesResult.dependencies });
-    await generateBoardForResult(options, result, stderr);
+    await generateBoardForResult(options, result, stderr, runtime);
     const report: CliReport = { schemaVersion: "traceknot-cli-report/v1", assurance: assuranceFor(request, result.verdict, result.documents.plan), run: result.run, verdict: result.verdict, snapshot: { rootIdentity: snapshot.rootIdentity, snapshotId: snapshot.snapshotId, head: snapshot.headCommit, dirty: snapshot.dirty }, documents: result.documents };
     stdout(reportOutput(report, options.format));
     return exitForVerdict(result.verdict);
