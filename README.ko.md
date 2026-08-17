@@ -21,6 +21,7 @@
 <p align="center">
   <a href="https://github.com/Jin-Doh/traceknot/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Jin-Doh/traceknot/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/Jin-Doh/traceknot/releases"><img alt="최신 릴리스" src="https://img.shields.io/github/v/release/Jin-Doh/traceknot"></a>
+  <a href="https://www.skills.sh/jin-doh/traceknot/traceknot"><img alt="Skills 설치 수" src="https://skills.sh/b/jin-doh/traceknot"></a>
   <a href="LICENSE"><img alt="MIT 라이선스" src="https://img.shields.io/github/license/Jin-Doh/traceknot"></a>
 </p>
 
