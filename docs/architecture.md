@@ -1,6 +1,6 @@
 # Traceknot architecture
 
-Traceknot separates portable test-process guidance, deterministic QA decisions, and optional harness completion authority. That separation keeps the ordinary Skill usable without granting it control over agents or host lifecycle.
+Traceknot separates the canonical Skill bundle, deterministic QA decisions, and optional harness completion authority. The canonical Skill bundle includes the QA workflow, generated `skill/bin/traceknot` executable, shared Board renderer, and references; Bun is required to run the generated CLI.
 
 ## System boundary
 
@@ -25,7 +25,7 @@ flowchart LR
     H -. optional and separately authorized .-> Q[Completion-authority extension]
 ```
 
-The Skill declares what must be verified and which evidence is sufficient. The harness decides how to execute work. The core validates records and resolves a verdict. None of those portable surfaces establish global harness completion.
+The Skill declares what must be verified and which evidence is sufficient. The harness decides how to execute work. The core validates records and resolves a verdict. The canonical Skill and CLI surfaces never establish global harness completion.
 
 ## Responsibility split
 
@@ -43,11 +43,9 @@ Lifecycle events are observations. A task ending, queue becoming idle, or hook f
 
 ### Traceknot Skill
 
-`skill/` contains the portable ISTQB-aligned workflow. It covers test basis, risk classification, universal trigger scanning, bounded adversarial discovery, test design, entry and exit criteria, evidence, defect lifecycle, traceability, residual risk, and completion reporting.
+`skill/` contains the canonical ISTQB-aligned workflow, generated `skill/bin/traceknot` CLI (built from root `bin/traceknot`), Board renderer, and references. It covers test basis, risk classification, universal trigger scanning, bounded adversarial discovery, test design, entry and exit criteria, evidence, defect lifecycle, traceability, residual risk, and completion reporting.
 
-The portable Skill is a closed Markdown artifact. Its artifact boundary is checked by `bun scripts/check-skill-egress.ts`; the checker rejects executable files, symlinks, special filesystem entries, and paths outside the approved Skill tree. This is a static supply-chain boundary, not a runtime network sandbox.
-
-The Skill has no runtime dependency on `system/`. Installation through the Skills CLI is sufficient for the evidence-only workflow.
+The Skills CLI copies the complete `skill/` tree and preserves the executable mode of `skill/bin/traceknot`. After a global install, invoke `$HOME/.agents/skills/traceknot/bin/traceknot`; after a project-local install, invoke `.agents/skills/traceknot/bin/traceknot` from the project root. `npx skills add Jin-Doh/traceknot --skill traceknot` and `npx skills update traceknot` are the canonical installation lifecycle; `bun run build:skill-runtime` generates the bundle and `bun run check:skill-runtime` rejects drift. Bun 1.3.14 or later is an explicit runtime prerequisite for the generated CLI.
 
 ### Traceknot records
 
@@ -79,15 +77,15 @@ The core always emits `authoritative: false`. It does not orchestrate reviewers,
 
 A host or model name grants no capability. Profile selection follows the handshake, not branding.
 
-The Codex adapter exposes a capability-record discovery primitive, not a native Codex transport. Without a handshake it loads the checked-in all-false manifest. For each discovery the adapter creates a non-repeating challenge. A trusted native integration may answer with an envelope bound to the host, session, snapshot, producer, challenge, validity window, explicit maximum lifetime, and capability ceiling. The portable adapter rejects mismatched, stale, replayed, malformed, overlong, or over-privileged envelopes.
+The Codex adapter exposes a capability-record discovery primitive, not a native Codex transport. Without a handshake it loads the checked-in all-false manifest. For each discovery the adapter creates a non-repeating challenge. A trusted native integration may answer with an envelope bound to the host, session, snapshot, producer, challenge, validity window, explicit maximum lifetime, and capability ceiling. The adapter rejects mismatched, stale, replayed, malformed, overlong, or over-privileged envelopes.
 
 The Claude Code adapter uses the same canonical envelope and rejection semantics with a distinct `claude-code` host boundary. Hook events such as `Stop`, `TaskCompleted`, or `SubagentStop` remain observations and cannot stand in for a trusted producer or accepted evidence.
 
 ### Universal Board publication
 
-Board publication has one host-neutral policy: publication is required by default, `--no-board` is the only explicit opt-out, and missing host capabilities produce a reported `unavailable` state. The shared runtime policy requires `executeCommands`, `bindSnapshot`, and `persistEvidence`.
+Board publication has one host-neutral policy: publication is attempted by default, `--no-board` is the only explicit opt-out, and missing session or persistence prerequisites produce a reported `unavailable` state. The canonical interface is `$HOME/.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]` with `traceknot-session-board-update/v1`; for a project-local install use `.agents/skills/traceknot/bin/traceknot` instead. The shared runtime policy requires `executeCommands`, `bindSnapshot`, and `persistEvidence`.
 
-OMP, Codex, Claude Code, OpenCode, and GajaeCode adapters all use the same nonce-bound capability handshake and static all-false fallback. An adapter may advertise a capability only through a current handshake bound to the host, session, producer, and snapshot. The adapter provides host execution and persistence; the Skill and runtime provide policy, status, and report semantics.
+Publication derives `s-<sha256(sessionHost + NUL + sessionId)>`, stores immutable revisions below `sessions/<session-key>/boards/<sourceRevision>-<invocationId>/`, and uses one fsynced `current` selector rename to atomically switch stable `index.html`, `manifest.json`, and `current.json` links to the same revision. The URI is printed only after read-back validation. The Board is always `authoritative: false`; the input view is presentation data and never evidence. Retention uses `boardMaxPerSession` and protects the selected current revision, explicit pins, and the newest terminal checkpoint; superseded active revisions remain reclaimable.
 
 ### Independent execution completion
 
@@ -152,6 +150,6 @@ The extension is disabled by policy and reports `phase1Authorized: false`. Activ
 - A missing, cancelled, timed-out, or incomplete mandatory result is never PASS.
 - Discovery findings distinguish missing coverage, source candidates, and confirmed defects.
 - Risk acceptance requires an accountable owner, reason, mitigation, evidence, and expiry.
-- Portable verdicts remain non-authoritative with respect to harness completion.
+- QA verdicts and Boards remain non-authoritative with respect to harness completion; Boards additionally remain `authoritative: false`.
 
 See the [QA process](qa-process.md) for execution semantics and the [trust model](trust-model.md) for evidence and authority boundaries.

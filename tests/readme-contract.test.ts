@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { checkOperationalCommandBlocks, checkPublicationInventory, checkReadmeBoundaries, checkReadmeDocumentationLinks, checkReadmeLanguageNavigation, checkReadmeLocalLinks, checkReadmeSections, checkReadmeSharedCommands } from "../scripts/check-readme-contract";
+
+const root = resolve(import.meta.dir, "..");
+const localizedReadmes = [
+  readFileSync(resolve(root, "README.md"), "utf8"),
+  readFileSync(resolve(root, "README.ko.md"), "utf8"),
+  readFileSync(resolve(root, "README.zh.md"), "utf8"),
+] as const;
 
 const sections = [
   "hero",
@@ -295,5 +304,28 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeSharedCommands([{ path: "README.md", content: malformed }])).toThrow(
       "must be followed by a fenced block",
     );
+  });
+  test("requires one canonical Skill payload and update lifecycle in every locale", () => {
+    for (const content of localizedReadmes) {
+      expect(content).toContain("npx skills add Jin-Doh/traceknot --skill traceknot --global");
+      expect(content).toContain("npx skills update traceknot --global --yes");
+      expect(content).toContain("skill/bin/traceknot");
+      expect(content).toContain("$HOME/.agents/skills/traceknot/bin/traceknot");
+      expect(content).toMatch(/(?:^|[\s`])\.agents\/skills\/traceknot\/bin\/traceknot/);
+      expect(content).toContain("Traceknot Board: file://.../sessions/<session-key>/index.html");
+      expect(content).toContain("Bun 1.3.14");
+      const rendered = content.replace(/<!--[\s\S]*?-->/gu, "");
+      expect(rendered).not.toMatch(/Skills-only|Skill-only|portable Skill|Portable Skill|full-toolkit/iu);
+      expect(content).toContain("bun run build:skill-runtime");
+      expect(content).toContain("bun run check:skill-runtime");
+      expect(rendered).not.toMatch(/Portable Board (?:status|location|manifest|publisher|authority|limitation)/iu);
+    }
+  });
+
+  test("documents the legacy curl path only as an optional launcher", () => {
+    const canonical = localizedReadmes[0];
+    expect(canonical).toContain("optional launcher/bootstrap");
+    expect(canonical).toContain("does not define a separate Skill payload");
+    expect(canonical).toContain("npx skills add`/`npx skills update");
   });
 });

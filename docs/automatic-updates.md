@@ -2,9 +2,12 @@
 
 ## Decision summary
 
-Traceknot enables delayed automatic update checks by default, with an explicit installation-time and runtime opt-out. It never updates directly from `main`. The updater may install only an immutable, tagged release whose exact artifact has been observed for more than seven complete days and whose signed provenance and digest verify successfully.
+The canonical Skill lifecycle is managed by the Skills CLI:
 
-The seven-day delay is a safety buffer, not a trust mechanism. Release immutability, artifact provenance, digest verification, atomic activation, and rollback remain mandatory.
+```sh
+npx skills add Jin-Doh/traceknot --skill traceknot --global
+npx skills update traceknot --global --yes
+```
 
 The Skills CLI owns the canonical Skill lifecycle and uses `npx skills update`. The optional `install.sh` path manages only user-local prefix files and never creates or retargets a Skills CLI registration; it may remove only a legacy symlink that points into the same prefix. Both installations may coexist.
 
@@ -71,7 +74,7 @@ Both clocks are required:
 
 `trustedNow` and `firstSeenAt` come from the authenticated GitHub API response `Date` header, not the local wall clock. Automatic application requires an online time observation from the approved GitHub origin. A missing, malformed, stale, or locally inconsistent server time blocks application. The stored `firstSeenAt` is append-only for a manifest digest; it can never move earlier. The updater also records local monotonic elapsed time while a boot session remains available, but never uses local time alone to grant eligibility.
 
-The boundary is strict: 604800 elapsed seconds remains ineligible; the first later representable instant is eligible. All persisted instants use canonical UTC RFC 3339. The updater must calendar-parse them and reject impossible dates even when the schema's portable lexical pattern matches.
+The boundary is strict: 604800 elapsed seconds remains ineligible; the first later representable instant is eligible. All persisted instants use canonical UTC RFC 3339. The updater must calendar-parse them and reject impossible dates even when the schema's lexical pattern matches.
 
 Prereleases, drafts, deleted releases, mutable releases, and releases without valid provenance are ineligible. The initial implementation should follow the latest eligible stable release, not simply GitHub's `latest` pointer.
 

@@ -31,7 +31,7 @@
   <a href="https://github.com/Jin-Doh/traceknot">GitHub에서 Star</a>
 </p>
 
-Traceknot(트레이스노트)은 OMP, Codex, Claude Code, OpenCode, GajaeCode 같은 코딩 에이전트 하네스를 위한 ISTQB 기반 QA 프레임워크입니다. Portable Skill은 테스트 절차를 정의하고, 선택 사항인 호스트 중립 코어는 표준 기록을 검증해 판정을 계산합니다.
+Traceknot(트레이스노트)은 OMP, Codex, Claude Code, OpenCode, GajaeCode 같은 코딩 에이전트 하네스를 위한 ISTQB 기반 QA 프레임워크입니다. 정식 Skill bundle에는 테스트 절차, 생성된 `traceknot` CLI, 공통 Board renderer가 들어 있으며 호스트 중립 코어는 표준 기록을 검증해 판정을 계산합니다.
 
 Traceknot은 에이전트를 조율하지 않습니다. 모델, 작업 그래프, 병렬 실행, 재시도, worktree, lifecycle, 최종 delivery는 하네스가 관리합니다. Traceknot이 맡는 것은 QA입니다. 무엇을 검증해야 하는지, 어떤 증거를 인정할지, 어떤 위험이 남았는지, 그 결과 어떤 판정을 내려야 하는지를 정의합니다.
 
@@ -43,7 +43,7 @@ Proof-carrying success는 네 층을 구분합니다. Observation은 사실을 �
 
 ## 빠른 시작
 
-Node.js 22.20 이상에서 portable Skill을 설치합니다.
+Node.js 22.20 이상과 Bun 1.3.14 이상에서 정식 Skill bundle을 설치합니다. 생성된 CLI를 실행하려면 Bun이 필요합니다.
 
 <!-- shared-command:skill-install -->
 
@@ -59,7 +59,7 @@ npx skills add Jin-Doh/traceknot --skill traceknot --global
 작업 완료 여부와 구분해서 보고해 줘.
 ```
 
-Skill은 독립 실행형입니다. 선택 사항인 TypeScript 코어가 없어도 evidence-only workflow 전체를 실행할 수 있습니다.
+Skill bundle은 문서화된 workflow에 필요한 내용을 자체 포함합니다. 저장소의 `bin/traceknot`에서 생성된 `skill/bin/traceknot`와 참조 문서를 포함하므로 Bun 외에 별도 runtime 설치가 필요하지 않습니다.
 
 <!-- readme-section:why -->
 
@@ -135,27 +135,28 @@ FAIL → BLOCKED → INCOMPLETE → PASS_WITH_ACCEPTED_RISK → PASS
 
 | 영역 | 상태와 경계 |
 |---|---|
-| Portable ISTQB 기반 Skill | **사용 가능.** Core에 의존하지 않는 evidence-only workflow |
+| 정식 ISTQB 기반 Skill bundle | **사용 가능.** evidence-only workflow, 생성된 `skill/bin/traceknot` CLI, Board renderer 포함 |
 | 표준 QA record schema | **사용 가능.** JSON Schema Draft 2020-12 폐쇄형 계약 |
 | Proof-carrying evidence record | **사용 가능.** Observation, claim, evaluation, success criterion, traceability, verification run 계약 |
 | 호스트 중립 verdict core | **사용 가능.** 항상 `authoritative: false` 출력 |
 | 공통 capability model과 manifest | **사용 가능.** 하나의 닫힌 9-field model이 v2 manifest와 runtime discovery를 함께 규율하며, 정적 host 이름은 capability를 부여하지 않음 |
-| 사용자 영역 전체 Toolkit installer와 updater | **사용 가능.** GitHub release artifact, digest, provenance 검증 |
-| End-to-end `traceknot verify` CLI | **사용 가능.** 검증된 명시적 명령 manifest, snapshot-bound evidence, 내구성 있는 resume/report, JSON 또는 Markdown 출력 |
+| 정식 session QA Board | **사용 가능.** `$HOME/.agents/skills/traceknot/bin/traceknot board update`가 immutable session revision과 stable `index.html`/`manifest.json`/`current.json`을 발행하고 보존 정책을 적용 |
+| Skills CLI 설치 및 업데이트 | **사용 가능.** `npx skills add Jin-Doh/traceknot --skill traceknot`와 `npx skills update traceknot`가 동일한 완전한 Skill payload를 복사 |
+| 선택적 legacy launcher/bootstrap | **사용 가능.** 필요한 환경을 위한 curl entrypoint이며 별도 feature tier가 아님 |
 | 재사용 가능한 governed GitHub Action | **사용 가능.** 분리된 lifecycle/verdict check, fail-closed required 집계, canonical artifact 보존, job summary, 선택적 SARIF 업로드 |
 | 결정론적 1.0 release benchmark | **사용 가능.** Proof verdict, cache boundary·integrity, unavailable usage 정직성을 오차 없이 hard gate로 검증하며 provider 효율 증거로 사용하지 않습니다 |
 | OMP, Codex, Claude Code, OpenCode, GajaeCode native adapter | **미구현.** Codex와 Claude Code capability envelope 검증 primitive는 제공하지만 native transport나 invocation은 제공하지 않음. 호스트 이름만으로 capability가 생기지 않음 |
 | 하네스 완료 권한 | **기본 비활성.** 선택적 extension이며 `phase1Authorized: false` |
 | npm package 또는 전용 Skill registry 등록 | **제공하지 않음.** Skills CLI의 GitHub 직접 설치는 사용 가능 |
 
-Portable Skill과 호스트 중립 코어는 지금 사용할 수 있습니다. 하네스 완료를 확정할 권한은 별도 통합 과제로 남아 있습니다.
+정식 Skill bundle과 호스트 중립 코어는 지금 사용할 수 있습니다. 하네스 완료를 확정할 권한은 별도 통합 과제로 남아 있습니다.
 
 ## Verify CLI
 
-`traceknot verify`는 검증된 명시적 명령 manifest를 로컬 collector로 실행하고 VerificationRun checkpoint를 원자적으로 저장합니다. 실행 상태와 content-addressed artifact는 기본적으로 저장소 밖의 사용자 cache에 저장되므로 검증 중인 Git snapshot을 바꾸지 않습니다.
+`$HOME/.agents/skills/traceknot/bin/traceknot verify`는 검증된 명시적 명령 manifest를 로컬 collector로 실행하고 VerificationRun checkpoint를 원자적으로 저장합니다. 실행 상태와 content-addressed artifact는 기본적으로 저장소 밖의 사용자 cache에 저장되므로 검증 중인 Git snapshot을 바꾸지 않습니다.
 
 ```sh
-traceknot verify --request request.json --manifest manifest.json --root .
+$HOME/.agents/skills/traceknot/bin/traceknot verify --request request.json --manifest manifest.json --root .
 ```
 
 요청은 현재 Git의 `rootIdentity`와 `snapshotId`를 지정해야 하며, 두 필드 모두 리터럴 `auto`를 사용할 수 있습니다. `verification-manifest/v1` manifest는 생성된 각 obligation에 절대 경로 executable과 argument 배열, 절대 경로 `executionCompletionPath`, 또는 둘 다를 연결합니다. Shell 문자열 보간은 거부됩니다.
@@ -247,10 +248,10 @@ Legacy launcher는 선택 사항이며 `npx skills add`/`npx skills update`를 �
 | 증거, capability, 권한, 보안 경계 | [Trust model](docs/trust-model.md) |
 | 정적 QA Board, 저장소 점검, 보존, 정리 | [QA Board](docs/qa-board.md) |
 | 번역 책임과 동기화 규칙 | [다국어 문서 관리](docs/localization.md) |
-| 전체 Toolkit updater 정책과 복구 | [자동 업데이트](docs/automatic-updates.md) |
+| launcher updater 정책과 복구 | [자동 업데이트](docs/automatic-updates.md) |
 | 결정론적 1.0 quality, cache, token-accounting gate | [Release readiness](docs/release-readiness.md) |
 | 보안 분석과 잔여 위험 | [보안 분석](docs/security-analysis.md) |
-| 실행 가능한 portable workflow | [Skill 명세](skill/SKILL.md) |
+| 실행 가능한 Skill workflow | [Skill 명세](skill/SKILL.md) |
 | 이름, 목소리, 색상, artwork | [브랜드 시스템](BRAND.ko.md) |
 
 <!-- readme-section:development -->
@@ -267,6 +268,8 @@ bun run ci
 ```
 
 이 gate는 installer lifecycle, schema, capability record, prompt-injection 위험, 게시 산문, 결정론적 1.0 release benchmark, 테스트, strict TypeScript, whitespace를 검증합니다. 마지막에는 `bun run self-verify`가 실행되어, 재귀 호출 없이 캡처한 저장소 snapshot을 대상으로 Traceknot 자체를 통해 canonical gate를 검증합니다. 출력 report는 content cache의 cold miss와 warm hit 결과가 동일함을 증명하며, provider usage가 없을 때 token이나 cost를 0으로 꾸며내지 않고 unavailable로 보고합니다. Byte-stable quality/cache/token-accounting conformance report는 `bun run benchmark:release`로, 한국어·영어·명시적으로 매핑한 간체 중국어 게시 산문의 advisory report는 `bun run prose-quality`로 확인할 수 있습니다.
+
+배포용 CLI는 `bin/traceknot`에서 `bun run build:skill-runtime`으로 결정론적으로 생성합니다. 생성 bundle의 drift는 `bun run check:skill-runtime`으로 거부합니다. 생성 실행 파일은 `skill/bin/traceknot`이며 Bun 1.3.14 이상이 필요합니다.
 
 보안 관련 finding에는 구체적인 예상 결과와 관찰 결과, 재현 방법, 대상 snapshot, 잔여 위험을 포함해야 합니다. 에이전트가 스스로 완료했다고 보고한 내용은 검증 증거로 취급하지 않습니다.
 

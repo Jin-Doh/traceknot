@@ -31,7 +31,7 @@
   <a href="https://github.com/Jin-Doh/traceknot">Star on GitHub</a>
 </p>
 
-Traceknot is an ISTQB-aligned QA framework for coding-agent harnesses such as OMP, Codex, Claude Code, OpenCode, and GajaeCode. Its portable Skill defines the test process; its optional host-neutral core validates canonical records and resolves verdicts.
+Traceknot is an ISTQB-aligned QA framework for coding-agent harnesses such as OMP, Codex, Claude Code, OpenCode, and GajaeCode. Its canonical Skill bundle contains the test process, the generated `traceknot` CLI, and the shared Board renderer; the host-neutral core validates canonical records and resolves verdicts.
 
 Traceknot does not orchestrate agents. The host still owns models, task graphs, concurrency, retries, worktrees, lifecycle, and final delivery. Traceknot owns the QA question: what must be verified, which evidence is acceptable, what remains at risk, and which verdict follows.
 
@@ -43,7 +43,7 @@ Proof-carrying success keeps four layers distinct: an Observation records facts,
 
 ## Quick start
 
-Install the portable Skill with Node.js 22.20 or later:
+Install the canonical Skill bundle with Node.js 22.20 or later and Bun 1.3.14 or later. Bun is required to run the bundled executable.
 
 <!-- shared-command:skill-install -->
 
@@ -59,7 +59,7 @@ mandatory obligations, observed evidence, defects, residual risk,
 and final QA verdict separately from task completion.
 ```
 
-The Skill is self-contained. It can run the complete evidence-only workflow without the optional TypeScript core.
+The Skill bundle is self-contained for the documented workflow. It includes `skill/bin/traceknot`, generated from the repository's `bin/traceknot`, and its references; no separate runtime installation is required beyond Bun.
 
 <!-- readme-section:why -->
 
@@ -135,27 +135,28 @@ Use Traceknot for implementation verification, bug-fix confirmation, release che
 
 | Surface | Status and boundary |
 |---|---|
-| Portable ISTQB-aligned Skill | **Available.** Evidence-only workflow; no core dependency |
+| Canonical ISTQB-aligned Skill bundle | **Available.** Includes the evidence-only workflow, generated `skill/bin/traceknot` CLI, and Board renderer |
 | Canonical QA record schemas | **Available.** Closed JSON Schema Draft 2020-12 contracts |
 | Proof-carrying evidence records | **Available.** Observation, claim, evaluation, success-criterion, traceability, and verification-run contracts |
 | Host-neutral verdict core | **Available.** Emits `authoritative: false` |
 | Shared capability model and manifests | **Available.** One closed nine-field model governs v2 manifests and runtime discovery; static host names grant no capability |
-| User-local full-toolkit installer and updater | **Available.** GitHub release artifacts, digest, and provenance verification |
-| End-to-end `traceknot verify` CLI | **Available.** Validated explicit-command manifests, snapshot-bound evidence, durable resume/report, JSON or Markdown output |
+| Canonical session QA Board | **Available.** `$HOME/.agents/skills/traceknot/bin/traceknot board update` publishes immutable session revisions, stable `index.html`/`manifest.json`/`current.json`, and retention-protected current pointers |
+| Skills CLI installation and update | **Available.** `npx skills add Jin-Doh/traceknot --skill traceknot` and `npx skills update traceknot` copy the same complete Skill payload |
+| Optional legacy launcher/bootstrap | **Available.** Curl entrypoint for environments that need it; it is not a separate feature tier |
 | Reusable governed GitHub Action | **Available.** Separate lifecycle and verdict checks, fail-closed required aggregation, retained canonical artifacts, job summary, and optional SARIF upload |
 | Deterministic 1.0 release benchmark | **Available.** Zero-tolerance proof-verdict, cache-boundary, integrity, and honest unavailable-usage gates; not provider-efficiency evidence |
 | Native OMP, Codex, Claude Code, OpenCode, or GajaeCode adapters | **Not implemented.** Codex and Claude Code capability-envelope validation primitives are available, but they do not provide native transport or invocation. A host name alone grants no capability |
 | Harness completion authority | **Disabled by default.** Optional extension; `phase1Authorized: false` |
 | npm package or dedicated Skill-registry listing | **Not available.** Direct GitHub installation through the Skills CLI is available |
 
-The portable Skill and host-neutral core are usable now. Authoritative harness completion remains a separate integration project.
+The canonical Skill bundle and host-neutral core are usable now. Authoritative harness completion remains a separate integration project.
 
 ## Verify CLI
 
-`traceknot verify` executes a validated explicit-command manifest through the local collector and persists each VerificationRun checkpoint atomically. Run state and content-addressed artifacts default to an external user cache, so their writes do not change the Git snapshot under verification:
+`$HOME/.agents/skills/traceknot/bin/traceknot verify` executes a validated explicit-command manifest through the local collector and persists each VerificationRun checkpoint atomically. Run state and content-addressed artifacts default to an external user cache, so their writes do not change the Git snapshot under verification:
 
 ```sh
-traceknot verify --request request.json --manifest manifest.json --root .
+$HOME/.agents/skills/traceknot/bin/traceknot verify --request request.json --manifest manifest.json --root .
 ```
 
 The request must identify the current Git `rootIdentity` and `snapshotId`; either field may use the literal `auto`. A `verification-manifest/v1` manifest assigns each generated obligation either an absolute executable with an argument array, an absolute `executionCompletionPath`, or both. Shell-string interpolation is rejected.
@@ -247,10 +248,10 @@ The legacy launcher is optional; it never replaces `npx skills add`/`npx skills 
 | Evidence, capability, authority, and security boundaries | [Trust model](docs/trust-model.md) |
 | Static QA Board, storage inspection, retention, and cleanup | [QA Board](docs/qa-board.md) |
 | Translation ownership and synchronization | [Localization](docs/localization.md) |
-| Full-toolkit updater policy and recovery | [Automatic updates](docs/automatic-updates.md) |
+| Optional launcher updater policy and recovery | [Automatic updates](docs/automatic-updates.md) |
 | Deterministic 1.0 quality, cache, and token-accounting gates | [Release readiness](docs/release-readiness.md) |
 | Security analysis and residual risks | [Security analysis](docs/security-analysis.md) |
-| Portable executable workflow | [Skill specification](skill/SKILL.md) |
+| Executable Skill workflow | [Skill specification](skill/SKILL.md) |
 | Naming, voice, palette, and artwork | [Brand system](BRAND.md) |
 
 <!-- readme-section:development -->
@@ -267,6 +268,8 @@ bun run ci
 ```
 
 The gate validates installer lifecycle, schemas, capability records, prompt-injection risk, published prose, the deterministic 1.0 release benchmark, tests, strict TypeScript, and whitespace integrity. It finishes with `bun run self-verify`, which runs the canonical gate through Traceknot against the captured repository snapshot without recursively invoking itself. The emitted report proves cold-miss to warm-hit content-cache parity and reports unavailable provider usage without fabricating zero token or cost values. Run `bun run benchmark:release` for the byte-stable quality/cache/token-accounting conformance report, and `bun run prose-quality` for the advisory Korean, English, and explicitly mapped Simplified Chinese publication-prose report.
+
+The distributable CLI is generated deterministically from `bin/traceknot` with `bun run build:skill-runtime`; use `bun run check:skill-runtime` to reject generated-bundle drift. The generated executable is `skill/bin/traceknot` and requires Bun 1.3.14 or later.
 
 Security-sensitive findings should include a concrete expected result, observed result, reproduction, affected snapshot, and residual risk. Do not report an agent's own completion claim as verification evidence.
 
