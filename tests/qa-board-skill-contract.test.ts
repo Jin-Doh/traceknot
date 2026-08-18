@@ -6,6 +6,8 @@ const root = resolve(import.meta.dir, "..");
 const skill = readFileSync(resolve(root, "skill/SKILL.md"), "utf8");
 const boardReference = readFileSync(resolve(root, "skill/references/qa-board.md"), "utf8");
 const completionReport = readFileSync(resolve(root, "skill/references/completion-report.md"), "utf8");
+const boardDocs = readFileSync(resolve(root, "docs/qa-board.md"), "utf8");
+const readme = readFileSync(resolve(root, "README.md"), "utf8");
 
 const boardUpdateCommand = "traceknot board update";
 const requiredBoardFields = [
@@ -91,4 +93,15 @@ test("public documentation forbids split installation and Board modes", () => {
     expect(document).not.toMatch(/Skills-only|Skill-only|Portable Board|portable Skill|Portable Skill|full-toolkit/iu);
     expect(document).not.toMatch(/Portable Board (?:status|location|manifest|publisher|authority|limitation)/iu);
   }
+});
+
+test("public docs mirror the canonical Skill and Board contracts", () => {
+  expectCanonicalSkillPayload(readme);
+  expectCanonicalBoardInterface(boardDocs);
+  expect(boardDocs).toContain("The unavailable Board status does not change the QA verdict or evidence.");
+  for (const document of [boardDocs, readme]) {
+    expect(document).not.toMatch(/Skills-only|Skill-only|Portable Board|portable Skill|Portable Skill/iu);
+    expect(document).not.toMatch(/Portable Board (?:status|location|manifest|publisher|authority|limitation)/iu);
+  }
+  expect(boardDocs).not.toContain("full-toolkit");
 });
