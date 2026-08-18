@@ -34,11 +34,11 @@ Every bundle includes English, Korean, and Simplified Chinese views. The languag
 
 ## Portable Skill publication
 
-The portable Traceknot Skill carries the Board publication contract, but it does not assume that every host has the canonical CLI, secure state store, or file-persistence capability. Board publication is conditional:
+Every Traceknot QA run has Board publication enabled by default. The portable Skill attempts the canonical or host-integrated publisher without waiting for a separate user request.
 
 - use the canonical CLI publisher when it is available and the host advertises the required command and persistence capabilities;
-- report `unavailable` with the missing prerequisite when a requested Board cannot be published;
-- report `not-requested` when no Board was requested or required;
+- report `unavailable` with the missing prerequisite when a publisher cannot be used;
+- reserve `disabled` for an explicit `--no-board` or equivalent policy opt-out;
 - never fabricate a Board manifest, `file://` URI, run identity, or evidence from a chat completion.
 
 Portable Skill guidance is presentation-only. A Board remains `authoritative: false`; its status is reported separately from the QA verdict. See `skill/references/qa-board.md` and `skill/references/completion-report.md`.

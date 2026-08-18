@@ -4,7 +4,7 @@ A Traceknot QA Board is a static, non-authoritative presentation artifact. The c
 
 ## When to publish
 
-Publish a Board when the user requests one, the repository policy requires one, or the selected verification entrypoint explicitly enables Board output. Do not create a Board for every Skill-only QA run by default when the host has no Board publisher.
+Every Traceknot QA run has Board publication enabled by default. Do not wait for the user to request a Board. Attempt the canonical or host-integrated publisher whenever the host advertises the required command, snapshot-binding, and persistence capabilities.
 
 Before publication, establish all of the following:
 
@@ -14,7 +14,7 @@ Before publication, establish all of the following:
 - the publisher and its output location are trusted for the current run;
 - no Board field needs to be invented or inferred from an agent completion claim.
 
-A missing prerequisite is `unavailable` or `BLOCKED`, never a successful Board publication.
+A missing prerequisite produces `Board status: unavailable`; it is never a successful Board publication and never silently becomes `not-requested`.
 
 ## Publisher selection
 
@@ -22,9 +22,9 @@ Use the first available path:
 
 1. **Canonical CLI publisher:** run the repository or installed Traceknot verification entrypoint with Board generation enabled. Preserve its exact exit status, `Traceknot Board: file://...` output, run ID, and manifest path.
 2. **Host-provided publisher:** use a host-integrated publisher only when its capability handshake advertises command execution, snapshot binding, and evidence persistence for this run.
-3. **No publisher:** report `not-requested` when no Board was requested; otherwise report `unavailable` with the missing capability or command. Do not hand-author a canonical Board manifest or fabricate a `file://` URI.
+3. **No publisher:** report `unavailable` with the missing capability or command. Do not hand-author a canonical Board manifest or fabricate a `file://` URI.
 
-`--no-board` is an explicit publication decision. Record `disabled` when it was selected, even if verification otherwise passed.
+`--no-board` is an explicit publication opt-out. Record `disabled` when it was selected, even if verification otherwise passed. `not-requested` is reserved for reports that are explicitly outside the Traceknot QA Skill contract.
 
 ## Completion report fields
 

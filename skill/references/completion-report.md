@@ -20,13 +20,13 @@ Report the QA decision independently from harness task completion.
 14. Untested scope, unavailable evidence, and residual risk.
 15. Final QA verdict and rationale.
 16. Separate harness completion status when the host supplies it.
-17. Board publication status when a Board is requested, required by policy, or explicitly enabled.
+17. Board publication status for every Traceknot QA run.
 
-When Board publication is in scope, include this separate subsection:
+For every Traceknot QA run, include this separate subsection:
 
 ```text
-Board requested: yes | no
-Board status: generated | unavailable | disabled | not-requested
+Board requested: yes
+Board status: generated | unavailable | disabled
 Board URI: file://... | unavailable
 Board manifest: path | unavailable
 Board run ID: identifier | unavailable
@@ -34,7 +34,7 @@ Board publisher: canonical-cli | host-integrated | none
 Board limitation: reason | none
 ```
 
-`generated` requires observed entrypoint and manifest files. Preserve their exact paths and the exact observed URI. `unavailable`, `disabled`, and `not-requested` are publication outcomes, not QA verdicts. A Board MUST NOT be reported as evidence for an obligation, and Board publication failure MUST NOT change the QA verdict.
+`generated` requires observed entrypoint and manifest files. Preserve their exact paths and the exact observed URI. `unavailable` is the required result when no publisher or required capability exists; do not downgrade it to `not-requested`. `disabled` requires an explicit `--no-board` or equivalent policy opt-out. A Board MUST NOT be reported as evidence for an obligation, and Board publication failure MUST NOT change the QA verdict.
 
 For a significant UI change, include a separate **Visual-composition coverage** subsection in the conditions, evidence, and coverage portions of the report. It MUST state:
 

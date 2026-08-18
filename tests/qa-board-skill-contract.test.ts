@@ -8,22 +8,26 @@ const boardReference = readFileSync(resolve(root, "skill/references/qa-board.md"
 const completionReport = readFileSync(resolve(root, "skill/references/completion-report.md"), "utf8");
 const boardDocs = readFileSync(resolve(root, "docs/qa-board.md"), "utf8");
 
-test("portable Skill exposes conditional Board publication guidance", () => {
-  expect(skill).toContain("references/qa-board.md");
-  expect(skill).toContain("Board publication is separate from QA evaluation");
-  expect(boardReference).toContain("Board status: generated | unavailable | disabled | not-requested");
+test("portable Skill enables Board publication by default", () => {
+  expect(skill).toContain("Every Traceknot QA run has Board publication enabled by default");
+  expect(skill).toContain("It MUST NOT silently use `not-requested`");
+  expect(skill).toContain("`--no-board` is the explicit opt-out");
+  expect(boardReference).toContain("Every Traceknot QA run has Board publication enabled by default.");
+  expect(boardReference).toContain("A missing prerequisite produces `Board status: unavailable`");
   expect(boardReference).toContain("Do not hand-author a canonical Board manifest or fabricate a `file://` URI.");
   expect(boardReference).toContain("A Board publisher failure MUST NOT change a completed verification verdict.");
 });
 
-test("completion reports preserve Board publication separately from QA verdict", () => {
-  expect(completionReport).toContain("17. Board publication status");
-  expect(completionReport).toContain("Board URI: file://... | unavailable");
+test("completion reports require Board publication status on every QA run", () => {
+  expect(completionReport).toContain("17. Board publication status for every Traceknot QA run.");
+  expect(completionReport).toContain("Board requested: yes");
+  expect(completionReport).toContain("Board status: generated | unavailable | disabled");
+  expect(completionReport).toContain("do not downgrade it to `not-requested`");
   expect(completionReport).toContain("Board publication failure MUST NOT change the QA verdict");
 });
 
-test("canonical Board documentation describes the Portable Skill boundary", () => {
-  expect(boardDocs).toContain("## Portable Skill publication");
+test("canonical Board documentation describes default publication", () => {
+  expect(boardDocs).toContain("Every Traceknot QA run has Board publication enabled by default.");
+  expect(boardDocs).toContain("reserve `disabled` for an explicit `--no-board`");
   expect(boardDocs).toContain("A Board remains `authoritative: false`");
-  expect(boardDocs).toContain("report `unavailable`");
 });

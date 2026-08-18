@@ -123,11 +123,13 @@ Lifecycle events and agent completion claims MAY trigger observation or further 
 
 ### 7.1 Board publication
 
-When a Board is requested, required by repository policy, or explicitly enabled by the selected verification entrypoint, follow [`references/qa-board.md`](references/qa-board.md). Board publication is conditional on the host's advertised command and persistence capabilities; the Skill MUST NOT assume that the host name grants them.
+Every Traceknot QA run has Board publication enabled by default. Do not wait for the user to request one. Follow [`references/qa-board.md`](references/qa-board.md) and attempt the canonical Traceknot Board publisher whenever it is available.
 
-Run the canonical Traceknot Board publisher when it is available. Preserve the observed Board URI, manifest path, run ID, publisher, and failure output. Before reporting `generated`, check the entrypoint and manifest on disk. If no publisher is available, report `unavailable` and the missing prerequisite rather than fabricating a Board, manifest, URI, or verdict.
+Board publication is conditional on the host's advertised command and persistence capabilities; the Skill MUST NOT assume that the host name grants them. If no publisher is available, the final report MUST state `Board status: unavailable` and the missing prerequisite. It MUST NOT silently use `not-requested`.
 
-Board publication is separate from QA evaluation. A Board failure MUST NOT change a completed QA verdict, and a generated Board MUST NOT substitute for accepted evidence. Include the Board status and fields required by `references/completion-report.md` in the final report.
+Preserve the observed Board URI, manifest path, run ID, publisher, and failure output. Before reporting `generated`, check the entrypoint and manifest on disk. `--no-board` is the explicit opt-out and produces `Board status: disabled`.
+
+Board publication is separate from QA evaluation. A Board failure MUST NOT change a completed QA verdict, and a generated Board MUST NOT substitute for accepted evidence. Include the Board status and fields required by `references/completion-report.md` in every Traceknot completion report.
 
 ### 8. Record and manage defects
 
