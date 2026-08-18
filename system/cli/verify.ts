@@ -3,7 +3,6 @@ import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, type FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { inflateSync } from "node:zlib";
 import type { Artifact, Producer } from "../core/qa-core";
 import { isVisualCompositionOracle, type VisualCompositionOracle } from "../core/visual-composition";
@@ -41,7 +40,7 @@ import { pruneStorage } from "../runtime/storage-retention";
 import { FileVerificationRepository } from "../runtime/file-repository";
 import { buildQaBoardView, resolveQaBoardLocale, type QaBoardLocale } from "../presentation/qa-board";
 import { openBoard } from "../presentation/board-opener";
-import { markProjectSupportSeen, publishSessionBoardUpdate, verifyQaBoardBundleForOpen, verifySessionBoardPublication, writeQaBoardBundle } from "../presentation/qa-board-store";
+import { markProjectSupportSeen, publishSessionBoardUpdate, verifySessionBoardPublication } from "../presentation/qa-board-store";
 import { notifyBoard } from "../presentation/user-notifier";
 
 export const VERIFY_EXIT_CODES = Object.freeze({ PASS: 0, FAIL: 1, BLOCKED: 2, INCOMPLETE: 3, USAGE: 64, INTERNAL: 70 });
@@ -839,6 +838,10 @@ async function maintainDefaultCache(options: CliOptions, stderr: (text: string) 
 async function generateBoardForResult(options: CliOptions, result: RunVerificationResult, stderr: (text: string) => void, runtime: BoardRuntime = { notifyBoard, openBoard, markProjectSupportSeen }): Promise<void> {
   if (!options.board) return;
   await maintainDefaultCache(options, stderr, [result.run.runId]);
+  if (options.sessionId === undefined || options.sessionHost === "unavailable") {
+    stderr("Traceknot Board status: unavailable\n");
+    return;
+  }
   let published = false;
   let artifactStore: LocalArtifactStore | undefined;
   try {
@@ -846,42 +849,23 @@ async function generateBoardForResult(options: CliOptions, result: RunVerificati
     artifactStore = new LocalArtifactStore(options.artifactDir);
     const view = buildQaBoardView({ run: result.run, verdict: result.verdict, documents: result.documents });
     const generatedAt = new Date().toISOString();
-    let boardUri: string;
-    let projectSupportIncluded: boolean;
-    let verifyBoard: () => Promise<void>;
-    if (options.sessionId !== undefined && options.sessionHost !== "unavailable") {
-      const publication = await publishSessionBoardUpdate({
-        update: {
-          schemaVersion: "traceknot-session-board-update/v1",
-          sessionId: options.sessionId,
-          sessionHost: options.sessionHost,
-          generatedAt,
-          ...(options.invocationId === undefined ? {} : { invocationId: options.invocationId }),
-          view,
-        },
-        stateDir: options.stateDir,
-        artifactReader: artifactStore,
-        locale: options.boardLocale,
-      });
-      await verifySessionBoardPublication(options.stateDir, publication);
-      boardUri = publication.entrypointUri;
-      projectSupportIncluded = publication.projectSupportIncluded;
-      verifyBoard = () => verifySessionBoardPublication(options.stateDir, publication);
-    } else {
-      const board = await writeQaBoardBundle({
-        view,
-        invocationId: options.invocationId,
-        stateDir: options.stateDir,
-        sessionHost: options.sessionHost,
+    const publication = await publishSessionBoardUpdate({
+      update: {
+        schemaVersion: "traceknot-session-board-update/v1",
         sessionId: options.sessionId,
-        locale: options.boardLocale,
+        sessionHost: options.sessionHost,
         generatedAt,
-        artifactReader: artifactStore,
-      });
-      boardUri = pathToFileURL(board.entrypoint).href;
-      projectSupportIncluded = board.projectSupportIncluded;
-      verifyBoard = () => verifyQaBoardBundleForOpen(options.stateDir, board);
-    }
+        ...(options.invocationId === undefined ? {} : { invocationId: options.invocationId }),
+        view,
+      },
+      stateDir: options.stateDir,
+      artifactReader: artifactStore,
+      locale: options.boardLocale,
+    });
+    await verifySessionBoardPublication(options.stateDir, publication);
+    const boardUri = publication.entrypointUri;
+    const projectSupportIncluded = publication.projectSupportIncluded;
+    const verifyBoard = () => verifySessionBoardPublication(options.stateDir, publication);
     published = true;
     stderr(`Traceknot Board: ${boardUri}\n`);
     if (!options.noNotify) {

@@ -1013,11 +1013,21 @@ async function sessionReclaim(
     revisions.push({ name: entry.name, path, bytes: await sessionDirectoryBytes(path), generatedAt, sourceRevision, runId: manifestValue && typeof manifestValue.runId === "string" ? manifestValue.runId : undefined, sourceState: manifestValue && typeof manifestValue.sourceState === "string" ? manifestValue.sourceState : undefined, malformed: manifestValue === undefined || !Number.isFinite(generatedAt) || sourceRevision < 0 });
   }
   const pinsBytes = await readOptionalSecure(root, join(root.canonical, ".traceknot-pins.json"), 1024 * 1024);
-  let pins: unknown = [];
-  if (pinsBytes !== undefined) {
-    try { pins = JSON.parse(new TextDecoder().decode(pinsBytes)); } catch { pins = []; }
+  let pinned: Set<string>;
+  if (pinsBytes === undefined) {
+    pinned = new Set();
+  } else {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(new TextDecoder().decode(pinsBytes));
+    } catch {
+      throw new Error("Board pin file is malformed");
+    }
+    if (!Array.isArray(parsed) || parsed.some(item => typeof item !== "string" || !SAFE_ENTRY.test(item))) {
+      throw new Error("Board pin file is malformed");
+    }
+    pinned = new Set(parsed);
   }
-  const pinned = new Set(Array.isArray(pins) ? pins.filter(item => typeof item === "string") : []);
   const terminal = revisions
     .filter(item => !item.malformed && item.sourceState === "TERMINAL")
     .sort((a, b) => b.sourceRevision - a.sourceRevision || b.generatedAt - a.generatedAt || a.name.localeCompare(b.name))[0]?.name;
@@ -1092,6 +1102,7 @@ export async function publishSessionBoardUpdate(input: Readonly<{
   showProjectSupport?: boolean;
 }>): Promise<SessionBoardPublicationResult> {
   const update = parseSessionBoardUpdate(input.update);
+  if (JSON.stringify(update.view).includes(update.sessionId)) throw new Error("Board view contains the raw session ID");
   const invocationId = update.invocationId ?? randomUUID();
   const sessionKey = sessionBoardKey(update.sessionHost, update.sessionId);
   const boardName = `${update.view.revision}-${invocationId}`;

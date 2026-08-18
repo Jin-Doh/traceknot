@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, readlink, readdir, stat } from "node:fs/promises";
+import { mkdtemp, readFile, readlink, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseSessionBoardUpdate, publishSessionBoardUpdate, sessionBoardKey, verifySessionBoardPublication, type SessionBoardUpdate } from "./qa-board-store";
@@ -50,6 +50,23 @@ describe("session Board contract", () => {
     expect(() => parseSessionBoardUpdate({ ...update(1, "inv-1"), view: { ...view(1), authoritative: true } })).toThrow("authoritative");
     expect(() => parseSessionBoardUpdate({ ...update(1, "inv-1"), generatedAt: "not-a-timestamp" })).toThrow("timestamp");
     expect(() => parseSessionBoardUpdate({ ...update(1, "inv-1"), view: { ...view(1), counts: { mandatory: 1, passed: 0, failed: 0, blocked: 0, incomplete: 0 } } })).toThrow("inconsistent");
+  });
+
+  test("rejects malformed pin state before reclaiming revisions", async () => {
+    for (const pins of ["{", "{}"]) {
+      const fixtureValue = await fixture();
+      const first = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1")), ...fixtureValue });
+      await writeFile(join(fixtureValue.stateDir, ".traceknot-pins.json"), pins);
+      await expect(publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(2, "inv-2")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 0 } })).rejects.toThrow("pin file is malformed");
+      expect(JSON.parse(await readFile(first.currentPath, "utf8"))).toMatchObject({ revisionPath: "boards/1-inv-1" });
+    }
+  });
+
+  test("rejects a raw session ID embedded in the presentation view", async () => {
+    const fixtureValue = await fixture();
+    const unsafe = { ...update(1, "inv-1"), view: { ...view(1), changeSummary: "raw-session-id" } };
+    await expect(publishSessionBoardUpdate({ update: parseSessionBoardUpdate(unsafe), ...fixtureValue })).rejects.toThrow("raw session ID");
+    await expect(stat(join(fixtureValue.stateDir, "sessions"))).rejects.toThrow();
   });
 
   test("publishes a stable URI bound to an immutable revision without raw session identity", async () => {

@@ -671,7 +671,7 @@ describe("traceknot verify CLI", () => {
       const boardOutput: string[] = [];
       const boardError: string[] = [];
       const boardStatus = await runVerify(
-        ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--artifact-dir", inRepositoryArtifact, "--run-id", "cli-e2e", "--report-only", "--board", "--no-notify"],
+        ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--artifact-dir", inRepositoryArtifact, "--run-id", "cli-e2e", "--report-only", "--board", "--session-id", "artifact-session", "--session-host", "omp", "--no-notify"],
         text => boardOutput.push(text),
         text => boardError.push(text),
       );
@@ -686,7 +686,7 @@ describe("traceknot verify CLI", () => {
         const aliasedBoardOutput: string[] = [];
         const aliasedBoardError: string[] = [];
         const aliasedBoardStatus = await runVerify(
-          ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--artifact-dir", aliasedArtifact, "--run-id", "cli-e2e", "--report-only", "--board", "--no-notify"],
+          ["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--artifact-dir", aliasedArtifact, "--run-id", "cli-e2e", "--report-only", "--board", "--session-id", "artifact-session", "--session-host", "omp", "--no-notify"],
           text => aliasedBoardOutput.push(text),
           text => aliasedBoardError.push(text),
         );
@@ -758,19 +758,19 @@ describe("traceknot verify CLI", () => {
         },
       };
       const stdout: string[] = [];
-      expect(await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--no-board", "--open-board", "--no-notify"], text => stdout.push(text), () => undefined, runtime)).toBe(0);
+      expect(await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--no-board", "--open-board", "--no-notify", "--session-id", "open-session", "--session-host", "omp"], text => stdout.push(text), () => undefined, runtime)).toBe(0);
       expect(openCalls).toBe(1);
       expect(markCalls).toBe(1);
     } finally {
       await fixtureValue.cleanup();
     }
   });
-  test("generates Boards by default and accepts an explicit disable flag", async () => {
+  test("reports an unavailable Board without session identity and accepts an explicit disable flag", async () => {
     const fixtureValue = await fixture();
     try {
       const defaultStderr: string[] = [];
       expect(await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--no-notify"], () => undefined, text => defaultStderr.push(text))).toBe(0);
-      expect(defaultStderr.join("")).toMatch(/^Traceknot Board: file:\/\//);
+      expect(defaultStderr.join("")).toBe("Traceknot Board status: unavailable\n");
       const disabledStderr: string[] = [];
       expect(await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only", "--no-board"], () => undefined, text => disabledStderr.push(text))).toBe(0);
       expect(disabledStderr).toEqual([]);
@@ -791,11 +791,11 @@ describe("traceknot verify CLI", () => {
         openBoard: async () => "unavailable" as const,
         markProjectSupportSeen: async () => undefined,
       };
-      expect(await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest], () => undefined, () => undefined, runtime)).toBe(0);
+      expect(await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--session-id", "notify-session", "--session-host", "omp"], () => undefined, () => undefined, runtime)).toBe(0);
       expect(notifyCalls).toBe(1);
-      expect(await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only", "--notify"], () => undefined, () => undefined, runtime)).toBe(0);
+      expect(await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only", "--session-id", "notify-session", "--session-host", "omp", "--notify"], () => undefined, () => undefined, runtime)).toBe(0);
       expect(notifyCalls).toBe(2);
-      expect(await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only", "--no-notify"], () => undefined, () => undefined, runtime)).toBe(0);
+      expect(await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only", "--session-id", "notify-session", "--session-host", "omp", "--no-notify"], () => undefined, () => undefined, runtime)).toBe(0);
       expect(notifyCalls).toBe(2);
     } finally {
       await fixtureValue.cleanup();
@@ -809,7 +809,7 @@ describe("traceknot verify CLI", () => {
       await rm(join(fixtureValue.state, "artifacts"), { recursive: true, force: true });
       const stdout: string[] = [];
       const stderr: string[] = [];
-      const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only", "--no-notify"], text => stdout.push(text), text => stderr.push(text));
+      const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only", "--session-id", "rebuild-session", "--session-host", "omp", "--no-notify"], text => stdout.push(text), text => stderr.push(text));
       expect(status).toBe(0);
       expect(JSON.parse(stdout.join("")).verdict.qaVerdict).toBe("PASS");
       expect(stderr.join("")).toMatch(/^Traceknot Board: file:\/\//);
@@ -1055,7 +1055,7 @@ describe("traceknot verify CLI", () => {
       const reportOnlyStatus = await runVerify(["--root", root, "--state-dir", state, "--run-id", "cli-visual-e2e", "--report-only"], text => reportOnlyStdout.push(text), text => reportOnlyStderr.push(text));
       expect(reportOnlyStatus).toBe(3);
       expect(JSON.parse(reportOnlyStdout.join("")).verdict.qaVerdict).toBe("INCOMPLETE");
-      expect(reportOnlyStderr.join("")).toContain("Traceknot Board unavailable: stored artifact does not exist");
+      expect(reportOnlyStderr.join("")).toContain("Traceknot Board status: unavailable");
       const undersizedBytes = png(900, 501);
       const undersizedDigest = new Bun.CryptoHasher("sha256").update(undersizedBytes).digest("hex");
       await writeFile(focusedPath, undersizedBytes);

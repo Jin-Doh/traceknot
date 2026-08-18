@@ -110,7 +110,7 @@ describe("reusable governed GitHub Action", () => {
     expect(boardInputs["retention-days"]).toBe("${{ inputs.board-retention-days }}");
     expect(String(steps[8]?.run)).toContain("rm -rf -- \"$TRACEKNOT_EVIDENCE\"");
     const verifyRun = String(steps[3]?.run);
-    expect(verifyRun).toMatch(/if test "\$TRACEKNOT_BOARD" = true; then\s+args\+=\(--board --no-notify --invocation-id "\$TRACEKNOT_INVOCATION_ID" --session-host github-actions\)\s+else\s+args\+=\(--no-board\)\s+fi/);
+    expect(verifyRun).toMatch(/args\+=\(--board --no-notify --invocation-id "\$TRACEKNOT_INVOCATION_ID" --session-id "\$TRACEKNOT_INVOCATION_ID" --session-host github-actions\)/);
     expect(verifyRun.match(/args\+=\(--board /g)).toHaveLength(1);
     expect(verifyRun.match(/args\+=\(--no-board\)/g)).toHaveLength(1);
   });
