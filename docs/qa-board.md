@@ -32,6 +32,17 @@ The CLI preserves the verification verdict exit code. Board generation, notifica
 
 Every bundle includes English, Korean, and Simplified Chinese views. The language switcher moves between those local static pages without scripts or network access. Only interface labels are localized; persisted summaries, evidence, identifiers, and verdict rationale remain byte-for-byte faithful to the canonical run.
 
+## Portable Skill publication
+
+The portable Traceknot Skill carries the Board publication contract, but it does not assume that every host has the canonical CLI, secure state store, or file-persistence capability. Board publication is conditional:
+
+- use the canonical CLI publisher when it is available and the host advertises the required command and persistence capabilities;
+- report `unavailable` with the missing prerequisite when a requested Board cannot be published;
+- report `not-requested` when no Board was requested or required;
+- never fabricate a Board manifest, `file://` URI, run identity, or evidence from a chat completion.
+
+Portable Skill guidance is presentation-only. A Board remains `authoritative: false`; its status is reported separately from the QA verdict. See `skill/references/qa-board.md` and `skill/references/completion-report.md`.
+
 ## Assurance context
 
 The CLI defaults to `release` assurance and accepts `--assurance local|release`. The selected context is persisted in the request, CLI report, Board view, and Board manifest:

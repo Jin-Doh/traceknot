@@ -48,6 +48,7 @@ for reference in \
     istqb-principles.md \
     prose-quality.md \
     proof-carrying-success.md \
+    qa-board.md \
     risk-classification.md \
     test-process.md \
     test-techniques.md \
