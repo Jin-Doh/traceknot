@@ -5,45 +5,99 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dir, "..");
 const skill = readFileSync(resolve(root, "skill/SKILL.md"), "utf8");
 const boardReference = readFileSync(resolve(root, "skill/references/qa-board.md"), "utf8");
-const portableRenderer = readFileSync(resolve(root, "skill/references/portable-board-renderer.md"), "utf8");
+const rendererReference = readFileSync(resolve(root, "skill/references/portable-board-renderer.md"), "utf8");
 const completionReport = readFileSync(resolve(root, "skill/references/completion-report.md"), "utf8");
 const boardDocs = readFileSync(resolve(root, "docs/qa-board.md"), "utf8");
+const readme = readFileSync(resolve(root, "README.md"), "utf8");
 
-test("portable Skill enables Board publication by default", () => {
-  expect(skill).toContain("Every Traceknot QA run has Board publication enabled by default");
-  expect(skill).toContain("It MUST NOT silently use `not-requested`");
-  expect(skill).toContain("`--no-board` is the explicit opt-out");
-  expect(boardReference).toContain("Every Traceknot QA run has Board publication enabled by default.");
-  expect(boardReference).toContain("A missing prerequisite produces `Board status: unavailable`");
-  expect(boardReference).toContain("Do not hand-author a canonical Board manifest or fabricate a `file://` URI.");
-  expect(boardReference).toContain("verification input manifest is not a Board manifest");
+const boardUpdateCommand = "traceknot board update";
+const requiredBoardFields = [
+  "Board requested: yes",
+  "Board status: generated | unavailable | disabled",
+  "Board URI: file://... | unavailable",
+  "Board manifest: path | unavailable",
+  "Board session key: s-<sha256(sessionHost + NUL + sessionId)> | unavailable",
+  "Board source revision: identifier | unavailable",
+  "Board invocation ID: identifier | unavailable",
+  "Board publisher: canonical-cli | host-integrated | none",
+  "Board limitation: reason | none",
+] as const;
 
-  expect(boardReference).toContain("A Board publisher failure MUST NOT change a completed verification verdict.");
+function publicText(content: string): string {
+  return content
+    .replace(/<!--[\s\S]*?-->/gu, "")
+    .replaceAll("portable-board-renderer.md", "");
+}
+
+function expectCanonicalSkillPayload(content: string): void {
+  expect(content).toContain("npx skills add Jin-Doh/traceknot --skill traceknot --global");
+  expect(content).toContain("npx skills update traceknot --global --yes");
+  expect(content).toContain("skill/bin/traceknot");
+  expect(content).toContain("$HOME/.agents/skills/traceknot/bin/traceknot");
+  expect(content).toMatch(/(?:^|[\s`])\.agents\/skills\/traceknot\/bin\/traceknot/);
+  expect(content).toContain("Bun 1.3.14");
+}
+
+function expectCanonicalBoardInterface(content: string): void {
+  expect(content).toContain(boardUpdateCommand);
+  for (const flag of ["--input UPDATE.json", "--state-dir DIR", "[--artifact-dir DIR]", "[--open-board]", "[--no-notify]"]) {
+    expect(content).toContain(flag);
+  }
+  expect(content).toContain("traceknot-session-board-update/v1");
+  expect(content).toContain("session-key = s-<sha256(sessionHost + NUL + sessionId)>");
+  expect(content).toContain("Traceknot Board: file://.../sessions/<session-key>/index.html");
+  expect(content).toContain("authoritative: false");
+  expect(content).toContain("boardMaxPerSession");
+  expect(content).toContain("Board status: unavailable");
+  expect(content).toContain("MUST NOT change the QA verdict");
+}
+
+test("canonical Skill payload includes the runnable CLI and update path", () => {
+  expectCanonicalSkillPayload(skill);
+  expectCanonicalSkillPayload(boardReference);
+  expectCanonicalSkillPayload(readme);
 });
 
-test("Skills-only fallback has a separate portable Board contract", () => {
-  expect(skill).toContain("references/portable-board-renderer.md");
-  expect(skill).toContain("Portable Board status");
-  expect(boardReference).toContain("portable-board-renderer.md");
-  expect(portableRenderer).toContain("authoritative: false");
-  expect(portableRenderer).toContain("Portable Board location: file://... | inline | unavailable");
-  expect(portableRenderer).toContain("no network requests, CDN, external fonts, or remote images");
-  expect(portableRenderer).toContain("HTML-escape every dynamic value");
-  expect(completionReport).toContain("Portable Board status: generated | unavailable");
-  expect(completionReport).toContain("Portable Board authority: false");
-  expect(boardDocs).toContain("portable output never upgrades the QA verdict");
+test("canonical Board publication uses one session-scoped interface", () => {
+  expectCanonicalBoardInterface(skill);
+  expectCanonicalBoardInterface(boardReference);
+  expectCanonicalBoardInterface(boardDocs);
+  expectCanonicalBoardInterface(rendererReference);
 });
 
-test("completion reports require Board publication status on every QA run", () => {
-  expect(completionReport).toContain("17. Board publication status for every Traceknot QA run.");
-  expect(completionReport).toContain("Board requested: yes");
-  expect(completionReport).toContain("Board status: generated | unavailable | disabled");
-  expect(completionReport).toContain("do not downgrade it to `not-requested`");
-  expect(completionReport).toContain("Board publication failure MUST NOT change the QA verdict");
+test("Board publication preserves authority and unavailable behavior", () => {
+  expect(skill).toContain("The Board declares `authoritative: false`");
+  expect(boardReference).toContain("declares `authoritative: false`");
+  expect(boardDocs).toContain("The unavailable Board status does not change the QA verdict or evidence.");
+  expect(rendererReference).toContain("MUST NOT change the QA verdict");
 });
 
-test("canonical Board documentation describes default publication", () => {
-  expect(boardDocs).toContain("Every Traceknot QA run has Board publication enabled by default.");
-  expect(boardDocs).toContain("reserve `disabled` for an explicit `--no-board`");
-  expect(boardDocs).toContain("A Board remains `authoritative: false`");
+test("completion reports have exactly one Board field set", () => {
+  for (const field of requiredBoardFields) expect(completionReport).toContain(field);
+  for (const label of ["Board requested:", "Board URI:", "Board manifest:", "Board session key:", "Board source revision:", "Board invocation ID:", "Board publisher:", "Board limitation:"]) {
+    expect(completionReport.match(new RegExp(label, "gu"))).toHaveLength(1);
+  }
+  expect(completionReport.match(/Board status:/gu)).toHaveLength(2);
+  expect(completionReport).not.toContain("Board run ID:");
+  expect(completionReport).not.toContain("Board location:");
+  expect(completionReport).not.toContain("Board authority:");
+  expect(completionReport).not.toContain("Portable Board");
+});
+
+test("renderer reference reuses the canonical manifest and status", () => {
+  expect(rendererReference).toContain("The stable manifest is the one Board manifest");
+  expect(rendererReference).toContain("The renderer MUST NOT create an alternate manifest, status namespace");
+  expect(rendererReference).not.toContain("traceknot-portable-board/v1");
+  expect(rendererReference).not.toContain("Portable Board status");
+  expect(rendererReference).not.toContain("Portable Board location");
+  expect(rendererReference).not.toContain("Portable Board manifest");
+});
+
+test("public documentation forbids split installation and Board modes", () => {
+  const documents = [skill, boardReference, rendererReference, completionReport, boardDocs, readme];
+  for (const document of documents) {
+    const text = publicText(document);
+    expect(text).not.toMatch(/Skills-only|Skill-only|Portable Board|portable Skill|Portable Skill|full-toolkit/iu);
+    expect(text).not.toMatch(/Portable Board (?:status|location|manifest|publisher|authority|limitation)/iu);
+  }
 });

@@ -1,0 +1,247 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/benchmark-report.v1.json",
+  "title": "Traceknot deterministic 1.0 release-readiness benchmark report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "suiteVersion", "status", "quality", "cache", "tokens", "gates"],
+  "properties": {
+    "schemaVersion": { "const": "traceknot-benchmark-report/v1" },
+    "suiteVersion": { "const": "traceknot-1.0/v1" },
+    "status": { "$ref": "#/$defs/status" },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "total", "matched", "falsePasses", "cases"],
+      "properties": {
+        "status": { "$ref": "#/$defs/status" },
+        "total": { "const": 9 },
+        "matched": { "type": "integer", "minimum": 0, "maximum": 9 },
+        "falsePasses": { "type": "integer", "minimum": 0, "maximum": 9 },
+        "cases": {
+          "type": "array",
+          "minItems": 9,
+          "maxItems": 9,
+          "prefixItems": [
+            { "type": "object", "$ref": "#/$defs/qualityCase", "properties": { "id": { "const": "blocked-precedes-incomplete" }, "expected": { "const": "BLOCKED" } } },
+            { "type": "object", "$ref": "#/$defs/qualityCase", "properties": { "id": { "const": "complete-proof-chain" }, "expected": { "const": "PASS" } } },
+            { "type": "object", "$ref": "#/$defs/qualityCase", "properties": { "id": { "const": "cross-snapshot-evidence" }, "expected": { "const": "INCOMPLETE" } } },
+            { "type": "object", "$ref": "#/$defs/qualityCase", "properties": { "id": { "const": "duplicate-claim-rejected" }, "expected": { "const": "REJECTED" } } },
+            { "type": "object", "$ref": "#/$defs/qualityCase", "properties": { "id": { "const": "fail-precedes-blocked-and-incomplete" }, "expected": { "const": "FAIL" } } },
+            { "type": "object", "$ref": "#/$defs/qualityCase", "properties": { "id": { "const": "missing-evaluation" }, "expected": { "const": "INCOMPLETE" } } },
+            { "type": "object", "$ref": "#/$defs/qualityCase", "properties": { "id": { "const": "observed-criterion-contradiction" }, "expected": { "const": "FAIL" } } },
+            { "type": "object", "$ref": "#/$defs/qualityCase", "properties": { "id": { "const": "required-execution-blocked" }, "expected": { "const": "BLOCKED" } } },
+            { "type": "object", "$ref": "#/$defs/qualityCase", "properties": { "id": { "const": "uncovered-basis" }, "expected": { "const": "INCOMPLETE" } } }
+          ],
+          "items": false
+        }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "coldMiss",
+        "warmHit",
+        "payloadEqual",
+        "idempotentPayloadDigest",
+        "keyInvalidations",
+        "relevantOrderStable",
+        "relevantChangeInvalidated",
+        "tamperRejected"
+      ],
+      "properties": {
+        "status": { "$ref": "#/$defs/status" },
+        "coldMiss": { "type": "boolean" },
+        "warmHit": { "type": "boolean" },
+        "payloadEqual": { "type": "boolean" },
+        "idempotentPayloadDigest": { "type": "boolean" },
+        "keyInvalidations": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["expected", "observed"],
+          "properties": {
+            "expected": { "const": 10 },
+            "observed": { "type": "integer", "minimum": 0, "maximum": 10 }
+          }
+        },
+        "relevantOrderStable": { "type": "boolean" },
+        "relevantChangeInvalidated": { "type": "boolean" },
+        "tamperRejected": { "type": "boolean" }
+      }
+    },
+    "tokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "sourceSchemaVersion",
+        "modelCalls",
+        "inputTokens",
+        "cachedInputTokens",
+        "cacheWriteTokens",
+        "outputTokens",
+        "reasoningTokens",
+        "cacheHitRate",
+        "costStatus",
+        "providerEfficiencyClaim"
+      ],
+      "properties": {
+        "status": { "$ref": "#/$defs/status" },
+        "sourceSchemaVersion": { "const": "usage-report/v1" },
+        "modelCalls": { "type": "integer", "minimum": 0 },
+        "inputTokens": { "$ref": "#/$defs/tokenMetric" },
+        "cachedInputTokens": { "$ref": "#/$defs/tokenMetric" },
+        "cacheWriteTokens": { "$ref": "#/$defs/tokenMetric" },
+        "outputTokens": { "$ref": "#/$defs/tokenMetric" },
+        "reasoningTokens": { "$ref": "#/$defs/tokenMetric" },
+        "cacheHitRate": {
+          "oneOf": [
+            { "type": "number", "minimum": 0, "maximum": 1 },
+            { "const": "unavailable" }
+          ]
+        },
+        "costStatus": { "enum": ["actual", "estimated", "unavailable"] },
+        "providerEfficiencyClaim": { "const": "NOT_EVALUATED" }
+      }
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "prefixItems": [
+        { "type": "object", "$ref": "#/$defs/gate", "properties": { "id": { "const": "1.0-quality-all-cases-match" }, "expected": { "const": "9/9" } } },
+        { "type": "object", "$ref": "#/$defs/gate", "properties": { "id": { "const": "1.0-quality-zero-false-pass" }, "expected": { "const": "0" } } },
+        { "type": "object", "$ref": "#/$defs/gate", "properties": { "id": { "const": "1.0-cache-cold-warm-parity" }, "expected": { "const": "true" } } },
+        { "type": "object", "$ref": "#/$defs/gate", "properties": { "id": { "const": "1.0-cache-all-key-boundaries-invalidate" }, "expected": { "const": "10" } } },
+        { "type": "object", "$ref": "#/$defs/gate", "properties": { "id": { "const": "1.0-cache-relevance-semantics" }, "expected": { "const": "true" } } },
+        { "type": "object", "$ref": "#/$defs/gate", "properties": { "id": { "const": "1.0-cache-integrity-rejection" }, "expected": { "const": "true" } } },
+        { "type": "object", "$ref": "#/$defs/gate", "properties": { "id": { "const": "1.0-token-unavailable-preserved" }, "expected": { "const": "unavailable" } } },
+        { "type": "object", "$ref": "#/$defs/gate", "properties": { "id": { "const": "1.0-token-no-unsubstantiated-efficiency-claim" }, "expected": { "const": "NOT_EVALUATED" } } }
+      ],
+      "items": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "status": { "const": "PASS" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "quality": {
+            "type": "object",
+            "properties": {
+              "status": { "const": "PASS" },
+              "total": { "const": 9 },
+              "matched": { "const": 9 },
+              "falsePasses": { "const": 0 },
+              "cases": {
+                "type": "array",
+                "minItems": 9,
+                "maxItems": 9,
+                "prefixItems": [
+                  { "type": "object", "properties": { "actual": { "const": "BLOCKED" }, "status": { "const": "PASS" } } },
+                  { "type": "object", "properties": { "actual": { "const": "PASS" }, "status": { "const": "PASS" } } },
+                  { "type": "object", "properties": { "actual": { "const": "INCOMPLETE" }, "status": { "const": "PASS" } } },
+                  { "type": "object", "properties": { "actual": { "const": "REJECTED" }, "status": { "const": "PASS" } } },
+                  { "type": "object", "properties": { "actual": { "const": "FAIL" }, "status": { "const": "PASS" } } },
+                  { "type": "object", "properties": { "actual": { "const": "INCOMPLETE" }, "status": { "const": "PASS" } } },
+                  { "type": "object", "properties": { "actual": { "const": "FAIL" }, "status": { "const": "PASS" } } },
+                  { "type": "object", "properties": { "actual": { "const": "BLOCKED" }, "status": { "const": "PASS" } } },
+                  { "type": "object", "properties": { "actual": { "const": "INCOMPLETE" }, "status": { "const": "PASS" } } }
+                ],
+                "items": false
+              }
+            }
+          },
+          "cache": {
+            "type": "object",
+            "properties": {
+              "status": { "const": "PASS" },
+              "coldMiss": { "const": true },
+              "warmHit": { "const": true },
+              "payloadEqual": { "const": true },
+              "idempotentPayloadDigest": { "const": true },
+              "keyInvalidations": {
+                "type": "object",
+                "properties": { "expected": { "const": 10 }, "observed": { "const": 10 } }
+              },
+              "relevantOrderStable": { "const": true },
+              "relevantChangeInvalidated": { "const": true },
+              "tamperRejected": { "const": true }
+            }
+          },
+          "tokens": {
+            "type": "object",
+            "properties": {
+              "status": { "const": "PASS" },
+              "modelCalls": { "const": 0 },
+              "inputTokens": { "const": "unavailable" },
+              "cachedInputTokens": { "const": "unavailable" },
+              "cacheWriteTokens": { "const": "unavailable" },
+              "outputTokens": { "const": "unavailable" },
+              "reasoningTokens": { "const": "unavailable" },
+              "cacheHitRate": { "const": "unavailable" },
+              "costStatus": { "const": "unavailable" },
+              "providerEfficiencyClaim": { "const": "NOT_EVALUATED" }
+            }
+          },
+          "gates": {
+            "type": "array",
+            "minItems": 8,
+            "maxItems": 8,
+            "prefixItems": [
+              { "type": "object", "properties": { "actual": { "const": "9/9" }, "status": { "const": "PASS" } } },
+              { "type": "object", "properties": { "actual": { "const": "0" }, "status": { "const": "PASS" } } },
+              { "type": "object", "properties": { "actual": { "const": "true" }, "status": { "const": "PASS" } } },
+              { "type": "object", "properties": { "actual": { "const": "10" }, "status": { "const": "PASS" } } },
+              { "type": "object", "properties": { "actual": { "const": "true" }, "status": { "const": "PASS" } } },
+              { "type": "object", "properties": { "actual": { "const": "true" }, "status": { "const": "PASS" } } },
+              { "type": "object", "properties": { "actual": { "const": "unavailable" }, "status": { "const": "PASS" } } },
+              { "type": "object", "properties": { "actual": { "const": "NOT_EVALUATED" }, "status": { "const": "PASS" } } }
+            ],
+            "items": false
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "status": { "enum": ["PASS", "FAIL"] },
+    "outcome": {
+      "enum": ["PASS", "PASS_WITH_ACCEPTED_RISK", "FAIL", "BLOCKED", "INCOMPLETE", "REJECTED"]
+    },
+    "tokenMetric": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "const": "unavailable" }
+      ]
+    },
+    "qualityCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "expected", "actual", "status"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "expected": { "$ref": "#/$defs/outcome" },
+        "actual": { "$ref": "#/$defs/outcome" },
+        "status": { "$ref": "#/$defs/status" }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "required", "expected", "actual", "status"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^1\\.0-[a-z0-9-]+$" },
+        "required": { "const": true },
+        "expected": { "type": "string", "minLength": 1 },
+        "actual": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/status" }
+      }
+    }
+  }
+}

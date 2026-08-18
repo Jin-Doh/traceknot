@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "quality-capability/v2",
+  "host": "opencode",
+  "adapterVersion": "portable-v1",
+  "capabilities": {
+    "executeCommands": false,
+    "executeBrowser": false,
+    "captureArtifacts": false,
+    "bindSnapshot": false,
+    "provideIndependentEvidence": false,
+    "persistEvidence": false,
+    "approveExceptions": false,
+    "isolatedReadOnlyReview": false,
+    "enforcedStructuredOutput": false
+  },
+  "limitations": [
+    "Capabilities must be supplied by a runtime handshake; the host name grants none.",
+    "OpenCode owns agents, models, sessions, tools, retries, and completion.",
+    "No lifecycle signal is treated as QA evidence without a bound execution record."
+  ]
+}

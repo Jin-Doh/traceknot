@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/traceknot-session-board-current.v1.json",
+  "title": "Traceknot session Board current pointer",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "sessionKey", "sourceRevision", "invocationId", "revisionPath", "entrypoint", "entrypointSha256", "manifestSha256", "sessionRef", "generatedAt", "authoritative"],
+  "properties": {
+    "schemaVersion": { "const": "traceknot-session-board-current/v1" },
+    "sessionKey": { "type": "string", "pattern": "^s-[0-9a-f]{64}$" },
+    "sourceRevision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "invocationId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+    "revisionPath": { "type": "string", "minLength": 8, "maxLength": 262, "pattern": "^boards/(?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._-]{0,254}$" },
+    "entrypoint": { "const": "index.html" },
+    "entrypointSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "manifestSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sessionRef": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "generatedAt": { "type": "string", "minLength": 20, "maxLength": 64, "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$" },
+    "authoritative": { "const": false }
+  }
+}

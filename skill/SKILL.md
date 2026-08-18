@@ -1,6 +1,6 @@
 ---
 name: traceknot
-description: Apply Traceknot's ISTQB-aligned, evidence-bound QA process to repository changes across OMP, Codex, GajaeCode, Claude Code, and OpenCode, including conditional QA Board publication. Use for implementation verification, bug fixes, release checks, repository audits, defect confirmation, and residual-risk decisions without treating an agent's own completion claim as proof.
+description: Apply Traceknot's ISTQB-aligned, evidence-bound QA process to repository changes across OMP, Codex, GajaeCode, Claude Code, and OpenCode, including session-scoped QA Board publication. Use for implementation verification, bug fixes, release checks, repository audits, defect confirmation, and residual-risk decisions without treating an agent's own completion claim as proof.
 ---
 
 # Traceknot
@@ -123,15 +123,28 @@ Lifecycle events and agent completion claims MAY trigger observation or further 
 
 ### 7.1 Board publication
 
-Every Traceknot QA run has Board publication enabled by default. Do not wait for the user to request one. Follow [`references/qa-board.md`](references/qa-board.md) and attempt the canonical or host-integrated Traceknot Board publisher whenever it is available.
+Every Traceknot QA run attempts Board publication by default. Do not wait for the user to request one. Follow [`references/qa-board.md`](references/qa-board.md) and publish through the canonical session Board store when the session, persistence, and read-back prerequisites are available.
 
-This policy is host-neutral across OMP, Codex, Claude Code, OpenCode, and GajaeCode. A host adapter MAY advertise Board publication prerequisites only through a current capability handshake bound to the host, session, producer, and target snapshot. The shared prerequisites are `executeCommands`, `bindSnapshot`, and `persistEvidence`; a host name or lifecycle hook never grants them.
+The Skill bundle includes the executable `skill/bin/traceknot`, generated from the repository's `bin/traceknot`. Bun 1.3.14 or later is required to run it. Install and update the complete bundle through the Skills CLI:
 
-If no canonical or host-integrated publisher is available, the final report MUST state `Board status: unavailable` and the missing prerequisite. It MUST NOT silently use `not-requested`. Then follow [`references/portable-board-renderer.md`](references/portable-board-renderer.md) to produce a separate portable projection when the report is terminal and the host can render it. Preserve the observed canonical Board URI, manifest path, run ID, publisher, and failure output. Before reporting a persisted portable location, check the entrypoint and portable manifest on disk. `--no-board` is the explicit opt-out and produces `Board status: disabled`.
+```sh
+npx skills add Jin-Doh/traceknot --skill traceknot --global
+npx skills update traceknot --global --yes
+```
 
-The portable projection MUST be reported separately with `Portable Board status`, `Portable Board location`, `Portable Board manifest`, `Portable Board publisher`, `Portable Board authority`, and `Portable Board limitation`. A portable projection is always `authoritative: false`, is never evidence, and MUST NOT upgrade or replace the canonical QA verdict.
+Build the `traceknot-session-board-update/v1` envelope around the existing `QaBoardView` projection and invoke the global executable at `$HOME/.agents/skills/traceknot/bin/traceknot`; for a project-local install, use `.agents/skills/traceknot/bin/traceknot` from the project root:
 
-Board publication is separate from QA evaluation. A Board or portable-renderer failure MUST NOT change a completed verification verdict. Include the canonical Board fields and, when attempted, the portable fields required by `references/completion-report.md` in every Traceknot completion report.
+```sh
+$HOME/.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]
+```
+
+The publisher derives `session-key = s-<sha256(sessionHost + NUL + sessionId)>`, never stores the raw session ID, and writes immutable revisions below `sessions/<session-key>/boards/<sourceRevision>-<invocationId>/`. Fixed stable `index.html`, `manifest.json`, and `current.json` links resolve through one `current` selector; a single fsynced rename atomically switches them to the same revision. It prints exactly `Traceknot Board: file://.../sessions/<session-key>/index.html` only after read-back validation. The Board declares `authoritative: false`; its input view is presentation data and never canonical evidence.
+
+When session identity, durable persistence, or another required prerequisite is absent, report `Board status: unavailable` with the missing prerequisite. Existing `verify --session-id/--session-host` publication uses the same store. A Board publication failure, including retention quota failure, MUST preserve the prior current pointer and MUST NOT change the QA verdict or evidence. `--no-board` is the explicit opt-out and reports `Board status: disabled`.
+
+Retention uses `boardMaxPerSession`: protect the revision selected by `current`, explicitly pinned run-linked revisions, and the newest terminal Board checkpoint. Reclaim superseded active and other unprotected revisions; never delete the selected revision to satisfy quota.
+
+Board publication is separate from QA evaluation. Include the single Board field set required by `references/completion-report.md`; do not add a second renderer status or Board field set.
 
 ### 8. Record and manage defects
 
@@ -172,4 +185,4 @@ The Skill never:
 
 ## Optional system integration
 
-The sibling `../system/core/` validates canonical QA records and resolves deterministic QA verdicts. `../system/extensions/harness-completion-authority/` contains optional lifecycle, quiescence, lease, receipt, and terminal-authority contracts for hosts that explicitly integrate them. Ordinary Skill use does not require or activate that extension. Technical compatibility with legacy `verification-plan/v1` and `qa-verdict/v1` callers does not imply portable Skill compliance; existing deterministic v1 callers can technically omit discovery because the v1 contracts do not enforce it, and such runs are outside portable Skill compliance and must disclose the omission rather than claim discovery completed. This does not change `verification-plan/v1`, `qa-verdict/v1`, or deterministic core semantics.
+The sibling `../system/core/` validates canonical QA records and resolves deterministic QA verdicts. `../system/extensions/harness-completion-authority/` contains optional lifecycle, quiescence, lease, receipt, and terminal-authority contracts for hosts that explicitly integrate them. Ordinary Skill use does not require or activate that extension. Technical compatibility with legacy `verification-plan/v1` and `qa-verdict/v1` callers does not imply compliance with this Skill's discovery requirements; existing deterministic v1 callers can omit discovery because those contracts do not enforce it, and such runs must disclose the omission rather than claim discovery completed. This does not change the legacy contracts or their verdict semantics.

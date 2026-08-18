@@ -41,7 +41,7 @@ import { pruneStorage } from "../runtime/storage-retention";
 import { FileVerificationRepository } from "../runtime/file-repository";
 import { buildQaBoardView, resolveQaBoardLocale, type QaBoardLocale } from "../presentation/qa-board";
 import { openBoard } from "../presentation/board-opener";
-import { markProjectSupportSeen, verifyQaBoardBundleForOpen, writeQaBoardBundle } from "../presentation/qa-board-store";
+import { markProjectSupportSeen, publishSessionBoardUpdate, verifyQaBoardBundleForOpen, verifySessionBoardPublication, writeQaBoardBundle } from "../presentation/qa-board-store";
 import { notifyBoard } from "../presentation/user-notifier";
 
 export const VERIFY_EXIT_CODES = Object.freeze({ PASS: 0, FAIL: 1, BLOCKED: 2, INCOMPLETE: 3, USAGE: 64, INTERNAL: 70 });
@@ -102,8 +102,8 @@ function usage(): string {
     "  --board                 Generate a static QA Board bundle (default)",
     "  --no-board              Disable QA Board generation",
     "  --board-locale LOCALE   Board language: auto, en, ko, or zh-CN (default: auto)",
-    "  --no-notify             Suppress desktop notification after Board generation (default)",
-    "  --notify                Enable desktop notification after Board generation",
+    "  --no-notify             Suppress desktop notification after Board generation",
+    "  --notify                Enable desktop notification after Board generation (default)",
     "  --open-board            Open the generated Board in the desktop browser",
     "  --session-id ID         Hash this agent session identifier in the Board manifest",
     "  --session-host HOST     Record the agent session host in the Board manifest",
@@ -330,7 +330,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
   let reportOnly = false;
   let board = true;
   let boardLocale = resolveQaBoardLocale(process.env.LC_ALL, process.env.LC_MESSAGES, process.env.LANG);
-  let noNotify = true;
+  let noNotify = false;
   let openBoard = false;
   let sessionId: string | undefined;
   let sessionHost = "unavailable";
@@ -844,29 +844,56 @@ async function generateBoardForResult(options: CliOptions, result: RunVerificati
   try {
     if (options.reportOnly) await assertExternalDirectory(options.rootDir, options.artifactDir, "artifact-dir");
     artifactStore = new LocalArtifactStore(options.artifactDir);
-    const board = await writeQaBoardBundle({
-      view: buildQaBoardView({ run: result.run, verdict: result.verdict, documents: result.documents }),
-      invocationId: options.invocationId,
-      stateDir: options.stateDir,
-      sessionHost: options.sessionHost,
-      sessionId: options.sessionId,
-      locale: options.boardLocale,
-      generatedAt: new Date().toISOString(),
-      artifactReader: artifactStore,
-    });
+    const view = buildQaBoardView({ run: result.run, verdict: result.verdict, documents: result.documents });
+    const generatedAt = new Date().toISOString();
+    let boardUri: string;
+    let projectSupportIncluded: boolean;
+    let verifyBoard: () => Promise<void>;
+    if (options.sessionId !== undefined && options.sessionHost !== "unavailable") {
+      const publication = await publishSessionBoardUpdate({
+        update: {
+          schemaVersion: "traceknot-session-board-update/v1",
+          sessionId: options.sessionId,
+          sessionHost: options.sessionHost,
+          generatedAt,
+          ...(options.invocationId === undefined ? {} : { invocationId: options.invocationId }),
+          view,
+        },
+        stateDir: options.stateDir,
+        artifactReader: artifactStore,
+        locale: options.boardLocale,
+      });
+      await verifySessionBoardPublication(options.stateDir, publication);
+      boardUri = publication.entrypointUri;
+      projectSupportIncluded = publication.projectSupportIncluded;
+      verifyBoard = () => verifySessionBoardPublication(options.stateDir, publication);
+    } else {
+      const board = await writeQaBoardBundle({
+        view,
+        invocationId: options.invocationId,
+        stateDir: options.stateDir,
+        sessionHost: options.sessionHost,
+        sessionId: options.sessionId,
+        locale: options.boardLocale,
+        generatedAt,
+        artifactReader: artifactStore,
+      });
+      boardUri = pathToFileURL(board.entrypoint).href;
+      projectSupportIncluded = board.projectSupportIncluded;
+      verifyBoard = () => verifyQaBoardBundleForOpen(options.stateDir, board);
+    }
     published = true;
-    const boardUri = pathToFileURL(board.entrypoint).href;
     stderr(`Traceknot Board: ${boardUri}\n`);
     if (!options.noNotify) {
-      await verifyQaBoardBundleForOpen(options.stateDir, board);
+      await verifyBoard();
       const notification = await runtime.notifyBoard({ title: "Traceknot QA finished", message: `${result.verdict.qaVerdict}: ${result.verdict.obligationSummary.failed} failed`, boardUri });
       if (notification === "failed") stderr("Traceknot Board: desktop notification failed\n");
     }
     if (options.openBoard) {
-      await verifyQaBoardBundleForOpen(options.stateDir, board);
+      await verifyBoard();
       const opened = await runtime.openBoard(boardUri);
       if (opened === "failed") stderr("Traceknot Board: browser opener failed\n");
-      if (opened === "opened" && board.projectSupportIncluded) {
+      if (opened === "opened" && projectSupportIncluded) {
         await runtime.markProjectSupportSeen(options.stateDir).catch(error => stderr(`Traceknot Board support marker unavailable: ${error instanceof Error ? error.message : String(error)}\n`));
       }
     }

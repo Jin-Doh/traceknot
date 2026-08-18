@@ -4,69 +4,77 @@ A Traceknot QA Board is a static, non-authoritative presentation artifact. The c
 
 ## When to publish
 
-Every Traceknot QA run has Board publication enabled by default. Do not wait for the user to request a Board. Attempt the canonical or host-integrated publisher whenever the host advertises the required command, snapshot-binding, and persistence capabilities.
-The policy is host-neutral. OMP, Codex, Claude Code, OpenCode, and GajaeCode MUST use the same publication states and the same capability prerequisites; host names or hook events never imply publisher authority.
+Every Traceknot QA run attempts Board publication by default. Use the same policy across OMP, Codex, Claude Code, OpenCode, and GajaeCode; host names and lifecycle hooks never imply publisher authority. The required prerequisites are a session identity, a target snapshot bound to the report, a writable durable state directory, and a read-back-capable publisher. A current host capability handshake may advertise execution and persistence, but it cannot change the shared contract.
 
-The shared prerequisites are `executeCommands`, `bindSnapshot`, and `persistEvidence`. A host adapter MAY advertise them only through a current capability handshake bound to the session and target snapshot. Static all-false manifests are conservative defaults and produce `unavailable`.
+The installed Skill bundle includes the executable `skill/bin/traceknot` and this reference. Bun 1.3.14 or later is required to run the generated executable. The canonical installation and update path is:
 
-The host adapter supplies execution and persistence. The Skill supplies the publication policy and report fields. Do not duplicate or override the policy in host-specific instructions.
-The Skills CLI installs this portable Skill and its references only; it does not install the canonical CLI, runtime, adapters, or schemas. In a Skills-only environment, keep `Board status: unavailable` unless the host separately provides a trusted publisher.
-When the canonical publisher is unavailable, follow [`portable-board-renderer.md`](portable-board-renderer.md) for a separate non-authoritative HTML or inline projection. Portable rendering MUST NOT be reported as canonical Board generation.
-
-
-
-
-Before publication, establish all of the following:
-
-- the target snapshot and run identity are bound to the report;
-- the source QA record has a terminal verdict and structured obligation counts;
-- the host exposes the command and file-persistence capabilities required by the selected publisher;
-- the publisher and its output location are trusted for the current run;
-- no Board field needs to be invented or inferred from an agent completion claim.
-
-A missing prerequisite produces `Board status: unavailable`; it is never a successful Board publication and never silently becomes `not-requested`.
-
-## Publisher selection
-
-Use the first available path:
-
-1. **Canonical CLI publisher:** run the repository or installed Traceknot verification entrypoint with Board generation enabled. Preserve its exact exit status, `Traceknot Board: file://...` output, run ID, and manifest path.
-2. **Host-provided publisher:** use a host-integrated publisher only when its capability handshake advertises command execution, snapshot binding, and evidence persistence for this run.
-3. **No publisher:** report `unavailable` with the missing capability or command. Do not hand-author a canonical Board manifest or fabricate a `file://` URI.
-
-## Completion report fields
-
-When Board publication is in scope, report these canonical fields separately from the QA verdict:
-
-```text
-Board requested: yes | no
-Board status: generated | unavailable | disabled | not-requested
-Board URI: file://... | unavailable
-Board manifest: path | unavailable
-Board run ID: identifier | unavailable
-Board publisher: canonical-cli | host-integrated | none
-Board limitation: reason | none
+```sh
+npx skills add Jin-Doh/traceknot --skill traceknot --global
+npx skills update traceknot --global --yes
 ```
 
-When the portable fallback is attempted, also report its separate projection fields:
+Invoke the global executable at `$HOME/.agents/skills/traceknot/bin/traceknot`; for a project-local install, use `.agents/skills/traceknot/bin/traceknot` from the project root. The legacy curl installer is only an optional launcher/bootstrap for environments that need it; it is not a second product or a richer Board mode.
 
-```text
-Portable Board status: generated | unavailable
-Portable Board location: file://... | inline | unavailable
-Portable Board manifest: path | unavailable
-Portable Board publisher: portable-skill | none
-Portable Board authority: false
-Portable Board limitation: reason | none
+## Board update interface
+
+Build an update JSON document from the existing `QaBoardView` projection and publish it with:
+
+```sh
+$HOME/.agents/skills/traceknot/bin/traceknot board update \
+  --input UPDATE.json \
+  --state-dir DIR \
+  [--artifact-dir DIR] \
+  [--open-board] \
+  [--no-notify]
 ```
 
-`Portable Board status: generated` means either a complete inline projection is present or a persisted HTML bundle and manifest were written and read back. It never changes `Board status`, never creates canonical evidence, and never permits a guessed URI.
+The input is the `traceknot-session-board-update/v1` envelope:
 
-A generated Board MUST be checked for an existing entrypoint and manifest before its URI is reported. The report MUST preserve the observed URI and paths exactly; a guessed or normalized path is not evidence.
-The reported Board manifest MUST be the generated bundle's `manifest.json` adjacent to the observed entrypoint; the verification input manifest is not a Board manifest.
+```json
+{
+  "schemaVersion": "traceknot-session-board-update/v1",
+  "sessionId": "observed session identifier",
+  "sessionHost": "observed host identifier",
+  "generatedAt": "canonical UTC RFC 3339 timestamp",
+  "invocationId": "optional safe invocation identifier",
+  "view": "existing QaBoardView projection"
+}
+```
 
+`view` is presentation data, not canonical evidence. Validation MUST reject unsafe strings and paths, malformed counts, statuses, or digests, inconsistent totals, any `authoritative` value other than `false`, and invalid timestamps before writing. Reuse the existing Board renderer and artifact preview limits; do not introduce a second schema, manifest, or status namespace.
 
-## Failure and independence
+The published JSON Schemas are closed structural contracts. Cross-field arithmetic and aggregate-to-finding consistency MUST be checked by the same runtime parser used by `board update`; schema validation alone is not acceptance. `parseSessionBoardUpdate` is the canonical semantic validator.
 
-Board generation, notification, and opening are presentation operations. A Board publisher failure MUST NOT change a completed verification verdict. Report the failure and keep the QA verdict separate.
+Publication derives:
 
-A portable Skill or host-generated Board is non-authoritative unless the canonical run and evidence contracts say otherwise. Visual review of the Board itself does not establish coverage of the product under test. The Board is a projection of accepted records, not a replacement for them.
+```text
+session-key = s-<sha256(sessionHost + NUL + sessionId)>
+```
+
+The raw session ID MUST NOT appear in a path, manifest, page, or log. Each publication creates an immutable revision at:
+
+```text
+sessions/<session-key>/boards/<sourceRevision>-<invocationId>/
+```
+
+Fixed stable `index.html`, `manifest.json`, and `current.json` links under `sessions/<session-key>/` resolve through one `current` selector. A single fsynced rename atomically switches that selector to the immutable revision, then the publisher reads all three paths back and validates their recorded digests. Only after that validation does it print:
+
+```text
+Traceknot Board: file://.../sessions/<session-key>/index.html
+```
+
+The stable manifest is the one Board manifest. It records the validated publication and observed view data and declares `authoritative: false`. A Board URI or manifest MUST never be guessed or hand-authored.
+
+Existing `verify --session-id ... --session-host ...` publication uses this same session store. When either session identity value is absent, or durable persistence/read-back prerequisites are unavailable, report `Board status: unavailable` with the missing prerequisite. The CLI preserves the verification exit code and QA verdict; unavailable Board publication never changes evidence or verdict. An explicit Board opt-out may report `disabled`, but absence of required identity is `unavailable`, not `not-requested`.
+
+## Retention and failure
+
+Retention uses the clean-cutover `boardMaxPerSession` policy. Protect the revision selected by `current`, explicitly pinned run-linked revisions, and the newest terminal Board checkpoint. Reclaim superseded active and other unprotected revisions; never delete the selected revision to satisfy quota. If the new publication cannot fit after reclaimable pruning, fail Board publication with a quota reason, preserve the prior current selector, and leave the QA verdict unchanged.
+
+Board generation, notification, opening, and retention are presentation/storage operations. A failure MUST be reported with its missing prerequisite or quota reason and MUST NOT become evidence, upgrade a verdict, or alter a completed verification result. It MUST NOT change the QA verdict.
+
+## Renderer and trust boundary
+
+The renderer may copy only fields already present in the validated `QaBoardView` and canonical QA records: target snapshot, source run and revision, terminal verdict, structured counts, basis, risks, conditions, obligations, evidence references, defects, residual risk, capability limits, exact commands, and observed outputs. Preserve values exactly where displayed; missing values remain unavailable. Escape every dynamic value, use no network resources or scripts, and keep localization limited to interface labels.
+
+See [`portable-board-renderer.md`](portable-board-renderer.md) for the shared renderer requirements. The filename is retained for reference compatibility; it does not define a separate installation mode, fallback product, manifest, schema, or report field set.

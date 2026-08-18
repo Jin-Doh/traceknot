@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/prose-quality-report.v1.json",
+  "title": "Published prose quality report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "mode", "status", "files", "summary"],
+  "properties": {
+    "schemaVersion": { "const": "prose-quality-report/v1" },
+    "mode": { "enum": ["advisory", "blocking"] },
+    "status": { "enum": ["PASS", "WARN", "FAIL", "BLOCKED"] },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "locale", "proseCharacters", "findings", "status"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "locale": { "enum": ["ko", "en", "zh-Hans", "mixed", "unknown"] },
+          "proseCharacters": { "type": "integer", "minimum": 0 },
+          "status": { "enum": ["PASS", "WARN", "FAIL", "BLOCKED"] },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["ruleId", "severity", "description", "count", "line", "excerptHash"],
+              "properties": {
+                "ruleId": { "type": "string", "minLength": 1 },
+                "severity": { "enum": ["S1", "S2", "S3"] },
+                "description": { "type": "string", "minLength": 1 },
+                "count": { "type": "integer", "minimum": 1 },
+                "line": { "type": "integer", "minimum": 1 },
+                "excerptHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checked", "passed", "warned", "failed", "skipped"],
+      "properties": {
+        "checked": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "warned": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "preservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "tokenChangeRate", "protectedTotal", "protectedPreserved", "failures"],
+      "properties": {
+        "status": { "enum": ["PASS", "WARN", "FAIL"] },
+        "tokenChangeRate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "protectedTotal": { "type": "integer", "minimum": 0 },
+        "protectedPreserved": { "type": "integer", "minimum": 0 },
+        "failures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["category", "valueHash", "expectedCount", "actualCount"],
+            "properties": {
+              "category": { "type": "string", "minLength": 1 },
+              "valueHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "expectedCount": { "type": "integer", "minimum": 0 },
+              "actualCount": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

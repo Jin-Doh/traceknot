@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/evidence-claim.v1.json",
+  "title": "Canonical evidence claim",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "claimId", "requestId", "snapshotId", "obligationId", "criterionId", "observationIds", "claim"],
+  "properties": {
+    "schemaVersion": { "const": "evidence-claim/v1" },
+    "claimId": { "type": "string", "minLength": 1 },
+    "requestId": { "type": "string", "minLength": 1 },
+    "snapshotId": { "type": "string", "minLength": 1 },
+    "obligationId": { "type": "string", "minLength": 1 },
+    "criterionId": { "type": "string", "minLength": 1 },
+    "observationIds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "claim": { "type": "string", "minLength": 1 }
+  }
+}

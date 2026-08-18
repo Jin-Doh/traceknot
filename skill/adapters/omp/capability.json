@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "quality-capability/v2",
+  "host": "omp",
+  "adapterVersion": "portable-v1",
+  "capabilities": {
+    "executeCommands": false,
+    "executeBrowser": false,
+    "captureArtifacts": false,
+    "bindSnapshot": false,
+    "provideIndependentEvidence": false,
+    "persistEvidence": false,
+    "approveExceptions": false,
+    "isolatedReadOnlyReview": false,
+    "enforcedStructuredOutput": false
+  },
+  "limitations": [
+    "Capabilities must be supplied by a runtime handshake; the host name grants none.",
+    "OMP owns subagents, models, task graphs, jobs, deliveries, retries, worktrees, and completion.",
+    "Task and agent lifecycle events are not QA evidence or completion authority."
+  ]
+}

@@ -88,6 +88,7 @@ export type QaBoardManifest = Readonly<{
     sessionHost: string;
     sessionRef: string;
   }>;
+  sessionKey?: string;
   files: readonly QaBoardManifestFile[];
 }>;
 

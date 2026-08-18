@@ -22,30 +22,21 @@ Report the QA decision independently from harness task completion.
 16. Separate harness completion status when the host supplies it.
 17. Board publication status for every Traceknot QA run.
 
-For every Traceknot QA run, include this separate canonical Board subsection:
+For every Traceknot QA run, include this single Board subsection separately from the QA verdict:
 
 ```text
 Board requested: yes
 Board status: generated | unavailable | disabled
 Board URI: file://... | unavailable
 Board manifest: path | unavailable
-Board run ID: identifier | unavailable
+Board session key: s-<sha256(sessionHost + NUL + sessionId)> | unavailable
+Board source revision: identifier | unavailable
+Board invocation ID: identifier | unavailable
 Board publisher: canonical-cli | host-integrated | none
 Board limitation: reason | none
 ```
 
-When the canonical publisher is unavailable and the portable fallback is attempted, also include:
-
-```text
-Portable Board status: generated | unavailable
-Portable Board location: file://... | inline | unavailable
-Portable Board manifest: path | unavailable
-Portable Board publisher: portable-skill | none
-Portable Board authority: false
-Portable Board limitation: reason | none
-```
-
-`Board status: generated` requires an observed canonical entrypoint and manifest. `Portable Board status: generated` requires either the complete inline projection or a persisted portable bundle whose entrypoint and manifest were read back. Preserve exact observed paths and URIs; never guess either kind of location. `unavailable` is required when no canonical publisher or capability exists; do not downgrade it to `not-requested`. Neither Board form is evidence for an obligation, Board publication failure MUST NOT change the QA verdict, and portable rendering MUST NOT change the QA verdict.
+`Board status: generated` requires an observed stable entrypoint and manifest read back from the canonical session store. Publication uses `traceknot-session-board-update/v1`; the input `view` is presentation data and never canonical evidence. Preserve exact observed paths and URIs; never guess a location or store a raw session ID. `unavailable` is required when session identity, durable persistence, or another required prerequisite is absent. A Board publication failure MUST NOT change the QA verdict or evidence. There is no second Board field set or separate renderer status.
 
 For a significant UI change, include a separate **Visual-composition coverage** subsection in the conditions, evidence, and coverage portions of the report. It MUST state:
 

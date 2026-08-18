@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "quality-capability/v2",
+  "host": "gajae-code",
+  "adapterVersion": "portable-v1",
+  "capabilities": {
+    "executeCommands": false,
+    "executeBrowser": false,
+    "captureArtifacts": false,
+    "bindSnapshot": false,
+    "provideIndependentEvidence": false,
+    "persistEvidence": false,
+    "approveExceptions": false,
+    "isolatedReadOnlyReview": false,
+    "enforcedStructuredOutput": false
+  },
+  "limitations": [
+    "Capabilities must be supplied by a runtime handshake; the host name grants none.",
+    "GajaeCode owns agents, models, task orchestration, jobs, retries, and completion.",
+    "The completion-authority extension remains disabled until separately integrated and authorized."
+  ]
+}

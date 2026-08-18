@@ -375,7 +375,7 @@ describe("traceknot verify CLI", () => {
     const pass = await fixture("/usr/bin/true");
     try {
       const stdout: string[] = [];
-      expect(await runVerify(["--root", pass.root, "--state-dir", pass.state, "--request", pass.request, "--manifest", pass.manifest], text => stdout.push(text), () => undefined)).toBe(0);
+      expect(await runVerify(["--root", pass.root, "--state-dir", pass.state, "--request", pass.request, "--manifest", pass.manifest, "--no-notify"], text => stdout.push(text), () => undefined)).toBe(0);
       const report = JSON.parse(stdout.join("")) as { documents: { execution: { observations: Array<{ artifacts: Array<{ path?: string; digest: string; type: string }> }> } } };
       const artifact = report.documents.execution.observations[0]!.artifacts.find(item => item.path === "stdout");
       if (!artifact) throw new Error("pass report did not publish stdout artifact");
@@ -389,7 +389,7 @@ describe("traceknot verify CLI", () => {
     const fail = await fixture("/usr/bin/false");
     try {
       const stdout: string[] = [];
-      expect(await runVerify(["--root", fail.root, "--state-dir", fail.state, "--request", fail.request, "--manifest", fail.manifest], text => stdout.push(text), () => undefined)).toBe(1);
+      expect(await runVerify(["--root", fail.root, "--state-dir", fail.state, "--request", fail.request, "--manifest", fail.manifest, "--no-notify"], text => stdout.push(text), () => undefined)).toBe(1);
       const report = JSON.parse(stdout.join("")) as { documents: { execution: { observations: Array<{ artifacts: Array<{ path?: string; digest: string; type: string }> }> } } };
       const artifact = report.documents.execution.observations[0]!.artifacts.find(item => item.path === "stdout");
       if (!artifact) throw new Error("fail report did not publish stdout artifact");
@@ -403,7 +403,7 @@ describe("traceknot verify CLI", () => {
     const reportError = await fixture("/usr/bin/true");
     try {
       const stderr: string[] = [];
-      expect(await runVerify(["--root", reportError.root, "--state-dir", reportError.state, "--request", reportError.request, "--manifest", reportError.manifest], () => { throw new Error("report sink failed"); }, text => stderr.push(text))).toBe(70);
+      expect(await runVerify(["--root", reportError.root, "--state-dir", reportError.state, "--request", reportError.request, "--manifest", reportError.manifest, "--no-notify"], () => { throw new Error("report sink failed"); }, text => stderr.push(text))).toBe(70);
       expect(stderr.join("")).toContain("report sink failed");
       await assertCanonicalArtifact(reportError.state, emptyDigest, []);
       expect(await invocationCollectors(reportError.state)).toEqual([]);
@@ -665,7 +665,7 @@ describe("traceknot verify CLI", () => {
       expect(report.verdict.qaVerdict).toBe("PASS"); expect(report.run.state).toBe("TERMINAL");
       expect(report.assurance).toEqual({ context: "release", requiredIndependence: "separate-verification-context", releaseStatus: "satisfied" });
       const markdown: string[] = [];
-      const reportStatus = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only", "--format", "markdown"], text => markdown.push(text), text => stderr.push(text));
+      const reportStatus = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only", "--format", "markdown", "--no-notify"], text => markdown.push(text), text => stderr.push(text));
       expect(reportStatus).toBe(0); expect(markdown.join("")).toContain("**PASS**"); expect(markdown.join("")).toContain("**release**");
       const inRepositoryArtifact = join(fixtureValue.root, "report-only-artifact");
       const boardOutput: string[] = [];
@@ -699,14 +699,14 @@ describe("traceknot verify CLI", () => {
       const localState = await mkdtemp(join(tmpdir(), "traceknot-cli-local-assurance-"));
       try {
         const localOutput: string[] = [];
-        expect(await runVerify(["--root", fixtureValue.root, "--state-dir", localState, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--assurance", "local"], text => localOutput.push(text), () => undefined)).toBe(0);
+        expect(await runVerify(["--root", fixtureValue.root, "--state-dir", localState, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--assurance", "local", "--no-notify"], text => localOutput.push(text), () => undefined)).toBe(0);
         expect((JSON.parse(localOutput.join("")) as { assurance: { context: string; requiredIndependence: string; releaseStatus: string } }).assurance).toEqual({ context: "local", requiredIndependence: "separate-verification-context", releaseStatus: "not-evaluated" });
       } finally {
         await rm(localState, { recursive: true, force: true });
       }
     } finally { await fixtureValue.cleanup(); }
   });
-  test("generates an immutable Board bundle without changing the verification exit contract", async () => {
+  test("publishes one immutable session Board without changing the verification exit contract", async () => {
     const fixtureValue = await fixture();
     try {
       const stdout: string[] = [];
@@ -714,17 +714,25 @@ describe("traceknot verify CLI", () => {
       const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--board", "--board-locale", "zh-CN", "--no-notify", "--session-id", "raw-agent-session", "--session-host", "omp"], text => stdout.push(text), text => stderr.push(text));
       expect(status).toBe(0);
       expect(JSON.parse(stdout.join("")).verdict.qaVerdict).toBe("PASS");
-      expect(stderr.join("")).toMatch(/^Traceknot Board: file:\/\//);
-      const boardRoot = join(fixtureValue.state, "runs", "cli-e2e", "boards");
-      const entries = await readdir(boardRoot);
-      expect(entries).toHaveLength(1);
-      const boardDirectory = join(boardRoot, entries[0]!);
+      expect(stderr.join("")).toMatch(/^Traceknot Board: file:\/\/.*\/sessions\/s-[0-9a-f]{64}\/index\.html\n$/);
+      await expect(stat(join(fixtureValue.state, "runs", "cli-e2e", "boards"))).rejects.toThrow();
+      const sessionsRoot = join(fixtureValue.state, "sessions");
+      const sessions = await readdir(sessionsRoot);
+      expect(sessions).toHaveLength(1);
+      const sessionRoot = join(sessionsRoot, sessions[0]!);
+      const current = JSON.parse(await readFile(join(sessionRoot, "current.json"), "utf8")) as { revisionPath: string; sessionRef: string; authoritative: boolean };
+      expect(current.revisionPath).toMatch(/^boards\/[0-9]+-/);
+      expect(current.sessionRef).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(current.authoritative).toBe(false);
+      const boardDirectory = join(sessionRoot, current.revisionPath);
       const manifest = JSON.parse(await readFile(join(boardDirectory, "manifest.json"), "utf8")) as { generatedBy: { sessionRef: string }; sourceRevision: number; files: Array<{ path: string; role: string }> };
       expect(manifest.sourceRevision).toBeGreaterThanOrEqual(0);
       expect(manifest.generatedBy.sessionRef).toMatch(/^sha256:[0-9a-f]{64}$/);
       expect(JSON.stringify(manifest)).not.toContain("raw-agent-session");
+      expect(await readFile(join(sessionRoot, "current.json"), "utf8")).not.toContain("raw-agent-session");
+      expect(await readFile(join(boardDirectory, "index.html"), "utf8")).not.toContain("raw-agent-session");
       expect(manifest.files.filter(file => file.role === "localized-view").map(file => file.path)).toEqual(["index.en.html", "index.ko.html", "index.zh-CN.html"]);
-      expect(await readFile(join(boardDirectory, "index.html"), "utf8")).toContain('<html lang="zh-CN">');
+      expect(await readFile(join(boardDirectory, "index.html"), "utf8")).toContain("<html lang=\"zh-CN\">");
       expect(await stat(join(fixtureValue.state, "presentation", "star-cta-v1.seen")).catch(() => undefined)).toBeUndefined();
     } finally {
       await fixtureValue.cleanup();
@@ -770,7 +778,7 @@ describe("traceknot verify CLI", () => {
       await fixtureValue.cleanup();
     }
   });
-  test("keeps notifications opt-in across default and explicit Board modes", async () => {
+  test("notifies once by default and suppresses notification only with --no-notify", async () => {
     const fixtureValue = await fixture();
     try {
       let notifyCalls = 0;
@@ -784,11 +792,11 @@ describe("traceknot verify CLI", () => {
         markProjectSupportSeen: async () => undefined,
       };
       expect(await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest], () => undefined, () => undefined, runtime)).toBe(0);
-      expect(notifyCalls).toBe(0);
+      expect(notifyCalls).toBe(1);
       expect(await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only", "--notify"], () => undefined, () => undefined, runtime)).toBe(0);
-      expect(notifyCalls).toBe(1);
+      expect(notifyCalls).toBe(2);
       expect(await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only", "--no-notify"], () => undefined, () => undefined, runtime)).toBe(0);
-      expect(notifyCalls).toBe(1);
+      expect(notifyCalls).toBe(2);
     } finally {
       await fixtureValue.cleanup();
     }
@@ -801,7 +809,7 @@ describe("traceknot verify CLI", () => {
       await rm(join(fixtureValue.state, "artifacts"), { recursive: true, force: true });
       const stdout: string[] = [];
       const stderr: string[] = [];
-      const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only"], text => stdout.push(text), text => stderr.push(text));
+      const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only", "--no-notify"], text => stdout.push(text), text => stderr.push(text));
       expect(status).toBe(0);
       expect(JSON.parse(stdout.join("")).verdict.qaVerdict).toBe("PASS");
       expect(stderr.join("")).toMatch(/^Traceknot Board: file:\/\//);
@@ -815,7 +823,7 @@ describe("traceknot verify CLI", () => {
     const fixtureValue = await fixture("/usr/bin/false");
     try {
       const stdout: string[] = []; const stderr: string[] = [];
-      const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest], text => stdout.push(text), text => stderr.push(text));
+      const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--no-notify"], text => stdout.push(text), text => stderr.push(text));
       expect(status).toBe(1);
       const failedCommandReport = JSON.parse(stdout.join("")) as { verdict: { qaVerdict: string } };
       expect(failedCommandReport.verdict.qaVerdict).toBe("FAIL");

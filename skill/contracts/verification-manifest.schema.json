@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/verification-manifest.v1.json",
+  "title": "Traceknot verification command manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "obligations"],
+  "properties": {
+    "schemaVersion": { "const": "verification-manifest/v1" },
+    "obligations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id"],
+        "anyOf": [
+          { "required": ["executable"], "properties": { "executable": true } },
+          { "required": ["executionCompletionPath"], "properties": { "executionCompletionPath": true } }
+        ],
+        "dependentRequired": {
+          "argv": ["executable"],
+          "cwd": ["executable"],
+          "env": ["executable"],
+          "timeoutMs": ["executable"],
+          "maxOutputBytes": ["executable"],
+          "declaredArtifacts": ["executable"],
+          "visualCompositionOraclePath": ["executable"],
+          "uiResilienceOraclePath": ["executable"],
+          "toolVersion": ["executable"],
+          "executionCompletionArtifacts": ["executionCompletionPath"]
+        },
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "executable": { "type": "string", "minLength": 1 },
+          "argv": { "type": "array", "items": { "type": "string" } },
+          "cwd": { "type": "string", "minLength": 1 },
+          "env": { "type": "object", "additionalProperties": { "type": "string" } },
+          "timeoutMs": { "type": "integer", "minimum": 1, "maximum": 600000 },
+          "maxOutputBytes": { "type": "integer", "minimum": 1, "maximum": 268435456 },
+          "maxArtifactBytes": { "type": "integer", "minimum": 1, "maximum": 268435456 },
+          "toolVersion": { "type": "string", "minLength": 1 },
+          "declaredArtifacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "digest", "path"],
+              "properties": {
+                "type": { "type": "string", "minLength": 1 },
+                "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                "path": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+          "visualCompositionOraclePath": { "type": "string", "minLength": 1, "pattern": "^(?:/|[A-Za-z]:[\\\\/])" },
+          "uiResilienceOraclePath": { "type": "string", "minLength": 1, "pattern": "^(?:/|[A-Za-z]:[\\\\/])" },
+          "executionCompletionArtifacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "digest", "path"],
+              "properties": {
+                "type": { "type": "string", "minLength": 1 },
+                "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                "path": { "type": "string", "minLength": 1, "pattern": "^(?:/|[A-Za-z]:[\\\\/])" }
+              }
+            }
+          },
+          "executionCompletionPath": { "type": "string", "minLength": 1, "pattern": "^(?:/|[A-Za-z]:[\\\\/])" }
+        }
+      }
+    }
+  }
+}

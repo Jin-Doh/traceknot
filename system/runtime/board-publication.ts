@@ -4,9 +4,11 @@ import {
   type CapabilitySet,
 } from "./capability-model";
 
-import { stat } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { readFile, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { sessionReference, type QaBoardManifest } from "../presentation/qa-board";
 
 export const BOARD_PUBLICATION_REQUIRED_CAPABILITIES = Object.freeze([
   "executeCommands",
@@ -187,23 +189,52 @@ function boardUriFromOutput(stdout: string, stderr: string): string {
   return unique[0]!;
 }
 
-async function validatePublishedBoard(entrypoint: string): Promise<Readonly<{ entrypointPath: string; manifestPath: string }>> {
+export async function validatePublishedBoard(
+  entrypoint: string,
+  expected?: Readonly<{ sessionId?: string; sessionHost?: string }>,
+): Promise<Readonly<{ entrypointPath: string; manifestPath: string; currentPath?: string; immutableManifestPath?: string }>> {
   let entrypointPath: string;
   try {
     entrypointPath = fileURLToPath(entrypoint);
   } catch {
     throw Error("canonical Board publisher reported an invalid file URI");
   }
-  if (basename(entrypointPath) !== "index.html") {
-    throw Error(`canonical Board publisher reported a non-Board entrypoint: ${entrypointPath}`);
-  }
+  if (basename(entrypointPath) !== "index.html") throw Error(`canonical Board publisher reported a non-Board entrypoint: ${entrypointPath}`);
   const manifestPath = join(dirname(entrypointPath), "manifest.json");
-  for (const [label, path] of [["Board entrypoint", entrypointPath], ["Board manifest", manifestPath]] as const) {
+  for (const [label, path] of [["Board entrypoint", entrypointPath], ["Board manifest", manifestPath] as const]) {
     const information = await stat(path).catch(() => undefined);
     if (information === undefined) throw Error(`canonical Board publisher reported ${label} that does not exist: ${path}`);
     if (!information.isFile()) throw Error(`canonical Board publisher reported ${label} that is not a regular file: ${path}`);
   }
-  return Object.freeze({ entrypointPath, manifestPath });
+  const components = entrypointPath.split("/");
+  const sessionsIndex = components.lastIndexOf("sessions");
+  if (sessionsIndex < 0 || components[sessionsIndex + 1] === undefined || !/^s-[0-9a-f]{64}$/.test(components[sessionsIndex + 1]!)) return Object.freeze({ entrypointPath, manifestPath });
+  const sessionKey = components[sessionsIndex + 1]!;
+  const sessionRoot = components.slice(0, sessionsIndex + 2).join("/");
+  if (entrypointPath !== join(sessionRoot, "index.html")) throw Error("canonical Board publisher reported an unstable session Board URI");
+  const currentPath = join(sessionRoot, "current.json");
+  const currentBytes = await readFile(currentPath).catch(() => undefined);
+  if (!currentBytes) throw Error("canonical Board publisher reported a session Board without current.json");
+  let current: Record<string, unknown>;
+  try { current = JSON.parse(new TextDecoder().decode(currentBytes)) as Record<string, unknown>; } catch { throw Error("canonical Board publisher reported malformed current.json"); }
+  if (current.schemaVersion !== "traceknot-session-board-current/v1" || current.sessionKey !== sessionKey || current.entrypoint !== "index.html" || current.authoritative !== false || typeof current.revisionPath !== "string" || !/^boards\/(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/.test(current.revisionPath) || typeof current.entrypointSha256 !== "string" || !/^[0-9a-f]{64}$/.test(current.entrypointSha256) || typeof current.manifestSha256 !== "string" || !/^[0-9a-f]{64}$/.test(current.manifestSha256) || typeof current.sessionRef !== "string") throw Error("canonical Board publisher reported an invalid current pointer");
+  const stableBytes = await readFile(entrypointPath);
+  const stableManifestBytes = await readFile(manifestPath);
+  const digest = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+  if (digest(stableBytes) !== current.entrypointSha256 || digest(stableManifestBytes) !== current.manifestSha256) throw Error("canonical Board publisher stable files do not match current pointer");
+  const immutableManifestPath = join(sessionRoot, current.revisionPath, "manifest.json");
+  const immutableManifestBytes = await readFile(immutableManifestPath).catch(() => undefined);
+  if (!immutableManifestBytes || digest(immutableManifestBytes) !== current.manifestSha256) throw Error("canonical Board publisher immutable manifest does not match current pointer");
+  let manifest: QaBoardManifest;
+  try { manifest = JSON.parse(new TextDecoder().decode(immutableManifestBytes)) as QaBoardManifest; } catch { throw Error("canonical Board publisher reported malformed immutable manifest"); }
+  if (manifest.authoritative !== false || manifest.sessionKey !== sessionKey || manifest.generatedBy.sessionRef !== current.sessionRef) throw Error("canonical Board publisher immutable manifest identity does not match current pointer");
+  if (expected?.sessionId !== undefined && expected.sessionHost !== undefined && current.sessionRef !== sessionReference(expected.sessionHost, expected.sessionId)) throw Error("canonical Board publisher session identity does not match current pointer");
+  for (const file of manifest.files) {
+    const bytes = await readFile(join(sessionRoot, current.revisionPath, file.path)).catch(() => undefined);
+    if (!bytes || bytes.byteLength !== file.bytes || digest(bytes) !== file.sha256) throw Error(`canonical Board publisher immutable file hash mismatch: ${file.path}`);
+  }
+  if (digest(stableManifestBytes) !== digest(immutableManifestBytes)) throw Error("canonical Board publisher stable manifest differs from immutable revision");
+  return Object.freeze({ entrypointPath, manifestPath, currentPath, immutableManifestPath });
 }
 
 export function createCanonicalCliBoardPublisher(input: Readonly<{
@@ -241,7 +272,7 @@ export function createCanonicalCliBoardPublisher(input: Readonly<{
         throw Error(`canonical Board publisher failed (${result.exitCode}): ${result.stderr}`);
       }
       const entrypoint = boardUriFromOutput(result.stdout, result.stderr);
-      const board = await validatePublishedBoard(entrypoint);
+      const board = await validatePublishedBoard(entrypoint, { sessionId: request.sessionId, sessionHost: request.sessionHost });
       return Object.freeze({
         status: "generated",
         publisher,

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Remove only files recorded by the portable Traceknot installer.
+# Remove only files recorded by the legacy installer; never touch a real Skills CLI Skill.
 
 set -eu
 
@@ -87,7 +87,7 @@ reject_symlink_components() {
 validate_entry() {
     manifest_entry=$1
     case "$manifest_entry" in
-        LICENSE|skill/*|contracts/*|adapters/*|system/core/*|system/runtime/*|system/cli/*|system/presentation/*|bin/*) ;;
+        LICENSE|skill/*|bin/traceknot|bin/traceknot-update|contracts/*|adapters/*|system/core/*|system/runtime/*|system/cli/*|system/presentation/*|bin/*) ;;
         /*|../*|*/../*|*/..|.|./*|*/./*) fail "unsafe manifest entry: $manifest_entry" ;;
         *) fail "unknown manifest entry: $manifest_entry" ;;
     esac
@@ -96,16 +96,28 @@ validate_entry() {
     esac
 
     entry_path=$PREFIX_CANON/$manifest_entry
-    reject_symlink_components "$entry_path"
-    if [ -L "$entry_path" ]; then
-        fail "refusing symlink artifact: $entry_path"
-    fi
-    if [ -d "$entry_path" ]; then
-        fail "refusing to remove directory artifact: $entry_path"
+    if [ -L "$entry_path" ] && [ "$manifest_entry" = bin/traceknot ]; then
+        reject_symlink_components "$(dirname "$entry_path")"
+        command -v readlink >/dev/null 2>&1 ||
+            fail 'readlink is required to verify the launcher'
+        launcher_target=$(readlink "$entry_path")
+        case "$launcher_target" in
+            "$PREFIX_CANON/skill/bin/traceknot"|"$PREFIX_CANON/current/skill/bin/traceknot"|"$REGISTRATION_PATH/bin/traceknot") ;;
+            *) fail "launcher escapes the installed Skill payload: $entry_path" ;;
+        esac
+    else
+        reject_symlink_components "$entry_path"
+        if [ -L "$entry_path" ]; then
+            fail "refusing symlink artifact: $entry_path"
+        elif [ -d "$entry_path" ]; then
+            fail "refusing to remove directory artifact: $entry_path"
+        fi
     fi
 
     entry_canon=$(canonical_path "$entry_path") || fail "cannot resolve manifest entry: $manifest_entry"
-    path_is_under "$entry_canon" "$PREFIX_CANON" || fail "manifest entry escapes prefix: $manifest_entry"
+    path_is_under "$entry_canon" "$PREFIX_CANON" || {
+        [ "$manifest_entry" = bin/traceknot ] || fail "manifest entry escapes prefix: $manifest_entry"
+    }
 }
 
 while [ "$#" -gt 0 ]; do
@@ -319,7 +331,7 @@ fi
 
 while IFS= read -r manifest_entry; do
     entry_path=$PREFIX_CANON/$manifest_entry
-    if [ -e "$entry_path" ]; then
+    if [ -e "$entry_path" ] || [ -L "$entry_path" ]; then
         rm -f "$entry_path"
     fi
 done <<EOF
@@ -342,4 +354,8 @@ rm -f "$MANIFEST"
 if [ "$UPDATE_LOCK_OWNED" -eq 1 ]; then
     rm -f "$PREFIX_CANON/.traceknot-update.lock"
 fi
-printf 'Uninstalled Traceknot from %s and removed its owned Skill registration\n' "$PREFIX_CANON"
+if [ "$REGISTRATION_OWNED" -eq 1 ]; then
+    printf 'Uninstalled Traceknot from %s and removed its owned Skill registration\n' "$PREFIX_CANON"
+else
+    printf 'Uninstalled Traceknot from %s and preserved the existing Skill registration\n' "$PREFIX_CANON"
+fi

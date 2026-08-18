@@ -1,6 +1,6 @@
 import { constants, type Dirent, writeSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, readdir, readFile, realpath } from "node:fs/promises";
+import { lstat, readdir, readFile, readlink, realpath } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { ARTIFACT_CANONICAL_LOCK_FILE, ArtifactNotFoundError, assertPrivateRootPath, assertSecureRoot, closeSecureDescriptor, closeSecureRoot, openOrCreateSecureDirectoryPath, openSecureDirectory, openSecureRoot, readSecureRegularFile, secureFlock, secureFsync, secureOpenAt, secureRenameAt, secureRmdirAt, secureUnlinkAt, STORAGE_MAINTENANCE_LOCK_FILE, type SecureRootDescriptor } from "./local-artifact-store";
 import { assertCanonicalRun } from "./verification-run";
@@ -36,6 +36,7 @@ export type StorageDirectories = Readonly<{
 export type StorageRetentionPolicy = Readonly<{
   boardTtlMs: number;
   boardMaxPerRun: number;
+  boardMaxPerSession: number;
   boardQuotaBytes: number;
   canonicalRunTtlMs: number;
   canonicalQuotaBytes: number;
@@ -45,6 +46,7 @@ export type StorageRetentionPolicy = Readonly<{
 export const DEFAULT_CACHE_RETENTION_POLICY: StorageRetentionPolicy = Object.freeze({
   boardTtlMs: DEFAULT_BOARD_TTL_MS,
   boardMaxPerRun: 10,
+  boardMaxPerSession: 10,
   boardQuotaBytes: DEFAULT_BOARD_QUOTA_BYTES,
   canonicalRunTtlMs: DEFAULT_RUN_TTL_MS,
   canonicalQuotaBytes: DEFAULT_RUN_QUOTA_BYTES,
@@ -63,6 +65,9 @@ type StorageEntry = Readonly<{
   mtimeMs: number;
   logicalUpdatedAt?: number;
   runId?: string;
+  sessionKey?: string;
+  sourceState?: string;
+  sourceRevision?: number;
   boardId?: string;
   digest?: string;
   malformed?: boolean;
@@ -87,9 +92,10 @@ type RunInfo = Readonly<{
   documents: readonly unknown[];
   digests: ReadonlySet<string>;
 }>;
-
 type BoardInfo = Readonly<{
-  runId: string;
+  runId?: string;
+  sessionKey?: string;
+  current?: boolean;
   boardId: string;
   path: string;
   relativePath: string;
@@ -98,6 +104,8 @@ type BoardInfo = Readonly<{
   mtimeMs: number;
   generatedAt?: number;
   sourceUpdatedAt?: number;
+  sourceRevision?: number;
+  sourceState?: string;
   malformed: boolean;
   future: boolean;
 }>;
@@ -162,6 +170,7 @@ export type StorageMaintenanceReport = Readonly<{
     newestTerminalRuns: readonly string[];
     activeRuns: readonly string[];
     pinnedRuns: readonly string[];
+    currentBoards: readonly string[];
     malformed: readonly string[];
     future: readonly string[];
     grace: readonly string[];
@@ -228,8 +237,9 @@ function validBoardAssurance(value: unknown): boolean {
 }
 
 function validBoardManifest(value: unknown): value is JsonRecord {
-  if (!isRecord(value) || !exactKeys(value, ["schemaVersion", "runId", "requestId", "rootIdentity", "snapshotId", "sourceRevision", "sourceState", "sourceUpdatedAt", "generatedAt", "entrypoint", "authoritative", "assurance", "verdict", "counts", "generatedBy", "files"])) return false;
+  if (!isRecord(value) || !exactKeys(value, ["schemaVersion", "runId", "requestId", "rootIdentity", "snapshotId", "sourceRevision", "sourceState", "sourceUpdatedAt", "generatedAt", "entrypoint", "authoritative", "assurance", "verdict", "counts", "generatedBy", "files"], ["sessionKey"])) return false;
   if (value.schemaVersion !== "traceknot-qa-board/v1" || !nonempty(value.runId) || !nonempty(value.requestId) || !nonempty(value.rootIdentity) || !nonempty(value.snapshotId) || !nonnegativeInteger(value.sourceRevision)) return false;
+  if (value.sessionKey !== undefined && (typeof value.sessionKey !== "string" || !/^s-[0-9a-f]{64}$/.test(value.sessionKey))) return false;
   if (!["CREATED", "BASIS_ESTABLISHED", "DISCOVERY_COMPLETED", "PLANNED", "EXECUTING", "EVIDENCE_EVALUATED", "VERDICT_RESOLVED", "TERMINAL"].includes(String(value.sourceState))) return false;
   if (typeof value.sourceUpdatedAt !== "string" || !ISO_UTC.test(value.sourceUpdatedAt) || typeof value.generatedAt !== "string" || !ISO_UTC.test(value.generatedAt) || value.entrypoint !== "index.html" || value.authoritative !== false || !validBoardAssurance(value.assurance) || !["PASS", "PASS_WITH_ACCEPTED_RISK", "FAIL", "BLOCKED", "INCOMPLETE"].includes(String(value.verdict))) return false;
   if (!isRecord(value.counts) || !exactKeys(value.counts, ["mandatory", "passed", "failed", "blocked", "incomplete"]) || !Object.values(value.counts).every(nonnegativeInteger)) return false;
@@ -310,6 +320,7 @@ function normalizePolicy(policy: StorageMaintenanceOptions["policy"] = {}): Stor
   const result = {
     boardTtlMs: Math.max(0, Math.floor(Number.isFinite(boardTtlMs) ? boardTtlMs : DEFAULT_BOARD_TTL_MS)),
     boardMaxPerRun: Math.max(0, Math.floor(value("boardMaxPerRun", 10))),
+    boardMaxPerSession: Math.max(0, Math.floor(value("boardMaxPerSession", 10))),
     boardQuotaBytes: Math.max(0, Math.floor(value("boardQuotaBytes", DEFAULT_BOARD_QUOTA_BYTES))),
     canonicalRunTtlMs: Math.max(0, Math.floor(Number.isFinite(canonicalRunTtlMs) ? canonicalRunTtlMs : DEFAULT_RUN_TTL_MS)),
     canonicalQuotaBytes: Math.max(0, Math.floor(value("canonicalQuotaBytes", DEFAULT_RUN_QUOTA_BYTES))),
@@ -537,13 +548,12 @@ async function inspectRuns(stateDir: string, pins: ReadonlySet<string>, pinsMalf
       const boardStat = await safeStat(boardPath);
       if (!boardStat) continue;
       if (boardStat.isSymlink) { symlinks.push(`runs/${runId}/boards/${boardId}`); continue; }
-      if (!boardStat.isDirectory) continue;
       const boardSize = await directorySize(boardPath);
       const manifest = await readJson(join(boardPath, "manifest.json"));
       const generatedAt = isRecord(manifest) ? asTimestamp(manifest.generatedAt) : undefined;
       const sourceUpdatedAt = isRecord(manifest) ? asTimestamp(manifest.sourceUpdatedAt) : undefined;
       const malformed = !(await validBoardContents(boardPath, manifest));
-      boards.push({ runId, boardId, path: boardPath, relativePath: `runs/${runId}/boards/${boardId}`, bytes: boardSize.bytes, allocatedBytes: boardSize.allocatedBytes, mtimeMs: Math.max(boardStat.mtimeMs, boardSize.mtimeMs), generatedAt, sourceUpdatedAt, malformed, future: generatedAt !== undefined && generatedAt > now });
+      boards.push({ runId, boardId, path: boardPath, relativePath: `runs/${runId}/boards/${boardId}`, bytes: boardSize.bytes, allocatedBytes: boardSize.allocatedBytes, mtimeMs: Math.max(boardStat.mtimeMs, boardSize.mtimeMs), generatedAt, sourceUpdatedAt, sourceState: isRecord(manifest) && typeof manifest.sourceState === "string" ? manifest.sourceState : undefined, malformed, future: generatedAt !== undefined && generatedAt > now });
       symlinks.push(...boardSize.symlinks.map(item => `runs/${runId}/boards/${boardId}/${item}`));
     }
     if (stateStat !== undefined) {
@@ -554,6 +564,70 @@ async function inspectRuns(stateDir: string, pins: ReadonlySet<string>, pinsMalf
     }
   }
   return { runs, boards, staging, symlinks, references };
+}
+async function inspectSessionBoards(stateDir: string, now: number): Promise<{ boards: BoardInfo[]; symlinks: string[] }> {
+  const sessionsRoot = join(stateDir, "sessions");
+  const root = await rootStatus(sessionsRoot);
+  if (root === "missing") return { boards: [], symlinks: [] };
+  if (root !== "directory") throw new Error(`sessions directory is not a non-symlink directory: ${sessionsRoot}`);
+  const boards: BoardInfo[] = [];
+  const symlinks: string[] = [];
+  const sessions = await readdir(sessionsRoot, { withFileTypes: true });
+  for (const session of sessions.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!/^s-[0-9a-f]{64}$/.test(session.name)) {
+      if (session.isSymbolicLink()) symlinks.push(`sessions/${session.name}`);
+      continue;
+    }
+    const sessionRoot = join(sessionsRoot, session.name);
+    if (session.isSymbolicLink()) {
+      symlinks.push(`sessions/${session.name}`);
+      continue;
+    }
+    if (!session.isDirectory()) continue;
+    const currentSelector = join(sessionRoot, "current");
+    const currentStat = await safeStat(currentSelector);
+    let currentPath: string | undefined;
+    if (currentStat?.isSymlink) {
+      const target = await readlink(currentSelector).catch(() => undefined);
+      if (target !== undefined && /^boards\/(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/.test(target)) currentPath = target;
+      else symlinks.push(`sessions/${session.name}/current`);
+    } else if (currentStat !== undefined) {
+      symlinks.push(`sessions/${session.name}/current`);
+    }
+    const boardsRoot = join(sessionRoot, "boards");
+    const boardsStatus = await rootStatus(boardsRoot);
+    if (boardsStatus === "symlink") {
+      symlinks.push(`sessions/${session.name}/boards`);
+      continue;
+    }
+    if (boardsStatus !== "directory") continue;
+    const entries = await readdir(boardsRoot, { withFileTypes: true });
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const relativePath = `sessions/${session.name}/boards/${entry.name}`;
+      const boardPath = join(boardsRoot, entry.name);
+      if (!SAFE_BOARD_ENTRY.test(entry.name)) {
+        if (entry.isSymbolicLink()) symlinks.push(relativePath);
+        continue;
+      }
+      if (entry.isSymbolicLink()) {
+        symlinks.push(relativePath);
+        continue;
+      }
+      if (!entry.isDirectory()) continue;
+      const boardSize = await directorySize(boardPath);
+      const manifest = await readJson(join(boardPath, "manifest.json"));
+      const generatedAt = isRecord(manifest) ? asTimestamp(manifest.generatedAt) : undefined;
+      const sourceUpdatedAt = isRecord(manifest) ? asTimestamp(manifest.sourceUpdatedAt) : undefined;
+      const sourceState = isRecord(manifest) && typeof manifest.sourceState === "string" ? manifest.sourceState : undefined;
+      const valid = await validBoardContents(boardPath, manifest);
+      const malformed = !valid || !isRecord(manifest) || manifest.sessionKey !== session.name;
+      const runId = valid && isRecord(manifest) && typeof manifest.runId === "string" && safeId(manifest.runId) ? manifest.runId : undefined;
+      const sourceRevision = valid && isRecord(manifest) && typeof manifest.sourceRevision === "number" && nonnegativeInteger(manifest.sourceRevision) ? manifest.sourceRevision : undefined;
+      boards.push({ sessionKey: session.name, current: currentPath === `boards/${entry.name}`, boardId: entry.name, path: boardPath, relativePath, bytes: boardSize.bytes, allocatedBytes: boardSize.allocatedBytes, mtimeMs: Math.max((await safeStat(boardPath))?.mtimeMs ?? 0, boardSize.mtimeMs), generatedAt, sourceUpdatedAt, sourceRevision, sourceState, runId, malformed, future: generatedAt !== undefined && generatedAt > now });
+      symlinks.push(...boardSize.symlinks.map(item => `${relativePath}/${item}`));
+    }
+  }
+  return { boards, symlinks };
 }
 
 async function inspectObjects(artifactDir: string, now: number): Promise<{ objects: StorageEntry[]; collector: StorageEntry[]; staging: StorageEntry[]; symlinks: string[] }> {
@@ -611,12 +685,11 @@ async function inspectObjects(artifactDir: string, now: number): Promise<{ objec
   }
   return { objects: stableSort(objects), collector: stableSort(collector), staging: stableSort(staging), symlinks: [...new Set(symlinks)].sort() };
 }
-
 function toEntry(run: RunInfo): StorageEntry {
   return { kind: "run", path: run.path, relativePath: run.relativePath, bytes: run.bytes, allocatedBytes: run.allocatedBytes, mtimeMs: run.mtimeMs, logicalUpdatedAt: run.updatedAt, runId: run.runId, malformed: run.malformed, terminal: run.terminal, protectedReason: run.pinned ? "pinned" : run.terminal ? undefined : "active" };
 }
 function boardEntry(board: BoardInfo): StorageEntry {
-  return { kind: "board", path: board.path, relativePath: board.relativePath, bytes: board.bytes, allocatedBytes: board.allocatedBytes, mtimeMs: board.mtimeMs, logicalUpdatedAt: board.generatedAt, runId: board.runId, boardId: board.boardId, malformed: board.malformed, protectedReason: board.malformed ? "malformed" : undefined };
+  return { kind: "board", path: board.path, relativePath: board.relativePath, bytes: board.bytes, allocatedBytes: board.allocatedBytes, mtimeMs: board.mtimeMs, logicalUpdatedAt: board.generatedAt, runId: board.runId, sessionKey: board.sessionKey, sourceRevision: board.sourceRevision, boardId: board.boardId, sourceState: board.sourceState, malformed: board.malformed, protectedReason: board.current ? "current" : board.malformed ? "malformed" : undefined };
 }
 
 export async function inspectStorage(input: StorageMaintenanceOptions): Promise<StorageInventory> {
@@ -641,10 +714,11 @@ export async function inspectStorage(input: StorageMaintenanceOptions): Promise<
   const now = nowMs(input.now);
   const pins = state === "directory" ? await loadPins(stateDir) : { pins: new Set<string>(), malformed: false };
   const runData = state === "directory" ? await inspectRuns(stateDir, pins.pins, pins.malformed, now) : { runs: [], boards: [], staging: [], symlinks: [], references: {} };
+  const sessionData = state === "directory" ? await inspectSessionBoards(stateDir, now) : { boards: [], symlinks: [] };
   const objectData = artifact === "directory" ? await inspectObjects(artifactDir, now) : { objects: [], collector: [], staging: [], symlinks: [] };
-  const symlinks = [...new Set([...runData.symlinks, ...objectData.symlinks])].sort();
+  const symlinks = [...new Set([...runData.symlinks, ...sessionData.symlinks, ...objectData.symlinks])].sort();
   const runs = stableSort(runData.runs.map(toEntry));
-  const boards = stableSort(runData.boards.map(boardEntry));
+  const boards = stableSort([...runData.boards, ...sessionData.boards].map(boardEntry));
   const objects = stableSort(objectData.objects);
   const collector = stableSort(objectData.collector);
   const staging = stableSort([...runData.staging, ...objectData.staging]);
@@ -666,10 +740,10 @@ export async function inspectStorage(input: StorageMaintenanceOptions): Promise<
       pinnedRuns: runData.runs.filter(item => item.pinned).length,
       malformedRuns: runData.runs.filter(item => item.malformed).length,
       futureRuns: runData.runs.filter(item => item.future).length,
-      boards: runData.boards.length,
-      malformedBoards: runData.boards.filter(item => item.malformed).length,
-      futureBoards: runData.boards.filter(item => item.future).length,
-      canonicalObjects: objects.length,
+      boards: boards.length,
+      malformedBoards: boards.filter(item => item.malformed).length,
+      futureBoards: boards.filter(item => item.logicalUpdatedAt !== undefined && item.logicalUpdatedAt > now).length,
+      canonicalObjects: objects.filter(item => !item.malformed).length,
       malformedObjects: objects.filter(item => item.malformed).length,
       collector: collector.length,
       staging: staging.length,
@@ -687,7 +761,15 @@ export async function inspectStorage(input: StorageMaintenanceOptions): Promise<
   return result;
 }
 
-function candidatePlan(inventory: StorageInventory, policy: StorageRetentionPolicy, now: number, gcMarks: GcMarks = {}, gcMarksMalformed = false, protectedRunIds: ReadonlySet<string> = new Set()): { candidates: StorageMaintenanceReport["candidates"]; protected: StorageMaintenanceReport["protected"] } {
+function compareBoardEntries(a: StorageEntry, b: StorageEntry): number {
+  const revisionOrder = (a.sourceRevision ?? -1) - (b.sourceRevision ?? -1);
+  if (revisionOrder !== 0) return revisionOrder;
+  const generatedOrder = (a.logicalUpdatedAt ?? a.mtimeMs) - (b.logicalUpdatedAt ?? b.mtimeMs);
+  if (generatedOrder !== 0) return generatedOrder;
+  return (a.boardId ?? a.relativePath).localeCompare(b.boardId ?? b.relativePath);
+}
+
+function candidatePlan(inventory: StorageInventory, policy: StorageRetentionPolicy, now: number, gcMarks: GcMarks = {}, gcMarksMalformed = false, protectedRunIds: ReadonlySet<string> = new Set(), pinState: { pins: ReadonlySet<string>; malformed: boolean } = { pins: new Set(), malformed: false }): { candidates: StorageMaintenanceReport["candidates"]; protected: StorageMaintenanceReport["protected"] } {
   const boardEntries = inventory.boards;
   const runInfo = inventory.runs;
   const newestTerminal = [...runInfo].filter(entry => entry.terminal === true && !entry.malformed && entry.logicalUpdatedAt !== undefined).sort((a, b) => (b.logicalUpdatedAt! - a.logicalUpdatedAt!) || a.relativePath.localeCompare(b.relativePath))[0];
@@ -696,14 +778,30 @@ function candidatePlan(inventory: StorageInventory, policy: StorageRetentionPoli
   const pinned = runInfo.filter(entry => entry.protectedReason === "pinned").map(entry => entry.relativePath);
   const malformed = [...runInfo.filter(entry => entry.malformed), ...boardEntries.filter(entry => entry.malformed), ...inventory.objects.filter(entry => entry.malformed)].map(entry => entry.relativePath);
   const future = [...runInfo, ...boardEntries, ...inventory.objects].filter(entry => entry.logicalUpdatedAt !== undefined && entry.logicalUpdatedAt > now).map(entry => entry.relativePath);
-  const boardsByRun = new Map<string, StorageEntry[]>();
-  for (const board of boardEntries) { const list = boardsByRun.get(board.runId!) ?? []; list.push(board); boardsByRun.set(board.runId!, list); }
+  const boardsByScope = new Map<string, StorageEntry[]>();
+  for (const board of boardEntries) {
+    const scope = board.sessionKey === undefined ? `run:${board.runId ?? "unknown"}` : `session:${board.sessionKey}`;
+    const list = boardsByScope.get(scope) ?? [];
+    list.push(board);
+    boardsByScope.set(scope, list);
+  }
+  const currentBoards = boardEntries.filter(board => board.protectedReason === "current").map(board => board.relativePath);
+  const protectedBoards = new Set(currentBoards);
   const boardCandidates: StorageEntry[] = [];
-  for (const list of boardsByRun.values()) {
-    const ordered = [...list].sort((a, b) => (a.logicalUpdatedAt ?? a.mtimeMs) - (b.logicalUpdatedAt ?? b.mtimeMs) || a.relativePath.localeCompare(b.relativePath));
-    const keepForCount = policy.boardMaxPerRun === 0 ? new Set<string>() : new Set(ordered.slice(-policy.boardMaxPerRun).map(item => item.relativePath));
+  for (const [scope, list] of boardsByScope) {
+    const ordered = [...list].sort(compareBoardEntries);
+    const maxPerScope = scope.startsWith("session:") ? policy.boardMaxPerSession ?? policy.boardMaxPerRun : policy.boardMaxPerRun;
+    const newestTerminalBoard = ordered.filter(board => board.sourceState === "TERMINAL" && !board.malformed).at(-1)?.relativePath;
+    const keepForCount = new Set(maxPerScope === 0 ? [] : ordered.slice(-maxPerScope).map(item => item.relativePath));
     for (const board of ordered) {
-      if (board.malformed || (board.logicalUpdatedAt !== undefined && board.logicalUpdatedAt > now)) continue;
+      if (board.protectedReason === "current"
+        || (board.sessionKey !== undefined && board.relativePath === newestTerminalBoard)
+        || (board.sessionKey !== undefined && board.runId !== undefined && (pinState.malformed || pinState.pins.has(board.runId)))) {
+        protectedBoards.add(board.relativePath);
+      }
+    }
+    for (const board of ordered) {
+      if (board.malformed || protectedBoards.has(board.relativePath) || (board.logicalUpdatedAt !== undefined && board.logicalUpdatedAt > now)) continue;
       const age = now - (board.logicalUpdatedAt ?? board.mtimeMs);
       if (age >= policy.boardTtlMs || !keepForCount.has(board.relativePath)) boardCandidates.push(board);
     }
@@ -711,8 +809,8 @@ function candidatePlan(inventory: StorageInventory, policy: StorageRetentionPoli
   let boardBytes = boardEntries.reduce((sum, item) => sum + item.bytes, 0);
   for (const board of boardCandidates) boardBytes -= board.bytes;
   if (boardBytes > policy.boardQuotaBytes) {
-    for (const board of [...boardEntries].sort((a, b) => (a.logicalUpdatedAt ?? a.mtimeMs) - (b.logicalUpdatedAt ?? b.mtimeMs) || a.relativePath.localeCompare(b.relativePath))) {
-      if (boardCandidates.some(item => item.relativePath === board.relativePath) || board.malformed || board.logicalUpdatedAt === undefined || board.logicalUpdatedAt > now) continue;
+    for (const board of [...boardEntries].sort(compareBoardEntries)) {
+      if (boardCandidates.some(item => item.relativePath === board.relativePath) || board.malformed || protectedBoards.has(board.relativePath) || board.logicalUpdatedAt === undefined || board.logicalUpdatedAt > now) continue;
       boardCandidates.push(board);
       boardBytes -= board.bytes;
       if (boardBytes <= policy.boardQuotaBytes) break;
@@ -776,7 +874,7 @@ function candidatePlan(inventory: StorageInventory, policy: StorageRetentionPoli
   const stagingCandidates = ephemeral(inventory.staging);
   return {
     candidates: { boards: [...new Set(boardCandidates.map(item => item.relativePath))].sort(), runs: [...new Set(runCandidates.map(item => `${item.relativePath}/${RUN_STATE}`))].sort(), objects: objectCandidates.map(item => item.relativePath).sort(), collector: collectorCandidates, staging: stagingCandidates },
-    protected: { newestTerminalRuns: newestTerminalId ? [`runs/${newestTerminalId}`] : [], activeRuns: active.sort(), pinnedRuns: pinned.sort(), malformed: malformed.sort(), future: future.sort(), grace: grace.sort(), sharedObjects: [...sharedDigests].sort(), symlinks: inventory.symlinks, requestedRuns: runInfo.filter(run => run.runId !== undefined && protectedRunIds.has(run.runId)).map(run => run.relativePath).sort() },
+    protected: { newestTerminalRuns: newestTerminalId ? [`runs/${newestTerminalId}`] : [], activeRuns: active.sort(), pinnedRuns: pinned.sort(), currentBoards: currentBoards.sort(), malformed: malformed.sort(), future: future.sort(), grace: grace.sort(), sharedObjects: [...sharedDigests].sort(), symlinks: inventory.symlinks, requestedRuns: runInfo.filter(run => run.runId !== undefined && protectedRunIds.has(run.runId)).map(run => run.relativePath).sort() },
   };
 }
 function entryDepth(relativePath: string): number {
@@ -1042,8 +1140,9 @@ export async function pruneStorage(input: StorageMaintenanceOptions): Promise<St
     await assertPrivateRootIfPresent(input.artifactDir, "artifact storage root");
   }
   let inventory = await inspectStorage({ ...input, policy });
+  let pinState = await loadPins(inventory.directories.stateDir);
   let gcMarksState = await loadGcMarks(inventory.directories.artifactDir);
-  let plan = candidatePlan(inventory, policy, now, gcMarksState.marks, gcMarksState.malformed, protectedRunIds);
+  let plan = candidatePlan(inventory, policy, now, gcMarksState.marks, gcMarksState.malformed, protectedRunIds, pinState);
   let deleted: StorageMaintenanceReport["deleted"] = { boards: [], runs: [], objects: [], collector: [], staging: [] };
   let stateLock: RootLock | undefined;
   let artifactLock: RootLock | undefined;
@@ -1058,11 +1157,12 @@ export async function pruneStorage(input: StorageMaintenanceOptions): Promise<St
       if (stateLock) assertSecureRoot(stateLock.root);
       if (artifactLock) assertSecureRoot(artifactLock.root);
       inventory = await inspectStorage({ ...input, policy });
+      pinState = await loadPins(inventory.directories.stateDir);
       if (inventory.counts.pinFileMalformed) throw new Error("pin file became malformed; refusing apply");
       const referencedBeforeRunPrune = new Set(Object.values(inventory.runReferences).flatMap(digests => digests));
       gcMarksState = artifactLock ? await loadGcMarks(inventory.directories.artifactDir, artifactLock.root) : { marks: {}, malformed: false };
       if (gcMarksState.malformed) warnings.push("GC marks are malformed; object deletion is disabled until they are repaired");
-      plan = candidatePlan(inventory, policy, now, {}, gcMarksState.malformed, protectedRunIds);
+      plan = candidatePlan(inventory, policy, now, {}, gcMarksState.malformed, protectedRunIds, pinState);
       if (stateLock) assertSecureRoot(stateLock.root);
       if (artifactLock) assertSecureRoot(artifactLock.root);
       const phaseDeleted = await applyCandidates(inventory, plan.candidates, stateLock, artifactLock);
@@ -1070,13 +1170,14 @@ export async function pruneStorage(input: StorageMaintenanceOptions): Promise<St
       if (stateLock) assertSecureRoot(stateLock.root);
       if (artifactLock) assertSecureRoot(artifactLock.root);
       inventory = await inspectStorage({ ...input, policy });
+      pinState = await loadPins(inventory.directories.stateDir);
       if (inventory.counts.pinFileMalformed) throw new Error("pin file became malformed; refusing apply");
       if (artifactLock && !gcMarksState.malformed) {
         const referencedAfterRunPrune = new Set(Object.values(inventory.runReferences).flatMap(digests => digests));
         const newlyUnreferenced = new Set([...referencedBeforeRunPrune].filter(digest => !referencedAfterRunPrune.has(digest)));
         const marks = reconcileGcMarks(inventory, gcMarksState.marks, now, newlyUnreferenced);
         await writeGcMarks(artifactLock.root, marks);
-        const objectPlan = candidatePlan(inventory, policy, now, marks, false, protectedRunIds);
+        const objectPlan = candidatePlan(inventory, policy, now, marks, false, protectedRunIds, pinState);
         if (stateLock) assertSecureRoot(stateLock.root);
         assertSecureRoot(artifactLock.root);
         const objectDeleted = await applyCandidates(inventory, { boards: [], runs: [], objects: objectPlan.candidates.objects, collector: [], staging: [] }, stateLock, artifactLock);

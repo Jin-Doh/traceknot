@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/update-manifest.v1.json",
+  "title": "Traceknot update manifest",
+  "description": "Signed metadata binding an immutable Traceknot release to its source and downloadable artifact.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "version",
+    "releaseTag",
+    "sourceRepository",
+    "sourceCommit",
+    "publishedAt",
+    "artifact"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "traceknot-update-manifest/v1"
+    },
+    "version": {
+      "type": "string",
+      "description": "Must equal releaseTag without its leading v and the version embedded in artifact.name; the updater enforces this cross-field invariant.",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "releaseTag": {
+      "type": "string",
+      "description": "Must equal v followed by version; the updater enforces this cross-field invariant.",
+      "pattern": "^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "sourceRepository": {
+      "const": "Jin-Doh/traceknot"
+    },
+    "sourceCommit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "publishedAt": {
+      "type": "string",
+      "description": "Canonical UTC RFC 3339 lexical form. The updater must additionally calendar-parse and reject impossible dates before freshness evaluation.",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]+)?Z$"
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "size", "sha256"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Its embedded semantic version must equal version; the updater enforces this cross-field invariant.",
+          "pattern": "^traceknot-v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.tar\\.gz$"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

@@ -11,7 +11,7 @@ import Ajv2020 from "ajv/dist/2020";
 const NOW = "2026-08-15T00:00:00.000Z";
 const OLD = "2025-01-01T00:00:00.000Z";
 const digest = "a".repeat(64);
-const policy: StorageRetentionPolicy = { boardTtlMs: 1, boardMaxPerRun: 1, boardQuotaBytes: 1, canonicalRunTtlMs: 1, canonicalQuotaBytes: 1, graceMs: 1 };
+const policy: StorageRetentionPolicy = { boardTtlMs: 1, boardMaxPerRun: 1, boardMaxPerSession: 1, boardQuotaBytes: 1, canonicalRunTtlMs: 1, canonicalQuotaBytes: 1, graceMs: 1 };
 const fixtureRoots: string[] = [];
 
 afterEach(async () => {
@@ -40,6 +40,38 @@ async function board(state: string, runId: string, boardId: string, generatedAt 
   await mkdir(path, { recursive: true });
   await writeFile(join(path, "index.html"), "<html></html>");
   await writeFile(join(path, "manifest.json"), JSON.stringify({ schemaVersion: "traceknot-qa-board/v1", runId, requestId: "request", rootIdentity: "root", snapshotId: "snapshot", sourceRevision: 1, sourceState: "TERMINAL", sourceUpdatedAt: generatedAt, generatedAt, entrypoint: "index.html", authoritative: false, assurance: { context: "release", requiredIndependence: "separate-verification-context", releaseStatus: "satisfied" }, verdict: "PASS", counts: { mandatory: 0, passed: 0, failed: 0, blocked: 0, incomplete: 0 }, generatedBy: { invocationId: boardId.length > 128 && boardId.startsWith("9-") ? boardId.slice(2) : boardId, sessionHost: "test", sessionRef: "test" }, files: [{ path: "index.html", role: "entrypoint", sha256: createHash("sha256").update("<html></html>").digest("hex"), bytes: 13 }] }));
+  await utimes(path, new Date(OLD), new Date(OLD));
+}
+
+async function sessionBoard(
+  state: string,
+  sessionKey: string,
+  boardId: string,
+  input: { runId: string; sourceRevision: number; sourceState: string; generatedAt: string },
+): Promise<void> {
+  const path = join(state, "sessions", sessionKey, "boards", boardId);
+  const html = `<html>${boardId}</html>`;
+  await mkdir(path, { recursive: true });
+  await writeFile(join(path, "index.html"), html);
+  await writeFile(join(path, "manifest.json"), JSON.stringify({
+    schemaVersion: "traceknot-qa-board/v1",
+    sessionKey,
+    runId: input.runId,
+    requestId: "request",
+    rootIdentity: "root",
+    snapshotId: "snapshot",
+    sourceRevision: input.sourceRevision,
+    sourceState: input.sourceState,
+    sourceUpdatedAt: input.generatedAt,
+    generatedAt: input.generatedAt,
+    entrypoint: "index.html",
+    authoritative: false,
+    assurance: { context: "release", requiredIndependence: "separate-verification-context", releaseStatus: "satisfied" },
+    verdict: "PASS",
+    counts: { mandatory: 0, passed: 0, failed: 0, blocked: 0, incomplete: 0 },
+    generatedBy: { invocationId: boardId, sessionHost: "omp", sessionRef: sessionKey },
+    files: [{ path: "index.html", role: "entrypoint", sha256: createHash("sha256").update(html).digest("hex"), bytes: Buffer.byteLength(html) }],
+  }));
   await utimes(path, new Date(OLD), new Date(OLD));
 }
 function storageCli(args: readonly string[]): { exitCode: number; stdout: string; stderr: string } {
@@ -190,6 +222,35 @@ describe("storage retention", () => {
     expect(report.candidates.boards).toEqual(["runs/active/boards/1-old"]);
     expect(report.candidates.boards).not.toContain("runs/active/boards/2-new");
   });
+
+  test("session retention preserves selected, pinned, and monotonic newest terminal revisions under quota", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"b".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
+    await run(state, "pinned", { state: "TERMINAL", updatedAt: OLD });
+    await pinRun(state, "pinned");
+    await rm(join(state, "runs", "pinned"), { recursive: true, force: true });
+    await sessionBoard(state, sessionKey, "7-late-clock", { runId: "unpinned", sourceRevision: 7, sourceState: "TERMINAL", generatedAt: NOW });
+    await sessionBoard(state, sessionKey, "8-old", { runId: "unpinned", sourceRevision: 8, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "9-current", { runId: "unpinned", sourceRevision: 9, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "10-terminal", { runId: "unpinned", sourceRevision: 10, sourceState: "TERMINAL", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "11-pinned", { runId: "pinned", sourceRevision: 11, sourceState: "EXECUTING", generatedAt: OLD });
+    await symlink("boards/9-current", join(sessionRoot, "current"));
+
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).toContain(`${prefix}7-late-clock`);
+    expect(applied.deleted.boards).toContain(`${prefix}8-old`);
+    expect(applied.deleted.boards).not.toContain(`${prefix}9-current`);
+    expect(applied.deleted.boards).not.toContain(`${prefix}10-terminal`);
+    expect(applied.deleted.boards).not.toContain(`${prefix}11-pinned`);
+    expect(await readFile(join(sessionRoot, "current", "index.html"), "utf8")).toContain("9-current");
+
+    await unpinRun(state, "pinned");
+    const unpinned = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    expect(unpinned.deleted.boards).toContain(`${prefix}11-pinned`);
+    expect(await readFile(join(sessionRoot, "current", "index.html"), "utf8")).toContain("9-current");
+  });
   test("retains maximum-length Board names through inventory and deletion", async () => {
     const { state, artifacts } = await fixture();
     const boardId = `9-${"a".repeat(128)}`;
@@ -252,8 +313,8 @@ describe("storage retention", () => {
   test("board max zero does not retain any publication", async () => {
     const { state, artifacts } = await fixture();
     await run(state, "active", { state: "EXECUTING", updatedAt: NOW });
-    await board(state, "active", "only", OLD);
-    const report = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, boardMaxPerRun: 0 } });
+    await board(state, "active", "only", NOW);
+    const report = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, boardMaxPerRun: 0, boardTtlMs: 365 * 24 * 60 * 60 * 1000, boardQuotaBytes: 1024 * 1024 } });
     expect(report.candidates.boards).toEqual(["runs/active/boards/only"]);
   });
 

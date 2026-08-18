@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "quality-capability/v2",
+  "host": "codex",
+  "adapterVersion": "portable-v1",
+  "capabilities": {
+    "executeCommands": false,
+    "executeBrowser": false,
+    "captureArtifacts": false,
+    "bindSnapshot": false,
+    "provideIndependentEvidence": false,
+    "persistEvidence": false,
+    "approveExceptions": false,
+    "isolatedReadOnlyReview": false,
+    "enforcedStructuredOutput": false
+  },
+  "limitations": [
+    "Capabilities must be supplied by a runtime handshake; the host name grants none.",
+    "Codex owns subagents, models, turns, tools, retries, and completion.",
+    "Hooks and app-server lifecycle notifications are observations only."
+  ]
+}

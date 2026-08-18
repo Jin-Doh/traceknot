@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/trusted-producer-policy.v1.json",
+  "title": "Traceknot trusted producer policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "issuer", "keyId", "publicKeyPem"],
+  "properties": {
+    "schemaVersion": { "const": "trusted-producer-policy/v1" },
+    "issuer": { "type": "string", "minLength": 1 },
+    "keyId": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "publicKeyPem": { "type": "string", "minLength": 1 }
+  }
+}

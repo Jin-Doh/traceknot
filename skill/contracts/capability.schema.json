@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/capability.v1.json",
+  "title": "Traceknot host capability",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "host", "adapterVersion", "capabilities"],
+  "properties": {
+    "schemaVersion": { "const": "quality-capability/v1" },
+    "host": { "type": "string", "minLength": 1 },
+    "adapterVersion": { "type": "string", "minLength": 1 },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executeCommands", "executeBrowser", "captureArtifacts", "bindSnapshot", "provideIndependentEvidence", "persistEvidence", "approveExceptions"],
+      "properties": {
+        "executeCommands": { "type": "boolean" },
+        "executeBrowser": { "type": "boolean" },
+        "captureArtifacts": { "type": "boolean" },
+        "bindSnapshot": { "type": "boolean" },
+        "provideIndependentEvidence": { "type": "boolean" },
+        "persistEvidence": { "type": "boolean" },
+        "approveExceptions": { "type": "boolean" }
+      }
+    },
+    "limitations": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+  }
+}

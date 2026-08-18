@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install the portable Traceknot Skill and host-neutral QA artifacts.
+# Install the canonical Traceknot Skill and its optional legacy updater/launcher.
 
 set -eu
 
@@ -14,6 +14,7 @@ BOOTSTRAP_TMP=
 MANIFEST_TMP=
 SKILLS_ROOT=
 REGISTRATION_PATH=
+REGISTRATION_EXTERNAL=0
 INSTALL_LOCK_OWNED=0
 INSTALL_RECOVERY_LOCK_HELD=0
 INSTALL_LOCK_CLAIM=
@@ -227,11 +228,13 @@ done
 
 source_is_complete() {
     candidate_root=$1
-    for candidate_component in skill contracts adapters system/core system/runtime system/cli system/presentation bin; do
-        [ -d "$candidate_root/$candidate_component" ] || return 1
-    done
+    [ -d "$candidate_root/skill" ] || return 1
+    [ -f "$candidate_root/skill/SKILL.md" ] || return 1
+    [ -x "$candidate_root/skill/bin/traceknot" ] || return 1
+    [ -d "$candidate_root/skill/contracts" ] || return 1
+    [ -d "$candidate_root/skill/adapters" ] || return 1
+    [ -x "$candidate_root/bin/traceknot-update" ] || return 1
     [ -f "$candidate_root/LICENSE" ]
-    [ -x "$candidate_root/bin/traceknot-update" ]
 }
 
 bootstrap_source() {
@@ -323,7 +326,7 @@ if [ -e "$MANIFEST" ]; then
     while IFS= read -r previous_entry; do
         [ -n "$previous_entry" ] || fail 'manifest contains an empty entry'
         case "$previous_entry" in
-            LICENSE|skill/*|contracts/*|adapters/*|system/core/*|system/runtime/*|system/cli/*|system/presentation/*|bin/*) ;;
+            LICENSE|skill/*|bin/traceknot|bin/traceknot-update|contracts/*|adapters/*|system/core/*|system/runtime/*|system/cli/*|system/presentation/*|bin/*) ;;
             *) fail "unsafe manifest entry: $previous_entry" ;;
         esac
         case "$previous_entry" in
@@ -377,9 +380,17 @@ if [ -L "$REGISTRATION_PATH" ]; then
         "$PREFIX_CANON/skill"|"$PREFIX_CANON/current/skill") ;;
         *) fail "refusing unrelated Skill registration: $REGISTRATION_PATH" ;;
     esac
+elif [ -d "$REGISTRATION_PATH" ]; then
+    # A real Skills CLI installation is canonical and remains completely
+    # unmanaged by this installer. The prefix-owned optional launcher still
+    # follows this installer's managed current release.
+    [ -x "$REGISTRATION_PATH/bin/traceknot" ] ||
+        fail "external Skill registration is missing executable: $REGISTRATION_PATH/bin/traceknot"
+    REGISTRATION_EXTERNAL=1
 elif [ -e "$REGISTRATION_PATH" ]; then
-    fail "refusing unowned Skill registration: $REGISTRATION_PATH; inspect it and remove it only if intended, or choose another TRACEKNOT_SKILLS_ROOT"
+    fail "refusing unsafe Skill registration: $REGISTRATION_PATH"
 fi
+LAUNCHER_TARGET=$PREFIX_CANON/skill/bin/traceknot
 
 manifest_owns() {
     ownership_entry=$1
@@ -404,31 +415,51 @@ check_file_target() {
         manifest_owns "$source_relative" || fail "refusing to overwrite unowned file: $destination_file"
     fi
 }
+check_launcher_target() {
+    launcher=$PREFIX_CANON/bin/traceknot
+    if [ -L "$launcher" ]; then
+        reject_symlink_components "$(dirname "$launcher")"
+        manifest_owns bin/traceknot ||
+            fail "refusing unowned launcher symlink: $launcher"
+    elif [ -e "$launcher" ]; then
+        reject_symlink_components "$launcher"
+        [ -f "$launcher" ] || fail "launcher is not a regular file: $launcher"
+        manifest_owns bin/traceknot ||
+            fail "refusing to overwrite unowned launcher: $launcher"
+    else
+        reject_symlink_components "$launcher"
+    fi
+}
+
+check_launcher_target
 
 check_file_target LICENSE
-for component in skill contracts adapters system/core system/runtime system/cli system/presentation bin; do
-    while IFS= read -r source_file; do
-        [ -n "$source_file" ] || continue
-        relative=${source_file#"$SOURCE_ROOT"/}
-        check_file_target "$relative"
-    done <<EOF
-$(find "$SOURCE_ROOT/$component" -type f -print)
+check_file_target bin/traceknot-update
+while IFS= read -r source_file; do
+    [ -n "$source_file" ] || continue
+    relative=${source_file#"$SOURCE_ROOT"/}
+    check_file_target "$relative"
+done <<EOF
+$(find "$SOURCE_ROOT/skill" -type f -print)
 EOF
-done
 
 if [ "$DRY_RUN" -eq 1 ]; then
     printf 'Would install Traceknot to %s\n' "$PREFIX_CANON"
     printf '  %s -> %s/LICENSE\n' "$SOURCE_ROOT/LICENSE" "$PREFIX_CANON"
-    for component in skill contracts adapters system/core system/runtime system/cli system/presentation bin; do
-        while IFS= read -r source_file; do
-            [ -n "$source_file" ] || continue
-            relative=${source_file#"$SOURCE_ROOT"/}
-            printf '  %s -> %s/%s\n' "$source_file" "$PREFIX_CANON" "$relative"
-        done <<EOF
-$(find "$SOURCE_ROOT/$component" -type f -print)
+    printf '  %s -> %s/bin/traceknot-update\n' "$SOURCE_ROOT/bin/traceknot-update" "$PREFIX_CANON"
+    while IFS= read -r source_file; do
+        [ -n "$source_file" ] || continue
+        relative=${source_file#"$SOURCE_ROOT"/}
+        printf '  %s -> %s/%s\n' "$source_file" "$PREFIX_CANON" "$relative"
+    done <<EOF
+$(find "$SOURCE_ROOT/skill" -type f -print)
 EOF
-    done
-    printf '  register %s -> %s/skill\n' "$REGISTRATION_PATH" "$PREFIX_CANON"
+    if [ "$REGISTRATION_EXTERNAL" -eq 1 ]; then
+        printf '  leave existing Skill registration %s untouched\n' "$REGISTRATION_PATH"
+    else
+        printf '  register %s -> %s/skill\n' "$REGISTRATION_PATH" "$PREFIX_CANON"
+    fi
+    printf '  launcher %s -> %s\n' "$PREFIX_CANON/bin/traceknot" "$LAUNCHER_TARGET"
     if [ "$AUTO_UPDATE" -eq 1 ]; then
         printf '  enable daily automatic updates after installation\n'
     else
@@ -515,6 +546,7 @@ fi
 
 MANIFEST_TMP="$PREFIX_CANON/$MANIFEST_NAME.tmp.$$"
 printf '%s\n' 'traceknot-install/v1' > "$MANIFEST_TMP"
+printf '%s\n' bin/traceknot >> "$MANIFEST_TMP"
 
 copy_file() {
     source_file=$1
@@ -532,20 +564,44 @@ copy_file() {
 }
 
 copy_file "$SOURCE_ROOT/LICENSE" LICENSE
-for component in skill contracts adapters system/core system/runtime system/cli system/presentation bin; do
-    while IFS= read -r source_file; do
-        [ -n "$source_file" ] || continue
-        relative=${source_file#"$SOURCE_ROOT"/}
-        copy_file "$source_file" "$relative"
-    done <<EOF
-$(find "$SOURCE_ROOT/$component" -type f -print)
+copy_file "$SOURCE_ROOT/bin/traceknot-update" bin/traceknot-update
+while IFS= read -r source_file; do
+    [ -n "$source_file" ] || continue
+    relative=${source_file#"$SOURCE_ROOT"/}
+    copy_file "$source_file" "$relative"
+done <<EOF
+$(find "$SOURCE_ROOT/skill" -type f -print)
 EOF
-done
 
-if [ "$MANAGED_STATE_RESET" -eq 1 ]; then
-    mv "$MANIFEST_TMP" "$PREFIX_CANON/$MANIFEST_NAME"
-    MANIFEST_TMP=
-fi
+manifest_will_own() {
+    ownership_entry=$1
+    while IFS= read -r new_entry; do
+        [ "$new_entry" = "$ownership_entry" ] && return 0
+    done <<EOF
+$(sed -n '2,$p' "$MANIFEST_TMP")
+EOF
+    return 1
+}
+
+remove_stale_manifest_entries() {
+    [ "$PREVIOUS_MANIFEST" -eq 1 ] || return 0
+    while IFS= read -r previous_entry; do
+        [ -n "$previous_entry" ] || continue
+        manifest_will_own "$previous_entry" && continue
+        stale_path=$PREFIX_CANON/$previous_entry
+        reject_symlink_components "$stale_path"
+        if [ -e "$stale_path" ] || [ -L "$stale_path" ]; then
+            [ -f "$stale_path" ] && [ ! -L "$stale_path" ] ||
+                fail "refusing unsafe stale artifact: $stale_path"
+            rm -f "$stale_path"
+        fi
+    done <<EOF
+$(sed -n '2,$p' "$MANIFEST")
+EOF
+}
+
+remove_stale_manifest_entries
+
 if [ "$MANAGED_STATE_RESET" -eq 1 ] &&
    [ ! -e "$PREFIX_CANON/.traceknot-update/reinstall-reset" ] &&
    [ ! -L "$PREFIX_CANON/.traceknot-update/reinstall-reset" ]; then
@@ -556,7 +612,7 @@ if [ "$MANAGED_STATE_RESET" -eq 1 ] &&
     mv "$reinstall_reset_tmp" "$PREFIX_CANON/.traceknot-update/reinstall-reset"
     sync
 fi
-if [ ! -L "$REGISTRATION_PATH" ]; then
+if [ "$REGISTRATION_EXTERNAL" -eq 0 ] && [ ! -L "$REGISTRATION_PATH" ]; then
     if [ -L "$SKILLS_ROOT" ]; then
         fail "refusing symlink Agent Skills directory: $SKILLS_ROOT"
     fi
@@ -568,7 +624,8 @@ if [ ! -L "$REGISTRATION_PATH" ]; then
         fail "Skill registration appeared during installation: $REGISTRATION_PATH"
     ln -s "$PREFIX_CANON/skill" "$REGISTRATION_PATH"
 fi
-if [ "$(readlink "$REGISTRATION_PATH")" != "$PREFIX_CANON/skill" ]; then
+if [ "$REGISTRATION_EXTERNAL" -eq 0 ] &&
+   [ "$(readlink "$REGISTRATION_PATH")" != "$PREFIX_CANON/skill" ]; then
     registration_tmp=$REGISTRATION_PATH.tmp.$$
     rm -f "$registration_tmp"
     ln -s "$PREFIX_CANON/skill" "$registration_tmp"
@@ -578,11 +635,27 @@ if [ "$(readlink "$REGISTRATION_PATH")" != "$PREFIX_CANON/skill" ]; then
         fail 'cannot atomically retarget Skill registration'
     fi
 fi
+launcher_path=$PREFIX_CANON/bin/traceknot
+if [ -L "$launcher_path" ]; then
+    reject_symlink_components "$(dirname "$launcher_path")"
+else
+    reject_symlink_components "$launcher_path"
+fi
+if [ -e "$launcher_path" ] || [ -L "$launcher_path" ]; then
+    manifest_owns bin/traceknot ||
+        fail "refusing to overwrite unowned launcher: $launcher_path"
+    rm -f "$launcher_path"
+fi
+launcher_tmp=$launcher_path.tmp.$$
+rm -f "$launcher_tmp"
+ln -s "$LAUNCHER_TARGET" "$launcher_tmp"
+mv -f "$launcher_tmp" "$launcher_path"
 
 if [ -n "$MANIFEST_TMP" ]; then
     mv "$MANIFEST_TMP" "$PREFIX_CANON/$MANIFEST_NAME"
     MANIFEST_TMP=
 fi
+
 if [ "$MANAGED_STATE_RESET" -eq 1 ]; then
     rm -f "$PREFIX_CANON/current" "$PREFIX_CANON/rollback" \
         "$PREFIX_CANON/.traceknot-update/active.json" \
@@ -603,4 +676,8 @@ if [ "$MANAGED_STATE_RESET" -eq 1 ]; then
     sync
 fi
 release_install_lock
-printf 'Installed Traceknot to %s and registered %s\n' "$PREFIX_CANON" "$REGISTRATION_PATH"
+if [ "$REGISTRATION_EXTERNAL" -eq 1 ]; then
+    printf 'Installed Traceknot to %s and left existing Skill registration %s untouched\n' "$PREFIX_CANON" "$REGISTRATION_PATH"
+else
+    printf 'Installed Traceknot to %s and registered %s\n' "$PREFIX_CANON" "$REGISTRATION_PATH"
+fi

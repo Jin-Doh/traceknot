@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/qa-board-policy.v1.json",
+  "title": "Traceknot universal QA Board publication policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "publication", "onUnavailable", "explicitOptOut"],
+  "properties": {
+    "schemaVersion": { "const": "traceknot-board-policy/v1" },
+    "publication": { "const": "required" },
+    "onUnavailable": { "const": "report" },
+    "explicitOptOut": { "const": "--no-board" }
+  }
+}
