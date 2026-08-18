@@ -769,6 +769,15 @@ function compareBoardEntries(a: StorageEntry, b: StorageEntry): number {
   return (a.boardId ?? a.relativePath).localeCompare(b.boardId ?? b.relativePath);
 }
 
+function compareBoardQuotaEntries(a: StorageEntry, b: StorageEntry): number {
+  const updatedOrder = (a.logicalUpdatedAt ?? a.mtimeMs) - (b.logicalUpdatedAt ?? b.mtimeMs);
+  if (updatedOrder !== 0) return updatedOrder;
+  const revisionOrder = (a.sourceRevision ?? -1) - (b.sourceRevision ?? -1);
+  if (revisionOrder !== 0) return revisionOrder;
+  return (a.boardId ?? a.relativePath).localeCompare(b.boardId ?? b.relativePath);
+}
+
+
 function candidatePlan(inventory: StorageInventory, policy: StorageRetentionPolicy, now: number, gcMarks: GcMarks = {}, gcMarksMalformed = false, protectedRunIds: ReadonlySet<string> = new Set(), pinState: { pins: ReadonlySet<string>; malformed: boolean } = { pins: new Set(), malformed: false }): { candidates: StorageMaintenanceReport["candidates"]; protected: StorageMaintenanceReport["protected"] } {
   const boardEntries = inventory.boards;
   const runInfo = inventory.runs;
@@ -809,7 +818,7 @@ function candidatePlan(inventory: StorageInventory, policy: StorageRetentionPoli
   let boardBytes = boardEntries.reduce((sum, item) => sum + item.bytes, 0);
   for (const board of boardCandidates) boardBytes -= board.bytes;
   if (boardBytes > policy.boardQuotaBytes) {
-    for (const board of [...boardEntries].sort(compareBoardEntries)) {
+    for (const board of [...boardEntries].sort(compareBoardQuotaEntries)) {
       if (boardCandidates.some(item => item.relativePath === board.relativePath) || board.malformed || protectedBoards.has(board.relativePath) || board.logicalUpdatedAt === undefined || board.logicalUpdatedAt > now) continue;
       boardCandidates.push(board);
       boardBytes -= board.bytes;

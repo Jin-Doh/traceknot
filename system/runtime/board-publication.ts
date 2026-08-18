@@ -268,7 +268,7 @@ export function createCanonicalCliBoardPublisher(input: Readonly<{
         "--board",
       ]);
       const result = await runner(command, request.rootDir);
-      if (result.exitCode !== 0) {
+      if (![0, 1, 2, 3].includes(result.exitCode)) {
         throw Error(`canonical Board publisher failed (${result.exitCode}): ${result.stderr}`);
       }
       const entrypoint = boardUriFromOutput(result.stdout, result.stderr);

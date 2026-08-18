@@ -565,6 +565,18 @@ function validateSessionPresentation(value: unknown, path = "$", seen = new Set<
   seen.delete(value);
 }
 
+function sessionPresentationContains(value: unknown, sessionIdValue: string, seen = new Set<unknown>()): boolean {
+  if (typeof value === "string") return value.includes(sessionIdValue);
+  if (value === null || typeof value !== "object" || seen.has(value)) return false;
+  seen.add(value);
+  const found = Array.isArray(value)
+    ? value.some(item => sessionPresentationContains(item, sessionIdValue, seen))
+    : Object.values(value as UnknownRecord).some(item => sessionPresentationContains(item, sessionIdValue, seen));
+  seen.delete(value);
+  return found;
+}
+
+
 function validateSessionCounts(value: unknown, findings: readonly UnknownRecord[]): Record<string, number> {
   const counts = sessionObject(value, "view.counts");
   sessionKeys(counts, ["mandatory", "passed", "failed", "blocked", "incomplete"]);
@@ -1102,7 +1114,7 @@ export async function publishSessionBoardUpdate(input: Readonly<{
   showProjectSupport?: boolean;
 }>): Promise<SessionBoardPublicationResult> {
   const update = parseSessionBoardUpdate(input.update);
-  if (JSON.stringify(update.view).includes(update.sessionId)) throw new Error("Board view contains the raw session ID");
+  if (sessionPresentationContains(update.view, update.sessionId)) throw new Error("Board view contains the raw session ID");
   const invocationId = update.invocationId ?? randomUUID();
   const sessionKey = sessionBoardKey(update.sessionHost, update.sessionId);
   const boardName = `${update.view.revision}-${invocationId}`;

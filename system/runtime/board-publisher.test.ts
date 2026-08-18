@@ -99,10 +99,23 @@ describe("canonical Board publisher", () => {
     }
   });
 
-  test("fails closed on a non-zero CLI exit", async () => {
-    const runner: CanonicalCliRunner = async () => ({ exitCode: 2, stdout: "", stderr: "blocked" });
+  test("accepts a verdict exit code after validating the published Board", async () => {
+    const fixture = await boardFixture();
+    try {
+      const runner: CanonicalCliRunner = async () => ({ exitCode: 1, stdout: "", stderr: `Traceknot Board: ${fixture.entrypoint}\n` });
+      await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish(request)).resolves.toMatchObject({
+        status: "generated",
+        entrypoint: fixture.entrypoint,
+      });
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails closed on an unsupported non-zero CLI exit", async () => {
+    const runner: CanonicalCliRunner = async () => ({ exitCode: 64, stdout: "", stderr: "usage" });
     await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish(request))
-      .rejects.toThrow("canonical Board publisher failed (2): blocked");
+      .rejects.toThrow("canonical Board publisher failed (64): usage");
   });
 
   test("fails closed when the CLI omits the Board URI", async () => {
