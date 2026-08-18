@@ -123,11 +123,11 @@ Lifecycle events and agent completion claims MAY trigger observation or further 
 
 ### 7.1 Board publication
 
-Every Traceknot QA run has Board publication enabled by default. Do not wait for the user to request one. Follow [`references/qa-board.md`](references/qa-board.md) and attempt the canonical Traceknot Board publisher whenever it is available.
+Every Traceknot QA run has Board publication enabled by default. Do not wait for the user to request one. Follow [`references/qa-board.md`](references/qa-board.md) and attempt the canonical or host-integrated Traceknot Board publisher whenever it is available.
 
-Board publication is conditional on the host's advertised command and persistence capabilities; the Skill MUST NOT assume that the host name grants them. If no publisher is available, the final report MUST state `Board status: unavailable` and the missing prerequisite. It MUST NOT silently use `not-requested`.
+This policy is host-neutral across OMP, Codex, Claude Code, OpenCode, and GajaeCode. A host adapter MAY advertise Board publication prerequisites only through a current capability handshake bound to the host, session, producer, and target snapshot. The shared prerequisites are `executeCommands`, `bindSnapshot`, and `persistEvidence`; a host name or lifecycle hook never grants them.
 
-Preserve the observed Board URI, manifest path, run ID, publisher, and failure output. Before reporting `generated`, check the entrypoint and manifest on disk. `--no-board` is the explicit opt-out and produces `Board status: disabled`.
+If no publisher is available, the final report MUST state `Board status: unavailable` and the missing prerequisite. It MUST NOT silently use `not-requested`. Preserve the observed Board URI, manifest path, run ID, publisher, and failure output. Before reporting `generated`, check the entrypoint and manifest on disk. `--no-board` is the explicit opt-out and produces `Board status: disabled`.
 
 Board publication is separate from QA evaluation. A Board failure MUST NOT change a completed QA verdict, and a generated Board MUST NOT substitute for accepted evidence. Include the Board status and fields required by `references/completion-report.md` in every Traceknot completion report.
 

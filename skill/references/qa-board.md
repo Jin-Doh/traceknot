@@ -5,6 +5,12 @@ A Traceknot QA Board is a static, non-authoritative presentation artifact. The c
 ## When to publish
 
 Every Traceknot QA run has Board publication enabled by default. Do not wait for the user to request a Board. Attempt the canonical or host-integrated publisher whenever the host advertises the required command, snapshot-binding, and persistence capabilities.
+The policy is host-neutral. OMP, Codex, Claude Code, OpenCode, and GajaeCode MUST use the same publication states and the same capability prerequisites; host names or hook events never imply publisher authority.
+
+The shared prerequisites are `executeCommands`, `bindSnapshot`, and `persistEvidence`. A host adapter MAY advertise them only through a current capability handshake bound to the session and target snapshot. Static all-false manifests are conservative defaults and produce `unavailable`.
+
+The host adapter supplies execution and persistence. The Skill supplies the publication policy and report fields. Do not duplicate or override the policy in host-specific instructions.
+
 
 Before publication, establish all of the following:
 

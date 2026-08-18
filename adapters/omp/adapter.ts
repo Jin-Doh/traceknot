@@ -4,13 +4,13 @@ import {
 } from "../shared/capability-adapter";
 import type { CapabilityRecord } from "../../system/runtime/capability-model";
 
-export type CodexCapabilityHandshake = HostCapabilityHandshake;
+export type OmpCapabilityHandshake = HostCapabilityHandshake;
 
-export async function discoverCodexCapabilities(
-  handshake: CodexCapabilityHandshake | undefined,
+export async function discoverOmpCapabilities(
+  handshake: OmpCapabilityHandshake | undefined,
 ): Promise<CapabilityRecord> {
   return discoverHostCapabilities(
-    "codex",
+    "omp",
     new URL("./capability.json", import.meta.url),
     handshake,
   );

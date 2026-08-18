@@ -54,6 +54,7 @@ The Skill has no runtime dependency on `system/`. Installation through the Skill
 `contracts/` contains closed JSON Schema Draft 2020-12 records for:
 
 - host capabilities;
+- universal QA Board publication policy;
 - verification requests and plans;
 - observations, evidence claims, and evidence evaluations;
 - success criteria, traceability links, and verification runs;
@@ -81,6 +82,12 @@ A host or model name grants no capability. Profile selection follows the handsha
 The Codex adapter exposes a capability-record discovery primitive, not a native Codex transport. Without a handshake it loads the checked-in all-false manifest. For each discovery the adapter creates a non-repeating challenge. A trusted native integration may answer with an envelope bound to the host, session, snapshot, producer, challenge, validity window, explicit maximum lifetime, and capability ceiling. The portable adapter rejects mismatched, stale, replayed, malformed, overlong, or over-privileged envelopes.
 
 The Claude Code adapter uses the same canonical envelope and rejection semantics with a distinct `claude-code` host boundary. Hook events such as `Stop`, `TaskCompleted`, or `SubagentStop` remain observations and cannot stand in for a trusted producer or accepted evidence.
+
+### Universal Board publication
+
+Board publication has one host-neutral policy: publication is required by default, `--no-board` is the only explicit opt-out, and missing host capabilities produce a reported `unavailable` state. The shared runtime policy requires `executeCommands`, `bindSnapshot`, and `persistEvidence`.
+
+OMP, Codex, Claude Code, OpenCode, and GajaeCode adapters all use the same nonce-bound capability handshake and static all-false fallback. An adapter may advertise a capability only through a current handshake bound to the host, session, producer, and snapshot. The adapter provides host execution and persistence; the Skill and runtime provide policy, status, and report semantics.
 
 ### Independent execution completion
 
