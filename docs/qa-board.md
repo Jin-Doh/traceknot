@@ -36,6 +36,8 @@ Every bundle includes English, Korean, and Simplified Chinese views. The languag
 
 Every Traceknot QA run has Board publication enabled by default. The portable Skill attempts the canonical or host-integrated publisher without waiting for a separate user request.
 The policy is host-neutral across OMP, Codex, Claude Code, OpenCode, and GajaeCode. All adapters use the same publication states and require `executeCommands`, `bindSnapshot`, and `persistEvidence` from a current, snapshot-bound capability handshake. Static all-false manifests remain conservative and produce `unavailable`.
+The Skills CLI is Skill-only and does not install the canonical CLI, runtime, adapters, or schemas. A Skills-only host therefore reports `Board status: unavailable` unless it already exposes a trusted publisher through its runtime integration.
+
 
 
 - use the canonical CLI publisher when it is available and the host advertises the required command and persistence capabilities;

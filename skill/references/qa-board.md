@@ -10,6 +10,8 @@ The policy is host-neutral. OMP, Codex, Claude Code, OpenCode, and GajaeCode MUS
 The shared prerequisites are `executeCommands`, `bindSnapshot`, and `persistEvidence`. A host adapter MAY advertise them only through a current capability handshake bound to the session and target snapshot. Static all-false manifests are conservative defaults and produce `unavailable`.
 
 The host adapter supplies execution and persistence. The Skill supplies the publication policy and report fields. Do not duplicate or override the policy in host-specific instructions.
+The Skills CLI installs this portable Skill and its references only; it does not install the canonical CLI, runtime, adapters, or schemas. In a Skills-only environment, keep `Board status: unavailable` unless the host separately provides a trusted publisher.
+
 
 
 Before publication, establish all of the following:
