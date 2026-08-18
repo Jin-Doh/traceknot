@@ -4,6 +4,10 @@ import {
   type CapabilitySet,
 } from "./capability-model";
 
+import { stat } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 export const BOARD_PUBLICATION_REQUIRED_CAPABILITIES = Object.freeze([
   "executeCommands",
   "bindSnapshot",
@@ -173,10 +177,33 @@ function defaultCanonicalCliRunner(
   ]).then(([stdout, stderr, exitCode]) => Object.freeze({ stdout, stderr, exitCode }));
 }
 
-function boardUriFromOutput(stdout: string): string {
-  const match = stdout.match(/^Traceknot Board: (file:\/\/\S+)$/m);
-  if (!match) throw Error("canonical Board publisher did not report a file URI");
-  return match[1]!;
+function boardUriFromOutput(stdout: string, stderr: string): string {
+  const matches = [stdout, stderr].flatMap(output =>
+    [...output.matchAll(/^Traceknot Board: (file:\/\/\S+)$/gm)].map(match => match[1]!),
+  );
+  const unique = [...new Set(matches)];
+  if (unique.length === 0) throw Error("canonical Board publisher did not report a file URI");
+  if (unique.length > 1) throw Error("canonical Board publisher reported conflicting file URIs");
+  return unique[0]!;
+}
+
+async function validatePublishedBoard(entrypoint: string): Promise<Readonly<{ entrypointPath: string; manifestPath: string }>> {
+  let entrypointPath: string;
+  try {
+    entrypointPath = fileURLToPath(entrypoint);
+  } catch {
+    throw Error("canonical Board publisher reported an invalid file URI");
+  }
+  if (basename(entrypointPath) !== "index.html") {
+    throw Error(`canonical Board publisher reported a non-Board entrypoint: ${entrypointPath}`);
+  }
+  const manifestPath = join(dirname(entrypointPath), "manifest.json");
+  for (const [label, path] of [["Board entrypoint", entrypointPath], ["Board manifest", manifestPath]] as const) {
+    const information = await stat(path).catch(() => undefined);
+    if (information === undefined) throw Error(`canonical Board publisher reported ${label} that does not exist: ${path}`);
+    if (!information.isFile()) throw Error(`canonical Board publisher reported ${label} that is not a regular file: ${path}`);
+  }
+  return Object.freeze({ entrypointPath, manifestPath });
 }
 
 export function createCanonicalCliBoardPublisher(input: Readonly<{
@@ -213,11 +240,13 @@ export function createCanonicalCliBoardPublisher(input: Readonly<{
       if (result.exitCode !== 0) {
         throw Error(`canonical Board publisher failed (${result.exitCode}): ${result.stderr}`);
       }
+      const entrypoint = boardUriFromOutput(result.stdout, result.stderr);
+      const board = await validatePublishedBoard(entrypoint);
       return Object.freeze({
         status: "generated",
         publisher,
-        entrypoint: boardUriFromOutput(result.stdout),
-        manifestPath: request.manifestPath,
+        entrypoint,
+        manifestPath: board.manifestPath,
         runId: request.runId,
       });
     },

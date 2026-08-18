@@ -62,6 +62,8 @@ Portable Board limitation: reason | none
 `Portable Board status: generated` means either a complete inline projection is present or a persisted HTML bundle and manifest were written and read back. It never changes `Board status`, never creates canonical evidence, and never permits a guessed URI.
 
 A generated Board MUST be checked for an existing entrypoint and manifest before its URI is reported. The report MUST preserve the observed URI and paths exactly; a guessed or normalized path is not evidence.
+The reported Board manifest MUST be the generated bundle's `manifest.json` adjacent to the observed entrypoint; the verification input manifest is not a Board manifest.
+
 
 ## Failure and independence
 

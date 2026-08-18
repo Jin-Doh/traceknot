@@ -16,6 +16,8 @@ test("portable Skill enables Board publication by default", () => {
   expect(boardReference).toContain("Every Traceknot QA run has Board publication enabled by default.");
   expect(boardReference).toContain("A missing prerequisite produces `Board status: unavailable`");
   expect(boardReference).toContain("Do not hand-author a canonical Board manifest or fabricate a `file://` URI.");
+  expect(boardReference).toContain("verification input manifest is not a Board manifest");
+
   expect(boardReference).toContain("A Board publisher failure MUST NOT change a completed verification verdict.");
 });
 
