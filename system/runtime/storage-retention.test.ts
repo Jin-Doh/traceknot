@@ -69,7 +69,7 @@ async function sessionBoard(
     assurance: { context: "release", requiredIndependence: "separate-verification-context", releaseStatus: "satisfied" },
     verdict: "PASS",
     counts: { mandatory: 0, passed: 0, failed: 0, blocked: 0, incomplete: 0 },
-    generatedBy: { invocationId: boardId, sessionHost: "omp", sessionRef: sessionKey },
+    generatedBy: { invocationId: boardId.length > 128 ? boardId.slice(boardId.indexOf("-") + 1) : boardId, sessionHost: "omp", sessionRef: sessionKey },
     files: [{ path: "index.html", role: "entrypoint", sha256: createHash("sha256").update(html).digest("hex"), bytes: Buffer.byteLength(html) }],
   }));
   await utimes(path, new Date(OLD), new Date(OLD));
@@ -262,6 +262,18 @@ describe("storage retention", () => {
     expect(report.candidates.boards).toContain(`runs/active/boards/${boardId}`);
     const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, boardQuotaBytes: 1024 * 1024 }, apply: true });
     expect(applied.deleted.boards).toContain(`runs/active/boards/${boardId}`);
+  });
+
+  test("deletes maximum-length session Board names", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"c".repeat(64)}`;
+    const boardId = `1-${"a".repeat(128)}`;
+    await sessionBoard(state, sessionKey, boardId, { runId: "session-run", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "2-new", { runId: "session-run", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+    const inventory = await inspectStorage({ stateDir: state, artifactDir: artifacts, now: NOW });
+    expect(inventory.boards.map(item => item.relativePath)).toContain(`sessions/${sessionKey}/boards/${boardId}`);
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, boardQuotaBytes: 1024 * 1024 }, apply: true });
+    expect(applied.deleted.boards).toContain(`sessions/${sessionKey}/boards/${boardId}`);
   });
 
   test("Board TTL and global quota apply independently of per-run count", async () => {

@@ -203,7 +203,8 @@ function safeEntry(value: string): boolean {
 const SAFE_BOARD_ENTRY = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
 function safeStoragePath(relativePath: string): boolean {
   const components = relativePath.split("/");
-  return components.every((component, index) => index === 3 && components[0] === "runs" && components[2] === "boards"
+  return components.every((component, index) => index === 3
+    && ((components[0] === "runs" && components[2] === "boards") || (components[0] === "sessions" && components[2] === "boards"))
     ? SAFE_BOARD_ENTRY.test(component)
     : safeEntry(component));
 }

@@ -85,6 +85,16 @@ describe("session Board contract", () => {
     expect(await readFile(join(publication.directory, "manifest.json"), "utf8")).not.toContain("raw-session-id");
   });
 
+  test("selects a new run even when its revision restarts lower", async () => {
+    const fixtureValue = await fixture();
+    const first = { ...update(9, "inv-1"), view: { ...view(9), runId: "run-a" } };
+    const second = { ...update(1, "inv-2"), view: { ...view(1), runId: "run-b" } };
+    await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(first), ...fixtureValue });
+    const publication = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(second), ...fixtureValue });
+    expect(publication.current.revisionPath).toBe("boards/1-inv-2");
+    expect(publication.manifest.runId).toBe("run-b");
+  });
+
   test("replaces current while preserving immutable history and honoring session quota", async () => {
     const fixtureValue = await fixture();
     const first = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 2 } });

@@ -965,7 +965,8 @@ function revisionNameFromCurrent(current: SessionBoardCurrent | undefined): stri
   return name;
 }
 
-function compareStableSelection(sourceRevision: number, generatedAt: string, invocationId: string, current: SessionBoardCurrent): number {
+function compareStableSelection(sourceRevision: number, generatedAt: string, invocationId: string, runId: string, previousRunId: string | undefined, current: SessionBoardCurrent): number {
+  if (previousRunId === undefined || runId !== previousRunId) return 1;
   if (sourceRevision !== current.sourceRevision) return sourceRevision - current.sourceRevision;
   const generatedOrder = Date.parse(generatedAt) - Date.parse(current.generatedAt);
   if (generatedOrder !== 0) return generatedOrder;
@@ -1131,6 +1132,7 @@ export async function publishSessionBoardUpdate(input: Readonly<{
   let result: SessionBoardPublicationResult | undefined;
   let createdStableLinks: readonly string[] = [];
   let previousName: string | undefined;
+  let previousRunId: string | undefined;
   let previousCurrent: SessionBoardCurrent | undefined;
   let sessionRoot = "";
   let boardsPath = "";
@@ -1151,7 +1153,11 @@ export async function publishSessionBoardUpdate(input: Readonly<{
     previousCurrent = priorCurrentBytes === undefined ? undefined : parseSessionCurrentBytes(priorCurrentBytes, sessionKey);
     previousName = revisionNameFromCurrent(previousCurrent);
     await assertCurrentSelector(sessionRoot, previousName);
-    if (previousName !== undefined && !secureEntryExistsAt(directories.boardsFd, previousName)) throw new Error("Board current pointer references a missing revision");
+    if (previousName !== undefined) {
+      if (!secureEntryExistsAt(directories.boardsFd, previousName)) throw new Error("Board current pointer references a missing revision");
+      const previousManifest = sessionObject(JSON.parse(new TextDecoder().decode(await readSecureRegularFile(root.fd, secureRelativePath(root, join(boardsPath, previousName, "manifest.json")), 4 * 1024 * 1024))), "Board manifest");
+      previousRunId = typeof previousManifest.runId === "string" ? previousManifest.runId : undefined;
+    }
     const copied = new Set<string>();
     const files: QaBoardManifestFile[] = [];
     let screenshotCount = 0;
@@ -1215,7 +1221,7 @@ export async function publishSessionBoardUpdate(input: Readonly<{
     secureFsync(directories.boardsFd);
     await sessionReadback(root, join(boardsPath, boardName, "index.html"), html);
     await sessionReadback(root, join(boardsPath, boardName, "manifest.json"), manifestBytes);
-    const incomingWins = previousCurrent === undefined || compareStableSelection(update.view.revision, update.generatedAt, invocationId, previousCurrent) > 0;
+    const incomingWins = previousCurrent === undefined || compareStableSelection(update.view.revision, update.generatedAt, invocationId, update.view.runId, previousRunId, previousCurrent) > 0;
     await sessionReclaim(root, directories.boardsFd, boardsPath, sessionKey, previousName, incomingWins ? boardName : undefined, input.retentionPolicy ?? {}, false);
     if (incomingWins) {
       createdStableLinks = await ensureStableLinks(directories.sessionFd, sessionRoot);
