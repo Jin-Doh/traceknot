@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { checkOperationalCommandBlocks, checkPublicationInventory, checkReadmeBoundaries, checkReadmeDocumentationLinks, checkReadmeLanguageNavigation, checkReadmeLocalLinks, checkReadmeSections, checkReadmeSharedCommands } from "../scripts/check-readme-contract";
+import { checkOperationalCommandBlocks, checkPublicationInventory, checkReadmeBoundaries, checkReadmeDocumentationLinks, checkReadmeLanguageNavigation, checkReadmeLocalLinks, checkReadmeSections, checkReadmeSharedCommands, renderedMarkdownText } from "../scripts/check-readme-contract";
 
 const root = resolve(import.meta.dir, "..");
 const localizedReadmes = [
@@ -314,7 +314,7 @@ describe("README localization section contract", () => {
       expect(content).toMatch(/(?:^|[\s`])\.agents\/skills\/traceknot\/bin\/traceknot/);
       expect(content).toContain("Traceknot Board: file://.../sessions/<session-key>/index.html");
       expect(content).toContain("Bun 1.3.14");
-      const rendered = content.replace(/<!--[\s\S]*?-->/gu, "");
+      const rendered = renderedMarkdownText(content);
       expect(rendered).not.toMatch(/Skills-only|Skill-only|portable Skill|Portable Skill|full-toolkit/iu);
       expect(content).toContain("bun run build:skill-runtime");
       expect(content).toContain("bun run check:skill-runtime");

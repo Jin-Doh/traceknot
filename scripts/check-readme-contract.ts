@@ -104,7 +104,7 @@ function visibleHtmlTree(content: string, removePre = false): HastRoot {
   return tree;
 }
 
-function renderedMarkdownText(content: string): string {
+export function renderedMarkdownText(content: string): string {
   return toText(visibleHtmlTree(content, true));
 }
 
