@@ -11,6 +11,8 @@ The shared prerequisites are `executeCommands`, `bindSnapshot`, and `persistEvid
 
 The host adapter supplies execution and persistence. The Skill supplies the publication policy and report fields. Do not duplicate or override the policy in host-specific instructions.
 The Skills CLI installs this portable Skill and its references only; it does not install the canonical CLI, runtime, adapters, or schemas. In a Skills-only environment, keep `Board status: unavailable` unless the host separately provides a trusted publisher.
+When the canonical publisher is unavailable, follow [`portable-board-renderer.md`](portable-board-renderer.md) for a separate non-authoritative HTML or inline projection. Portable rendering MUST NOT be reported as canonical Board generation.
+
 
 
 
@@ -32,11 +34,9 @@ Use the first available path:
 2. **Host-provided publisher:** use a host-integrated publisher only when its capability handshake advertises command execution, snapshot binding, and evidence persistence for this run.
 3. **No publisher:** report `unavailable` with the missing capability or command. Do not hand-author a canonical Board manifest or fabricate a `file://` URI.
 
-`--no-board` is an explicit publication opt-out. Record `disabled` when it was selected, even if verification otherwise passed. `not-requested` is reserved for reports that are explicitly outside the Traceknot QA Skill contract.
-
 ## Completion report fields
 
-When Board publication is in scope, report these fields separately from the QA verdict:
+When Board publication is in scope, report these canonical fields separately from the QA verdict:
 
 ```text
 Board requested: yes | no
@@ -45,6 +45,21 @@ Board URI: file://... | unavailable
 Board manifest: path | unavailable
 Board run ID: identifier | unavailable
 Board publisher: canonical-cli | host-integrated | none
+Board limitation: reason | none
+```
+
+When the portable fallback is attempted, also report its separate projection fields:
+
+```text
+Portable Board status: generated | unavailable
+Portable Board location: file://... | inline | unavailable
+Portable Board manifest: path | unavailable
+Portable Board publisher: portable-skill | none
+Portable Board authority: false
+Portable Board limitation: reason | none
+```
+
+`Portable Board status: generated` means either a complete inline projection is present or a persisted HTML bundle and manifest were written and read back. It never changes `Board status`, never creates canonical evidence, and never permits a guessed URI.
 Board limitation: reason | none
 ```
 

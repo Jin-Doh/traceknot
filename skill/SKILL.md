@@ -127,9 +127,11 @@ Every Traceknot QA run has Board publication enabled by default. Do not wait for
 
 This policy is host-neutral across OMP, Codex, Claude Code, OpenCode, and GajaeCode. A host adapter MAY advertise Board publication prerequisites only through a current capability handshake bound to the host, session, producer, and target snapshot. The shared prerequisites are `executeCommands`, `bindSnapshot`, and `persistEvidence`; a host name or lifecycle hook never grants them.
 
-If no publisher is available, the final report MUST state `Board status: unavailable` and the missing prerequisite. It MUST NOT silently use `not-requested`. Preserve the observed Board URI, manifest path, run ID, publisher, and failure output. Before reporting `generated`, check the entrypoint and manifest on disk. `--no-board` is the explicit opt-out and produces `Board status: disabled`.
+If no canonical or host-integrated publisher is available, the final report MUST state `Board status: unavailable` and the missing prerequisite. It MUST NOT silently use `not-requested`. Then follow [`references/portable-board-renderer.md`](references/portable-board-renderer.md) to produce a separate portable projection when the report is terminal and the host can render it. Preserve the observed canonical Board URI, manifest path, run ID, publisher, and failure output. Before reporting a persisted portable location, check the entrypoint and portable manifest on disk. `--no-board` is the explicit opt-out and produces `Board status: disabled`.
 
-Board publication is separate from QA evaluation. A Board failure MUST NOT change a completed QA verdict, and a generated Board MUST NOT substitute for accepted evidence. Include the Board status and fields required by `references/completion-report.md` in every Traceknot completion report.
+The portable projection MUST be reported separately with `Portable Board status`, `Portable Board location`, `Portable Board manifest`, `Portable Board publisher`, `Portable Board authority`, and `Portable Board limitation`. A portable projection is always `authoritative: false`, is never evidence, and MUST NOT upgrade or replace the canonical QA verdict.
+
+Board publication is separate from QA evaluation. A Board or portable-renderer failure MUST NOT change a completed verification verdict. Include the canonical Board fields and, when attempted, the portable fields required by `references/completion-report.md` in every Traceknot completion report.
 
 ### 8. Record and manage defects
 

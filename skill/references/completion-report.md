@@ -22,7 +22,7 @@ Report the QA decision independently from harness task completion.
 16. Separate harness completion status when the host supplies it.
 17. Board publication status for every Traceknot QA run.
 
-For every Traceknot QA run, include this separate subsection:
+For every Traceknot QA run, include this separate canonical Board subsection:
 
 ```text
 Board requested: yes
@@ -34,7 +34,18 @@ Board publisher: canonical-cli | host-integrated | none
 Board limitation: reason | none
 ```
 
-`generated` requires observed entrypoint and manifest files. Preserve their exact paths and the exact observed URI. `unavailable` is the required result when no publisher or required capability exists; do not downgrade it to `not-requested`. `disabled` requires an explicit `--no-board` or equivalent policy opt-out. A Board MUST NOT be reported as evidence for an obligation, and Board publication failure MUST NOT change the QA verdict.
+When the canonical publisher is unavailable and the portable fallback is attempted, also include:
+
+```text
+Portable Board status: generated | unavailable
+Portable Board location: file://... | inline | unavailable
+Portable Board manifest: path | unavailable
+Portable Board publisher: portable-skill | none
+Portable Board authority: false
+Portable Board limitation: reason | none
+```
+
+`Board status: generated` requires an observed canonical entrypoint and manifest. `Portable Board status: generated` requires either the complete inline projection or a persisted portable bundle whose entrypoint and manifest were read back. Preserve exact observed paths and URIs; never guess either kind of location. `unavailable` is required when no canonical publisher or capability exists; do not downgrade it to `not-requested`. Neither Board form is evidence for an obligation, Board publication failure MUST NOT change the QA verdict, and portable rendering MUST NOT change the QA verdict.
 
 For a significant UI change, include a separate **Visual-composition coverage** subsection in the conditions, evidence, and coverage portions of the report. It MUST state:
 

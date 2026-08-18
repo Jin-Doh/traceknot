@@ -44,8 +44,8 @@ test -f "$GLOBAL_SKILL/SKILL.md"
 for reference in \
     adversarial-risk-discovery.md \
     completion-report.md \
-    defect-lifecycle.md \
-    istqb-principles.md \
+    qa-board.md \
+    portable-board-renderer.md \
     prose-quality.md \
     proof-carrying-success.md \
     qa-board.md \

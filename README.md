@@ -178,6 +178,8 @@ JSON is the default machine-readable report. Use `--format markdown` for a human
 
 The Quick Start command installs `skill/SKILL.md` and its references through the Skills CLI. Add `--agent codex` to target Codex only, or omit `--global` to install into the current project.
 The Skills CLI installs the portable Skill payload only. It does not install `bin/traceknot`, `system/`, `adapters/`, or `contracts/`. In a Skills-only environment, Board publication remains required by policy but reports `Board status: unavailable` unless a canonical CLI or host-integrated publisher is already available.
+Skills-only runs can still produce a self-contained, non-authoritative portable Board HTML bundle or inline projection through `skill/references/portable-board-renderer.md`; this presentation fallback does not provide canonical persistence, signed evidence, or an authoritative verdict.
+
 
 
 Manage the installation with the same CLI:
