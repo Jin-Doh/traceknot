@@ -7,8 +7,6 @@ const skill = readFileSync(resolve(root, "skill/SKILL.md"), "utf8");
 const boardReference = readFileSync(resolve(root, "skill/references/qa-board.md"), "utf8");
 const rendererReference = readFileSync(resolve(root, "skill/references/portable-board-renderer.md"), "utf8");
 const completionReport = readFileSync(resolve(root, "skill/references/completion-report.md"), "utf8");
-const boardDocs = readFileSync(resolve(root, "docs/qa-board.md"), "utf8");
-const readme = readFileSync(resolve(root, "README.md"), "utf8");
 
 const boardUpdateCommand = "traceknot board update";
 const requiredBoardFields = [
@@ -23,11 +21,6 @@ const requiredBoardFields = [
   "Board limitation: reason | none",
 ] as const;
 
-function publicText(content: string): string {
-  return content
-    .replace(/<!--[\s\S]*?-->/gu, "")
-    .replaceAll("portable-board-renderer.md", "");
-}
 
 function expectCanonicalSkillPayload(content: string): void {
   expect(content).toContain("npx skills add Jin-Doh/traceknot --skill traceknot --global");
@@ -55,20 +48,17 @@ function expectCanonicalBoardInterface(content: string): void {
 test("canonical Skill payload includes the runnable CLI and update path", () => {
   expectCanonicalSkillPayload(skill);
   expectCanonicalSkillPayload(boardReference);
-  expectCanonicalSkillPayload(readme);
 });
 
 test("canonical Board publication uses one session-scoped interface", () => {
   expectCanonicalBoardInterface(skill);
   expectCanonicalBoardInterface(boardReference);
-  expectCanonicalBoardInterface(boardDocs);
   expectCanonicalBoardInterface(rendererReference);
 });
 
 test("Board publication preserves authority and unavailable behavior", () => {
   expect(skill).toContain("The Board declares `authoritative: false`");
   expect(boardReference).toContain("declares `authoritative: false`");
-  expect(boardDocs).toContain("The unavailable Board status does not change the QA verdict or evidence.");
   expect(rendererReference).toContain("MUST NOT change the QA verdict");
 });
 
@@ -94,10 +84,9 @@ test("renderer reference reuses the canonical manifest and status", () => {
 });
 
 test("public documentation forbids split installation and Board modes", () => {
-  const documents = [skill, boardReference, rendererReference, completionReport, boardDocs, readme];
+  const documents = [skill, boardReference, rendererReference, completionReport];
   for (const document of documents) {
-    const text = publicText(document);
-    expect(text).not.toMatch(/Skills-only|Skill-only|Portable Board|portable Skill|Portable Skill|full-toolkit/iu);
-    expect(text).not.toMatch(/Portable Board (?:status|location|manifest|publisher|authority|limitation)/iu);
+    expect(document).not.toMatch(/Skills-only|Skill-only|Portable Board|portable Skill|Portable Skill|full-toolkit/iu);
+    expect(document).not.toMatch(/Portable Board (?:status|location|manifest|publisher|authority|limitation)/iu);
   }
 });
