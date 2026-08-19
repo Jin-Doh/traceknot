@@ -588,11 +588,17 @@ async function inspectSessionBoards(stateDir: string, now: number): Promise<{ bo
     const currentSelector = join(sessionRoot, "current");
     const currentStat = await safeStat(currentSelector);
     let currentPath: string | undefined;
+    let currentMalformed = false;
     if (currentStat?.isSymlink) {
       const target = await readlink(currentSelector).catch(() => undefined);
-      if (target !== undefined && /^boards\/(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/.test(target)) currentPath = target;
-      else symlinks.push(`sessions/${session.name}/current`);
+      if (target !== undefined && /^boards\/(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/.test(target) && await rootStatus(join(sessionRoot, target)) === "directory") {
+        currentPath = target;
+      } else {
+        currentMalformed = true;
+        symlinks.push(`sessions/${session.name}/current`);
+      }
     } else if (currentStat !== undefined) {
+      currentMalformed = true;
       symlinks.push(`sessions/${session.name}/current`);
     }
     const boardsRoot = join(sessionRoot, "boards");
@@ -621,7 +627,7 @@ async function inspectSessionBoards(stateDir: string, now: number): Promise<{ bo
       const sourceUpdatedAt = isRecord(manifest) ? asTimestamp(manifest.sourceUpdatedAt) : undefined;
       const sourceState = isRecord(manifest) && typeof manifest.sourceState === "string" ? manifest.sourceState : undefined;
       const valid = await validBoardContents(boardPath, manifest);
-      const malformed = !valid || !isRecord(manifest) || manifest.sessionKey !== session.name;
+      const malformed = currentMalformed || !valid || !isRecord(manifest) || manifest.sessionKey !== session.name;
       const runId = valid && isRecord(manifest) && typeof manifest.runId === "string" && safeId(manifest.runId) ? manifest.runId : undefined;
       const sourceRevision = valid && isRecord(manifest) && typeof manifest.sourceRevision === "number" && nonnegativeInteger(manifest.sourceRevision) ? manifest.sourceRevision : undefined;
       boards.push({ sessionKey: session.name, current: currentPath === `boards/${entry.name}`, boardId: entry.name, path: boardPath, relativePath, bytes: boardSize.bytes, allocatedBytes: boardSize.allocatedBytes, mtimeMs: Math.max((await safeStat(boardPath))?.mtimeMs ?? 0, boardSize.mtimeMs), generatedAt, sourceUpdatedAt, sourceRevision, sourceState, runId, malformed, future: generatedAt !== undefined && generatedAt > now });

@@ -251,6 +251,22 @@ describe("storage retention", () => {
     expect(unpinned.deleted.boards).toContain(`${prefix}11-pinned`);
     expect(await readFile(join(sessionRoot, "current", "index.html"), "utf8")).toContain("9-current");
   });
+  test("fails closed on a dangling session current selector", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"e".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
+    await sessionBoard(state, sessionKey, "1-old", { runId: "run-a", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "2-new", { runId: "run-b", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+    await symlink("boards/missing", join(sessionRoot, "current"));
+
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).toEqual([]);
+    expect(applied.protected.malformed).toContain(`${prefix}1-old`);
+    expect(applied.protected.malformed).toContain(`${prefix}2-new`);
+    expect(applied.protected.symlinks).toContain(`sessions/${sessionKey}/current`);
+  });
+
   test("orders session terminal retention by publication time across runs", async () => {
     const { state, artifacts } = await fixture();
     const sessionKey = `s-${"c".repeat(64)}`;
