@@ -693,6 +693,10 @@ perform_rollback() {
     replace_symlink "$rollback_to" "$CURRENT"
     replace_launcher "$CURRENT/skill/bin/traceknot"
     replace_symlink "$rollback_from" "$ROLLBACK"
+    if ! "$CURRENT/skill/bin/traceknot" self-check >/dev/null 2>&1; then
+        recover_transaction
+        fail 'rollback runtime self-check failed; previous release restored'
+    fi
     write_journal rollback activated "$rollback_from" "$rollback_to" '' "$rollback_registration_previous" "$rollback_to"
     sync_transaction_state
     rollback_active_tmp=$ACTIVE_STATE.tmp.rollback.$$
@@ -1078,6 +1082,10 @@ if [ ! -f "$CURRENT/skill/SKILL.md" ] ||
    [ ! -x "$CURRENT/bin/traceknot-update" ]; then
     recover_transaction
     fail 'post-activation smoke check failed; previous release restored'
+fi
+if ! "$CURRENT/skill/bin/traceknot" self-check >/dev/null 2>&1; then
+    recover_transaction
+    fail 'post-activation runtime self-check failed; previous release restored'
 fi
 
 active_tmp=$ACTIVE_STATE.tmp.$$
