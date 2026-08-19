@@ -836,7 +836,10 @@ async function maintainDefaultCache(options: CliOptions, stderr: (text: string) 
 }
 
 async function generateBoardForResult(options: CliOptions, result: RunVerificationResult, stderr: (text: string) => void, runtime: BoardRuntime = { notifyBoard, openBoard, markProjectSupportSeen }): Promise<void> {
-  if (!options.board) return;
+  if (!options.board) {
+    stderr("Traceknot Board status: disabled\n");
+    return;
+  }
   await maintainDefaultCache(options, stderr, [result.run.runId]);
   if (options.sessionId === undefined || options.sessionHost === "unavailable") {
     stderr("Traceknot Board status: unavailable\n");

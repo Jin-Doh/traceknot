@@ -350,7 +350,7 @@ describe("traceknot verify CLI", () => {
         () => undefined,
         text => stderr.push(text),
       );
-      expect({ status, stderr }).toEqual({ status: 0, stderr: [] });
+      expect({ status, stderr }).toEqual({ status: 0, stderr: ["Traceknot Board status: disabled\n"] });
     } finally {
       await fixtureValue.cleanup();
     }
@@ -660,7 +660,7 @@ describe("traceknot verify CLI", () => {
     try {
       const stdout: string[] = []; const stderr: string[] = [];
       const status = await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--request", fixtureValue.request, "--manifest", fixtureValue.manifest, "--no-board"], text => stdout.push(text), text => stderr.push(text));
-      expect(status).toBe(0); expect(stderr).toEqual([]);
+      expect(status).toBe(0); expect(stderr).toEqual(["Traceknot Board status: disabled\n"]);
       const report = JSON.parse(stdout.join("")) as { assurance: { context: string; requiredIndependence: string; releaseStatus: string }; verdict: { qaVerdict: string }; run: { state: string } };
       expect(report.verdict.qaVerdict).toBe("PASS"); expect(report.run.state).toBe("TERMINAL");
       expect(report.assurance).toEqual({ context: "release", requiredIndependence: "separate-verification-context", releaseStatus: "satisfied" });
@@ -773,7 +773,7 @@ describe("traceknot verify CLI", () => {
       expect(defaultStderr.join("")).toBe("Traceknot Board status: unavailable\n");
       const disabledStderr: string[] = [];
       expect(await runVerify(["--root", fixtureValue.root, "--state-dir", fixtureValue.state, "--run-id", "cli-e2e", "--report-only", "--no-board"], () => undefined, text => disabledStderr.push(text))).toBe(0);
-      expect(disabledStderr).toEqual([]);
+      expect(disabledStderr).toEqual(["Traceknot Board status: disabled\n"]);
     } finally {
       await fixtureValue.cleanup();
     }
@@ -1042,7 +1042,7 @@ describe("traceknot verify CLI", () => {
       const stdout: string[] = [];
       const stderr: string[] = [];
       const status = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath, "--no-board"], text => stdout.push(text), text => stderr.push(text));
-      expect({ status, stderr }).toEqual({ status: 3, stderr: [] });
+      expect({ status, stderr }).toEqual({ status: 3, stderr: ["Traceknot Board status: disabled\n"] });
       const report = JSON.parse(stdout.join("")) as { verdict: { qaVerdict: string }; documents: { execution: { observations: Array<{ observationId: string; artifacts: Array<{ type: string; digest: string; path?: string }> }>; evidence: Array<{ obligationId: string; visualCompositionOracleDigest?: string }> } } };
       expect(report.verdict.qaVerdict).toBe("INCOMPLETE");
       const visualObservation = report.documents.execution.observations.find(item => item.observationId.includes("visual-composition"));
@@ -1191,7 +1191,7 @@ describe("traceknot verify CLI", () => {
       const fractionalStdout: string[] = [];
       const fractionalStderr: string[] = [];
       const fractionalStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath, "--no-board"], text => fractionalStdout.push(text), text => fractionalStderr.push(text));
-      expect({ status: fractionalStatus, stderr: fractionalStderr, verdict: JSON.parse(fractionalStdout.join("")).verdict.qaVerdict }).toEqual({ status: 3, stderr: [], verdict: "INCOMPLETE" });
+      expect({ status: fractionalStatus, stderr: fractionalStderr, verdict: JSON.parse(fractionalStdout.join("")).verdict.qaVerdict }).toEqual({ status: 3, stderr: ["Traceknot Board status: disabled\n"], verdict: "INCOMPLETE" });
       const failedArtifactBytes = new TextEncoder().encode("not a screenshot\n");
       const validDiagnosticBytes = new TextEncoder().encode("complete diagnostic\n");
       const validDiagnosticDigest = new Bun.CryptoHasher("sha256").update(validDiagnosticBytes).digest("hex");
@@ -1213,7 +1213,7 @@ describe("traceknot verify CLI", () => {
       const failedStatus = await runVerify(["--root", root, "--state-dir", state, "--request", requestPath, "--manifest", manifestPath, "--no-board"], text => failedStdout.push(text), text => failedStderr.push(text));
       const failedReport = JSON.parse(failedStdout.join("")) as { verdict: { qaVerdict: string }; documents: { execution: { observations: Array<{ observationId: string; execution: { exitStatus: string }; artifacts: Array<{ type: string; digest: string }> }> } } };
       const failedVisualObservation = failedReport.documents.execution.observations.find(item => item.observationId.includes("visual-composition"));
-      expect({ status: failedStatus, stderr: failedStderr, verdict: failedReport.verdict.qaVerdict, executionStatus: failedVisualObservation?.execution.exitStatus }).toEqual({ status: 2, stderr: [], verdict: "BLOCKED", executionStatus: "failed" });
+      expect({ status: failedStatus, stderr: failedStderr, verdict: failedReport.verdict.qaVerdict, executionStatus: failedVisualObservation?.execution.exitStatus }).toEqual({ status: 2, stderr: ["Traceknot Board status: disabled\n"], verdict: "BLOCKED", executionStatus: "failed" });
       expect(failedVisualObservation?.artifacts.some(artifact => artifact.digest === staleDeclaredDigest)).toBe(false);
       expect(failedVisualObservation?.artifacts).toEqual(expect.arrayContaining([expect.objectContaining({ type: "verification-result", digest: validDiagnosticDigest })]));
     } finally {
