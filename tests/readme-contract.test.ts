@@ -314,6 +314,7 @@ describe("README localization section contract", () => {
       expect(content).toMatch(/(?:^|[\s`])\.agents\/skills\/traceknot\/bin\/traceknot/);
       expect(content).toContain("Traceknot Board: file://.../sessions/<session-key>/index.html");
       expect(content).toContain("Bun 1.3.14");
+      expect(content).toContain("traceknot self-check");
       const rendered = renderedMarkdownText(content);
       expect(rendered).not.toMatch(/Skills-only|Skill-only|portable Skill|Portable Skill|full-toolkit/iu);
       expect(content).toContain("bun run build:skill-runtime");
@@ -322,10 +323,11 @@ describe("README localization section contract", () => {
     }
   });
 
-  test("documents the legacy curl path only as an optional launcher", () => {
+  test("documents the curl path only as an optional non-owning launcher", () => {
     const canonical = localizedReadmes[0];
-    expect(canonical).toContain("optional launcher/bootstrap");
-    expect(canonical).toContain("does not define a separate Skill payload");
+    expect(canonical).toContain("optional prefix launcher/updater");
+    expect(canonical).toContain("does not create, replace, retarget, update, or remove a Skills CLI-owned registration");
+    expect(canonical).toContain("The two can coexist");
     expect(canonical).toContain("npx skills add`/`npx skills update");
   });
 });

@@ -9,12 +9,23 @@ npx skills add Jin-Doh/traceknot --skill traceknot --global
 npx skills update traceknot --global --yes
 ```
 
-The Skills CLI owns the canonical Skill lifecycle and uses `npx skills update`. The optional `install.sh` path manages only user-local prefix files and never creates or retargets a Skills CLI registration; it may remove only a legacy symlink that points into the same prefix. Both installations may coexist.
+The complete `skill/` payload includes `skill/bin/traceknot`, references, schemas, capability manifests, and the Board renderer. Bun 1.3.14 or later is required to run the generated CLI. `npx skills update` is the canonical update operation and replaces the same complete payload; it is not a documentation-only or runtime-less update.
+After a global Skills CLI install, invoke `$HOME/.agents/skills/traceknot/bin/traceknot`; after a project-local install, invoke `.agents/skills/traceknot/bin/traceknot` from the project root. Run `$HOME/.agents/skills/traceknot/bin/traceknot self-check` after installation or update.
+
+The legacy curl installer remains an optional prefix launcher/updater for environments that need it. Its release updater may apply only an immutable, tagged release whose exact artifact has been observed for more than seven complete days and whose signed provenance and digest verify successfully. It never creates, replaces, retargets, updates, or removes a Skills CLI-owned registration. This optional launcher policy never creates a second Skill payload, Board contract, schema, or product tier.
+
+The seven-day delay is a safety buffer, not a trust mechanism. Release immutability, artifact provenance, digest verification, atomic activation, and rollback remain mandatory for the optional launcher.
 
 ## Current-state review
 
 The optional prefix installer and updater:
 
+- installs and updates the complete `skill/` tree;
+- preserves executable mode for `skill/bin/traceknot`;
+- uses Bun as the explicit runtime prerequisite for the generated CLI; and
+- keeps Board publication on the shared session-scoped contract.
+
+The optional legacy launcher and updater:
 - install into a user-local prefix and record only prefix-owned paths;
 - leave every Skills CLI-owned registration untouched and remove only a legacy symlink pointing into the same prefix;
 - enable one daily verified update check by default;
@@ -51,7 +62,7 @@ For a custom installation, set `TRACEKNOT_PREFIX` to that absolute prefix before
 | BASIS-001 | Explicit | Plan an automatic update facility for Traceknot. |
 | BASIS-002 | Explicit | Automatic installation is allowed only after the candidate has exceeded seven days of freshness. |
 | BASIS-003 | Derived from the shared proposal's security goal | A mutable or unverifiable release must never become eligible merely because its timestamp is old. |
-| BASIS-004 | Current installer contract | Existing user-local prefixes, Skill registration, dry-run behavior, and owned-file protections must remain supported during migration. |
+| BASIS-004 | Current installer contract | Existing user-local prefixes, dry-run behavior, owned-file protections, untouched Skills CLI registrations, and removal of legacy prefix-owned registration symlinks must remain supported during migration. |
 | BASIS-005 | Repository contract | The canonical `sh scripts/ci` gate remains the release precondition. |
 | BASIS-006 | Derived operational criterion | Interrupted or failed updates leave either the old complete version active or the new complete version active, never a mixed tree. |
 | BASIS-007 | Explicit product decision | Automatic update is enabled by default, can be disabled during or after installation, and never requires `sudo`. |
@@ -116,7 +127,7 @@ ${prefix}/
   rollback -> releases/<prior> # previous known-good activation target
 ```
 
-The optional launcher at `${prefix}/bin/traceknot` follows `${prefix}/current/skill/bin/traceknot` while its release updater is active. Activation persists the transaction and staged payload, persists rollback, atomically replaces `current`, persists active state, runs the installed runtime self-check, and marks the transaction committed. Startup recovery reconciles only prefix-owned state. It removes a legacy registration symlink only when that symlink points into this prefix; it never creates or retargets a registration.
+The optional launcher at `${prefix}/bin/traceknot` follows `${prefix}/current/skill/bin/traceknot` while its release updater is active. Activation uses a write-ahead transaction record, durable staged files, and same-directory symlink rename. Required ordering is: persist the prepared transaction and staged payload; persist the rollback target; atomically replace `current`; persist active state; run the installed runtime self-check; then mark committed. Startup recovery reconciles the transaction record, `current`, rollback target, and active manifest before any new check. It removes a legacy registration symlink only when that symlink points to `${prefix}/skill` or `${prefix}/current/skill`; it never creates or retargets a registration. A crash at any boundary deterministically completes the new activation or restores the prior activation. Retain the active and one prior version; remove older versions only after a successful subsequent invocation.
 
 ### Components
 
@@ -149,7 +160,7 @@ Invalid transitions fail closed. Cancellation before activation removes staging.
 6. A version is never downgraded automatically. Reinstalling the same digest is a no-op; the same version with a different digest is a security failure.
 7. Update state and activation targets must be regular owned paths beneath the canonical prefix, with the installer's existing symlink checks retained.
 8. Logs must not contain tokens. GitHub authentication, if supported later, is read from the environment and never persisted.
-9. The optional launcher leaves every Skills CLI-owned registration untouched and may remove only a legacy symlink that points into its own prefix. Users update the canonical registration with `npx skills update traceknot --global --yes`.
+9. The optional legacy launcher must leave an existing unowned Skill path untouched, must never create or retarget the canonical Skills CLI registration, and may remove only a legacy symlink that points into its own prefix. Users update the canonical registration with `npx skills update traceknot --global --yes`.
 
 ## Release promotion and operations
 
@@ -205,17 +216,17 @@ The updater's seven-day observation delay limits immediate adoption but is not a
 
 - Add the schema-backed resolver, observation store, policy engine, status output, and locking.
 - Ship `check`, `status`, `enable`, and `disable`; do not apply updates.
-- Import a v1 manifest as legacy prefix state while preserving the configured default or opt-out. Before first managed activation, copy the flat payload into a verified rollback snapshot, atomically activate `current`, update only the prefix launcher, and remove a legacy prefix-owned registration symlink if present. Recovery never creates or retargets a Skill registration.
+- Import a v1 manifest as a legacy state while preserving the configured default or explicit opt-out. Before first managed activation, copy the owned flat payload into a verified `releases/legacy-<digest>` rollback snapshot without changing the live files. The first activation transaction persists that snapshot, atomically activates `current`, updates only the prefix launcher, and removes a legacy prefix-owned registration symlink if present. Startup recovery restores the legacy payload target without creating or retargeting a Skill registration.
 
 **Exit:** strict boundary, backdating, forward and backward local-clock jumps, invalid calendar dates, mutation, prerelease, malformed metadata, race, and offline scenarios return the expected decision without changing installed files.
 
 ### Phase 2 — transactional application
 
 - Add verified download, safe extraction, versioned staging, atomic activation, smoke check, and rollback.
-- Keep `${prefix}/bin/traceknot` bound to the active `${prefix}/current/skill/bin/traceknot`; never create or retarget a Skill registration.
+- Keep the optional launcher at `${prefix}/bin/traceknot` bound to the active `${prefix}/current/skill/bin/traceknot`; never create or retarget a Skill registration.
 - Preserve custom-prefix, explicit opt-out, and dry-run workflows.
 
-**Exit:** fault injection at every filesystem boundary leaves a complete old or new prefix install, the Skills CLI registration remains unchanged, and any legacy prefix-owned registration symlink is absent after successful migration.
+**Exit:** fault injection at every filesystem boundary leaves a complete old or new prefix install, the Skills CLI registration remains byte-for-byte unchanged, and any legacy prefix-owned registration symlink is absent after successful migration.
 
 ### Phase 3 — default-on controlled adoption
 
