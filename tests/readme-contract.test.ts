@@ -9,6 +9,7 @@ const localizedReadmes = [
   readFileSync(resolve(root, "README.ko.md"), "utf8"),
   readFileSync(resolve(root, "README.zh.md"), "utf8"),
 ] as const;
+const automaticUpdates = readFileSync(resolve(root, "docs/automatic-updates.md"), "utf8");
 
 const sections = [
   "hero",
@@ -315,6 +316,8 @@ describe("README localization section contract", () => {
       expect(content).toContain("Traceknot Board: file://.../sessions/<session-key>/index.html");
       expect(content).toContain("Bun 1.3.14");
       expect(content).toContain("traceknot self-check");
+      expect(content).toContain(".agents/skills/traceknot/bin/traceknot self-check");
+      expect(content).toContain(".agents/skills/traceknot/bin/traceknot board update");
       const rendered = renderedMarkdownText(content);
       expect(rendered).not.toMatch(/Skills-only|Skill-only|portable Skill|Portable Skill|full-toolkit/iu);
       expect(content).toContain("bun run build:skill-runtime");
@@ -322,6 +325,12 @@ describe("README localization section contract", () => {
       expect(rendered).not.toMatch(/Portable Board (?:status|location|manifest|publisher|authority|limitation)/iu);
     }
   });
+  test("keeps global and project-local update commands scope-bound", () => {
+    expect(automaticUpdates).toContain("$HOME/.agents/skills/traceknot/bin/traceknot self-check");
+    expect(automaticUpdates).toContain(".agents/skills/traceknot/bin/traceknot self-check");
+    expect(automaticUpdates).toContain("Never substitute an unrelated global executable");
+  });
+
 
   test("documents the curl path only as an optional non-owning launcher", () => {
     const canonical = localizedReadmes[0];

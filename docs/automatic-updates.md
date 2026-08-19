@@ -10,7 +10,7 @@ npx skills update traceknot --global --yes
 ```
 
 The complete `skill/` payload includes `skill/bin/traceknot`, references, schemas, capability manifests, and the Board renderer. Bun 1.3.14 or later is required to run the generated CLI. `npx skills update` is the canonical update operation and replaces the same complete payload; it is not a documentation-only or runtime-less update.
-After a global Skills CLI install, invoke `$HOME/.agents/skills/traceknot/bin/traceknot`; after a project-local install, invoke `.agents/skills/traceknot/bin/traceknot` from the project root. Run `$HOME/.agents/skills/traceknot/bin/traceknot self-check` after installation or update.
+After a global Skills CLI install, invoke `$HOME/.agents/skills/traceknot/bin/traceknot`; after a project-local install, invoke `.agents/skills/traceknot/bin/traceknot` from the project root. Run `$HOME/.agents/skills/traceknot/bin/traceknot self-check` after a global installation or update and `.agents/skills/traceknot/bin/traceknot self-check` after a project-local installation or update. Never substitute an unrelated global executable for a project-local command.
 
 The legacy curl installer remains an optional prefix launcher/updater for environments that need it. Its release updater may apply only an immutable, tagged release whose exact artifact has been observed for more than seven complete days and whose signed provenance and digest verify successfully. It never creates, replaces, retargets, updates, or removes a Skills CLI-owned registration. This optional launcher policy never creates a second Skill payload, Board contract, schema, or product tier.
 
