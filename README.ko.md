@@ -59,7 +59,7 @@ npx skills add Jin-Doh/traceknot --skill traceknot --global
 작업 완료 여부와 구분해서 보고해 줘.
 ```
 
-Skill bundle은 macOS와 Linux의 문서화된 workflow에 필요한 내용을 자체 포함합니다. 저장소의 `bin/traceknot`에서 생성된 `skill/bin/traceknot`와 참조 문서를 포함하므로 Bun 외에 별도 runtime 설치가 필요하지 않습니다. Native Windows는 local artifact store와 command collector가 지원하지 않으며 `traceknot self-check`가 fail-closed로 종료됩니다.
+Skill bundle은 macOS와 `libc.so.6`를 제공하는 glibc 기반 Linux의 문서화된 workflow에 필요한 내용을 자체 포함합니다. 저장소의 `bin/traceknot`에서 생성된 `skill/bin/traceknot`와 참조 문서를 포함하므로 Bun과 플랫폼 C library 외에 별도 Traceknot runtime 설치가 필요하지 않습니다. Native Windows와 musl-only Linux는 local artifact store와 command collector가 지원하지 않으며, native library를 사용할 수 없으면 `traceknot self-check`가 fail-closed로 종료됩니다.
 
 <!-- readme-section:why -->
 

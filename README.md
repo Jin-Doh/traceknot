@@ -59,7 +59,7 @@ mandatory obligations, observed evidence, defects, residual risk,
 and final QA verdict separately from task completion.
 ```
 
-The Skill bundle is self-contained for the documented workflow on macOS and Linux. It includes `skill/bin/traceknot`, generated from the repository's `bin/traceknot`, and its references; no separate runtime installation is required beyond Bun. Native Windows is not supported by the local artifact store or command collector, and `traceknot self-check` fails closed there.
+The Skill bundle is self-contained for the documented workflow on macOS and glibc-based Linux systems that expose `libc.so.6`. It includes `skill/bin/traceknot`, generated from the repository's `bin/traceknot`, and its references; no separate Traceknot runtime installation is required beyond Bun and the platform C library. Native Windows and musl-only Linux are not supported by the local artifact store or command collector, and `traceknot self-check` fails closed when the native library is unavailable.
 
 <!-- readme-section:why -->
 

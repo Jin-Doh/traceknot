@@ -46,16 +46,20 @@ const REQUIRED_LIFECYCLE_LITERALS = [
   "npx skills update traceknot --yes",
   "skill/bin/traceknot",
   "$HOME/.agents/skills/traceknot/bin/traceknot",
-  ".agents/skills/traceknot/bin/traceknot",
-  ".agents/skills/traceknot/bin/traceknot self-check",
-  ".agents/skills/traceknot/bin/traceknot board update",
   "Bun 1.3.14",
   "macOS",
   "Linux",
+  "libc.so.6",
+  "musl",
   "Windows",
   "TRACEKNOT_SKILLS_ROOT",
   "traceknot-update",
 ] as const;
+const REQUIRED_PROJECT_LOCAL_COMMANDS: ReadonlyArray<readonly [string, RegExp]> = [
+  ["project-local verify", /(?<!\$HOME\/)\.agents\/skills\/traceknot\/bin\/traceknot verify/u],
+  ["project-local self-check", /(?<!\$HOME\/)\.agents\/skills\/traceknot\/bin\/traceknot self-check/u],
+  ["project-local Board update", /(?<!\$HOME\/)\.agents\/skills\/traceknot\/bin\/traceknot board update/u],
+];
 const REQUIRED_OPERATIONAL_BLOCK_LITERALS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
   "README.md": {
     "full-toolkit-install": ["curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh"],
@@ -405,7 +409,12 @@ export function checkOperationalCommandBlocks(path: string, content: string, req
 }
 export function checkReadmeLifecycleContract(path: string, content: string): void {
   const missing = REQUIRED_LIFECYCLE_LITERALS.filter(literal => !content.includes(literal));
-  if (missing.length > 0) throw new Error(`${path}: canonical installation lifecycle is missing: ${missing.join(", ")}`);
+  const missingProjectCommands = REQUIRED_PROJECT_LOCAL_COMMANDS
+    .filter(([label]) => label !== "project-local verify" || content.includes("## Verify CLI"))
+    .filter(([, pattern]) => !pattern.test(content))
+    .map(([label]) => label);
+  const missingContracts = [...missing, ...missingProjectCommands];
+  if (missingContracts.length > 0) throw new Error(`${path}: canonical installation lifecycle is missing: ${missingContracts.join(", ")}`);
 }
 
 

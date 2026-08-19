@@ -47,6 +47,8 @@ Lifecycle events are observations. A task ending, queue becoming idle, or hook f
 
 The Skills CLI copies the complete `skill/` tree and preserves the executable mode of `skill/bin/traceknot`. After a global install, invoke `$HOME/.agents/skills/traceknot/bin/traceknot`; after a project-local install, invoke `.agents/skills/traceknot/bin/traceknot` from the project root. `traceknot self-check` validates the generated executable, required schemas, host capability manifests, semantic parser, renderer, and supported platform from that installed root. `npx skills add Jin-Doh/traceknot --skill traceknot` and `npx skills update traceknot` are the canonical installation lifecycle; `bun run build:skill-runtime` generates the bundle and `bun run check:skill-runtime` rejects drift. Bun 1.3.14 or later on macOS or Linux is required for the generated Verify and Board workflows; native Windows is unsupported by the artifact store and command collector. The optional prefix launcher/updater manages only prefix release files and never creates or retargets the Skills CLI registration.
 
+Linux support requires a glibc environment exposing `libc.so.6`; native Windows and musl-only Linux are unsupported. The installed self-check loads the native artifact runtime and fails closed when that library is unavailable.
+
 ### Traceknot records
 
 `contracts/` contains closed JSON Schema Draft 2020-12 records for:

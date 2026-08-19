@@ -59,7 +59,7 @@ npx skills add Jin-Doh/traceknot --skill traceknot --global
 不要把 QA 判定与任务完成状态混为一谈。
 ```
 
-该 Skill bundle 在 macOS 和 Linux 上自包含地提供文档化 workflow 所需内容，包括由仓库 `bin/traceknot` 生成的 `skill/bin/traceknot` 和参考资料；除 Bun 外不需要单独安装 runtime。Local artifact store 与 command collector 不支持原生 Windows，`traceknot self-check` 会在那里 fail-closed。
+该 Skill bundle 在 macOS 和提供 `libc.so.6` 的 glibc-based Linux 上自包含地提供文档化 workflow 所需内容，包括由仓库 `bin/traceknot` 生成的 `skill/bin/traceknot` 和参考资料；除 Bun 与平台 C library 外不需要单独安装 Traceknot runtime。Local artifact store 与 command collector 不支持原生 Windows 或 musl-only Linux；native library 不可用时，`traceknot self-check` 会 fail-closed。
 
 <!-- readme-section:why -->
 

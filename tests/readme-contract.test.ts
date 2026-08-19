@@ -352,9 +352,10 @@ describe("README localization section contract", () => {
     for (const [index, content] of localizedReadmes.entries()) {
       const drifted = content.replace("npx skills update traceknot --yes", "npx skills update traceknot --global --yes");
       expect(() => checkReadmeLifecycleContract(`README-${index}`, drifted)).toThrow("canonical installation lifecycle is missing");
+      const globalOnly = content.replaceAll(".agents/skills/traceknot/bin/traceknot", "$HOME/.agents/skills/traceknot/bin/traceknot");
+      expect(() => checkReadmeLifecycleContract(`README-global-only-${index}`, globalOnly)).toThrow("project-local");
     }
   });
-
   test("documents the curl path only as an optional non-owning launcher", () => {
     const canonical = localizedReadmes[0];
     expect(canonical).toContain("optional prefix launcher/updater");
