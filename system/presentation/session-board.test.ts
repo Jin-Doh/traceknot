@@ -98,6 +98,24 @@ describe("session Board contract", () => {
     expect(await readFile(join(publication.directory, "manifest.json"), "utf8")).not.toContain("raw-session-id");
   });
 
+  test("replays a stable invocation idempotently and rejects conflicting reuse", async () => {
+    const fixtureValue = await fixture();
+    const updateValue = parseSessionBoardUpdate(update(1, "stable-invocation"));
+    const first = await publishSessionBoardUpdate({ update: updateValue, ...fixtureValue });
+    const replay = await publishSessionBoardUpdate({ update: updateValue, ...fixtureValue });
+    expect(replay.directory).toBe(first.directory);
+    expect(replay.current).toEqual(first.current);
+    expect(await readdir(join(fixtureValue.stateDir, "sessions", first.sessionKey, "boards"))).toEqual(["1-stable-invocation"]);
+
+    const conflicting = parseSessionBoardUpdate({
+      ...update(1, "stable-invocation"),
+      generatedAt: "2026-08-18T00:00:02Z",
+      view: { ...view(1), changeSummary: "conflicting replay" },
+    });
+    await expect(publishSessionBoardUpdate({ update: conflicting, ...fixtureValue })).rejects.toThrow("different content");
+    expect(await readdir(join(fixtureValue.stateDir, "sessions", first.sessionKey, "boards"))).toEqual(["1-stable-invocation"]);
+  });
+
   test("selects a new run even when its revision restarts lower", async () => {
     const fixtureValue = await fixture();
     const first = { ...update(9, "inv-1"), view: { ...view(9), runId: "run-a" } };

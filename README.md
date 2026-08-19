@@ -190,6 +190,8 @@ npx skills update traceknot --global --yes
 npx skills remove traceknot --global --yes
 ```
 
+For a project-local installation, run `npx skills update traceknot --yes` and `npx skills remove traceknot --yes` from the project root; do not pass `--global`.
+
 For a global Skills CLI install, invoke `$HOME/.agents/skills/traceknot/bin/traceknot`; for a project-local install, run `.agents/skills/traceknot/bin/traceknot` from the project root. Run `$HOME/.agents/skills/traceknot/bin/traceknot self-check` after a global installation or update; for a project-local installation, substitute `.agents/skills/traceknot/bin/traceknot self-check`. Session Board publication uses `$HOME/.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]` globally and `.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]` for a project-local installation. Do not fall back to an unrelated global executable. After read-back validation the publisher prints `Traceknot Board: file://.../sessions/<session-key>/index.html`. See [QA Board](docs/qa-board.md) for the `traceknot-session-board-update/v1` envelope, unavailable behavior, and `boardMaxPerSession` retention.
 
 ### Legacy curl launcher/bootstrap — optional

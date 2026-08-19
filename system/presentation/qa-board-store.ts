@@ -1002,6 +1002,39 @@ async function sessionDirectoryBytes(path: string): Promise<number> {
   }
   return total;
 }
+async function sessionRevisionFiles(path: string, prefix = ""): Promise<readonly string[]> {
+  const files: string[] = [];
+  for (const entry of await readdir(path, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) throw new Error(`Board revision contains a symlink: ${join(path, entry.name)}`);
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) files.push(...await sessionRevisionFiles(join(path, entry.name), relativePath));
+    else if (entry.isFile()) files.push(relativePath);
+    else throw new Error(`Board revision contains an unsupported entry: ${join(path, entry.name)}`);
+  }
+  return files.sort();
+}
+
+async function existingSessionRevisionMatches(
+  root: SecureRootDescriptor,
+  revisionPath: string,
+  manifest: QaBoardManifest,
+  manifestBytes: Uint8Array,
+  currentBytes: Uint8Array,
+): Promise<boolean> {
+  const actualFiles = await sessionRevisionFiles(revisionPath);
+  const expectedFiles = [...manifest.files.map(file => file.path), "current.json", "manifest.json"].sort();
+  if (JSON.stringify(actualFiles) !== JSON.stringify(expectedFiles)) return false;
+  const persistedManifest = await readSecureRegularFile(root.fd, secureRelativePath(root, join(revisionPath, "manifest.json")), 4 * 1024 * 1024);
+  const persistedCurrent = await readSecureRegularFile(root.fd, secureRelativePath(root, join(revisionPath, "current.json")), 1024 * 1024);
+  if (persistedManifest.byteLength !== manifestBytes.byteLength || sha256(persistedManifest) !== sha256(manifestBytes)) return false;
+  if (persistedCurrent.byteLength !== currentBytes.byteLength || sha256(persistedCurrent) !== sha256(currentBytes)) return false;
+  for (const file of manifest.files) {
+    const bytes = await readSecureRegularFile(root.fd, secureRelativePath(root, join(revisionPath, file.path)), SESSION_FILE_LIMIT);
+    if (bytes.byteLength !== file.bytes || sha256(bytes) !== file.sha256) return false;
+  }
+  return true;
+}
+
 
 type SessionRevision = {
   name: string;
@@ -1233,14 +1266,20 @@ export async function publishSessionBoardUpdate(input: Readonly<{
     await writeAtomic(directories.revisionFd, "current.json", currentBytes);
     secureFsync(directories.evidenceFd);
     secureFsync(directories.revisionFd);
+    let replayed = false;
     try {
       secureRenameAt(directories.boardsFd, pendingName, directories.boardsFd, boardName);
     } catch (error) {
-      if (isExistingTarget(error)) throw new Error(`Board invocation already exists (${boardName}); choose a new invocationId`);
-      throw error;
+      if (!isExistingTarget(error)) throw error;
+      closeSessionRevisionDirectories(directories);
+      if (!await existingSessionRevisionMatches(root, join(boardsPath, boardName), manifest, manifestBytes, currentBytes)) {
+        throw new Error(`Board invocation already exists with different content (${boardName}); choose a new invocationId`);
+      }
+      await removeTreeAt(directories.boardsFd, boardsPath, pendingName);
+      replayed = true;
     }
     directories.revisionName = boardName;
-    revisionPublished = true;
+    revisionPublished = !replayed;
     secureFsync(directories.boardsFd);
     await sessionReadback(root, join(boardsPath, boardName, "index.html"), html);
     await sessionReadback(root, join(boardsPath, boardName, "manifest.json"), manifestBytes);

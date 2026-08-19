@@ -124,6 +124,7 @@ runs:
         umask 077
         evidence_path="$(mktemp -d "${RUNNER_TEMP}/traceknot-governed.XXXXXX")"
         invocation_id="${evidence_path##*.}"
+        session_id="github-actions-${invocation_id}"
         state_path="${evidence_path}/state"
         artifact_path="${evidence_path}/artifacts"
         input_path="${evidence_path}/inputs"
@@ -185,6 +186,7 @@ runs:
           printf 'manifest-path=%s\n' "$manifest_path"
           printf 'sarif-path=%s\n' "$sarif_path"
           printf 'invocation-id=%s\n' "$invocation_id"
+          printf 'session-id=%s\n' "$session_id"
           printf 'board-path=%s\n' "${state_path}/sessions"
           printf 'head-oid=%s\n' "$head_oid"
         } >> "$GITHUB_OUTPUT"
@@ -205,6 +207,7 @@ runs:
         TRACEKNOT_MANIFEST: ${{ steps.prepare.outputs.manifest-path }}
         TRACEKNOT_EXPECTED_HEAD: ${{ steps.prepare.outputs.head-oid }}
         TRACEKNOT_INVOCATION_ID: ${{ steps.prepare.outputs.invocation-id }}
+        TRACEKNOT_SESSION_ID: ${{ steps.prepare.outputs.session-id }}
         TRACEKNOT_BOARD: ${{ inputs.board }}
       run: |
         set -euo pipefail
@@ -228,7 +231,7 @@ runs:
               args+=(--run-id "$TRACEKNOT_RUN_ID")
             fi
             if test "$TRACEKNOT_BOARD" = true; then
-              args+=(--board --no-notify --invocation-id "$TRACEKNOT_INVOCATION_ID" --session-id "$TRACEKNOT_INVOCATION_ID" --session-host github-actions)
+              args+=(--board --no-notify --invocation-id "$TRACEKNOT_INVOCATION_ID" --session-id "$TRACEKNOT_SESSION_ID" --session-host github-actions)
             else
               args+=(--no-board)
             fi

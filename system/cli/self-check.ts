@@ -86,6 +86,7 @@ export async function runSelfCheck(
   stderr: (text: string) => void = text => process.stderr.write(text),
   executablePath = process.argv[1] ?? "",
   bunVersion = Bun.version,
+  platform = process.platform,
 ): Promise<number> {
   if (argv.length > 1 || (argv.length === 1 && argv[0] !== "--help" && argv[0] !== "-h")) {
     stderr(`unknown self-check option: ${argv[0] ?? ""}\n${usage()}\n`);
@@ -98,6 +99,7 @@ export async function runSelfCheck(
 
   try {
     assertSupportedBun(bunVersion);
+    if (platform !== "darwin" && platform !== "linux") throw new Error(`installed runtime is unsupported on platform: ${platform}`);
     const root = await resolveSkillRoot(executablePath);
     for (const contract of REQUIRED_CONTRACTS) await readJson(join(root, "contracts", contract));
     for (const adapter of REQUIRED_ADAPTERS) await readJson(join(root, "adapters", adapter, "capability.json"));

@@ -190,6 +190,8 @@ npx skills update traceknot --global --yes
 npx skills remove traceknot --global --yes
 ```
 
+프로젝트 로컬 설치는 프로젝트 루트에서 `npx skills update traceknot --yes`와 `npx skills remove traceknot --yes`를 실행하며 `--global`을 사용하지 않습니다.
+
 전역 Skills CLI 설치는 `$HOME/.agents/skills/traceknot/bin/traceknot`으로 실행하고, 프로젝트 로컬 설치는 프로젝트 루트에서 `.agents/skills/traceknot/bin/traceknot`을 실행합니다. 전역 설치나 업데이트 후에는 `$HOME/.agents/skills/traceknot/bin/traceknot self-check`를 실행하고, 프로젝트 로컬 설치에서는 `.agents/skills/traceknot/bin/traceknot self-check`로 바꿔 실행합니다. Session Board 발행도 전역 설치에서는 `$HOME/.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]`, 프로젝트 로컬 설치에서는 `.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]`를 사용합니다. 관련 없는 전역 실행 파일로 대신 실행하면 안 됩니다. Read-back 검증 뒤에는 `Traceknot Board: file://.../sessions/<session-key>/index.html`을 출력합니다. `traceknot-session-board-update/v1` envelope, prerequisite 부재 동작, `boardMaxPerSession` 보존 정책은 [QA Board](docs/qa-board.md)를 참고하세요.
 
 ### Legacy curl launcher/bootstrap — 선택 사항

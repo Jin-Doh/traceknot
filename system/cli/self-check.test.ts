@@ -58,9 +58,12 @@ describe("installed runtime self-check", () => {
     expect(stderr).toContain("qa-board-view.schema.json");
   });
 
-  test("rejects unsupported Bun versions and unknown options", async () => {
+  test("rejects unsupported Bun versions, platforms, and options", async () => {
     const { executable } = await fixture();
     expect(await runSelfCheck([], () => {}, () => {}, executable, "1.3.13")).toBe(SELF_CHECK_EXIT_CODES.INTERNAL);
+    let platformError = "";
+    expect(await runSelfCheck([], () => {}, text => { platformError += text; }, executable, "1.3.14", "win32")).toBe(SELF_CHECK_EXIT_CODES.INTERNAL);
+    expect(platformError).toContain("unsupported on platform: win32");
     expect(await runSelfCheck(["--unknown"], () => {}, () => {}, executable, "1.3.14")).toBe(SELF_CHECK_EXIT_CODES.USAGE);
   });
 });

@@ -125,11 +125,15 @@ Lifecycle events and agent completion claims MAY trigger observation or further 
 
 Every Traceknot QA run attempts Board publication by default. Do not wait for the user to request one. Follow [`references/qa-board.md`](references/qa-board.md) and publish through the canonical session Board store when the session, persistence, and read-back prerequisites are available.
 
-The Skill bundle includes the executable `skill/bin/traceknot`, generated from the repository's `bin/traceknot`. Bun 1.3.14 or later is required to run it. Install and update the complete bundle through the Skills CLI:
+The Skill bundle includes the executable `skill/bin/traceknot`, generated from the repository's `bin/traceknot`. Bun 1.3.14 or later on macOS or Linux is required to run the documented Verify and Board workflows; the artifact store and command collector do not support native Windows, and `traceknot self-check` fails closed there. Install and update the complete bundle through the Skills CLI:
 
 ```sh
+# Global installation
 npx skills add Jin-Doh/traceknot --skill traceknot --global
 npx skills update traceknot --global --yes
+# Project-local installation, from the project root
+npx skills add Jin-Doh/traceknot --skill traceknot --yes
+npx skills update traceknot --yes
 ```
 
 Verify the installed payload before using it. Use the executable from the same installation scope; a project-local-only installation MUST NOT fall back to an unrelated global executable:

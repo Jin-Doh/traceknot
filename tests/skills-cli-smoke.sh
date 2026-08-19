@@ -226,6 +226,7 @@ test ! -e "$GLOBAL_SKILL"
         --skill traceknot \
         --agent codex \
         --yes >/dev/null
+    "$SKILLS_CLI" update traceknot --yes >/dev/null
     test -f "$PROJECT/.agents/skills/traceknot/SKILL.md"
     grep -F '[Proof-carrying success](references/proof-carrying-success.md)' \
         "$PROJECT/.agents/skills/traceknot/SKILL.md" >/dev/null

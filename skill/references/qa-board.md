@@ -6,11 +6,15 @@ A Traceknot QA Board is a static, non-authoritative presentation artifact. The c
 
 Every Traceknot QA run attempts Board publication by default. Use the same policy across OMP, Codex, Claude Code, OpenCode, and GajaeCode; host names and lifecycle hooks never imply publisher authority. The required prerequisites are a session identity, a target snapshot bound to the report, a writable durable state directory, and a read-back-capable publisher. A current host capability handshake may advertise execution and persistence, but it cannot change the shared contract.
 
-The installed Skill bundle includes the executable `skill/bin/traceknot` and this reference. Bun 1.3.14 or later is required to run the generated executable. The canonical installation and update path is:
+The installed Skill bundle includes the executable `skill/bin/traceknot` and this reference. Bun 1.3.14 or later on macOS or Linux is required for the documented Board workflow. Native Windows is unsupported by the artifact store and command collector, and `traceknot self-check` fails closed there. The canonical installation and update path is:
 
 ```sh
+# Global installation
 npx skills add Jin-Doh/traceknot --skill traceknot --global
 npx skills update traceknot --global --yes
+# Project-local installation, from the project root
+npx skills add Jin-Doh/traceknot --skill traceknot --yes
+npx skills update traceknot --yes
 ```
 
 Invoke the global executable at `$HOME/.agents/skills/traceknot/bin/traceknot`; for a project-local install, use `.agents/skills/traceknot/bin/traceknot` from the project root. The legacy curl installer is only an optional prefix launcher/updater for environments that need it; it never creates, replaces, retargets, updates, or removes a Skills CLI-owned registration and does not define a second product or richer Board mode.

@@ -4,14 +4,16 @@ Traceknot projects accepted QA records into a static, non-authoritative Board. T
 
 ## Canonical Skill installation
 
-The Skills CLI is the canonical installation and update path. It copies the complete `skill/` tree, including the runnable `skill/bin/traceknot`, references, schemas, host capability manifests, and Board renderer. Node.js 22.20 or later is required for `npx`; Bun 1.3.14 or later is required to run the generated CLI.
+The Skills CLI is the canonical installation and update path. It copies the complete `skill/` tree, including the runnable `skill/bin/traceknot`, references, schemas, host capability manifests, and Board renderer. Node.js 22.20 or later is required for `npx`; Bun 1.3.14 or later on macOS or Linux is required for the generated Verify and Board CLI. Native Windows is unsupported by the artifact store and command collector, and `traceknot self-check` fails closed there.
 
 ```sh
+# Global installation
 npx skills add Jin-Doh/traceknot --skill traceknot --global
 npx skills update traceknot --global --yes
-# Global installation
 $HOME/.agents/skills/traceknot/bin/traceknot self-check
-# Project-local installation
+# Project-local installation, from the project root
+npx skills add Jin-Doh/traceknot --skill traceknot --yes
+npx skills update traceknot --yes
 .agents/skills/traceknot/bin/traceknot self-check
 ```
 
