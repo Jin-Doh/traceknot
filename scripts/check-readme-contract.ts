@@ -126,6 +126,13 @@ function visibleHtmlTree(content: string, removePre = false): HastRoot {
 export function renderedMarkdownText(content: string): string {
   return toText(visibleHtmlTree(content, true));
 }
+function renderedInstallLifecycle(content: string): string {
+  const start = content.indexOf("<!-- readme-section:install -->");
+  const end = content.indexOf("<!-- readme-section:documentation -->");
+  if (start < 0 || end <= start) return "";
+  return toText(visibleHtmlTree(content.slice(start, end)));
+}
+
 
 function visibleAnchorTargets(content: string): string[] {
   const targets: string[] = [];
@@ -408,10 +415,13 @@ export function checkOperationalCommandBlocks(path: string, content: string, req
   }
 }
 export function checkReadmeLifecycleContract(path: string, content: string): void {
-  const missing = REQUIRED_LIFECYCLE_LITERALS.filter(literal => !content.includes(literal));
+  const visibleDocument = toText(visibleHtmlTree(content));
+  const visibleLifecycle = renderedInstallLifecycle(content);
+  const documentLiterals = new Set(["macOS", "Linux", "libc.so.6", "musl", "Windows"]);
+  const missing = REQUIRED_LIFECYCLE_LITERALS.filter(literal => !(documentLiterals.has(literal) ? visibleDocument : visibleLifecycle).includes(literal));
   const missingProjectCommands = REQUIRED_PROJECT_LOCAL_COMMANDS
-    .filter(([label]) => label !== "project-local verify" || content.includes("## Verify CLI"))
-    .filter(([, pattern]) => !pattern.test(content))
+    .filter(([label]) => label !== "project-local verify" || visibleDocument.includes("Verify CLI"))
+    .filter(([label, pattern]) => !pattern.test(label === "project-local verify" ? visibleDocument : visibleLifecycle))
     .map(([label]) => label);
   const missingContracts = [...missing, ...missingProjectCommands];
   if (missingContracts.length > 0) throw new Error(`${path}: canonical installation lifecycle is missing: ${missingContracts.join(", ")}`);

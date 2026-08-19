@@ -354,6 +354,8 @@ describe("README localization section contract", () => {
       expect(() => checkReadmeLifecycleContract(`README-${index}`, drifted)).toThrow("canonical installation lifecycle is missing");
       const globalOnly = content.replaceAll(".agents/skills/traceknot/bin/traceknot", "$HOME/.agents/skills/traceknot/bin/traceknot");
       expect(() => checkReadmeLifecycleContract(`README-global-only-${index}`, globalOnly)).toThrow("project-local");
+      const hiddenOnly = `${globalOnly}\n<!-- .agents/skills/traceknot/bin/traceknot verify; .agents/skills/traceknot/bin/traceknot self-check; .agents/skills/traceknot/bin/traceknot board update -->`;
+      expect(() => checkReadmeLifecycleContract(`README-hidden-${index}`, hiddenOnly)).toThrow("project-local");
     }
   });
   test("documents the curl path only as an optional non-owning launcher", () => {
