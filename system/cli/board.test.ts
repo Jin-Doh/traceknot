@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, realpath, rm, stat, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -127,6 +127,42 @@ describe("traceknot board CLI", () => {
       );
       expect(status).toBe(BOARD_EXIT_CODES.USAGE);
       expect(stderr.join("")).toContain("Board update input is not valid JSON");
+    } finally {
+      await fixtureValue.cleanup();
+    }
+  });
+
+  test("rejects oversized and non-regular input before allocating its contents", async () => {
+    const fixtureValue = await fixture("board-bounded-input");
+    try {
+      await truncate(fixtureValue.inputPath, 4 * 1024 * 1024 + 1);
+      const oversizedErrors: string[] = [];
+      expect(await runBoardUpdate(
+        ["update", "--input", fixtureValue.inputPath, "--state-dir", fixtureValue.stateDir],
+        () => undefined,
+        text => oversizedErrors.push(text),
+      )).toBe(BOARD_EXIT_CODES.USAGE);
+      expect(oversizedErrors.join("")).toContain("exceeds the maximum size");
+
+      const directoryErrors: string[] = [];
+      expect(await runBoardUpdate(
+        ["update", "--input", fixtureValue.stateDir, "--state-dir", fixtureValue.stateDir],
+        () => undefined,
+        text => directoryErrors.push(text),
+      )).toBe(BOARD_EXIT_CODES.USAGE);
+      expect(directoryErrors.join("")).toContain("must be a regular file");
+
+      const targetPath = join(fixtureValue.stateDir, "target.json");
+      await writeFile(targetPath, `${JSON.stringify(update("board-bounded-input"))}\n`);
+      await rm(fixtureValue.inputPath);
+      await symlink(targetPath, fixtureValue.inputPath);
+      const symlinkErrors: string[] = [];
+      expect(await runBoardUpdate(
+        ["update", "--input", fixtureValue.inputPath, "--state-dir", fixtureValue.stateDir],
+        () => undefined,
+        text => symlinkErrors.push(text),
+      )).toBe(BOARD_EXIT_CODES.USAGE);
+      expect(symlinkErrors.join("")).toContain("must not be a symlink");
     } finally {
       await fixtureValue.cleanup();
     }

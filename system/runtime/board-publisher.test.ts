@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -197,6 +197,24 @@ describe("canonical Board publisher", () => {
       await rm(fixture.root, { recursive: true, force: true });
     }
   });
+  test("rejects a selected revision symlink that escapes the requested state root", async () => {
+    const fixture = await boardFixture();
+    const outsideRoot = await mkdtemp(join(tmpdir(), "traceknot-board-publisher-outside-"));
+    try {
+      const sessionRoot = dirname(fileURLToPath(fixture.entrypoint));
+      const current = JSON.parse(await readFile(join(sessionRoot, "current.json"), "utf8")) as Record<string, unknown>;
+      const revisionRoot = join(sessionRoot, String(current.revisionPath));
+      const outsideRevision = join(outsideRoot, "revision");
+      await rename(revisionRoot, outsideRevision);
+      await symlink(outsideRevision, revisionRoot);
+      const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${fixture.entrypoint}\n` });
+      await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: fixture.root }))
+        .rejects.toThrow("selected revision escapes");
+    } finally {
+      await Promise.all([rm(fixture.root, { recursive: true, force: true }), rm(outsideRoot, { recursive: true, force: true })]);
+    }
+  });
+
 
 
 

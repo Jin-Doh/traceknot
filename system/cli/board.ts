@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { LocalArtifactStore } from "../runtime/local-artifact-store";
 import { openBoard } from "../presentation/board-opener";
@@ -71,12 +72,31 @@ function parseArgs(argv: readonly string[]): BoardOptions {
 }
 
 async function readInput(path: string): Promise<unknown> {
-  const bytes = await readFile(path);
-  if (bytes.byteLength > MAX_INPUT_BYTES) fail("Board update input exceeds the maximum size");
+  const pathInformation = await lstat(path);
+  if (!pathInformation.isFile() || pathInformation.isSymbolicLink()) fail("Board update input must be a regular file and must not be a symlink");
+  const flags = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0) | ((constants as Record<string, number | undefined>).O_CLOEXEC ?? 0);
+  const handle = await open(path, flags);
   try {
-    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
-  } catch (error) {
-    fail(`Board update input is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    const information = await handle.stat();
+    if (!information.isFile()) fail("Board update input must be a regular file");
+    if (information.size > MAX_INPUT_BYTES) fail("Board update input exceeds the maximum size");
+    const bytes = new Uint8Array(information.size);
+    let offset = 0;
+    while (offset < bytes.byteLength) {
+      const { bytesRead } = await handle.read(bytes, offset, bytes.byteLength - offset, offset);
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+    const probe = new Uint8Array(1);
+    const { bytesRead: extraBytes } = await handle.read(probe, 0, 1, offset);
+    if (extraBytes !== 0) fail("Board update input changed while being read");
+    try {
+      return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, offset))) as unknown;
+    } catch (error) {
+      fail(`Board update input is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  } finally {
+    await handle.close();
   }
 }
 

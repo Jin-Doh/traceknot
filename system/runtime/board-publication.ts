@@ -4,7 +4,7 @@ import {
   type CapabilitySet,
 } from "./capability-model";
 
-import { readFile, realpath, stat } from "node:fs/promises";
+import { lstat, readFile, readlink, realpath, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -256,17 +256,36 @@ export async function validatePublishedBoard(
     if (canonicalSessionRoot !== join(canonicalStateDir, "sessions", sessionKey)) throw Error("canonical Board publisher session Board is outside the requested state directory");
   }
   if (entrypointPath !== join(sessionRoot, "index.html")) throw Error("canonical Board publisher reported an unstable session Board URI");
+  const stableLinks = new Map([
+    [entrypointPath, "current/index.html"],
+    [manifestPath, "current/manifest.json"],
+    [join(sessionRoot, "current.json"), "current/current.json"],
+  ]);
+  for (const [path, expectedTarget] of stableLinks) {
+    const information = await lstat(path).catch(() => undefined);
+    if (information === undefined || !information.isSymbolicLink() || await readlink(path) !== expectedTarget) throw Error("canonical Board publisher reported an invalid stable session link");
+  }
+  const selectorPath = join(sessionRoot, "current");
+  const selectorInformation = await lstat(selectorPath).catch(() => undefined);
+  if (selectorInformation === undefined || !selectorInformation.isSymbolicLink()) throw Error("canonical Board publisher reported an invalid current selector");
+  const selectorTarget = await readlink(selectorPath);
+  if (!/^boards\/(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/.test(selectorTarget)) throw Error("canonical Board publisher reported an unsafe current selector");
+  const revisionRoot = join(sessionRoot, selectorTarget);
+  const canonicalRevisionRoot = await realpath(revisionRoot).catch(() => undefined);
+  if (canonicalRevisionRoot === undefined || canonicalRevisionRoot !== revisionRoot) throw Error("canonical Board publisher selected revision escapes the session state root");
   const currentPath = join(sessionRoot, "current.json");
   const currentBytes = await readFile(currentPath).catch(() => undefined);
   if (!currentBytes) throw Error("canonical Board publisher reported a session Board without current.json");
   let current: Record<string, unknown>;
   try { current = JSON.parse(new TextDecoder().decode(currentBytes)) as Record<string, unknown>; } catch { throw Error("canonical Board publisher reported malformed current.json"); }
-  if (current.schemaVersion !== "traceknot-session-board-current/v1" || current.sessionKey !== sessionKey || current.entrypoint !== "index.html" || current.authoritative !== false || typeof current.revisionPath !== "string" || !/^boards\/(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/.test(current.revisionPath) || typeof current.entrypointSha256 !== "string" || !/^[0-9a-f]{64}$/.test(current.entrypointSha256) || typeof current.manifestSha256 !== "string" || !/^[0-9a-f]{64}$/.test(current.manifestSha256) || typeof current.sessionRef !== "string") throw Error("canonical Board publisher reported an invalid current pointer");
+  if (current.schemaVersion !== "traceknot-session-board-current/v1" || current.sessionKey !== sessionKey || current.entrypoint !== "index.html" || current.authoritative !== false || current.revisionPath !== selectorTarget || typeof current.entrypointSha256 !== "string" || !/^[0-9a-f]{64}$/.test(current.entrypointSha256) || typeof current.manifestSha256 !== "string" || !/^[0-9a-f]{64}$/.test(current.manifestSha256) || typeof current.sessionRef !== "string") throw Error("canonical Board publisher reported an invalid current pointer");
   const stableBytes = await readFile(entrypointPath);
   const stableManifestBytes = await readFile(manifestPath);
   const digest = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
   if (digest(stableBytes) !== current.entrypointSha256 || digest(stableManifestBytes) !== current.manifestSha256) throw Error("canonical Board publisher stable files do not match current pointer");
   const immutableManifestPath = join(sessionRoot, current.revisionPath, "manifest.json");
+  const immutableManifestInformation = await lstat(immutableManifestPath).catch(() => undefined);
+  if (immutableManifestInformation === undefined || !immutableManifestInformation.isFile() || immutableManifestInformation.isSymbolicLink()) throw Error("canonical Board publisher immutable manifest is not a regular file");
   const immutableManifestBytes = await readFile(immutableManifestPath).catch(() => undefined);
   if (!immutableManifestBytes || digest(immutableManifestBytes) !== current.manifestSha256) throw Error("canonical Board publisher immutable manifest does not match current pointer");
   let manifestValue: unknown;
@@ -277,7 +296,10 @@ export async function validatePublishedBoard(
   if (expected?.snapshotId !== undefined && manifest.snapshotId !== expected.snapshotId) throw Error("canonical Board publisher snapshot identity does not match the request");
   if (expected?.runId !== undefined && manifest.runId !== expected.runId) throw Error("canonical Board publisher run identity does not match the request");
   for (const file of manifest.files) {
-    const bytes = await readFile(join(sessionRoot, current.revisionPath, file.path)).catch(() => undefined);
+    const path = join(revisionRoot, file.path);
+    const information = await lstat(path).catch(() => undefined);
+    if (information === undefined || !information.isFile() || information.isSymbolicLink()) throw Error(`canonical Board publisher immutable file is not regular: ${file.path}`);
+    const bytes = await readFile(path).catch(() => undefined);
     if (!bytes || bytes.byteLength !== file.bytes || digest(bytes) !== file.sha256) throw Error(`canonical Board publisher immutable file hash mismatch: ${file.path}`);
   }
   if (digest(stableManifestBytes) !== digest(immutableManifestBytes)) throw Error("canonical Board publisher stable manifest differs from immutable revision");
