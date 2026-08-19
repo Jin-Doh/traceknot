@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, readlink, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readlink, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseSessionBoardUpdate, publishSessionBoardUpdate, sessionBoardKey, verifySessionBoardPublication, type SessionBoardUpdate } from "./qa-board-store";
@@ -185,6 +185,21 @@ describe("session Board contract", () => {
     const stale = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 10 } });
     expect(stale.current.revisionPath).toBe(selected.current.revisionPath);
     expect(await stat(join(fixtureValue.stateDir, "sessions", selected.sessionKey, "boards", "1-inv-1"))).toBeDefined();
+  });
+
+  test("rolls back current before removing the incoming revision when reclaim fails", async () => {
+    const fixtureValue = await fixture();
+    const current = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(2, "current-a", "EXECUTING")), ...fixtureValue });
+    await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "stale-a", "EXECUTING")), ...fixtureValue });
+    await mkdir(join(fixtureValue.stateDir, "sessions", current.sessionKey, "boards", "1-stale-a", ".unsafe"));
+    await expect(publishSessionBoardUpdate({
+      update: parseSessionBoardUpdate(update(3, "incoming-b", "EXECUTING")),
+      ...fixtureValue,
+      retentionPolicy: { boardMaxPerSession: 1 },
+    })).rejects.toThrow();
+    expect(JSON.parse(await readFile(current.currentPath, "utf8"))).toMatchObject({ revisionPath: "boards/2-current-a" });
+    expect(await stat(current.directory)).toBeDefined();
+    await expect(stat(join(fixtureValue.stateDir, "sessions", current.sessionKey, "boards", "3-incoming-b"))).rejects.toThrow();
   });
 
   test("rotates active revisions by the session maximum without deleting current", async () => {

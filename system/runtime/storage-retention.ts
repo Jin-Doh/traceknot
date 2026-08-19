@@ -550,6 +550,10 @@ async function inspectRuns(stateDir: string, pins: ReadonlySet<string>, pinsMalf
       const boardStat = await safeStat(boardPath);
       if (!boardStat) continue;
       if (boardStat.isSymlink) { symlinks.push(`runs/${runId}/boards/${boardId}`); continue; }
+      if (!boardStat.isDirectory) {
+        staging.push({ kind: "staging", path: boardPath, relativePath: `runs/${runId}/boards/${boardId}`, bytes: boardStat.bytes, allocatedBytes: boardStat.allocatedBytes, mtimeMs: boardStat.mtimeMs, runId, malformed: true });
+        continue;
+      }
       const boardSize = await directorySize(boardPath);
       const manifest = await readJson(join(boardPath, "manifest.json"));
       const generatedAt = isRecord(manifest) ? asTimestamp(manifest.generatedAt) : undefined;

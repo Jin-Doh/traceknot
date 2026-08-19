@@ -352,6 +352,17 @@ describe("storage retention", () => {
     expect(quota.candidates.boards).toEqual(["runs/fresh-run/boards/only-fresh", "runs/old-run/boards/only-old"]);
   });
 
+  test("reports safe-name non-directory Board entries without aborting inspection", async () => {
+    const { state, artifacts } = await fixture();
+    await run(state, "active", { state: "EXECUTING", updatedAt: NOW });
+    const boardPath = join(state, "runs", "active", "boards", "not-a-directory");
+    await mkdir(join(state, "runs", "active", "boards"), { recursive: true });
+    await writeFile(boardPath, "malformed Board entry");
+    const inventory = await inspectStorage({ stateDir: state, artifactDir: artifacts, now: NOW });
+    expect(inventory.staging).toEqual(expect.arrayContaining([expect.objectContaining({ relativePath: "runs/active/boards/not-a-directory", malformed: true })]));
+    await expect(pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy })).resolves.toBeDefined();
+  });
+
   test("malformed Board manifests remain protected from automatic deletion", async () => {
     const { state, artifacts } = await fixture();
     await run(state, "active", { state: "EXECUTING", updatedAt: NOW });

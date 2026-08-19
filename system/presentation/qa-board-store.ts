@@ -1064,6 +1064,7 @@ async function sessionReclaim(
   newName: string | undefined,
   policy: Readonly<{ boardMaxPerSession?: number; boardQuotaBytes?: number }>,
   apply: boolean,
+  removeLast?: string,
 ): Promise<void> {
   const entries = await readdir(boardsPath, { withFileTypes: true }).catch(() => []);
   const revisions: SessionRevision[] = [];
@@ -1121,7 +1122,8 @@ async function sessionReclaim(
   }
   if (predictedCount > max || predictedBytes > quota) throw new Error(`Board publication quota exceeded for session ${sessionKey}`);
   if (!apply) return;
-  for (const candidate of selected) {
+  const deletionOrder = [...selected].sort((a, b) => Number(a.name === removeLast) - Number(b.name === removeLast));
+  for (const candidate of deletionOrder) {
     await removeTreeAt(boardsFd, boardsPath, candidate.name);
     bytes -= candidate.bytes;
     count -= 1;
@@ -1311,7 +1313,7 @@ export async function publishSessionBoardUpdate(input: Readonly<{
     await sessionReadback(root, stableManifestPath, await readStableFile(stableManifestPath, 4 * 1024 * 1024), true);
     await sessionReadback(root, currentPath, await readStableFile(currentPath, 1024 * 1024), true);
     await verifySessionBoardPublication(input.stateDir, publication);
-    await sessionReclaim(root, directories.boardsFd, boardsPath, sessionKey, selectedName, undefined, input.retentionPolicy ?? {}, true);
+    await sessionReclaim(root, directories.boardsFd, boardsPath, sessionKey, selectedName, undefined, input.retentionPolicy ?? {}, true, incomingWins ? previousName : undefined);
     publicationCommitted = true;
     result = publication;
   } catch (error) {
