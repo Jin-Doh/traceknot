@@ -1173,6 +1173,7 @@ export async function publishSessionBoardUpdate(input: Readonly<{
   const update = parseSessionBoardUpdate(input.update);
   if (sessionPresentationContains(update.view, update.sessionId)) throw new Error("Board view contains the raw session ID");
   const invocationId = update.invocationId ?? randomUUID();
+  if (sessionPresentationContains([update.sessionHost, invocationId], update.sessionId)) throw new Error("Board publication envelope contains the raw session ID");
   const sessionKey = sessionBoardKey(update.sessionHost, update.sessionId);
   const boardName = `${update.view.revision}-${invocationId}`;
   if (!SAFE_BOARD_NAME.test(boardName)) throw new Error("Board revision contains unsafe characters");

@@ -84,6 +84,16 @@ describe("session Board contract", () => {
     expect(publication.current.revisionPath).toBe("boards/1-inv-1");
   });
 
+  test("rejects the raw session ID in persisted envelope fields", async () => {
+    const sessionId = "raw-session-id";
+    for (const overrides of [{ invocationId: sessionId }, { sessionHost: `host ${sessionId}` }]) {
+      const fixtureValue = await fixture();
+      const unsafe = { ...update(1, "inv-1"), sessionId, ...overrides };
+      await expect(publishSessionBoardUpdate({ update: parseSessionBoardUpdate(unsafe), ...fixtureValue })).rejects.toThrow("envelope contains the raw session ID");
+      await expect(stat(join(fixtureValue.stateDir, "sessions"))).rejects.toThrow();
+    }
+  });
+
   test("publishes a stable URI bound to an immutable revision without raw session identity", async () => {
     const fixtureValue = await fixture();
     const publication = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1")), ...fixtureValue });
