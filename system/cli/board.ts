@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { lstat, open } from "node:fs/promises";
+import { open, type FileHandle } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { LocalArtifactStore } from "../runtime/local-artifact-store";
 import { openBoard } from "../presentation/board-opener";
@@ -72,10 +72,9 @@ function parseArgs(argv: readonly string[]): BoardOptions {
 }
 
 async function readInput(path: string): Promise<unknown> {
-  const pathInformation = await lstat(path);
-  if (!pathInformation.isFile() || pathInformation.isSymbolicLink()) fail("Board update input must be a regular file and must not be a symlink");
   const flags = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0) | ((constants as Record<string, number | undefined>).O_CLOEXEC ?? 0);
-  const handle = await open(path, flags);
+  let handle: FileHandle;
+  try { handle = await open(path, flags); } catch { fail("Board update input must be a regular file and must not be a symlink"); }
   try {
     const information = await handle.stat();
     if (!information.isFile()) fail("Board update input must be a regular file");

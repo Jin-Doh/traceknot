@@ -140,7 +140,7 @@ describe("canonical Board publisher", () => {
       await rm(missingManifest.manifestPath);
       const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${missingManifest.entrypoint}\n` });
       await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: missingManifest.root }))
-        .rejects.toThrow("Board manifest that does not exist");
+        .rejects.toThrow("invalid stable session link");
     } finally {
       await rm(missingManifest.root, { recursive: true, force: true });
     }
@@ -150,7 +150,7 @@ describe("canonical Board publisher", () => {
       await rm(fileURLToPath(missingEntrypoint.entrypoint));
       const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${missingEntrypoint.entrypoint}\n` });
       await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: missingEntrypoint.root }))
-        .rejects.toThrow("Board entrypoint that does not exist");
+        .rejects.toThrow("invalid stable session link");
     } finally {
       await rm(missingEntrypoint.root, { recursive: true, force: true });
     }
@@ -209,7 +209,7 @@ describe("canonical Board publisher", () => {
       await symlink(outsideRevision, revisionRoot);
       const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${fixture.entrypoint}\n` });
       await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: fixture.root }))
-        .rejects.toThrow("selected revision escapes");
+        .rejects.toThrow(/selected revision.*escapes/u);
     } finally {
       await Promise.all([rm(fixture.root, { recursive: true, force: true }), rm(outsideRoot, { recursive: true, force: true })]);
     }
