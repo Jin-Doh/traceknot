@@ -30,6 +30,7 @@ function expectCanonicalSkillPayload(content: string): void {
   expect(content).toContain("Bun 1.3.14");
   expect(content).toContain("traceknot self-check");
   expect(content).toContain(".agents/skills/traceknot/bin/traceknot self-check");
+  expect(content).toContain("libc.so.6");
 }
 
 function expectCanonicalBoardInterface(content: string): void {

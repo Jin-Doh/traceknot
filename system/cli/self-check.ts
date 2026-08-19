@@ -2,6 +2,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { parseSessionBoardUpdate } from "../presentation/qa-board-store";
 import { renderQaBoardHtml, type QaBoardView } from "../presentation/qa-board";
+import { assertLocalArtifactRuntimeSupported } from "../runtime/local-artifact-store";
 
 export const SELF_CHECK_EXIT_CODES = Object.freeze({ OK: 0, USAGE: 64, INTERNAL: 70 });
 
@@ -87,6 +88,7 @@ export async function runSelfCheck(
   executablePath = process.argv[1] ?? "",
   bunVersion = Bun.version,
   platform = process.platform,
+  nativeProbe: () => void = assertLocalArtifactRuntimeSupported,
 ): Promise<number> {
   if (argv.length > 1 || (argv.length === 1 && argv[0] !== "--help" && argv[0] !== "-h")) {
     stderr(`unknown self-check option: ${argv[0] ?? ""}\n${usage()}\n`);
@@ -100,6 +102,7 @@ export async function runSelfCheck(
   try {
     assertSupportedBun(bunVersion);
     if (platform !== "darwin" && platform !== "linux") throw new Error(`installed runtime is unsupported on platform: ${platform}`);
+    nativeProbe();
     const root = await resolveSkillRoot(executablePath);
     for (const contract of REQUIRED_CONTRACTS) await readJson(join(root, "contracts", contract));
     for (const adapter of REQUIRED_ADAPTERS) await readJson(join(root, "adapters", adapter, "capability.json"));

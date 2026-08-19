@@ -6,7 +6,7 @@ A Traceknot QA Board is a static, non-authoritative presentation artifact. The c
 
 Every Traceknot QA run attempts Board publication by default. Use the same policy across OMP, Codex, Claude Code, OpenCode, and GajaeCode; host names and lifecycle hooks never imply publisher authority. The required prerequisites are a session identity, a target snapshot bound to the report, a writable durable state directory, and a read-back-capable publisher. A current host capability handshake may advertise execution and persistence, but it cannot change the shared contract.
 
-The installed Skill bundle includes the executable `skill/bin/traceknot` and this reference. Bun 1.3.14 or later on macOS or Linux is required for the documented Board workflow. Native Windows is unsupported by the artifact store and command collector, and `traceknot self-check` fails closed there. The canonical installation and update path is:
+The installed Skill bundle includes the executable `skill/bin/traceknot` and this reference. Bun 1.3.14 or later on macOS or glibc-based Linux with `libc.so.6` is required for the documented Board workflow. Native Windows and musl-only Linux are unsupported by the artifact store and command collector, and `traceknot self-check` fails closed when the native library is unavailable. The canonical installation and update path is:
 
 ```sh
 # Global installation

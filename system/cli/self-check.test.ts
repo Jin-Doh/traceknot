@@ -64,6 +64,9 @@ describe("installed runtime self-check", () => {
     let platformError = "";
     expect(await runSelfCheck([], () => {}, text => { platformError += text; }, executable, "1.3.14", "win32")).toBe(SELF_CHECK_EXIT_CODES.INTERNAL);
     expect(platformError).toContain("unsupported on platform: win32");
+    let nativeError = "";
+    expect(await runSelfCheck([], () => {}, text => { nativeError += text; }, executable, "1.3.14", "linux", () => { throw new Error("libc.so.6 unavailable"); })).toBe(SELF_CHECK_EXIT_CODES.INTERNAL);
+    expect(nativeError).toContain("libc.so.6 unavailable");
     expect(await runSelfCheck(["--unknown"], () => {}, () => {}, executable, "1.3.14")).toBe(SELF_CHECK_EXIT_CODES.USAGE);
   });
 });

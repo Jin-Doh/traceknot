@@ -126,6 +126,9 @@ function native(): Native {
   if (!NATIVE) throw new ArtifactPathError(`artifact storage is unsupported on platform ${process.platform}`);
   return NATIVE;
 }
+export function assertLocalArtifactRuntimeSupported(): void {
+  native();
+}
 function errnoFrom(symbols: Native["symbols"]): number {
   return ffiRead.i32(symbols.errno() as unknown as Parameters<typeof ffiRead.i32>[0]);
 }
