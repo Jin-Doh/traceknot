@@ -1,5 +1,5 @@
 #!/bin/sh
-# Remove only files recorded by the legacy installer; never touch a real Skills CLI Skill.
+# Remove only prefix files recorded by the optional launcher installer and any legacy owned registration.
 
 set -eu
 
@@ -24,7 +24,7 @@ usage() {
     cat <<EOF
 Usage: $PROGRAM [--prefix DIR] [--dry-run]
 
-Remove files and the OMP/Codex Skill registration installed by Traceknot.
+Remove the optional Traceknot prefix launcher and updater.
 
 Options:
   --prefix DIR       uninstall from DIR instead of the default
@@ -33,8 +33,8 @@ Options:
   --help, -h         show this help
 
 Default prefix: \${XDG_DATA_HOME:-\$HOME/.local/share}/traceknot
-Default Skill registration: \$HOME/.agents/skills/traceknot
-Set TRACEKNOT_SKILLS_ROOT to override the Agent Skills directory.
+The canonical Skill registration is managed only by the Skills CLI.
+TRACEKNOT_SKILLS_ROOT is inspected only to remove a legacy Traceknot-owned symlink.
 EOF
 }
 
@@ -355,7 +355,7 @@ if [ "$UPDATE_LOCK_OWNED" -eq 1 ]; then
     rm -f "$PREFIX_CANON/.traceknot-update.lock"
 fi
 if [ "$REGISTRATION_OWNED" -eq 1 ]; then
-    printf 'Uninstalled Traceknot from %s and removed its owned Skill registration\n' "$PREFIX_CANON"
+    printf 'Uninstalled Traceknot launcher from %s and removed its legacy Skill registration\n' "$PREFIX_CANON"
 else
-    printf 'Uninstalled Traceknot from %s and preserved the existing Skill registration\n' "$PREFIX_CANON"
+    printf 'Uninstalled Traceknot launcher from %s without changing the Skills CLI registration\n' "$PREFIX_CANON"
 fi

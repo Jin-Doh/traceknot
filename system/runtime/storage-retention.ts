@@ -770,6 +770,25 @@ function compareBoardEntries(a: StorageEntry, b: StorageEntry): number {
   return (a.boardId ?? a.relativePath).localeCompare(b.boardId ?? b.relativePath);
 }
 
+function compareSessionBoardEntries(a: StorageEntry, b: StorageEntry): number {
+  const revisionOrder = (a.sourceRevision ?? -1) - (b.sourceRevision ?? -1);
+  if (revisionOrder !== 0) return revisionOrder;
+  const generatedOrder = (a.logicalUpdatedAt ?? a.mtimeMs) - (b.logicalUpdatedAt ?? b.mtimeMs);
+  if (generatedOrder !== 0) return generatedOrder;
+  return (a.boardId ?? a.relativePath).localeCompare(b.boardId ?? b.relativePath);
+}
+
+function compareNewestSessionTerminalEntries(a: StorageEntry, b: StorageEntry): number {
+  const sameRun = a.runId !== undefined && a.runId === b.runId;
+  const revisionOrder = (b.sourceRevision ?? -1) - (a.sourceRevision ?? -1);
+  const generatedOrder = (b.logicalUpdatedAt ?? b.mtimeMs) - (a.logicalUpdatedAt ?? a.mtimeMs);
+  if (sameRun && revisionOrder !== 0) return revisionOrder;
+  if (generatedOrder !== 0) return generatedOrder;
+  if (revisionOrder !== 0) return revisionOrder;
+  return (a.boardId ?? a.relativePath).localeCompare(b.boardId ?? b.relativePath);
+}
+
+
 function compareBoardQuotaEntries(a: StorageEntry, b: StorageEntry): number {
   const updatedOrder = (a.logicalUpdatedAt ?? a.mtimeMs) - (b.logicalUpdatedAt ?? b.mtimeMs);
   if (updatedOrder !== 0) return updatedOrder;
@@ -799,9 +818,9 @@ function candidatePlan(inventory: StorageInventory, policy: StorageRetentionPoli
   const protectedBoards = new Set(currentBoards);
   const boardCandidates: StorageEntry[] = [];
   for (const [scope, list] of boardsByScope) {
-    const ordered = [...list].sort(compareBoardEntries);
+    const ordered = [...list].sort(scope.startsWith("session:") ? compareSessionBoardEntries : compareBoardEntries);
     const maxPerScope = scope.startsWith("session:") ? policy.boardMaxPerSession ?? policy.boardMaxPerRun : policy.boardMaxPerRun;
-    const newestTerminalBoard = ordered.filter(board => board.sourceState === "TERMINAL" && !board.malformed).at(-1)?.relativePath;
+    const newestTerminalBoard = [...list].filter(board => board.sourceState === "TERMINAL" && !board.malformed).sort(compareNewestSessionTerminalEntries)[0]?.relativePath;
     const keepForCount = new Set(maxPerScope === 0 ? [] : ordered.slice(-maxPerScope).map(item => item.relativePath));
     for (const board of ordered) {
       if (board.protectedReason === "current"

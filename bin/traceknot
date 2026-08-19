@@ -2,10 +2,12 @@
 import { main as verifyMain } from "../system/cli/verify.ts";
 import { main as storageMain } from "../system/cli/storage.ts";
 import { main as boardMain } from "../system/cli/board.ts";
+import { main as selfCheckMain } from "../system/cli/self-check.ts";
 
 const command = process.argv[2];
 if (command === "verify") process.exit(await verifyMain(process.argv.slice(3)));
 if (command === "storage") process.exit(await storageMain(process.argv.slice(3)));
 if (command === "board") process.exit(await boardMain(process.argv.slice(3)));
-process.stderr.write("Usage: traceknot verify [options]\n       traceknot board update --input UPDATE.json --state-dir DIR [options]\n       traceknot storage status|prune|pin|unpin [options]\n");
+if (command === "self-check") process.exit(await selfCheckMain(process.argv.slice(3)));
+process.stderr.write("Usage: traceknot verify [options]\n       traceknot board update --input UPDATE.json --state-dir DIR [options]\n       traceknot storage status|prune|pin|unpin [options]\n       traceknot self-check [--help]\n");
 process.exit(64);

@@ -285,20 +285,6 @@ CONFIG_SKILLS_ROOT=$(sed -n 's/^skillsRoot=//p' "$CONFIG")
 if [ -z "${TRACEKNOT_SKILLS_ROOT+x}" ] && [ -n "$CONFIG_SKILLS_ROOT" ]; then
     SKILLS_ROOT=$CONFIG_SKILLS_ROOT
 fi
-if [ -z "${TRACEKNOT_SKILLS_ROOT+x}" ] && [ -z "$CONFIG_SKILLS_ROOT" ]; then
-    legacy_registration=$SKILLS_ROOT/traceknot
-    if [ -L "$legacy_registration" ]; then
-        legacy_registration_target=$(readlink "$legacy_registration")
-        case "$legacy_registration_target" in
-            "$PREFIX/skill"|"$PREFIX/current/skill") ;;
-            *) fail 'legacy update configuration requires TRACEKNOT_SKILLS_ROOT' ;;
-        esac
-    elif [ -d "$legacy_registration" ]; then
-        :
-    else
-        fail 'legacy update configuration requires TRACEKNOT_SKILLS_ROOT'
-    fi
-fi
 case "$SKILLS_ROOT" in
     /*) ;;
     *) fail 'configured Skills root must be absolute' ;;
@@ -307,10 +293,6 @@ case "$SKILLS_ROOT" in *"$carriage_return"*|*'
 '*) fail 'configured Skills root must not contain line breaks' ;; esac
 case "$SKILLS_ROOT" in *\\%*) fail 'configured Skills root must not contain backslash-percent sequences' ;; esac
 REGISTRATION=$SKILLS_ROOT/traceknot
-REGISTRATION_EXTERNAL=0
-if [ -d "$REGISTRATION" ] && [ ! -L "$REGISTRATION" ]; then
-    REGISTRATION_EXTERNAL=1
-fi
 case "$AUTOMATIC" in 0|1) ;; *) fail 'invalid automatic update setting' ;; esac
 case "$LAST_CHECK" in ''|*[!0-9]*) fail 'invalid last check time' ;; esac
 
@@ -499,22 +481,20 @@ replace_launcher() {
     rm -f "$launcher_tmp"
     fail "cannot atomically migrate launcher: $launcher_path"
 }
-assert_registration_owned() {
+cutover_legacy_registration() {
     expected_target=${1:-}
-    if [ -L "$REGISTRATION" ]; then
-        actual_target=$(readlink "$REGISTRATION")
-        case "$actual_target" in
-            "$PREFIX/skill"|"$PREFIX/current/skill") ;;
-            "$expected_target") [ -n "$expected_target" ] ||
-                fail "refusing unrelated Skill registration: $REGISTRATION" ;;
-            *) fail "refusing unrelated Skill registration: $REGISTRATION" ;;
-        esac
-    elif [ -d "$REGISTRATION" ]; then
-        # A real Skills CLI installation is canonical and never updater-owned.
-        REGISTRATION_EXTERNAL=1
-    elif [ -e "$REGISTRATION" ]; then
-        fail "refusing unrelated Skill registration: $REGISTRATION"
+    if [ ! -L "$REGISTRATION" ]; then
+        return
     fi
+    actual_target=$(readlink "$REGISTRATION")
+    case "$actual_target" in
+        "$PREFIX/skill"|"$PREFIX/current/skill")
+            rm -f "$REGISTRATION"
+            ;;
+        "$expected_target")
+            [ -n "$expected_target" ] && rm -f "$REGISTRATION"
+            ;;
+    esac
 }
 sync_transaction_state() {
     command -v sync >/dev/null 2>&1 || fail 'sync is required for durable activation'
@@ -582,11 +562,7 @@ recover_reinstall_reset() {
             fail 'unsafe releases directory during flat reinstall recovery'
     fi
     assert_launcher_replaceable
-    assert_registration_owned
-    if [ "$REGISTRATION_EXTERNAL" -eq 0 ]; then
-        mkdir -p "$SKILLS_ROOT"
-        replace_symlink "$PREFIX/skill" "$REGISTRATION"
-    fi
+    cutover_legacy_registration
     replace_launcher "$PREFIX/skill/bin/traceknot"
     rm -f "$CURRENT" "$ROLLBACK" "$ACTIVE_STATE" "$ROLLBACK_STATE" \
         "$JOURNAL" "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE"
@@ -662,7 +638,7 @@ recover_transaction() {
         return
     fi
 
-    assert_registration_owned "$registration_previous"
+    cutover_legacy_registration "$registration_previous"
     if [ -d "$previous" ]; then
         replace_symlink "$previous" "$CURRENT"
         replace_launcher "$CURRENT/skill/bin/traceknot"
@@ -671,14 +647,6 @@ recover_transaction() {
         replace_symlink "$rollback_previous" "$ROLLBACK"
     else
         rm -f "$ROLLBACK"
-    fi
-    if [ "$REGISTRATION_EXTERNAL" -eq 0 ]; then
-        if [ -n "$registration_previous" ]; then
-            mkdir -p "$SKILLS_ROOT"
-            replace_symlink "$registration_previous" "$REGISTRATION"
-        elif [ -L "$REGISTRATION" ] && [ "$(readlink "$REGISTRATION")" = "$PREFIX/current/skill" ]; then
-            rm -f "$REGISTRATION"
-        fi
     fi
     if [ -f "$TX_ACTIVE_BEFORE" ]; then
         recover_active_tmp=$ACTIVE_STATE.tmp.recover.$$
@@ -709,11 +677,8 @@ perform_rollback() {
     [ -L "$CURRENT" ] || fail 'no updater-managed release is active'
     [ -L "$ROLLBACK" ] || fail 'no previous release is available'
     [ -f "$ROLLBACK_STATE" ] || fail 'previous release metadata is unavailable'
-    assert_registration_owned "$PREFIX/current/skill"
+    cutover_legacy_registration "$PREFIX/current/skill"
     rollback_registration_previous=
-    if [ -L "$REGISTRATION" ]; then
-        rollback_registration_previous=$(readlink "$REGISTRATION")
-    fi
     rollback_from=$(readlink "$CURRENT")
     rollback_to=$(readlink "$ROLLBACK")
     validate_managed_release_path "$rollback_from"
@@ -728,10 +693,6 @@ perform_rollback() {
     replace_symlink "$rollback_to" "$CURRENT"
     replace_launcher "$CURRENT/skill/bin/traceknot"
     replace_symlink "$rollback_from" "$ROLLBACK"
-    if [ "$REGISTRATION_EXTERNAL" -eq 0 ]; then
-        mkdir -p "$SKILLS_ROOT"
-        replace_symlink "$CURRENT/skill" "$REGISTRATION"
-    fi
     write_journal rollback activated "$rollback_from" "$rollback_to" '' "$rollback_registration_previous" "$rollback_to"
     sync_transaction_state
     rollback_active_tmp=$ACTIVE_STATE.tmp.rollback.$$
@@ -1078,17 +1039,7 @@ EOF
 else
     fail 'current activation path is not a symlink'
 fi
-if [ -L "$REGISTRATION" ]; then
-    REGISTRATION_PREVIOUS=$(readlink "$REGISTRATION")
-    case "$REGISTRATION_PREVIOUS" in
-        "$PREFIX/skill"|"$PREFIX/current/skill") ;;
-        *) fail "refusing unrelated Skill registration: $REGISTRATION" ;;
-    esac
-elif [ -d "$REGISTRATION" ]; then
-    REGISTRATION_EXTERNAL=1
-elif [ -e "$REGISTRATION" ]; then
-    fail 'refusing unrelated Skill registration'
-fi
+cutover_legacy_registration
 
 if [ -f "$ACTIVE_STATE" ]; then
     copy_exclusive "$ACTIVE_STATE" "$TX_ACTIVE_BEFORE"
@@ -1120,10 +1071,7 @@ replace_symlink "$FINAL" "$CURRENT"
 replace_launcher "$CURRENT/skill/bin/traceknot"
 write_journal apply activated "$PREVIOUS" "$FINAL" "$STAGING" "$REGISTRATION_PREVIOUS" "$ROLLBACK_PREVIOUS"
 sync_transaction_state
-if [ "$REGISTRATION_EXTERNAL" -eq 0 ]; then
-    mkdir -p "$SKILLS_ROOT"
-    replace_symlink "$CURRENT/skill" "$REGISTRATION"
-fi
+
 
 if [ ! -f "$CURRENT/skill/SKILL.md" ] ||
    [ ! -x "$CURRENT/skill/bin/traceknot" ] ||

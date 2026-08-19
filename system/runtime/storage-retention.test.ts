@@ -251,6 +251,20 @@ describe("storage retention", () => {
     expect(unpinned.deleted.boards).toContain(`${prefix}11-pinned`);
     expect(await readFile(join(sessionRoot, "current", "index.html"), "utf8")).toContain("9-current");
   });
+  test("orders session terminal retention by publication time across runs", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"c".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
+    await sessionBoard(state, sessionKey, "10-old-terminal", { runId: "run-a", sourceRevision: 10, sourceState: "TERMINAL", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "1-new-terminal", { runId: "run-b", sourceRevision: 1, sourceState: "TERMINAL", generatedAt: NOW });
+    await sessionBoard(state, sessionKey, "2-current", { runId: "run-c", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+    await symlink("boards/2-current", join(sessionRoot, "current"));
+
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, boardMaxPerSession: 1, boardQuotaBytes: 1024 * 1024 }, apply: true });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).not.toContain(`${prefix}1-new-terminal`);
+    expect(applied.deleted.boards).not.toContain(`${prefix}2-current`);
+  });
   test("retains maximum-length Board names through inventory and deletion", async () => {
     const { state, artifacts } = await fixture();
     const boardId = `9-${"a".repeat(128)}`;

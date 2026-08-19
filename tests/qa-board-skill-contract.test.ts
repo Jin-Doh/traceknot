@@ -5,7 +5,6 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dir, "..");
 const skill = readFileSync(resolve(root, "skill/SKILL.md"), "utf8");
 const boardReference = readFileSync(resolve(root, "skill/references/qa-board.md"), "utf8");
-const rendererReference = readFileSync(resolve(root, "skill/references/portable-board-renderer.md"), "utf8");
 const completionReport = readFileSync(resolve(root, "skill/references/completion-report.md"), "utf8");
 
 const boardUpdateCommand = "traceknot board update";
@@ -29,6 +28,7 @@ function expectCanonicalSkillPayload(content: string): void {
   expect(content).toContain("$HOME/.agents/skills/traceknot/bin/traceknot");
   expect(content).toMatch(/(?:^|[\s`])\.agents\/skills\/traceknot\/bin\/traceknot/);
   expect(content).toContain("Bun 1.3.14");
+  expect(content).toContain("traceknot self-check");
 }
 
 function expectCanonicalBoardInterface(content: string): void {
@@ -53,13 +53,11 @@ test("canonical Skill payload includes the runnable CLI and update path", () => 
 test("canonical Board publication uses one session-scoped interface", () => {
   expectCanonicalBoardInterface(skill);
   expectCanonicalBoardInterface(boardReference);
-  expectCanonicalBoardInterface(rendererReference);
 });
 
 test("Board publication preserves authority and unavailable behavior", () => {
   expect(skill).toContain("The Board declares `authoritative: false`");
   expect(boardReference).toContain("declares `authoritative: false`");
-  expect(rendererReference).toContain("MUST NOT change the QA verdict");
 });
 
 test("completion reports have exactly one Board field set", () => {
@@ -74,17 +72,17 @@ test("completion reports have exactly one Board field set", () => {
   expect(completionReport).not.toContain("Portable Board");
 });
 
-test("renderer reference reuses the canonical manifest and status", () => {
-  expect(rendererReference).toContain("The stable manifest is the one Board manifest");
-  expect(rendererReference).toContain("The renderer MUST NOT create an alternate manifest, status namespace");
-  expect(rendererReference).not.toContain("traceknot-portable-board/v1");
-  expect(rendererReference).not.toContain("Portable Board status");
-  expect(rendererReference).not.toContain("Portable Board location");
-  expect(rendererReference).not.toContain("Portable Board manifest");
+test("canonical Board reference owns renderer requirements", () => {
+  expect(boardReference).toContain("The stable manifest is the one Board manifest");
+  expect(boardReference).toContain("The renderer MUST NOT create an alternate manifest, status namespace");
+  expect(boardReference).not.toContain("traceknot-portable-board/v1");
+  expect(boardReference).not.toContain("Portable Board status");
+  expect(boardReference).not.toContain("Portable Board location");
+  expect(boardReference).not.toContain("Portable Board manifest");
 });
 
 test("public documentation forbids split installation and Board modes", () => {
-  const documents = [skill, boardReference, rendererReference, completionReport];
+  const documents = [skill, boardReference, completionReport];
   for (const document of documents) {
     expect(document).not.toMatch(/Skills-only|Skill-only|Portable Board|portable Skill|Portable Skill|full-toolkit/iu);
     expect(document).not.toMatch(/Portable Board (?:status|location|manifest|publisher|authority|limitation)/iu);

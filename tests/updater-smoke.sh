@@ -317,18 +317,19 @@ test -L "$PREFIX/current"
 test -f "$PREFIX/current/skill/SKILL.md"
 test -f "$PREFIX/.traceknot-update/active.json"
 test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = "$TAG"
-test -L "$TRACEKNOT_SKILLS_ROOT/traceknot"
-test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/skill"
+test ! -e "$TRACEKNOT_SKILLS_ROOT/traceknot"
 assert_managed_launcher
+"$PREFIX/bin/traceknot" self-check >/dev/null
 # An interrupted managed-to-flat cutover is completed from its durable journal.
 printf '%s\n' traceknot-reinstall-reset/v1 > "$PREFIX/.traceknot-update/reinstall-reset"
 rm -f "$TRACEKNOT_SKILLS_ROOT/traceknot"
+mkdir -p "$TRACEKNOT_SKILLS_ROOT"
 ln -s "$PREFIX_CANON/skill" "$TRACEKNOT_SKILLS_ROOT/traceknot"
 "$PREFIX/current/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null
 test ! -e "$PREFIX/.traceknot-update/reinstall-reset"
 test ! -e "$PREFIX/current"
 test ! -e "$PREFIX/releases"
-test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/skill"
+test ! -e "$TRACEKNOT_SKILLS_ROOT/traceknot"
 assert_flat_launcher
 grep -F "$PREFIX_CANON/bin/traceknot-update" "$CRONTAB_FILE" >/dev/null
 if grep -F "$PREFIX_CANON/current/bin/traceknot-update" "$CRONTAB_FILE" >/dev/null 2>&1; then
@@ -337,10 +338,10 @@ if grep -F "$PREFIX_CANON/current/bin/traceknot-update" "$CRONTAB_FILE" >/dev/nu
 fi
 "$PREFIX/bin/traceknot-update" --prefix "$PREFIX" --auto >/dev/null
 "$PREFIX/bin/traceknot-update" apply --prefix "$PREFIX" >/dev/null
-# Ordinary reinstall retargets registration to the newly installed flat payload.
+# Ordinary reinstall keeps registration ownership with the Skills CLI.
 sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null
 assert_flat_launcher
-test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/skill"
+test ! -e "$TRACEKNOT_SKILLS_ROOT/traceknot"
 test ! -e "$PREFIX/current"
 test ! -e "$PREFIX/rollback"
 test ! -e "$PREFIX/.traceknot-update/active.json"
@@ -352,14 +353,14 @@ mkdir -p "$PREPARED_CANDIDATE"
 printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
     operation=apply phase=prepared previous= \
     "candidate=$PREPARED_CANDIDATE" "staging=$PREFIX_CANON/releases/.staging-prepared" \
-    "registrationPrevious=$PREFIX_CANON/skill" rollbackPrevious= \
+    registrationPrevious= rollbackPrevious= \
     > "$PREFIX/.traceknot-update/transaction"
 sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null
 test ! -e "$PREFIX/releases"
 test ! -e "$PREFIX/.traceknot-update/transaction"
 assert_flat_launcher
 "$PREFIX/bin/traceknot-update" apply --prefix "$PREFIX" >/dev/null
-test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/skill"
+test ! -e "$TRACEKNOT_SKILLS_ROOT/traceknot"
 assert_managed_launcher
 
 # Transaction snapshot destinations refuse symbolic links.
@@ -394,13 +395,13 @@ test ! -e "$PREFIX/.traceknot-update/transaction"
 # A rolled-back release can be verified and reapplied from its retained directory.
 "$PREFIX/current/bin/traceknot-update" rollback --prefix "$PREFIX" >/dev/null
 test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = legacy
-test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/skill"
+test ! -e "$TRACEKNOT_SKILLS_ROOT/traceknot"
 assert_managed_launcher
 legacy_check=$("$PREFIX/bin/traceknot-update" check --prefix "$PREFIX")
 printf '%s\n' "$legacy_check" | grep -F "Eligible update: $TAG" >/dev/null
 "$PREFIX/bin/traceknot-update" apply --prefix "$PREFIX" >/dev/null
 test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = "$TAG"
-test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/skill"
+test ! -e "$TRACEKNOT_SKILLS_ROOT/traceknot"
 assert_managed_launcher
 test -f "$PREFIX/current/skill/SKILL.md"
 # Committed recovery prunes a release that is no longer current or rollback.
@@ -409,7 +410,7 @@ mkdir -p "$OBSOLETE"
 printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
     operation=apply phase=committed "previous=$(readlink "$PREFIX/rollback")" \
     "candidate=$(readlink "$PREFIX/current")" staging= \
-    "registrationPrevious=$PREFIX_CANON/current/skill" \
+    "registrationPrevious=" \
     "rollbackPrevious=$OBSOLETE" > "$PREFIX/.traceknot-update/transaction"
 "$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null
 test ! -e "$OBSOLETE"
@@ -577,7 +578,7 @@ ALIASED_CURRENT=$(readlink "$PREFIX/current")
 printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
     operation=apply phase=prepared "previous=$ALIASED_CURRENT" \
     "candidate=$ALIASED_CURRENT" "staging=$PREFIX_CANON/releases/.staging-alias" \
-    "registrationPrevious=$PREFIX_CANON/current/skill" \
+    "registrationPrevious=" \
     "rollbackPrevious=$(readlink "$PREFIX/rollback")" > "$PREFIX/.traceknot-update/transaction"
 if "$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>&1; then
     printf '%s\n' 'aliased recovery journal unexpectedly accepted' >&2

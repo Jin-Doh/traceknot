@@ -13,7 +13,15 @@ npx skills add Jin-Doh/traceknot --skill traceknot --global
 npx skills update traceknot --global --yes
 ```
 
-Invoke the global executable at `$HOME/.agents/skills/traceknot/bin/traceknot`; for a project-local install, use `.agents/skills/traceknot/bin/traceknot` from the project root. The legacy curl installer is only an optional launcher/bootstrap for environments that need it; it is not a second product or a richer Board mode.
+Invoke the global executable at `$HOME/.agents/skills/traceknot/bin/traceknot`; for a project-local install, use `.agents/skills/traceknot/bin/traceknot` from the project root. The legacy curl installer is only an optional prefix launcher/updater for environments that need it; it never creates, replaces, retargets, updates, or removes a Skills CLI-owned registration and does not define a second product or richer Board mode.
+
+Validate the installed payload before publication:
+
+```sh
+$HOME/.agents/skills/traceknot/bin/traceknot self-check
+```
+
+`traceknot self-check` fails closed unless the Bun runtime, generated executable, required Board schemas, host capability manifests, semantic update parser, and static renderer are available from the same installed Skill root.
 
 ## Board update interface
 
@@ -75,6 +83,16 @@ Board generation, notification, opening, and retention are presentation/storage 
 
 ## Renderer and trust boundary
 
-The renderer may copy only fields already present in the validated `QaBoardView` and canonical QA records: target snapshot, source run and revision, terminal verdict, structured counts, basis, risks, conditions, obligations, evidence references, defects, residual risk, capability limits, exact commands, and observed outputs. Preserve values exactly where displayed; missing values remain unavailable. Escape every dynamic value, use no network resources or scripts, and keep localization limited to interface labels.
+The renderer may copy only fields already present in the validated `QaBoardView` and canonical QA records: target snapshot, source run and revision, terminal verdict, structured counts, basis, risks, conditions, obligations, evidence references, defects, residual risk, capability limits, exact commands, and observed outputs. Preserve values exactly where displayed; missing values remain unavailable.
 
-See [`portable-board-renderer.md`](portable-board-renderer.md) for the shared renderer requirements. The filename is retained for reference compatibility; it does not define a separate installation mode, fallback product, manifest, schema, or report field set.
+The canonical renderer requirements are:
+
+- inline CSS only;
+- no network requests, CDN, external fonts, remote images, scripts, or dynamic data loading;
+- responsive and print-friendly static pages;
+- localized interface labels for English, Korean, and Simplified Chinese while identifiers, commands, paths, evidence, and verdict rationale remain byte-for-byte faithful;
+- HTML escaping for every dynamic value;
+- observed verdicts, counts, findings, and coverage displayed without recalculation;
+- the existing screenshot-count, per-file byte, total-preview byte, and digest-verification limits.
+
+The renderer MUST NOT create an alternate manifest, status namespace, location field set, authority field set, inline fallback, or second publication format. Renderer, notification, opener, and retention failures affect Board status only and MUST NOT change the QA verdict.

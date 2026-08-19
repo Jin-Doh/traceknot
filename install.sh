@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install the canonical Traceknot Skill and its optional legacy updater/launcher.
+# Install Traceknot's optional prefix launcher and updater without owning the canonical Skill registration.
 
 set -eu
 
@@ -15,6 +15,7 @@ MANIFEST_TMP=
 SKILLS_ROOT=
 REGISTRATION_PATH=
 REGISTRATION_EXTERNAL=0
+REGISTRATION_LEGACY=0
 INSTALL_LOCK_OWNED=0
 INSTALL_RECOVERY_LOCK_HELD=0
 INSTALL_LOCK_CLAIM=
@@ -131,7 +132,7 @@ usage() {
     cat <<EOF
 Usage: $PROGRAM [--prefix DIR] [--dry-run] [--disable-auto-update]
 
-Install Traceknot and register its Skill for OMP and Codex without sudo.
+Install Traceknot's optional prefix launcher and updater without sudo.
 
 Options:
   --prefix DIR       install into DIR instead of the default
@@ -141,8 +142,8 @@ Options:
   --help, -h         show this help
 
 Default prefix: \${XDG_DATA_HOME:-\$HOME/.local/share}/traceknot
-Default Skill registration: \$HOME/.agents/skills/traceknot
-Set TRACEKNOT_SKILLS_ROOT to override the Agent Skills directory.
+The canonical Skill registration is managed only by the Skills CLI.
+TRACEKNOT_SKILLS_ROOT is inspected only to remove a legacy Traceknot-owned symlink.
 Remote installs download the source archive for TRACEKNOT_REF (default: main).
 Set TRACEKNOT_REF to a tag or commit to pin the installed revision.
 EOF
@@ -277,7 +278,7 @@ if [ -z "$PREFIX" ]; then
     PREFIX=${XDG_DATA_HOME:-"$HOME/.local/share"}/traceknot
 fi
 
-[ -n "${HOME:-}" ] || fail 'HOME is required to register the Traceknot Skill'
+[ -n "${HOME:-}" ] || fail 'HOME is required for updater configuration'
 SKILLS_ROOT=${TRACEKNOT_SKILLS_ROOT:-"$HOME/.agents/skills"}
 case "$SKILLS_ROOT" in
     /*) ;;
@@ -307,7 +308,7 @@ fi
 source_is_complete "$SOURCE_ROOT" || fail 'Traceknot source is incomplete'
 
 SKILLS_ROOT_CANON=$(canonical_path "$SKILLS_ROOT") || fail "cannot resolve Agent Skills directory: $SKILLS_ROOT"
-[ "$SKILLS_ROOT_CANON" != "/" ] || fail 'refusing to register a Skill in filesystem root'
+[ "$SKILLS_ROOT_CANON" != "/" ] || fail 'refusing to inspect a Skill registration in filesystem root'
 REGISTRATION_PATH=$SKILLS_ROOT_CANON/traceknot
 
 MANIFEST="$PREFIX_CANON/$MANIFEST_NAME"
@@ -374,21 +375,14 @@ if [ -z "${TRACEKNOT_SKILLS_ROOT+x}" ] &&
 fi
 if [ -L "$REGISTRATION_PATH" ]; then
     command -v readlink >/dev/null 2>&1 ||
-        fail 'readlink is required to verify the existing Skill registration'
+        fail 'readlink is required to inspect the existing Skill registration'
     registration_target=$(readlink "$REGISTRATION_PATH")
     case "$registration_target" in
-        "$PREFIX_CANON/skill"|"$PREFIX_CANON/current/skill") ;;
-        *) fail "refusing unrelated Skill registration: $REGISTRATION_PATH" ;;
+        "$PREFIX_CANON/skill"|"$PREFIX_CANON/current/skill") REGISTRATION_LEGACY=1 ;;
+        *) REGISTRATION_EXTERNAL=1 ;;
     esac
-elif [ -d "$REGISTRATION_PATH" ]; then
-    # A real Skills CLI installation is canonical and remains completely
-    # unmanaged by this installer. The prefix-owned optional launcher still
-    # follows this installer's managed current release.
-    [ -x "$REGISTRATION_PATH/bin/traceknot" ] ||
-        fail "external Skill registration is missing executable: $REGISTRATION_PATH/bin/traceknot"
-    REGISTRATION_EXTERNAL=1
 elif [ -e "$REGISTRATION_PATH" ]; then
-    fail "refusing unsafe Skill registration: $REGISTRATION_PATH"
+    REGISTRATION_EXTERNAL=1
 fi
 LAUNCHER_TARGET=$PREFIX_CANON/skill/bin/traceknot
 
@@ -612,28 +606,8 @@ if [ "$MANAGED_STATE_RESET" -eq 1 ] &&
     mv "$reinstall_reset_tmp" "$PREFIX_CANON/.traceknot-update/reinstall-reset"
     sync
 fi
-if [ "$REGISTRATION_EXTERNAL" -eq 0 ] && [ ! -L "$REGISTRATION_PATH" ]; then
-    if [ -L "$SKILLS_ROOT" ]; then
-        fail "refusing symlink Agent Skills directory: $SKILLS_ROOT"
-    fi
-    mkdir -p "$SKILLS_ROOT_CANON"
-    SKILLS_ROOT_CANON=$(canonical_path "$SKILLS_ROOT_CANON") ||
-        fail 'cannot resolve Agent Skills directory after creation'
-    REGISTRATION_PATH=$SKILLS_ROOT_CANON/traceknot
-    [ ! -e "$REGISTRATION_PATH" ] && [ ! -L "$REGISTRATION_PATH" ] ||
-        fail "Skill registration appeared during installation: $REGISTRATION_PATH"
-    ln -s "$PREFIX_CANON/skill" "$REGISTRATION_PATH"
-fi
-if [ "$REGISTRATION_EXTERNAL" -eq 0 ] &&
-   [ "$(readlink "$REGISTRATION_PATH")" != "$PREFIX_CANON/skill" ]; then
-    registration_tmp=$REGISTRATION_PATH.tmp.$$
-    rm -f "$registration_tmp"
-    ln -s "$PREFIX_CANON/skill" "$registration_tmp"
-    if ! mv -fh "$registration_tmp" "$REGISTRATION_PATH" 2>/dev/null &&
-       ! mv -fT "$registration_tmp" "$REGISTRATION_PATH" 2>/dev/null; then
-        rm -f "$registration_tmp"
-        fail 'cannot atomically retarget Skill registration'
-    fi
+if [ "$REGISTRATION_LEGACY" -eq 1 ]; then
+    rm -f "$REGISTRATION_PATH"
 fi
 launcher_path=$PREFIX_CANON/bin/traceknot
 if [ -L "$launcher_path" ]; then
@@ -676,8 +650,10 @@ if [ "$MANAGED_STATE_RESET" -eq 1 ]; then
     sync
 fi
 release_install_lock
-if [ "$REGISTRATION_EXTERNAL" -eq 1 ]; then
-    printf 'Installed Traceknot to %s and left existing Skill registration %s untouched\n' "$PREFIX_CANON" "$REGISTRATION_PATH"
+if [ "$REGISTRATION_LEGACY" -eq 1 ]; then
+    printf 'Installed Traceknot launcher to %s and removed legacy Skill registration %s\n' "$PREFIX_CANON" "$REGISTRATION_PATH"
+elif [ "$REGISTRATION_EXTERNAL" -eq 1 ]; then
+    printf 'Installed Traceknot launcher to %s and left existing Skill registration %s untouched\n' "$PREFIX_CANON" "$REGISTRATION_PATH"
 else
-    printf 'Installed Traceknot to %s and registered %s\n' "$PREFIX_CANON" "$REGISTRATION_PATH"
+    printf 'Installed Traceknot launcher to %s without creating a Skill registration\n' "$PREFIX_CANON"
 fi

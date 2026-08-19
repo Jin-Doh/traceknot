@@ -50,7 +50,6 @@ for reference in \
     defect-lifecycle.md \
     istqb-principles.md \
     qa-board.md \
-    portable-board-renderer.md \
     prose-quality.md \
     proof-carrying-success.md \
     risk-classification.md \
@@ -69,6 +68,7 @@ test -x "$GLOBAL_SKILL/bin/traceknot"
 "$GLOBAL_SKILL/bin/traceknot" verify --help >/dev/null
 "$GLOBAL_SKILL/bin/traceknot" board update --help >/dev/null
 "$GLOBAL_SKILL/bin/traceknot" storage --help >/dev/null
+"$GLOBAL_SKILL/bin/traceknot" self-check >/dev/null
 for contract in "$ROOT"/contracts/*.schema.json
 do
     test -f "$GLOBAL_SKILL/contracts/$(basename "$contract")"
@@ -185,6 +185,7 @@ test -x "$GLOBAL_SKILL/bin/traceknot"
 "$GLOBAL_SKILL/bin/traceknot" verify --help >/dev/null
 "$GLOBAL_SKILL/bin/traceknot" board update --help >/dev/null
 "$GLOBAL_SKILL/bin/traceknot" storage --help >/dev/null
+"$GLOBAL_SKILL/bin/traceknot" self-check >/dev/null
 for contract in "$ROOT"/contracts/*.schema.json
 do
     test -f "$GLOBAL_SKILL/contracts/$(basename "$contract")"
@@ -214,6 +215,7 @@ grep -F 'skills-update-fixture-v2' "$GLOBAL_SKILL/bin/traceknot" >/dev/null
 "$GLOBAL_SKILL/bin/traceknot" verify --help >/dev/null
 "$GLOBAL_SKILL/bin/traceknot" board update --help >/dev/null
 "$GLOBAL_SKILL/bin/traceknot" storage --help >/dev/null
+"$GLOBAL_SKILL/bin/traceknot" self-check >/dev/null
 "$SKILLS_CLI" remove traceknot --global --yes >/dev/null
 test ! -e "$GLOBAL_SKILL"
 
@@ -232,6 +234,7 @@ test ! -e "$GLOBAL_SKILL"
     "$PROJECT/.agents/skills/traceknot/bin/traceknot" verify --help >/dev/null
     "$PROJECT/.agents/skills/traceknot/bin/traceknot" board update --help >/dev/null
     "$PROJECT/.agents/skills/traceknot/bin/traceknot" storage --help >/dev/null
+    "$PROJECT/.agents/skills/traceknot/bin/traceknot" self-check >/dev/null
     for contract in "$ROOT"/contracts/*.schema.json
     do
         test -f "$PROJECT/.agents/skills/traceknot/contracts/$(basename "$contract")"

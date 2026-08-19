@@ -996,6 +996,12 @@ type SessionRevision = {
   sourceState?: string;
   malformed: boolean;
 };
+function compareSessionRevisions(a: SessionRevision, b: SessionRevision): number {
+  const sameRun = a.runId !== undefined && a.runId === b.runId;
+  const revisionOrder = a.sourceRevision - b.sourceRevision;
+  const generatedOrder = a.generatedAt - b.generatedAt;
+  return (sameRun ? revisionOrder || generatedOrder : generatedOrder || revisionOrder) || a.name.localeCompare(b.name);
+}
 
 async function sessionReclaim(
   root: SecureRootDescriptor,
@@ -1043,7 +1049,7 @@ async function sessionReclaim(
   }
   const terminal = revisions
     .filter(item => !item.malformed && item.sourceState === "TERMINAL")
-    .sort((a, b) => b.sourceRevision - a.sourceRevision || b.generatedAt - a.generatedAt || a.name.localeCompare(b.name))[0]?.name;
+    .sort((a, b) => compareSessionRevisions(b, a))[0]?.name;
   const protectedNames = new Set([currentName, newName, terminal, ...revisions.filter(item => item.runId !== undefined && pinned.has(item.runId)).map(item => item.name)].filter((item): item is string => item !== undefined));
   let bytes = revisions.reduce((sum, item) => sum + item.bytes, 0);
   let count = revisions.length;
@@ -1051,7 +1057,7 @@ async function sessionReclaim(
   const quota = policy.boardQuotaBytes ?? SESSION_BOARD_QUOTA_DEFAULT;
   if (!Number.isSafeInteger(max) || max < 0) throw new Error("boardMaxPerSession must be a non-negative integer");
   if (!Number.isSafeInteger(quota) || quota < 0) throw new Error("boardQuotaBytes must be a non-negative integer");
-  const removable = revisions.filter(item => !protectedNames.has(item.name) && !item.malformed).sort((a, b) => a.sourceRevision - b.sourceRevision || a.generatedAt - b.generatedAt || a.name.localeCompare(b.name));
+  const removable = revisions.filter(item => !protectedNames.has(item.name) && !item.malformed).sort(compareSessionRevisions);
   const selected: SessionRevision[] = [];
   let predictedCount = count;
   let predictedBytes = bytes;
@@ -1222,7 +1228,7 @@ export async function publishSessionBoardUpdate(input: Readonly<{
     await sessionReadback(root, join(boardsPath, boardName, "index.html"), html);
     await sessionReadback(root, join(boardsPath, boardName, "manifest.json"), manifestBytes);
     const incomingWins = previousCurrent === undefined || compareStableSelection(update.view.revision, update.generatedAt, invocationId, update.view.runId, previousRunId, previousCurrent) > 0;
-    await sessionReclaim(root, directories.boardsFd, boardsPath, sessionKey, previousName, incomingWins ? boardName : undefined, input.retentionPolicy ?? {}, false);
+    await sessionReclaim(root, directories.boardsFd, boardsPath, sessionKey, incomingWins ? undefined : previousName, incomingWins ? boardName : undefined, input.retentionPolicy ?? {}, false);
     if (incomingWins) {
       createdStableLinks = await ensureStableLinks(directories.sessionFd, sessionRoot);
       selectorCommitted = true;

@@ -132,6 +132,14 @@ npx skills add Jin-Doh/traceknot --skill traceknot --global
 npx skills update traceknot --global --yes
 ```
 
+Verify the installed payload before using it:
+
+```sh
+$HOME/.agents/skills/traceknot/bin/traceknot self-check
+```
+
+The command fails closed unless the Bun runtime, generated executable, required Board schemas, host capability manifests, semantic update parser, and static renderer are available from the same installed Skill root.
+
 Build the `traceknot-session-board-update/v1` envelope around the existing `QaBoardView` projection and invoke the global executable at `$HOME/.agents/skills/traceknot/bin/traceknot`; for a project-local install, use `.agents/skills/traceknot/bin/traceknot` from the project root:
 
 ```sh

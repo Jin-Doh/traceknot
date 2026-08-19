@@ -94,6 +94,27 @@ describe("session Board contract", () => {
     expect(publication.current.revisionPath).toBe("boards/1-inv-2");
     expect(publication.manifest.runId).toBe("run-b");
   });
+  test("reclaims the previous current during a tight cutover quota", async () => {
+    const fixtureValue = await fixture();
+    const first = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 1 } });
+    const second = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(2, "inv-2")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 1 } });
+    expect(second.current.revisionPath).toBe("boards/2-inv-2");
+    await expect(stat(first.directory)).rejects.toThrow();
+    expect(await readdir(join(fixtureValue.stateDir, "sessions", second.sessionKey, "boards"))).toEqual(["2-inv-2"]);
+  });
+
+  test("protects the newest terminal checkpoint by publication time across runs", async () => {
+    const fixtureValue = await fixture();
+    const first = { ...update(10, "inv-a"), generatedAt: "2026-08-18T00:00:01Z", view: { ...view(10), runId: "run-a" } };
+    const second = { ...update(1, "inv-b"), generatedAt: "2026-08-18T00:00:02Z", view: { ...view(1), runId: "run-b" } };
+    const third = { ...update(1, "inv-c", "EXECUTING"), generatedAt: "2026-08-18T00:00:03Z", view: { ...view(1, "EXECUTING"), runId: "run-c" } };
+    await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(first), ...fixtureValue });
+    await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(second), ...fixtureValue });
+    const current = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(third), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 2 } });
+    await expect(stat(join(fixtureValue.stateDir, "sessions", current.sessionKey, "boards", "10-inv-a"))).rejects.toThrow();
+    expect(await stat(join(fixtureValue.stateDir, "sessions", current.sessionKey, "boards", "1-inv-b"))).toBeDefined();
+    expect(current.current.revisionPath).toBe("boards/1-inv-c");
+  });
 
   test("replaces current while preserving immutable history and honoring session quota", async () => {
     const fixtureValue = await fixture();

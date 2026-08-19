@@ -41,23 +41,21 @@ if sh "$ROOT/install.sh" --prefix "$CONFLICT_PREFIX" >/dev/null 2>&1; then
     exit 1
 fi
 test "$(cat "$CONFLICT_PREFIX/skill/SKILL.md")" = do-not-overwrite
-# An external registration without the generated runtime is rejected before
-# any destination payload is written.
+# Any external Skill registration is outside launcher ownership, even when it
+# does not yet contain the generated runtime.
 MALFORMED_SKILLS_ROOT=$TMP_DIR/malformed-skills
 MALFORMED_REGISTRATION_PATH=$MALFORMED_SKILLS_ROOT/traceknot
 MALFORMED_PREFIX=$TMP_DIR/malformed-registration-prefix
 mkdir -p "$MALFORMED_REGISTRATION_PATH"
 printf '%s\n' preserve-malformed-registration > "$MALFORMED_REGISTRATION_PATH/SKILL.md"
-if malformed_output=$(TRACEKNOT_SKILLS_ROOT=$MALFORMED_SKILLS_ROOT sh "$ROOT/install.sh" \
-    --prefix "$MALFORMED_PREFIX" --disable-auto-update 2>&1); then
-    printf '%s\n' 'malformed external Skill registration unexpectedly accepted' >&2
-    exit 1
-fi
-printf '%s\n' "$malformed_output" |
-    grep -F "external Skill registration is missing executable" >/dev/null
+TRACEKNOT_SKILLS_ROOT=$MALFORMED_SKILLS_ROOT sh "$ROOT/install.sh" \
+    --prefix "$MALFORMED_PREFIX" --disable-auto-update >/dev/null
 test "$(cat "$MALFORMED_REGISTRATION_PATH/SKILL.md")" = preserve-malformed-registration
-test ! -e "$MALFORMED_PREFIX/LICENSE"
-rm -rf "$MALFORMED_SKILLS_ROOT" "$MALFORMED_PREFIX"
+test -x "$MALFORMED_PREFIX/bin/traceknot"
+TRACEKNOT_SKILLS_ROOT=$MALFORMED_SKILLS_ROOT sh "$ROOT/uninstall.sh" \
+    --prefix "$MALFORMED_PREFIX" >/dev/null
+test "$(cat "$MALFORMED_REGISTRATION_PATH/SKILL.md")" = preserve-malformed-registration
+rm -rf "$MALFORMED_SKILLS_ROOT"
 
 
 # A real Skills CLI registration is external ownership: preserve it while the
@@ -109,17 +107,18 @@ test -n "$("$PREFIX/bin/traceknot" verify --help)"
 test -n "$("$PREFIX/bin/traceknot" storage --help)"
 test -x "$PREFIX/bin/traceknot-update"
 test -f "$PREFIX/.traceknot-install-manifest"
-test -L "$REGISTRATION_PATH"
-test "$(readlink "$REGISTRATION_PATH")" = "$PREFIX_CANON/skill"
+test ! -e "$REGISTRATION_PATH"
 test -f "$PREFIX/skill/references/proof-carrying-success.md"
 grep -F '[Proof-carrying success](references/proof-carrying-success.md)' \
     "$PREFIX/skill/SKILL.md" >/dev/null
-test -f "$REGISTRATION_PATH/references/proof-carrying-success.md"
-grep -F '[Proof-carrying success](references/proof-carrying-success.md)' \
-    "$REGISTRATION_PATH/SKILL.md" >/dev/null
+"$PREFIX/bin/traceknot" self-check >/dev/null
 test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 1
 grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null
 test "$(cat "$PREFIX/unrelated-sentinel.txt")" = keep-me
+
+# Reinstall removes a legacy launcher-owned registration instead of retargeting it.
+mkdir -p "$TRACEKNOT_SKILLS_ROOT"
+ln -s "$PREFIX_CANON/skill" "$REGISTRATION_PATH"
 
 # Reinstall must not require the previously installed updater to know new commands.
 cat > "$PREFIX/bin/traceknot-update" <<'EOF'
@@ -138,8 +137,7 @@ test "$(cat "$PREFIX/unrelated-sentinel.txt")" = keep-me
 test "$(cat "$PREFIX/releases/unrelated-sentinel")" = keep-release
 test -x "$PREFIX/bin/traceknot-update"
 test "$(readlink "$PREFIX/bin/traceknot")" = "$PREFIX_CANON/skill/bin/traceknot"
-test -L "$REGISTRATION_PATH"
-test "$(readlink "$REGISTRATION_PATH")" = "$PREFIX_CANON/skill"
+test ! -e "$REGISTRATION_PATH"
 test "$(grep -Fc "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE")" = 1
 
 # Explicit opt-out persists disabled state and creates no schedule, including across ordinary reinstall.
@@ -154,7 +152,7 @@ if grep -F "# traceknot-auto-update:$DISABLED_PREFIX" "$CRONTAB_FILE" >/dev/null
 fi
 env -u TRACEKNOT_SKILLS_ROOT sh "$ROOT/install.sh" --prefix "$DISABLED_PREFIX" >/dev/null
 test "$(sed -n 's/^automatic=//p' "$DISABLED_PREFIX/.traceknot-update/config")" = 0
-test "$(readlink "$DISABLED_SKILLS/traceknot")" = "$(CDPATH='' cd -P "$DISABLED_PREFIX" && pwd)/skill"
+test ! -e "$DISABLED_SKILLS/traceknot"
 test "$(readlink "$DISABLED_PREFIX/bin/traceknot")" = "$(CDPATH='' cd -P "$DISABLED_PREFIX" && pwd)/skill/bin/traceknot"
 if grep -F "# traceknot-auto-update:$DISABLED_PREFIX" "$CRONTAB_FILE" >/dev/null 2>&1; then
     printf '%s\n' 'ordinary reinstall unexpectedly re-enabled opted-out updates' >&2
@@ -244,7 +242,7 @@ test ! -e "$PREVIEW_PREFIX"
 sh "$ROOT/uninstall.sh" --prefix "$PREFIX" --dry-run >/dev/null
 test -x "$PREFIX/skill/bin/traceknot"
 test -f "$PREFIX/.traceknot-install-manifest"
-test -L "$REGISTRATION_PATH"
+test ! -e "$REGISTRATION_PATH"
 
 # A damaged installation without an executable updater still removes its schedule.
 chmod -x "$PREFIX/bin/traceknot-update"
