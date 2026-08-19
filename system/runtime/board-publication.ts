@@ -189,6 +189,19 @@ function boardUriFromOutput(stdout: string, stderr: string): string {
   if (unique.length > 1) throw Error("canonical Board publisher reported conflicting file URIs");
   return unique[0]!;
 }
+function containsBoundaryIdentity(value: string, identity: string): boolean {
+  let index = value.indexOf(identity);
+  while (index >= 0) {
+    const before = index === 0 ? undefined : value[index - 1];
+    const afterIndex = index + identity.length;
+    const after = afterIndex === value.length ? undefined : value[afterIndex];
+    const boundary = (character: string | undefined): boolean => character === undefined || !/[\p{L}\p{N}._-]/u.test(character);
+    if (boundary(before) && boundary(after)) return true;
+    index = value.indexOf(identity, index + 1);
+  }
+  return false;
+}
+
 function closedKeys(value: Readonly<Record<string, unknown>>, required: readonly string[], optional: readonly string[] = []): boolean {
   const keys = Object.keys(value);
   return required.every(key => key in value) && keys.every(key => required.includes(key) || optional.includes(key));
@@ -272,10 +285,12 @@ export async function validatePublishedBoard(
     try { currentBytes = await readSecureRegularFile(root.fd, join(revisionRelative, "current.json"), 1024 * 1024); } catch { throw Error("canonical Board publisher selected revision is invalid or escapes the session state root"); }
     let current: Record<string, unknown>;
     try { current = JSON.parse(new TextDecoder().decode(currentBytes)) as Record<string, unknown>; } catch { throw Error("canonical Board publisher reported malformed current.json"); }
+    if (expected?.sessionId !== undefined && containsBoundaryIdentity(new TextDecoder("utf-8", { fatal: true }).decode(currentBytes), expected.sessionId)) throw Error("canonical Board publisher current pointer exposes the raw session ID");
     if (current.schemaVersion !== "traceknot-session-board-current/v1" || current.sessionKey !== sessionKey || current.entrypoint !== "index.html" || current.authoritative !== false || current.revisionPath !== selectorTarget || typeof current.entrypointSha256 !== "string" || !/^[0-9a-f]{64}$/.test(current.entrypointSha256) || typeof current.manifestSha256 !== "string" || !/^[0-9a-f]{64}$/.test(current.manifestSha256) || typeof current.sessionRef !== "string") throw Error("canonical Board publisher reported an invalid current pointer");
     const digest = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
     let immutableManifestBytes: Uint8Array;
     try { immutableManifestBytes = await readSecureRegularFile(root.fd, join(revisionRelative, "manifest.json"), 4 * 1024 * 1024); } catch { throw Error("canonical Board publisher immutable manifest is not a secure regular file"); }
+    if (expected?.sessionId !== undefined && containsBoundaryIdentity(new TextDecoder("utf-8", { fatal: true }).decode(immutableManifestBytes), expected.sessionId)) throw Error("canonical Board publisher manifest exposes the raw session ID");
     if (digest(immutableManifestBytes) !== current.manifestSha256) throw Error("canonical Board publisher immutable manifest does not match current pointer");
     let manifestValue: unknown;
     try { manifestValue = JSON.parse(new TextDecoder().decode(immutableManifestBytes)) as unknown; } catch { throw Error("canonical Board publisher reported malformed immutable manifest"); }
@@ -289,6 +304,11 @@ export async function validatePublishedBoard(
       let bytes: Uint8Array;
       try { bytes = await readSecureRegularFile(root.fd, join(revisionRelative, file.path), 128 * 1024 * 1024); } catch { throw Error(`canonical Board publisher immutable file is not secure: ${file.path}`); }
       if (bytes.byteLength !== file.bytes || digest(bytes) !== file.sha256) throw Error(`canonical Board publisher immutable file hash mismatch: ${file.path}`);
+      if (expected?.sessionId !== undefined && (file.role === "entrypoint" || file.role === "localized-view")) {
+        let text: string;
+        try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { throw Error(`canonical Board publisher page is not UTF-8: ${file.path}`); }
+        if (containsBoundaryIdentity(text, expected.sessionId)) throw Error(`canonical Board publisher page exposes the raw session ID: ${file.path}`);
+      }
       if (file.path === "index.html" && file.role === "entrypoint") {
         if (digest(bytes) !== current.entrypointSha256) throw Error("canonical Board publisher immutable entrypoint does not match current pointer");
         entrypointValidated = true;
