@@ -5,11 +5,15 @@
 The canonical Skill lifecycle is managed by the Skills CLI:
 
 ```sh
+# Global installation
 npx skills add Jin-Doh/traceknot --skill traceknot --global
 npx skills update traceknot --global --yes
+# Project-local installation, from the project root
+npx skills add Jin-Doh/traceknot --skill traceknot --yes
+npx skills update traceknot --yes
 ```
 
-The complete `skill/` payload includes `skill/bin/traceknot`, references, schemas, capability manifests, and the Board renderer. Bun 1.3.14 or later is required to run the generated CLI. `npx skills update` is the canonical update operation and replaces the same complete payload; it is not a documentation-only or runtime-less update.
+The complete `skill/` payload includes `skill/bin/traceknot`, references, schemas, capability manifests, and the Board renderer. Bun 1.3.14 or later on macOS or Linux is required for the generated Verify and Board CLI; native Windows is unsupported by the artifact store and command collector. `npx skills update` is the canonical update operation and replaces the same complete payload; it is not a documentation-only or runtime-less update.
 After a global Skills CLI install, invoke `$HOME/.agents/skills/traceknot/bin/traceknot`; after a project-local install, invoke `.agents/skills/traceknot/bin/traceknot` from the project root. Run `$HOME/.agents/skills/traceknot/bin/traceknot self-check` after a global installation or update and `.agents/skills/traceknot/bin/traceknot self-check` after a project-local installation or update. Never substitute an unrelated global executable for a project-local command.
 
 The legacy curl installer remains an optional prefix launcher/updater for environments that need it. Its release updater may apply only an immutable, tagged release whose exact artifact has been observed for more than seven complete days and whose signed provenance and digest verify successfully. It never creates, replaces, retargets, updates, or removes a Skills CLI-owned registration. This optional launcher policy never creates a second Skill payload, Board contract, schema, or product tier.
@@ -127,7 +131,7 @@ ${prefix}/
   rollback -> releases/<prior> # previous known-good activation target
 ```
 
-The optional launcher at `${prefix}/bin/traceknot` follows `${prefix}/current/skill/bin/traceknot` while its release updater is active. Activation uses a write-ahead transaction record, durable staged files, and same-directory symlink rename. Required ordering is: persist the prepared transaction and staged payload; persist the rollback target; atomically replace `current`; persist active state; run the installed runtime self-check; then mark committed. Startup recovery reconciles the transaction record, `current`, rollback target, and active manifest before any new check. It removes a legacy registration symlink only when that symlink points to `${prefix}/skill` or `${prefix}/current/skill`; it never creates or retargets a registration. A crash at any boundary deterministically completes the new activation or restores the prior activation. Retain the active and one prior version; remove older versions only after a successful subsequent invocation.
+The optional launcher at `${prefix}/bin/traceknot` follows `${prefix}/current/skill/bin/traceknot` while its release updater is active. Activation uses a write-ahead transaction record, durable staged files, and same-directory symlink rename. Required ordering is: persist the prepared transaction and staged payload; persist the rollback target; atomically replace `current`; run the structural and installed-runtime self-checks; persist active state; then mark committed. Startup recovery reconciles the transaction record, `current`, rollback target, and active manifest before any new check. It removes a legacy registration symlink only when that symlink points to `${prefix}/skill` or `${prefix}/current/skill`; it never creates or retargets a registration. A crash at any boundary deterministically completes the new activation or restores the prior activation. Retain the active and one prior version; remove older versions only after a successful subsequent invocation.
 
 ### Components
 

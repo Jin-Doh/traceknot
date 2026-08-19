@@ -336,8 +336,17 @@ describe("README localization section contract", () => {
     expect(automaticUpdates).toContain("$HOME/.agents/skills/traceknot/bin/traceknot self-check");
     expect(automaticUpdates).toContain(".agents/skills/traceknot/bin/traceknot self-check");
     expect(automaticUpdates).toContain("Never substitute an unrelated global executable");
+    expect(automaticUpdates).toContain("npx skills update traceknot --yes");
+    expect(automaticUpdates).toContain("run the structural and installed-runtime self-checks; persist active state; then mark committed");
   });
 
+  test("states the bundled CLI platform boundary in every locale", () => {
+    for (const content of localizedReadmes) {
+      expect(content).toContain("macOS");
+      expect(content).toContain("Linux");
+      expect(content).toMatch(/Windows/u);
+    }
+  });
 
   test("documents the curl path only as an optional non-owning launcher", () => {
     const canonical = localizedReadmes[0];
