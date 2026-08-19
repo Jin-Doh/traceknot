@@ -41,6 +41,21 @@ const REQUIRED_RENDERED_BOUNDARIES = [
   "phase1Authorized: false",
 ] as const;
 const REQUIRED_SKILL_INSTALL_COMMAND = "npx skills add Jin-Doh/traceknot --skill traceknot --global";
+const REQUIRED_LIFECYCLE_LITERALS = [
+  "npx skills update traceknot --global --yes",
+  "npx skills update traceknot --yes",
+  "skill/bin/traceknot",
+  "$HOME/.agents/skills/traceknot/bin/traceknot",
+  ".agents/skills/traceknot/bin/traceknot",
+  ".agents/skills/traceknot/bin/traceknot self-check",
+  ".agents/skills/traceknot/bin/traceknot board update",
+  "Bun 1.3.14",
+  "macOS",
+  "Linux",
+  "Windows",
+  "TRACEKNOT_SKILLS_ROOT",
+  "traceknot-update",
+] as const;
 const REQUIRED_OPERATIONAL_BLOCK_LITERALS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
   "README.md": {
     "full-toolkit-install": ["curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh"],
@@ -388,6 +403,11 @@ export function checkOperationalCommandBlocks(path: string, content: string, req
     if (missing.length > 0) throw new Error(`${path}: operational command block ${name} is missing: ${missing.join(", ")}`);
   }
 }
+export function checkReadmeLifecycleContract(path: string, content: string): void {
+  const missing = REQUIRED_LIFECYCLE_LITERALS.filter(literal => !content.includes(literal));
+  if (missing.length > 0) throw new Error(`${path}: canonical installation lifecycle is missing: ${missing.join(", ")}`);
+}
+
 
 function checkPublicationContracts(): void {
   const config = JSON.parse(readFileSync(resolve(ROOT, "prose-quality.config.json"), "utf8")) as { include?: unknown; exclude?: unknown };
@@ -405,6 +425,7 @@ export function checkReadmeContract(): void {
     checkLanguageNavigation(record);
     checkBoundaries(record);
   }
+  for (const record of records) checkReadmeLifecycleContract(record.path, record.content);
   checkSharedCommands(records);
   for (const record of records.slice(1)) {
     checkReadmeDocumentationLinks(records[0].path, records[0].content, record.path, record.content);

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { checkOperationalCommandBlocks, checkPublicationInventory, checkReadmeBoundaries, checkReadmeDocumentationLinks, checkReadmeLanguageNavigation, checkReadmeLocalLinks, checkReadmeSections, checkReadmeSharedCommands, renderedMarkdownText } from "../scripts/check-readme-contract";
+import { checkOperationalCommandBlocks, checkPublicationInventory, checkReadmeBoundaries, checkReadmeDocumentationLinks, checkReadmeLanguageNavigation, checkReadmeLifecycleContract, checkReadmeLocalLinks, checkReadmeSections, checkReadmeSharedCommands, renderedMarkdownText } from "../scripts/check-readme-contract";
 
 const root = resolve(import.meta.dir, "..");
 const localizedReadmes = [
@@ -345,6 +345,13 @@ describe("README localization section contract", () => {
       expect(content).toContain("macOS");
       expect(content).toContain("Linux");
       expect(content).toMatch(/Windows/u);
+    }
+  });
+
+  test("standalone README checker rejects lifecycle drift in every locale", () => {
+    for (const [index, content] of localizedReadmes.entries()) {
+      const drifted = content.replace("npx skills update traceknot --yes", "npx skills update traceknot --global --yes");
+      expect(() => checkReadmeLifecycleContract(`README-${index}`, drifted)).toThrow("canonical installation lifecycle is missing");
     }
   });
 
