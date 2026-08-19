@@ -60,6 +60,8 @@ The input is the `traceknot-session-board-update/v1` envelope:
 }
 ```
 
+`sessionId` is an opaque identifier of at least eight characters. The view MUST NOT contain that identifier as a standalone value or boundary-delimited token; the publisher rejects such input before writing.
+
 `view` is presentation data, not canonical evidence. Validation MUST reject unsafe strings and paths, malformed counts, statuses, or digests, inconsistent totals, any `authoritative` value other than `false`, and invalid timestamps before writing. Reuse the existing Board renderer and artifact preview limits; do not introduce a second schema, manifest, or status namespace.
 
 The published JSON Schemas are closed structural contracts. Cross-field arithmetic and aggregate-to-finding consistency MUST be checked by the same runtime parser used by `board update`; schema validation alone is not acceptance. `parseSessionBoardUpdate` is the canonical semantic validator.

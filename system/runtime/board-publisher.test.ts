@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -178,6 +179,25 @@ describe("canonical Board publisher", () => {
       await Promise.all([rm(fixture.root, { recursive: true, force: true }), rm(requestedState, { recursive: true, force: true })]);
     }
   });
+  test("rejects a session manifest without the canonical entrypoint contract", async () => {
+    const fixture = await boardFixture();
+    try {
+      const sessionRoot = dirname(fileURLToPath(fixture.entrypoint));
+      const currentPath = join(sessionRoot, "current.json");
+      const current = JSON.parse(await readFile(currentPath, "utf8")) as Record<string, unknown>;
+      const immutableManifestPath = join(sessionRoot, String(current.revisionPath), "manifest.json");
+      const manifest = JSON.parse(await readFile(immutableManifestPath, "utf8")) as Record<string, unknown>;
+      const invalidBytes = Buffer.from(`${JSON.stringify({ ...manifest, files: [] }, null, 2)}\n`);
+      await writeFile(immutableManifestPath, invalidBytes);
+      await writeFile(currentPath, `${JSON.stringify({ ...current, manifestSha256: createHash("sha256").update(invalidBytes).digest("hex") }, null, 2)}\n`);
+      const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${fixture.entrypoint}\n` });
+      await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: fixture.root }))
+        .rejects.toThrow("manifest files are invalid");
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
 
 
   test("accepts a verdict exit code after validating the published session Board", async () => {

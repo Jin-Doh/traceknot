@@ -62,19 +62,25 @@ describe("session Board contract", () => {
     }
   });
 
-  test("rejects a raw session ID embedded in the presentation view", async () => {
-    for (const sessionId of ["a", "raw-session-id", "quote\"id"]) {
-      const fixtureValue = await fixture();
-      const unsafe = { ...update(1, "inv-1"), sessionId, view: { ...view(1), changeSummary: sessionId } };
-      await expect(publishSessionBoardUpdate({ update: parseSessionBoardUpdate(unsafe), ...fixtureValue })).rejects.toThrow("raw session ID");
-      await expect(stat(join(fixtureValue.stateDir, "sessions"))).rejects.toThrow();
+  test("rejects a raw session identity value or boundary-delimited token in the presentation view", async () => {
+    for (const sessionId of ["raw-session-id", "quote\"id"]) {
+      for (const changeSummary of [sessionId, `session ${sessionId}`]) {
+        const fixtureValue = await fixture();
+        const unsafe = { ...update(1, "inv-1"), sessionId, view: { ...view(1), changeSummary } };
+        await expect(publishSessionBoardUpdate({ update: parseSessionBoardUpdate(unsafe), ...fixtureValue })).rejects.toThrow("raw session ID");
+        await expect(stat(join(fixtureValue.stateDir, "sessions"))).rejects.toThrow();
+      }
     }
   });
 
-  test("accepts short session IDs when view text contains only incidental substrings", async () => {
+  test("rejects session IDs shorter than the privacy scanning contract", () => {
+    expect(() => parseSessionBoardUpdate({ ...update(1, "inv-1"), sessionId: "short" })).toThrow("at least 8 characters");
+  });
+
+  test("accepts a valid session ID only as part of an unrelated larger token", async () => {
     const fixtureValue = await fixture();
-    const short = { ...update(1, "inv-1"), sessionId: "a", view: { ...view(1), changeSummary: "ordinary Board summary" } };
-    const publication = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(short), ...fixtureValue });
+    const updateValue = { ...update(1, "inv-1"), sessionId: "abcdefgh", view: { ...view(1), changeSummary: "prefixabcdefghsuffix" } };
+    const publication = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(updateValue), ...fixtureValue });
     expect(publication.current.revisionPath).toBe("boards/1-inv-1");
   });
 

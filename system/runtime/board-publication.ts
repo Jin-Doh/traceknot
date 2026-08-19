@@ -188,6 +188,46 @@ function boardUriFromOutput(stdout: string, stderr: string): string {
   if (unique.length > 1) throw Error("canonical Board publisher reported conflicting file URIs");
   return unique[0]!;
 }
+function closedKeys(value: Readonly<Record<string, unknown>>, required: readonly string[], optional: readonly string[] = []): boolean {
+  const keys = Object.keys(value);
+  return required.every(key => key in value) && keys.every(key => required.includes(key) || optional.includes(key));
+}
+
+function parsePublishedManifest(value: unknown): QaBoardManifest {
+  const manifest = object(value, "canonical Board manifest");
+  const required = ["schemaVersion", "runId", "requestId", "rootIdentity", "snapshotId", "sourceRevision", "sourceState", "sourceUpdatedAt", "generatedAt", "entrypoint", "authoritative", "assurance", "verdict", "counts", "generatedBy", "files"];
+  if (!closedKeys(manifest, required, ["sessionKey"])) throw Error("canonical Board publisher manifest keys are invalid");
+  if (manifest.schemaVersion !== "traceknot-qa-board/v1" || manifest.entrypoint !== "index.html" || manifest.authoritative !== false) throw Error("canonical Board publisher manifest contract is invalid");
+  for (const key of ["runId", "requestId", "rootIdentity", "snapshotId", "sourceUpdatedAt", "generatedAt"] as const) {
+    if (typeof manifest[key] !== "string" || manifest[key].length === 0) throw Error(`canonical Board publisher manifest ${key} is invalid`);
+  }
+  if (!Number.isSafeInteger(manifest.sourceRevision) || Number(manifest.sourceRevision) < 0) throw Error("canonical Board publisher manifest sourceRevision is invalid");
+  if (!["CREATED", "BASIS_ESTABLISHED", "DISCOVERY_COMPLETED", "PLANNED", "EXECUTING", "EVIDENCE_EVALUATED", "VERDICT_RESOLVED", "TERMINAL"].includes(String(manifest.sourceState))) throw Error("canonical Board publisher manifest sourceState is invalid");
+  if (!["PASS", "PASS_WITH_ACCEPTED_RISK", "FAIL", "BLOCKED", "INCOMPLETE"].includes(String(manifest.verdict))) throw Error("canonical Board publisher manifest verdict is invalid");
+
+  const assurance = object(manifest.assurance, "canonical Board manifest assurance");
+  if (!closedKeys(assurance, ["context", "requiredIndependence", "releaseStatus"]) || !["local", "release"].includes(String(assurance.context)) || !["separate-verification-context", "independent-producer"].includes(String(assurance.requiredIndependence)) || !["not-evaluated", "satisfied", "insufficient"].includes(String(assurance.releaseStatus))) throw Error("canonical Board publisher manifest assurance is invalid");
+  const counts = object(manifest.counts, "canonical Board manifest counts");
+  if (!closedKeys(counts, ["mandatory", "passed", "failed", "blocked", "incomplete"]) || Object.values(counts).some(count => !Number.isSafeInteger(count) || Number(count) < 0)) throw Error("canonical Board publisher manifest counts are invalid");
+  const generatedBy = object(manifest.generatedBy, "canonical Board manifest generatedBy");
+  if (!closedKeys(generatedBy, ["invocationId", "sessionHost", "sessionRef"]) || Object.values(generatedBy).some(item => typeof item !== "string" || item.length === 0)) throw Error("canonical Board publisher manifest producer is invalid");
+  if (manifest.sessionKey !== undefined && (typeof manifest.sessionKey !== "string" || !/^s-[0-9a-f]{64}$/.test(manifest.sessionKey))) throw Error("canonical Board publisher manifest sessionKey is invalid");
+  if (!Array.isArray(manifest.files) || manifest.files.length === 0) throw Error("canonical Board publisher manifest files are invalid");
+
+  let entrypoints = 0;
+  for (const candidate of manifest.files) {
+    const file = object(candidate, "canonical Board manifest file");
+    if (!closedKeys(file, ["path", "role", "sha256", "bytes"], ["artifactDigest", "observationId"])) throw Error("canonical Board publisher manifest file keys are invalid");
+    if (typeof file.path !== "string" || !/^(?:index(?:\.(?:en|ko|zh-CN))?\.html|evidence\/[0-9a-f]{64}\.png)$/.test(file.path)) throw Error("canonical Board publisher manifest file path is invalid");
+    if (!["entrypoint", "localized-view", "screenshot-preview"].includes(String(file.role)) || typeof file.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(file.sha256) || !Number.isSafeInteger(file.bytes) || Number(file.bytes) < 0) throw Error("canonical Board publisher manifest file contract is invalid");
+    if (file.artifactDigest !== undefined && (typeof file.artifactDigest !== "string" || !/^[0-9a-f]{64}$/.test(file.artifactDigest))) throw Error("canonical Board publisher manifest artifact digest is invalid");
+    if (file.observationId !== undefined && (typeof file.observationId !== "string" || file.observationId.length === 0)) throw Error("canonical Board publisher manifest observation ID is invalid");
+    if (file.path === "index.html" && file.role === "entrypoint") entrypoints += 1;
+  }
+  if (entrypoints !== 1) throw Error("canonical Board publisher manifest must declare exactly one entrypoint");
+  return manifest as unknown as QaBoardManifest;
+}
+
 
 export async function validatePublishedBoard(
   entrypoint: string,
@@ -229,8 +269,9 @@ export async function validatePublishedBoard(
   const immutableManifestPath = join(sessionRoot, current.revisionPath, "manifest.json");
   const immutableManifestBytes = await readFile(immutableManifestPath).catch(() => undefined);
   if (!immutableManifestBytes || digest(immutableManifestBytes) !== current.manifestSha256) throw Error("canonical Board publisher immutable manifest does not match current pointer");
-  let manifest: QaBoardManifest;
-  try { manifest = JSON.parse(new TextDecoder().decode(immutableManifestBytes)) as QaBoardManifest; } catch { throw Error("canonical Board publisher reported malformed immutable manifest"); }
+  let manifestValue: unknown;
+  try { manifestValue = JSON.parse(new TextDecoder().decode(immutableManifestBytes)) as unknown; } catch { throw Error("canonical Board publisher reported malformed immutable manifest"); }
+  const manifest = parsePublishedManifest(manifestValue);
   if (manifest.authoritative !== false || manifest.sessionKey !== sessionKey || manifest.generatedBy.sessionRef !== current.sessionRef) throw Error("canonical Board publisher immutable manifest identity does not match current pointer");
   if (expected?.sessionId !== undefined && expected.sessionHost !== undefined && current.sessionRef !== sessionReference(expected.sessionHost, expected.sessionId)) throw Error("canonical Board publisher session identity does not match current pointer");
   if (expected?.snapshotId !== undefined && manifest.snapshotId !== expected.snapshotId) throw Error("canonical Board publisher snapshot identity does not match the request");

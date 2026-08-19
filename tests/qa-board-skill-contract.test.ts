@@ -45,6 +45,7 @@ function expectCanonicalBoardInterface(content: string): void {
   expect(content).toContain("Board status: unavailable");
   expect(content).toContain("MUST NOT change the QA verdict");
   expect(content).toContain(".agents/skills/traceknot/bin/traceknot board update");
+  expect(content).toContain("at least eight characters");
 }
 
 test("canonical Skill payload includes the runnable CLI and update path", () => {

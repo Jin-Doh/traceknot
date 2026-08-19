@@ -447,6 +447,7 @@ export type SessionBoardPublicationResult = Readonly<{
 }>;
 
 const SESSION_ID_MAX = 1024;
+const SESSION_ID_MIN = 8;
 const SESSION_HOST_MAX = 128;
 const SESSION_SAFE_TEXT = /^[^\u0000-\u001f\u007f]+$/u;
 const ISO_TIMESTAMP = /^\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2\d))T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?Z$/;
@@ -564,9 +565,23 @@ function validateSessionPresentation(value: unknown, path = "$", seen = new Set<
   }
   seen.delete(value);
 }
+function isSessionIdentityBoundary(character: string | undefined): boolean {
+  return character === undefined || !/[\p{L}\p{N}._-]/u.test(character);
+}
+
 
 function sessionPresentationContains(value: unknown, sessionIdValue: string, seen = new Set<unknown>()): boolean {
-  if (typeof value === "string") return value === sessionIdValue;
+  if (typeof value === "string") {
+    let index = value.indexOf(sessionIdValue);
+    while (index >= 0) {
+      const before = index === 0 ? undefined : value[index - 1];
+      const afterIndex = index + sessionIdValue.length;
+      const after = afterIndex === value.length ? undefined : value[afterIndex];
+      if (isSessionIdentityBoundary(before) && isSessionIdentityBoundary(after)) return true;
+      index = value.indexOf(sessionIdValue, index + 1);
+    }
+    return false;
+  }
   if (value === null || typeof value !== "object" || seen.has(value)) return false;
   seen.add(value);
   const found = Array.isArray(value)
@@ -694,6 +709,7 @@ export function parseSessionBoardUpdate(value: unknown): SessionBoardUpdate {
   sessionKeys(input, ["schemaVersion", "sessionId", "sessionHost", "generatedAt", "view"], ["invocationId"]);
   if (input.schemaVersion !== SESSION_BOARD_UPDATE_SCHEMA) throw new Error("unsupported Board update schemaVersion");
   const parsedSessionId = sessionId(input.sessionId, "sessionId", SESSION_ID_MAX);
+  if (parsedSessionId.length < SESSION_ID_MIN) throw new Error(`sessionId must be at least ${SESSION_ID_MIN} characters`);
   const parsedSessionHost = sessionId(input.sessionHost, "sessionHost", SESSION_HOST_MAX);
   const generatedAt = validSessionTimestamp(input.generatedAt, "generatedAt");
   const parsedView = validateSessionView(input.view);
@@ -703,7 +719,8 @@ export function parseSessionBoardUpdate(value: unknown): SessionBoardUpdate {
 }
 
 export function sessionBoardKey(sessionHostValue: string, sessionIdValue: string): string {
-  sessionId(sessionIdValue, "sessionId", SESSION_ID_MAX);
+  const parsedSessionId = sessionId(sessionIdValue, "sessionId", SESSION_ID_MAX);
+  if (parsedSessionId.length < SESSION_ID_MIN) throw new Error(`sessionId must be at least ${SESSION_ID_MIN} characters`);
   sessionId(sessionHostValue, "sessionHost", SESSION_HOST_MAX);
   return `s-${sha256(`${sessionHostValue}\0${sessionIdValue}`)}`;
 }

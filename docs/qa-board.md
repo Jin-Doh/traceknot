@@ -53,6 +53,8 @@ $HOME/.agents/skills/traceknot/bin/traceknot board update \
 }
 ```
 
+`sessionId` is an opaque identifier of at least eight characters. The view must not contain it as a standalone value or boundary-delimited token; publication rejects such input before writing.
+
 `invocationId` is optional; when omitted, the publisher uses a fresh random UUID, so retries publish distinct immutable revisions. Callers that need idempotent publication must provide a stable invocation ID. `view` is presentation data only. It must be copied from validated canonical records and cannot establish evidence, alter counts, or change the QA verdict.
 
 The CLI validates the entire envelope before writing. It rejects unsafe strings and paths, malformed counts, statuses, or digests, inconsistent totals, an `authoritative` value other than `false`, and invalid timestamps. The renderer escapes dynamic values, uses no network resources or user-provided scripts, and reuses the existing artifact preview limits and byte-level digest checks.
