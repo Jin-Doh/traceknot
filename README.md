@@ -153,10 +153,13 @@ The canonical Skill bundle and host-neutral core are usable now. Authoritative h
 
 ## Verify CLI
 
-`$HOME/.agents/skills/traceknot/bin/traceknot verify` executes a validated explicit-command manifest through the local collector and persists each VerificationRun checkpoint atomically. Run state and content-addressed artifacts default to an external user cache, so their writes do not change the Git snapshot under verification:
+The Verify CLI executes a validated explicit-command manifest through the local collector and persists each VerificationRun checkpoint atomically. Use the executable from the same installation scope; a project-local-only installation must not fall back to an unrelated global executable. Run state and content-addressed artifacts default to an external user cache, so their writes do not change the Git snapshot under verification:
 
 ```sh
+# Global installation
 $HOME/.agents/skills/traceknot/bin/traceknot verify --request request.json --manifest manifest.json --root .
+# Project-local installation
+.agents/skills/traceknot/bin/traceknot verify --request request.json --manifest manifest.json --root .
 ```
 
 The request must identify the current Git `rootIdentity` and `snapshotId`; either field may use the literal `auto`. A `verification-manifest/v1` manifest assigns each generated obligation either an absolute executable with an argument array, an absolute `executionCompletionPath`, or both. Shell-string interpolation is rejected.

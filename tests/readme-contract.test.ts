@@ -325,6 +325,13 @@ describe("README localization section contract", () => {
       expect(rendered).not.toMatch(/Portable Board (?:status|location|manifest|publisher|authority|limitation)/iu);
     }
   });
+  test("documents global and project-local Verify executables where the Verify section exists", () => {
+    for (const content of localizedReadmes.slice(0, 2)) {
+      expect(content).toContain("$HOME/.agents/skills/traceknot/bin/traceknot verify");
+      expect(content).toContain(".agents/skills/traceknot/bin/traceknot verify");
+    }
+  });
+
   test("keeps global and project-local update commands scope-bound", () => {
     expect(automaticUpdates).toContain("$HOME/.agents/skills/traceknot/bin/traceknot self-check");
     expect(automaticUpdates).toContain(".agents/skills/traceknot/bin/traceknot self-check");

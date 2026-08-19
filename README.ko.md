@@ -153,10 +153,13 @@ FAIL → BLOCKED → INCOMPLETE → PASS_WITH_ACCEPTED_RISK → PASS
 
 ## Verify CLI
 
-`$HOME/.agents/skills/traceknot/bin/traceknot verify`는 검증된 명시적 명령 manifest를 로컬 collector로 실행하고 VerificationRun checkpoint를 원자적으로 저장합니다. 실행 상태와 content-addressed artifact는 기본적으로 저장소 밖의 사용자 cache에 저장되므로 검증 중인 Git snapshot을 바꾸지 않습니다.
+Verify CLI는 검증된 명시적 명령 manifest를 로컬 collector로 실행하고 VerificationRun checkpoint를 원자적으로 저장합니다. 설치 범위와 같은 실행 파일을 사용해야 하며, 프로젝트 로컬 설치가 관련 없는 전역 실행 파일로 fallback하면 안 됩니다. 실행 상태와 content-addressed artifact는 기본적으로 저장소 밖의 사용자 cache에 저장되므로 검증 중인 Git snapshot을 바꾸지 않습니다.
 
 ```sh
+# 전역 설치
 $HOME/.agents/skills/traceknot/bin/traceknot verify --request request.json --manifest manifest.json --root .
+# 프로젝트 로컬 설치
+.agents/skills/traceknot/bin/traceknot verify --request request.json --manifest manifest.json --root .
 ```
 
 요청은 현재 Git의 `rootIdentity`와 `snapshotId`를 지정해야 하며, 두 필드 모두 리터럴 `auto`를 사용할 수 있습니다. `verification-manifest/v1` manifest는 생성된 각 obligation에 절대 경로 executable과 argument 배열, 절대 경로 `executionCompletionPath`, 또는 둘 다를 연결합니다. Shell 문자열 보간은 거부됩니다.
