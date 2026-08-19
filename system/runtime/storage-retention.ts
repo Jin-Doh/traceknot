@@ -771,10 +771,12 @@ function compareBoardEntries(a: StorageEntry, b: StorageEntry): number {
 }
 
 function compareSessionBoardEntries(a: StorageEntry, b: StorageEntry): number {
+  const sameRun = a.runId !== undefined && a.runId === b.runId;
   const revisionOrder = (a.sourceRevision ?? -1) - (b.sourceRevision ?? -1);
-  if (revisionOrder !== 0) return revisionOrder;
   const generatedOrder = (a.logicalUpdatedAt ?? a.mtimeMs) - (b.logicalUpdatedAt ?? b.mtimeMs);
+  if (sameRun && revisionOrder !== 0) return revisionOrder;
   if (generatedOrder !== 0) return generatedOrder;
+  if (revisionOrder !== 0) return revisionOrder;
   return (a.boardId ?? a.relativePath).localeCompare(b.boardId ?? b.relativePath);
 }
 

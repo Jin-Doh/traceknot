@@ -29,6 +29,7 @@ function expectCanonicalSkillPayload(content: string): void {
   expect(content).toMatch(/(?:^|[\s`])\.agents\/skills\/traceknot\/bin\/traceknot/);
   expect(content).toContain("Bun 1.3.14");
   expect(content).toContain("traceknot self-check");
+  expect(content).toContain(".agents/skills/traceknot/bin/traceknot self-check");
 }
 
 function expectCanonicalBoardInterface(content: string): void {
@@ -43,6 +44,7 @@ function expectCanonicalBoardInterface(content: string): void {
   expect(content).toContain("boardMaxPerSession");
   expect(content).toContain("Board status: unavailable");
   expect(content).toContain("MUST NOT change the QA verdict");
+  expect(content).toContain(".agents/skills/traceknot/bin/traceknot board update");
 }
 
 test("canonical Skill payload includes the runnable CLI and update path", () => {

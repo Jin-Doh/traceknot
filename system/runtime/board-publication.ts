@@ -4,9 +4,9 @@ import {
   type CapabilitySet,
 } from "./capability-model";
 
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sessionReference, type QaBoardManifest } from "../presentation/qa-board";
 
@@ -191,7 +191,7 @@ function boardUriFromOutput(stdout: string, stderr: string): string {
 
 export async function validatePublishedBoard(
   entrypoint: string,
-  expected?: Readonly<{ sessionId?: string; sessionHost?: string }>,
+  expected?: Readonly<{ sessionId?: string; sessionHost?: string; snapshotId?: string; runId?: string; stateDir?: string }>,
 ): Promise<Readonly<{ entrypointPath: string; manifestPath: string; currentPath?: string; immutableManifestPath?: string }>> {
   let entrypointPath: string;
   try {
@@ -208,9 +208,13 @@ export async function validatePublishedBoard(
   }
   const components = entrypointPath.split("/");
   const sessionsIndex = components.lastIndexOf("sessions");
-  if (sessionsIndex < 0 || components[sessionsIndex + 1] === undefined || !/^s-[0-9a-f]{64}$/.test(components[sessionsIndex + 1]!)) return Object.freeze({ entrypointPath, manifestPath });
+  if (sessionsIndex < 0 || components[sessionsIndex + 1] === undefined || !/^s-[0-9a-f]{64}$/.test(components[sessionsIndex + 1]!)) throw Error("canonical Board publisher reported a non-session Board URI");
   const sessionKey = components[sessionsIndex + 1]!;
   const sessionRoot = components.slice(0, sessionsIndex + 2).join("/");
+  if (expected?.stateDir !== undefined) {
+    const [canonicalStateDir, canonicalSessionRoot] = await Promise.all([realpath(expected.stateDir), realpath(sessionRoot)]);
+    if (canonicalSessionRoot !== join(canonicalStateDir, "sessions", sessionKey)) throw Error("canonical Board publisher session Board is outside the requested state directory");
+  }
   if (entrypointPath !== join(sessionRoot, "index.html")) throw Error("canonical Board publisher reported an unstable session Board URI");
   const currentPath = join(sessionRoot, "current.json");
   const currentBytes = await readFile(currentPath).catch(() => undefined);
@@ -229,6 +233,8 @@ export async function validatePublishedBoard(
   try { manifest = JSON.parse(new TextDecoder().decode(immutableManifestBytes)) as QaBoardManifest; } catch { throw Error("canonical Board publisher reported malformed immutable manifest"); }
   if (manifest.authoritative !== false || manifest.sessionKey !== sessionKey || manifest.generatedBy.sessionRef !== current.sessionRef) throw Error("canonical Board publisher immutable manifest identity does not match current pointer");
   if (expected?.sessionId !== undefined && expected.sessionHost !== undefined && current.sessionRef !== sessionReference(expected.sessionHost, expected.sessionId)) throw Error("canonical Board publisher session identity does not match current pointer");
+  if (expected?.snapshotId !== undefined && manifest.snapshotId !== expected.snapshotId) throw Error("canonical Board publisher snapshot identity does not match the request");
+  if (expected?.runId !== undefined && manifest.runId !== expected.runId) throw Error("canonical Board publisher run identity does not match the request");
   for (const file of manifest.files) {
     const bytes = await readFile(join(sessionRoot, current.revisionPath, file.path)).catch(() => undefined);
     if (!bytes || bytes.byteLength !== file.bytes || digest(bytes) !== file.sha256) throw Error(`canonical Board publisher immutable file hash mismatch: ${file.path}`);
@@ -272,7 +278,7 @@ export function createCanonicalCliBoardPublisher(input: Readonly<{
         throw Error(`canonical Board publisher failed (${result.exitCode}): ${result.stderr}`);
       }
       const entrypoint = boardUriFromOutput(result.stdout, result.stderr);
-      const board = await validatePublishedBoard(entrypoint, { sessionId: request.sessionId, sessionHost: request.sessionHost });
+      const board = await validatePublishedBoard(entrypoint, { sessionId: request.sessionId, sessionHost: request.sessionHost, snapshotId: request.snapshotId, runId: request.runId, stateDir: request.stateDir });
       return Object.freeze({
         status: "generated",
         publisher,

@@ -265,6 +265,24 @@ describe("storage retention", () => {
     expect(applied.deleted.boards).not.toContain(`${prefix}1-new-terminal`);
     expect(applied.deleted.boards).not.toContain(`${prefix}2-current`);
   });
+  test("orders session count retention by publication time across runs", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"d".repeat(64)}`;
+    await sessionBoard(state, sessionKey, "100-old-active", { runId: "run-a", sourceRevision: 100, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "1-new-active", { runId: "run-b", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: NOW });
+
+    const applied = await pruneStorage({
+      stateDir: state,
+      artifactDir: artifacts,
+      now: NOW,
+      policy: { ...policy, boardTtlMs: 365 * 24 * 60 * 60 * 1000, boardMaxPerSession: 1, boardQuotaBytes: 1024 * 1024 },
+      apply: true,
+    });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).toContain(`${prefix}100-old-active`);
+    expect(applied.deleted.boards).not.toContain(`${prefix}1-new-active`);
+  });
+
   test("retains maximum-length Board names through inventory and deletion", async () => {
     const { state, artifacts } = await fixture();
     const boardId = `9-${"a".repeat(128)}`;

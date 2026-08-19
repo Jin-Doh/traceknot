@@ -15,20 +15,31 @@ npx skills update traceknot --global --yes
 
 Invoke the global executable at `$HOME/.agents/skills/traceknot/bin/traceknot`; for a project-local install, use `.agents/skills/traceknot/bin/traceknot` from the project root. The legacy curl installer is only an optional prefix launcher/updater for environments that need it; it never creates, replaces, retargets, updates, or removes a Skills CLI-owned registration and does not define a second product or richer Board mode.
 
-Validate the installed payload before publication:
+Validate the installed payload through the executable from the same installation scope:
 
 ```sh
+# Global installation
 $HOME/.agents/skills/traceknot/bin/traceknot self-check
+# Project-local installation
+.agents/skills/traceknot/bin/traceknot self-check
 ```
 
 `traceknot self-check` fails closed unless the Bun runtime, generated executable, required Board schemas, host capability manifests, semantic update parser, and static renderer are available from the same installed Skill root.
 
 ## Board update interface
 
-Build an update JSON document from the existing `QaBoardView` projection and publish it with:
+Build an update JSON document from the existing `QaBoardView` projection and publish it through the executable from the same installation scope:
 
 ```sh
+# Global installation
 $HOME/.agents/skills/traceknot/bin/traceknot board update \
+  --input UPDATE.json \
+  --state-dir DIR \
+  [--artifact-dir DIR] \
+  [--open-board] \
+  [--no-notify]
+# Project-local installation
+.agents/skills/traceknot/bin/traceknot board update \
   --input UPDATE.json \
   --state-dir DIR \
   [--artifact-dir DIR] \

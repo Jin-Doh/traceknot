@@ -9,7 +9,10 @@ The Skills CLI is the canonical installation and update path. It copies the comp
 ```sh
 npx skills add Jin-Doh/traceknot --skill traceknot --global
 npx skills update traceknot --global --yes
+# Global installation
 $HOME/.agents/skills/traceknot/bin/traceknot self-check
+# Project-local installation
+.agents/skills/traceknot/bin/traceknot self-check
 ```
 
 For a global Skills CLI install, invoke `$HOME/.agents/skills/traceknot/bin/traceknot`; for a project-local install, run `.agents/skills/traceknot/bin/traceknot` from the project root. `traceknot self-check` fails closed unless the generated executable, required schemas, host capability manifests, semantic update parser, and static renderer are available from the same installed Skill root.
@@ -18,10 +21,18 @@ The legacy curl installer installs only an optional prefix launcher and updater.
 
 ## Board update interface
 
-Build an update document from the existing `QaBoardView` projection and publish it with:
+Build an update document from the existing `QaBoardView` projection and publish it through the executable from the same installation scope:
 
 ```sh
+# Global installation
 $HOME/.agents/skills/traceknot/bin/traceknot board update \
+  --input UPDATE.json \
+  --state-dir DIR \
+  [--artifact-dir DIR] \
+  [--open-board] \
+  [--no-notify]
+# Project-local installation
+.agents/skills/traceknot/bin/traceknot board update \
   --input UPDATE.json \
   --state-dir DIR \
   [--artifact-dir DIR] \

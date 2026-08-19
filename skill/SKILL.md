@@ -132,18 +132,24 @@ npx skills add Jin-Doh/traceknot --skill traceknot --global
 npx skills update traceknot --global --yes
 ```
 
-Verify the installed payload before using it:
+Verify the installed payload before using it. Use the executable from the same installation scope; a project-local-only installation MUST NOT fall back to an unrelated global executable:
 
 ```sh
+# Global installation
 $HOME/.agents/skills/traceknot/bin/traceknot self-check
+# Project-local installation
+.agents/skills/traceknot/bin/traceknot self-check
 ```
 
 The command fails closed unless the Bun runtime, generated executable, required Board schemas, host capability manifests, semantic update parser, and static renderer are available from the same installed Skill root.
 
-Build the `traceknot-session-board-update/v1` envelope around the existing `QaBoardView` projection and invoke the global executable at `$HOME/.agents/skills/traceknot/bin/traceknot`; for a project-local install, use `.agents/skills/traceknot/bin/traceknot` from the project root:
+Build the `traceknot-session-board-update/v1` envelope around the existing `QaBoardView` projection and invoke the executable from the same installation scope:
 
 ```sh
+# Global installation
 $HOME/.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]
+# Project-local installation
+.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]
 ```
 
 The publisher derives `session-key = s-<sha256(sessionHost + NUL + sessionId)>`, never stores the raw session ID, and writes immutable revisions below `sessions/<session-key>/boards/<sourceRevision>-<invocationId>/`. Fixed stable `index.html`, `manifest.json`, and `current.json` links resolve through one `current` selector; a single fsynced rename atomically switches them to the same revision. It prints exactly `Traceknot Board: file://.../sessions/<session-key>/index.html` only after read-back validation. The Board declares `authoritative: false`; its input view is presentation data and never canonical evidence.
