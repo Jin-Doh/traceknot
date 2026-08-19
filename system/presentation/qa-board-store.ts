@@ -1311,8 +1311,8 @@ export async function publishSessionBoardUpdate(input: Readonly<{
     await sessionReadback(root, stableManifestPath, await readStableFile(stableManifestPath, 4 * 1024 * 1024), true);
     await sessionReadback(root, currentPath, await readStableFile(currentPath, 1024 * 1024), true);
     await verifySessionBoardPublication(input.stateDir, publication);
-    publicationCommitted = true;
     await sessionReclaim(root, directories.boardsFd, boardsPath, sessionKey, selectedName, undefined, input.retentionPolicy ?? {}, true);
+    publicationCommitted = true;
     result = publication;
   } catch (error) {
     failure = error;
