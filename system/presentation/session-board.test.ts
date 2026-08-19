@@ -63,12 +63,19 @@ describe("session Board contract", () => {
   });
 
   test("rejects a raw session ID embedded in the presentation view", async () => {
-    for (const sessionId of ["raw-session-id", "quote\"id"]) {
+    for (const sessionId of ["a", "raw-session-id", "quote\"id"]) {
       const fixtureValue = await fixture();
       const unsafe = { ...update(1, "inv-1"), sessionId, view: { ...view(1), changeSummary: sessionId } };
       await expect(publishSessionBoardUpdate({ update: parseSessionBoardUpdate(unsafe), ...fixtureValue })).rejects.toThrow("raw session ID");
       await expect(stat(join(fixtureValue.stateDir, "sessions"))).rejects.toThrow();
     }
+  });
+
+  test("accepts short session IDs when view text contains only incidental substrings", async () => {
+    const fixtureValue = await fixture();
+    const short = { ...update(1, "inv-1"), sessionId: "a", view: { ...view(1), changeSummary: "ordinary Board summary" } };
+    const publication = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(short), ...fixtureValue });
+    expect(publication.current.revisionPath).toBe("boards/1-inv-1");
   });
 
   test("publishes a stable URI bound to an immutable revision without raw session identity", async () => {

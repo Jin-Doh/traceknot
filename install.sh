@@ -448,10 +448,12 @@ if [ "$DRY_RUN" -eq 1 ]; then
     done <<EOF
 $(find "$SOURCE_ROOT/skill" -type f -print)
 EOF
-    if [ "$REGISTRATION_EXTERNAL" -eq 1 ]; then
+    if [ "$REGISTRATION_LEGACY" -eq 1 ]; then
+        printf '  remove legacy Skill registration %s\n' "$REGISTRATION_PATH"
+    elif [ "$REGISTRATION_EXTERNAL" -eq 1 ]; then
         printf '  leave existing Skill registration %s untouched\n' "$REGISTRATION_PATH"
     else
-        printf '  register %s -> %s/skill\n' "$REGISTRATION_PATH" "$PREFIX_CANON"
+        printf '  do not create a Skill registration; install the canonical Skill with npx skills add\n'
     fi
     printf '  launcher %s -> %s\n' "$PREFIX_CANON/bin/traceknot" "$LAUNCHER_TARGET"
     if [ "$AUTO_UPDATE" -eq 1 ]; then

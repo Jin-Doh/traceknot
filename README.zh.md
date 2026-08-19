@@ -153,11 +153,15 @@ Traceknot 适用于实现验证、缺陷修复确认、发布检查、仓库审�
 
 ## 安装方式
 
-### 可移植 Skill — 推荐
+### Skills CLI — 规范安装路径
 
-快速开始命令会通过 Skills CLI 安装 `skill/SKILL.md` 及其参考资料。只为 Codex 安装时添加 `--agent codex`；只在当前项目中安装时省略 `--global`。
+快速开始命令会通过 Skills CLI 安装完整的 `skill/` tree，包括 `SKILL.md`、参考资料和可执行文件 `skill/bin/traceknot`。生成的 CLI 需要 Bun 1.3.14 或更高版本。只为 Codex 安装时添加 `--agent codex`；只在当前项目中安装时省略 `--global`。
 
-查询、更新和删除也使用同一个 CLI：
+```sh
+npx skills add Jin-Doh/traceknot --skill traceknot --global
+```
+
+使用以下 CLI 管理同一个完整 payload：
 
 ```sh
 npx skills list --global
@@ -165,17 +169,17 @@ npx skills update traceknot --global --yes
 npx skills remove traceknot --global --yes
 ```
 
-### 完整 Toolkit — 高级
+全局 Skills CLI 安装应调用 `$HOME/.agents/skills/traceknot/bin/traceknot`；项目本地安装则从项目根目录调用 `.agents/skills/traceknot/bin/traceknot`。全局安装或更新后运行 `$HOME/.agents/skills/traceknot/bin/traceknot self-check`；项目本地安装必须改用 `.agents/skills/traceknot/bin/traceknot self-check`。Session Board 发布也应按安装范围选择：全局安装使用 `$HOME/.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]`，项目本地安装使用 `.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]`。不得回退到无关的全局可执行文件。Read-back 验证后输出 `Traceknot Board: file://.../sessions/<session-key>/index.html`。`traceknot-session-board-update/v1` envelope、prerequisite 缺失行为和 `boardMaxPerSession` 保留策略请参阅 [QA Board](docs/qa-board.md)。
 
-当你还需要 schema、capability manifest、宿主中立核心和经过验证的 release updater 时，安装完整 Toolkit：
+### Legacy curl launcher/bootstrap — 可选
+
+Legacy curl entrypoint 仅作为可选的 prefix launcher/updater 保留。它不会创建、替换、重新指向、更新或删除 Skills CLI 拥有的注册，也不定义独立的 Skill payload、runtime tier、Board renderer、schema 或 verdict mode。重新安装或更新只会删除指向同一 prefix 的 legacy symlink。上面的 Skills CLI 路径是规范路径。运行前请检查脚本或固定到具体 tag。
 
 <!-- shared-command:full-toolkit-install -->
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh
 ```
-
-在受控环境中运行前，请先检查脚本或固定到具体 tag。Installer 无需 `sudo`，支持 `--dry-run`，默认安装到 `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`。
 
 请将 bootstrap 脚本和下载的 payload 同时固定到同一个 tag 或 commit：
 
@@ -187,9 +191,9 @@ curl -fsSL "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/i
   | TRACEKNOT_REF="$TRACEKNOT_REF" sh
 ```
 
-Skills CLI 和完整 Toolkit installer 管理同一份用户本地 Skill 注册。切换安装方式前应先删除现有安装。资格判定、验证、rollback 和 opt-out 行为请参阅[自动更新](docs/automatic-updates.md)。
+Launcher 仅通过 `traceknot-update` 管理自身 prefix 中的 release 文件；状态、check、apply、rollback、enable、disable 操作请参阅[自动更新](docs/automatic-updates.md)。`npx skills update traceknot --global --yes` 独立更新规范的 Skills CLI 注册。由于 launcher 从不写入该注册，两种安装可以共存。下面固定的卸载命令只删除 launcher 管理的文件。
 
-使用以下命令删除默认路径中的完整 Toolkit：
+使用以下命令删除 launcher 管理的文件：
 
 <!-- shared-command:full-toolkit-uninstall -->
 
@@ -197,9 +201,7 @@ Skills CLI 和完整 Toolkit installer 管理同一份用户本地 Skill 注册�
 curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh | sh
 ```
 
-如果使用自定义安装路径，请在 `sh` 后附加 `-s -- --prefix /absolute/path`。
-
-如果安装时还使用了自定义 Skills root，请把同一个值传给 uninstaller：
+如果使用自定义安装路径，请在 `sh` 后附加 `-s -- --prefix /absolute/path`。只有在迁移或删除非默认位置中的 legacy Traceknot 所有注册 symlink 时，才需要设置 `TRACEKNOT_SKILLS_ROOT`：
 
 <!-- shared-command:full-toolkit-custom-uninstall -->
 
@@ -208,7 +210,7 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
   | TRACEKNOT_SKILLS_ROOT=/absolute/skills sh -s -- --prefix /absolute/path
 ```
 
-包含当前 layout 与 legacy layout 路径选择逻辑的 updater 可执行命令，请参阅[自动更新](docs/automatic-updates.md)。
+Legacy launcher 是可选项，不能替代 `npx skills add`/`npx skills update` 作为规范安装生命周期。
 
 <!-- readme-section:documentation -->
 

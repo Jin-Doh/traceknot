@@ -566,7 +566,7 @@ function validateSessionPresentation(value: unknown, path = "$", seen = new Set<
 }
 
 function sessionPresentationContains(value: unknown, sessionIdValue: string, seen = new Set<unknown>()): boolean {
-  if (typeof value === "string") return value.includes(sessionIdValue);
+  if (typeof value === "string") return value === sessionIdValue;
   if (value === null || typeof value !== "object" || seen.has(value)) return false;
   seen.add(value);
   const found = Array.isArray(value)

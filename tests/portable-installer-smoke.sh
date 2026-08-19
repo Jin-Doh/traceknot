@@ -235,10 +235,35 @@ if TRACEKNOT_SKILLS_ROOT=$CONFIG_SKILLS sh "$ROOT/install.sh" \
 fi
 test ! -e "$OUTSIDE_CONFIG"
 grep -F preserve-config-payload "$CONFIG_PREFIX/skill/SKILL.md" >/dev/null
-# Preview modes must not create or remove anything.
+# Preview modes report the same non-owning registration behavior without mutation.
 PREVIEW_PREFIX=$TMP_DIR/preview
-TRACEKNOT_SKILLS_ROOT=$TMP_DIR/preview-skills sh "$ROOT/install.sh" --prefix "$PREVIEW_PREFIX" --dry-run >/dev/null
+PREVIEW_SKILLS=$TMP_DIR/preview-skills
+PREVIEW_OUTPUT=$(TRACEKNOT_SKILLS_ROOT=$PREVIEW_SKILLS sh "$ROOT/install.sh" --prefix "$PREVIEW_PREFIX" --dry-run)
+printf '%s\n' "$PREVIEW_OUTPUT" | grep -F 'do not create a Skill registration' >/dev/null
 test ! -e "$PREVIEW_PREFIX"
+test ! -e "$PREVIEW_SKILLS/traceknot"
+
+PREVIEW_EXTERNAL_PREFIX=$TMP_DIR/preview-external-prefix
+PREVIEW_EXTERNAL_SKILLS=$TMP_DIR/preview-external-skills
+mkdir -p "$PREVIEW_EXTERNAL_SKILLS/traceknot"
+PREVIEW_EXTERNAL_SKILLS_CANON=$(CDPATH='' cd -P "$PREVIEW_EXTERNAL_SKILLS" && pwd)
+printf '%s\n' preserve-external > "$PREVIEW_EXTERNAL_SKILLS/traceknot/SKILL.md"
+PREVIEW_EXTERNAL_OUTPUT=$(TRACEKNOT_SKILLS_ROOT=$PREVIEW_EXTERNAL_SKILLS sh "$ROOT/install.sh" --prefix "$PREVIEW_EXTERNAL_PREFIX" --dry-run)
+printf '%s\n' "$PREVIEW_EXTERNAL_OUTPUT" | grep -F "leave existing Skill registration $PREVIEW_EXTERNAL_SKILLS_CANON/traceknot untouched" >/dev/null
+test "$(cat "$PREVIEW_EXTERNAL_SKILLS/traceknot/SKILL.md")" = preserve-external
+test ! -e "$PREVIEW_EXTERNAL_PREFIX"
+
+PREVIEW_LEGACY_PREFIX_CANON=$(CDPATH='' cd -P "$TMP_DIR" && pwd)/preview-legacy-prefix
+PREVIEW_LEGACY_PREFIX=$TMP_DIR/preview-legacy-prefix
+PREVIEW_LEGACY_SKILLS=$TMP_DIR/preview-legacy-skills
+mkdir -p "$PREVIEW_LEGACY_SKILLS"
+PREVIEW_LEGACY_SKILLS_CANON=$(CDPATH='' cd -P "$PREVIEW_LEGACY_SKILLS" && pwd)
+ln -s "$PREVIEW_LEGACY_PREFIX_CANON/skill" "$PREVIEW_LEGACY_SKILLS/traceknot"
+PREVIEW_LEGACY_OUTPUT=$(TRACEKNOT_SKILLS_ROOT=$PREVIEW_LEGACY_SKILLS sh "$ROOT/install.sh" --prefix "$PREVIEW_LEGACY_PREFIX" --dry-run)
+printf '%s\n' "$PREVIEW_LEGACY_OUTPUT" | grep -F "remove legacy Skill registration $PREVIEW_LEGACY_SKILLS_CANON/traceknot" >/dev/null
+test -L "$PREVIEW_LEGACY_SKILLS/traceknot"
+test ! -e "$PREVIEW_LEGACY_PREFIX"
+
 sh "$ROOT/uninstall.sh" --prefix "$PREFIX" --dry-run >/dev/null
 test -x "$PREFIX/skill/bin/traceknot"
 test -f "$PREFIX/.traceknot-install-manifest"
