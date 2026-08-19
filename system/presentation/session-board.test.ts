@@ -129,11 +129,23 @@ describe("session Board contract", () => {
   test("selects a new run even when its revision restarts lower", async () => {
     const fixtureValue = await fixture();
     const first = { ...update(9, "inv-1"), view: { ...view(9), runId: "run-a" } };
-    const second = { ...update(1, "inv-2"), view: { ...view(1), runId: "run-b" } };
+    const second = { ...update(1, "inv-2"), generatedAt: "2026-08-18T00:00:10Z", view: { ...view(1), runId: "run-b" } };
     await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(first), ...fixtureValue });
     const publication = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(second), ...fixtureValue });
     expect(publication.current.revisionPath).toBe("boards/1-inv-2");
     expect(publication.manifest.runId).toBe("run-b");
+  });
+
+  test("does not rewind current for delayed cross-run updates or stable retries", async () => {
+    const fixtureValue = await fixture();
+    const first = parseSessionBoardUpdate({ ...update(1, "stable-a"), generatedAt: "2026-08-18T00:00:01Z", view: { ...view(1), runId: "run-a" } });
+    const second = parseSessionBoardUpdate({ ...update(1, "stable-b"), generatedAt: "2026-08-18T00:00:02Z", view: { ...view(1), runId: "run-b" } });
+    const delayed = parseSessionBoardUpdate({ ...update(2, "delayed-a"), generatedAt: "2026-08-18T00:00:00Z", view: { ...view(2), runId: "run-a" } });
+    await publishSessionBoardUpdate({ update: first, ...fixtureValue });
+    const selected = await publishSessionBoardUpdate({ update: second, ...fixtureValue });
+    expect((await publishSessionBoardUpdate({ update: delayed, ...fixtureValue })).current).toEqual(selected.current);
+    expect((await publishSessionBoardUpdate({ update: first, ...fixtureValue })).current).toEqual(selected.current);
+    expect(JSON.parse(await readFile(selected.currentPath, "utf8"))).toMatchObject({ revisionPath: "boards/1-stable-b" });
   });
   test("reclaims the previous current during a tight cutover quota", async () => {
     const fixtureValue = await fixture();

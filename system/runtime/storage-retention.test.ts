@@ -72,6 +72,19 @@ async function sessionBoard(
     generatedBy: { invocationId: boardId.length > 128 ? boardId.slice(boardId.indexOf("-") + 1) : boardId, sessionHost: "omp", sessionRef: sessionKey },
     files: [{ path: "index.html", role: "entrypoint", sha256: createHash("sha256").update(html).digest("hex"), bytes: Buffer.byteLength(html) }],
   }));
+  await writeFile(join(path, "current.json"), JSON.stringify({
+    schemaVersion: "traceknot-session-board-current/v1",
+    sessionKey,
+    sourceRevision: input.sourceRevision,
+    invocationId: boardId,
+    revisionPath: `boards/${boardId}`,
+    entrypoint: "index.html",
+    entrypointSha256: createHash("sha256").update(html).digest("hex"),
+    manifestSha256: "a".repeat(64),
+    sessionRef: sessionKey,
+    generatedAt: input.generatedAt,
+    authoritative: false,
+  }));
   await utimes(path, new Date(OLD), new Date(OLD));
 }
 function storageCli(args: readonly string[]): { exitCode: number; stdout: string; stderr: string } {
@@ -236,6 +249,9 @@ describe("storage retention", () => {
     await sessionBoard(state, sessionKey, "10-terminal", { runId: "unpinned", sourceRevision: 10, sourceState: "TERMINAL", generatedAt: OLD });
     await sessionBoard(state, sessionKey, "11-pinned", { runId: "pinned", sourceRevision: 11, sourceState: "EXECUTING", generatedAt: OLD });
     await symlink("boards/9-current", join(sessionRoot, "current"));
+
+    const inventory = await inspectStorage({ stateDir: state, artifactDir: artifacts, now: NOW });
+    expect(inventory.counts.malformedBoards).toBe(0);
 
     const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
     const prefix = `sessions/${sessionKey}/boards/`;

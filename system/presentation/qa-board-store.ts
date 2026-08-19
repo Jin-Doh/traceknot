@@ -983,9 +983,11 @@ function revisionNameFromCurrent(current: SessionBoardCurrent | undefined): stri
 }
 
 function compareStableSelection(sourceRevision: number, generatedAt: string, invocationId: string, runId: string, previousRunId: string | undefined, current: SessionBoardCurrent): number {
-  if (previousRunId === undefined || runId !== previousRunId) return 1;
-  if (sourceRevision !== current.sourceRevision) return sourceRevision - current.sourceRevision;
   const generatedOrder = Date.parse(generatedAt) - Date.parse(current.generatedAt);
+  if (previousRunId === undefined || runId !== previousRunId) {
+    return generatedOrder || invocationId.localeCompare(current.invocationId);
+  }
+  if (sourceRevision !== current.sourceRevision) return sourceRevision - current.sourceRevision;
   if (generatedOrder !== 0) return generatedOrder;
   return invocationId.localeCompare(current.invocationId);
 }
@@ -1284,7 +1286,7 @@ export async function publishSessionBoardUpdate(input: Readonly<{
     secureFsync(directories.boardsFd);
     await sessionReadback(root, join(boardsPath, boardName, "index.html"), html);
     await sessionReadback(root, join(boardsPath, boardName, "manifest.json"), manifestBytes);
-    const incomingWins = previousCurrent === undefined || compareStableSelection(update.view.revision, update.generatedAt, invocationId, update.view.runId, previousRunId, previousCurrent) > 0;
+    const incomingWins = previousCurrent === undefined || (!replayed && compareStableSelection(update.view.revision, update.generatedAt, invocationId, update.view.runId, previousRunId, previousCurrent) > 0);
     await sessionReclaim(root, directories.boardsFd, boardsPath, sessionKey, incomingWins ? undefined : previousName, incomingWins ? boardName : undefined, input.retentionPolicy ?? {}, false);
     if (incomingWins) {
       createdStableLinks = await ensureStableLinks(directories.sessionFd, sessionRoot);

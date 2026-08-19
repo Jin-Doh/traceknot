@@ -289,7 +289,8 @@ async function validBoardContents(boardPath: string, manifest: unknown): Promise
     }
   };
   await visit(boardPath);
-  if (invalid || !actualFiles.has("manifest.json") || actualFiles.size !== declaredPaths.length + 1 || actualDirs.size !== expectedDirs.size) return false;
+  const metadataFiles = manifest.sessionKey === undefined ? ["manifest.json"] : ["manifest.json", "current.json"];
+  if (invalid || metadataFiles.some(path => !actualFiles.has(path)) || actualFiles.size !== declaredPaths.length + metadataFiles.length || actualDirs.size !== expectedDirs.size) return false;
   for (const file of declared) {
     const path = String(file.path);
     const actual = actualFiles.get(path);
