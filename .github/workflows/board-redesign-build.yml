@@ -6,6 +6,7 @@ on:
       - feat/unified-skill-session-board
     paths:
       - '.github/board-redesign-build.py.gz.b64'
+      - '.github/workflows/board-redesign-build.yml'
 
 permissions:
   contents: read
@@ -36,6 +37,16 @@ jobs:
           set -euo pipefail
           base64 --decode .github/board-redesign-build.py.gz.b64 | gzip --decompress > /tmp/board-redesign-build.py
           python3 /tmp/board-redesign-build.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('system/presentation/qa-board.ts')
+          source = path.read_text()
+          old = '.coverage-table td::before{'
+          new = '.coverage-table tbody td::before{'
+          if old not in source:
+              raise SystemExit('expected mobile coverage selector was not generated')
+          path.write_text(source.replace(old, new, 1))
+          PY
           bun scripts/build-skill-runtime.ts
 
       - name: Run canonical gate
