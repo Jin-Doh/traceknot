@@ -237,8 +237,9 @@ function renderedPageText(source: string): string {
 
 function containsActiveHtml(source: string): boolean {
   let active = false;
+  if (/\bcontent\s*:[^;}]*(?:\battr\s*\([^;}]*["']|["'][^;}]*\battr\s*\()/iu.test(source)) return true;
   const visitNode = (node: ParsedHtmlNode): void => {
-    if (["script", "iframe", "frame", "object", "embed"].includes(node.nodeName) || (node.attrs ?? []).some(attribute => attribute.name === "srcdoc"
+    if (["script", "iframe", "frame", "object", "embed"].includes(node.nodeName) || (node.nodeName === "link" && (node.attrs ?? []).some(attribute => attribute.name === "rel" && /\bstylesheet\b/iu.test(attribute.value))) || (node.attrs ?? []).some(attribute => attribute.name === "srcdoc"
       || /^on[a-z]+$/iu.test(attribute.name)
       || ["href", "src", "action", "formaction"].includes(attribute.name) && /^\s*javascript:/iu.test(attribute.value))) {
       active = true;
