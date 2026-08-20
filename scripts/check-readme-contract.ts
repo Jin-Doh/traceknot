@@ -153,7 +153,7 @@ function visibleHtmlTree(content: string, removePre = false): HastRoot {
   const tree = structuredClone(htmlTree(content));
   const prune = (node: HastRoot | Element): void => {
     node.children = node.children.filter((child) => child.type !== "element"
-      || ((!removePre || child.tagName !== "pre") && child.properties.hidden == null));
+      || ((!removePre || child.tagName !== "pre") && child.tagName !== "template" && child.properties.hidden == null));
     for (const child of node.children) {
       if (child.type === "element") prune(child);
     }
@@ -311,15 +311,17 @@ function hasCapabilitySection(content: string, name: string): boolean {
   const rendered = renderedCapabilitySection(content, name);
   const marker = collectCapabilityMarkerOffsets(content, name)[0];
   const install = collectSectionMarkerOffsets(content).get("install")?.[0];
-  let hasHeading = false;
+  let firstHeadingText: string | undefined;
   if (marker !== undefined && install !== undefined) {
     visit(visibleHtmlTree(content, true), "element", (node: Element) => {
       const start = node.position?.start.offset;
       const end = node.position?.end.offset;
-      if (node.tagName === "h2" && toText(node).trim().length > 0 && start !== undefined && end !== undefined && start >= marker && end <= install) hasHeading = true;
+      if (node.tagName !== "h2" || start === undefined || end === undefined || start < marker || end > install || firstHeadingText !== undefined) return;
+      const text = toText(node).trim();
+      if (text.length > 0) firstHeadingText = text;
     });
   }
-  return rendered !== undefined && (name !== "verify" || hasHeading);
+  return rendered !== undefined && (name !== "verify" || firstHeadingText === "Verify CLI");
 }
 
 
