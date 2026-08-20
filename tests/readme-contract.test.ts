@@ -462,6 +462,11 @@ describe("README localization section contract", () => {
       .replace("Bun 1.3.14 or later", "Bun 1.3.14 or earlier");
     expect(() => checkReadmeLifecycleContract("README.md", reversed)).toThrow("Bun minimum version boundary");
   });
+  test("enforces the Node.js minimum-version guidance", () => {
+    const reversed = localizedReadmes[0].replace("Node.js 22.20 or later", "Node.js 22.20 or earlier");
+    expect(() => checkReadmeLifecycleContract("README.md", reversed)).toThrow("Node.js minimum version boundary");
+  });
+
 
   test("documents the curl path only as an optional non-owning launcher", () => {
     const canonical = localizedReadmes[0];

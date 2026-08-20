@@ -89,6 +89,11 @@ const REQUIRED_BUN_MINIMUM_BOUNDARIES: Readonly<Record<string, string>> = {
   "README.ko.md": "Bun 1.3.14 이상",
   "README.zh.md": "Bun 1.3.14 或更高版本",
 };
+const REQUIRED_NODE_MINIMUM_BOUNDARIES: Readonly<Record<string, string>> = {
+  "README.md": "Node.js 22.20 or later",
+  "README.ko.md": "Node.js 22.20 이상",
+  "README.zh.md": "Node.js 22.20 或更高版本",
+};
 const REQUIRED_PROJECT_LOCAL_COMMANDS: ReadonlyArray<readonly [string, RegExp]> = [
   ["project-local verify", /^\.agents\/skills\/traceknot\/bin\/traceknot verify(?:\s|$)/u],
   ["project-local self-check", /^\.agents\/skills\/traceknot\/bin\/traceknot self-check(?:\s|$)/u],
@@ -518,8 +523,11 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
   const visibleLifecycle = renderedInstallLifecycle(content);
   const visibleVerify = renderedCapabilitySection(content, "verify");
   const sectionOffsets = collectSectionMarkerOffsets(content);
+  const quickStartOffset = sectionOffsets.get("quick-start")?.[0];
+  const whyOffset = sectionOffsets.get("why")?.[0];
   const installOffset = sectionOffsets.get("install")?.[0];
   const documentationOffset = sectionOffsets.get("documentation")?.[0];
+  const visibleQuickStart = quickStartOffset !== undefined && whyOffset !== undefined ? renderedHtmlRange(content, quickStartOffset, whyOffset) : "";
   const lifecycleCommandLines = fencedCommandLines(content, installOffset, documentationOffset);
   const verifyCommandLines = fencedCommandLines(content, collectCapabilityMarkerOffsets(content, "verify")[0], installOffset);
   const documentLiterals = new Set(["macOS", "Linux", "libc.so.6", "musl", "Windows"]);
@@ -539,6 +547,9 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
   const missingBunMinimum = REQUIRED_BUN_MINIMUM_BOUNDARIES[path] !== undefined && !visibleLifecycle.includes(REQUIRED_BUN_MINIMUM_BOUNDARIES[path])
     ? ["Bun minimum version boundary"]
     : [];
+  const missingNodeMinimum = REQUIRED_NODE_MINIMUM_BOUNDARIES[path] !== undefined && !visibleQuickStart.includes(REQUIRED_NODE_MINIMUM_BOUNDARIES[path])
+    ? ["Node.js minimum version boundary"]
+    : [];
   const missingLauncherBoundaries = (REQUIRED_LAUNCHER_BOUNDARIES[path] ?? [])
     .filter(literal => !visibleLifecycle.includes(literal))
     .map(literal => `launcher boundary ${literal}`);
@@ -546,7 +557,7 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
     .filter(([label]) => label !== "project-local verify" || visibleVerify !== undefined)
     .filter(([label, pattern]) => !hasExecutableLine(label === "project-local verify" ? verifyCommandLines : lifecycleCommandLines, pattern))
     .map(([label]) => label);
-  const missingContracts = [...missing, ...missingCapabilities, ...missingGlobalVerify, ...missingGlobalLifecycleCommands, ...missingLauncherBoundaries, ...missingPlatformBoundary, ...missingBunMinimum, ...missingProjectCommands];
+  const missingContracts = [...missing, ...missingCapabilities, ...missingGlobalVerify, ...missingGlobalLifecycleCommands, ...missingLauncherBoundaries, ...missingPlatformBoundary, ...missingBunMinimum, ...missingNodeMinimum, ...missingProjectCommands];
   if (missingContracts.length > 0) throw new Error(`${path}: canonical installation lifecycle is missing: ${missingContracts.join(", ")}`);
 }
 
