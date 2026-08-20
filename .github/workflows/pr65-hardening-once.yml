@@ -82,6 +82,10 @@ jobs:
           )
           PY
 
+      - name: Rebuild generated Skill runtime
+        shell: bash
+        run: bun run build:skill-runtime
+
       - name: Run canonical gate
         shell: bash
         run: sh scripts/ci
@@ -91,8 +95,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/pr65-hardening-once.yml
-          git add system/runtime/board-publication.ts system/runtime/board-publisher.test.ts system/presentation/qa-board-store.ts system/presentation/session-board.test.ts
+          git rm .github/workflows/pr65-hardening-once.yml .github/pr65-hardening.trigger
+          git add system/runtime/board-publication.ts system/runtime/board-publisher.test.ts system/presentation/qa-board-store.ts system/presentation/session-board.test.ts skill/bin/traceknot
           git diff --cached --check
           git commit -m "fix: harden Board publication invariants"
           git push origin HEAD:feat/unified-skill-session-board
