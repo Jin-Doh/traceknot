@@ -61,6 +61,10 @@ const REQUIRED_LIFECYCLE_LITERALS = [
   "traceknot-update",
 ] as const;
 const REQUIRED_GLOBAL_VERIFY_COMMAND = /(?:^|\s)\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot verify/u;
+const REQUIRED_GLOBAL_LIFECYCLE_COMMANDS: ReadonlyArray<readonly [string, RegExp]> = [
+  ["global self-check", /(?:^|\s)\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot self-check/u],
+  ["global Board update", /(?:^|\s)\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot board update/u],
+];
 const REQUIRED_LAUNCHER_BOUNDARIES: Readonly<Record<string, readonly string[]>> = {
   "README.md": [
     "optional prefix launcher/updater",
@@ -469,6 +473,9 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
   const missingGlobalVerify = visibleVerify !== undefined && !REQUIRED_GLOBAL_VERIFY_COMMAND.test(visibleVerify)
     ? ["global verify"]
     : [];
+  const missingGlobalLifecycleCommands = REQUIRED_GLOBAL_LIFECYCLE_COMMANDS
+    .filter(([, pattern]) => !pattern.test(visibleLifecycle))
+    .map(([label]) => label);
   const missingLauncherBoundaries = (REQUIRED_LAUNCHER_BOUNDARIES[path] ?? [])
     .filter(literal => !visibleLifecycle.includes(literal))
     .map(literal => `launcher boundary ${literal}`);
@@ -476,7 +483,7 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
     .filter(([label]) => label !== "project-local verify" || visibleVerify !== undefined)
     .filter(([label, pattern]) => !pattern.test(label === "project-local verify" ? visibleVerify ?? "" : visibleLifecycle))
     .map(([label]) => label);
-  const missingContracts = [...missing, ...missingCapabilities, ...missingGlobalVerify, ...missingLauncherBoundaries, ...missingProjectCommands];
+  const missingContracts = [...missing, ...missingCapabilities, ...missingGlobalVerify, ...missingGlobalLifecycleCommands, ...missingLauncherBoundaries, ...missingProjectCommands];
   if (missingContracts.length > 0) throw new Error(`${path}: canonical installation lifecycle is missing: ${missingContracts.join(", ")}`);
 }
 

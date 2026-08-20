@@ -377,6 +377,14 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLifecycleContract("README.md", misplacedGlobalVerify)).toThrow("global verify");
   });
 
+  test("requires global self-check and Board update commands", () => {
+    const projectOnly = localizedReadmes[0]
+      .replaceAll("$HOME/.agents/skills/traceknot/bin/traceknot self-check", ".agents/skills/traceknot/bin/traceknot self-check")
+      .replaceAll("$HOME/.agents/skills/traceknot/bin/traceknot board update", ".agents/skills/traceknot/bin/traceknot board update");
+    expect(() => checkReadmeLifecycleContract("README.md", projectOnly)).toThrow("global self-check");
+    expect(() => checkReadmeLifecycleContract("README.md", projectOnly)).toThrow("global Board update");
+  });
+
   test("requires the project-local Verify path when the heading is localized", () => {
     const localizedHeading = localizedReadmes[0]
       .replace("## Verify CLI", "## 검증 명령")
