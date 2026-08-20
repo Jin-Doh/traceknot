@@ -63,7 +63,7 @@ const REQUIRED_LIFECYCLE_LITERALS = [
 const REQUIRED_GLOBAL_VERIFY_COMMAND = /^\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot verify(?:\s|$)/u;
 const REQUIRED_GLOBAL_LIFECYCLE_COMMANDS: ReadonlyArray<readonly [string, RegExp]> = [
   ["global self-check", /^\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot self-check(?:\s|$)/u],
-  ["global Board update", /^\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot board update --input UPDATE\.json --state-dir DIR(?:\s|$)/u],
+  ["global Board update", /^\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot board update --input UPDATE\.json --state-dir DIR(?!\s+--help(?:\s|$))(?:\s|$)/u],
 ];
 const REQUIRED_LAUNCHER_BOUNDARIES: Readonly<Record<string, readonly string[]>> = {
   "README.md": [
@@ -97,7 +97,7 @@ const REQUIRED_NODE_MINIMUM_BOUNDARIES: Readonly<Record<string, string>> = {
 const REQUIRED_PROJECT_LOCAL_COMMANDS: ReadonlyArray<readonly [string, RegExp]> = [
   ["project-local verify", /^\.agents\/skills\/traceknot\/bin\/traceknot verify(?:\s|$)/u],
   ["project-local self-check", /^\.agents\/skills\/traceknot\/bin\/traceknot self-check(?:\s|$)/u],
-  ["project-local Board update", /^\.agents\/skills\/traceknot\/bin\/traceknot board update --input UPDATE\.json --state-dir DIR(?:\s|$)/u],
+  ["project-local Board update", /^\.agents\/skills\/traceknot\/bin\/traceknot board update --input UPDATE\.json --state-dir DIR(?!\s+--help(?:\s|$))(?:\s|$)/u],
 ];
 const REQUIRED_OPERATIONAL_BLOCK_LITERALS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
   "README.md": {
@@ -544,7 +544,7 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
   const missingPlatformBoundary = REQUIRED_PLATFORM_BOUNDARIES[path] !== undefined && !visibleDocument.includes(REQUIRED_PLATFORM_BOUNDARIES[path])
     ? ["unsupported platform boundary"]
     : [];
-  const missingBunMinimum = REQUIRED_BUN_MINIMUM_BOUNDARIES[path] !== undefined && !visibleLifecycle.includes(REQUIRED_BUN_MINIMUM_BOUNDARIES[path])
+  const missingBunMinimum = REQUIRED_BUN_MINIMUM_BOUNDARIES[path] !== undefined && !visibleQuickStart.includes(REQUIRED_BUN_MINIMUM_BOUNDARIES[path])
     ? ["Bun minimum version boundary"]
     : [];
   const missingNodeMinimum = REQUIRED_NODE_MINIMUM_BOUNDARIES[path] !== undefined && !visibleQuickStart.includes(REQUIRED_NODE_MINIMUM_BOUNDARIES[path])
