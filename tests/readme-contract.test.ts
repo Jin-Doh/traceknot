@@ -373,6 +373,8 @@ describe("README localization section contract", () => {
       ".agents/skills/traceknot/bin/traceknot verify --request",
     );
     expect(() => checkReadmeLifecycleContract("README.md", withoutGlobalVerify)).toThrow("global verify");
+    const misplacedGlobalVerify = `${withoutGlobalVerify}\n\n\`\`\`sh\n$HOME/.agents/skills/traceknot/bin/traceknot verify --request request.json --manifest manifest.json\n\`\`\``;
+    expect(() => checkReadmeLifecycleContract("README.md", misplacedGlobalVerify)).toThrow("global verify");
   });
 
   test("requires the project-local Verify path when the heading is localized", () => {

@@ -234,12 +234,20 @@ function collectSharedCommands(content: string, path: string): Map<string, strin
 function collectOperationalCommands(content: string, path: string): Map<string, string> {
   return collectMarkedCommands(content, path, "operational-command");
 }
-function hasCapabilitySection(content: string, name: string): boolean {
-  let count = 0;
+function renderedCapabilitySection(content: string, name: string): string | undefined {
+  const starts: number[] = [];
   visit(markdownTree(content), "html", (node: Html) => {
-    if (node.value.trim() === `<!-- readme-capability:${name} -->`) count += 1;
+    if (node.value.trim() === `<!-- readme-capability:${name} -->` && node.position?.start.offset !== undefined) {
+      starts.push(node.position.start.offset);
+    }
   });
-  return count === 1;
+  const ends = collectSectionMarkerOffsets(content).get("install") ?? [];
+  if (starts.length !== 1 || ends.length !== 1 || ends[0]! <= starts[0]!) return undefined;
+  return toText(visibleHtmlTree(content.slice(starts[0], ends[0])));
+}
+
+function hasCapabilitySection(content: string, name: string): boolean {
+  return renderedCapabilitySection(content, name) !== undefined;
 }
 
 
@@ -452,20 +460,21 @@ export function checkOperationalCommandBlocks(path: string, content: string, req
 export function checkReadmeLifecycleContract(path: string, content: string): void {
   const visibleDocument = toText(visibleHtmlTree(content));
   const visibleLifecycle = renderedInstallLifecycle(content);
+  const visibleVerify = renderedCapabilitySection(content, "verify");
   const documentLiterals = new Set(["macOS", "Linux", "libc.so.6", "musl", "Windows"]);
   const missing = REQUIRED_LIFECYCLE_LITERALS.filter(literal => !(documentLiterals.has(literal) ? visibleDocument : visibleLifecycle).includes(literal));
   const missingCapabilities = (REQUIRED_CAPABILITY_SECTIONS[path] ?? [])
     .filter(name => !hasCapabilitySection(content, name))
     .map(name => `capability section ${name}`);
-  const missingGlobalVerify = hasCapabilitySection(content, "verify") && !REQUIRED_GLOBAL_VERIFY_COMMAND.test(visibleDocument)
+  const missingGlobalVerify = visibleVerify !== undefined && !REQUIRED_GLOBAL_VERIFY_COMMAND.test(visibleVerify)
     ? ["global verify"]
     : [];
   const missingLauncherBoundaries = (REQUIRED_LAUNCHER_BOUNDARIES[path] ?? [])
     .filter(literal => !visibleLifecycle.includes(literal))
     .map(literal => `launcher boundary ${literal}`);
   const missingProjectCommands = REQUIRED_PROJECT_LOCAL_COMMANDS
-    .filter(([label]) => label !== "project-local verify" || hasCapabilitySection(content, "verify"))
-    .filter(([label, pattern]) => !pattern.test(label === "project-local verify" ? visibleDocument : visibleLifecycle))
+    .filter(([label]) => label !== "project-local verify" || visibleVerify !== undefined)
+    .filter(([label, pattern]) => !pattern.test(label === "project-local verify" ? visibleVerify ?? "" : visibleLifecycle))
     .map(([label]) => label);
   const missingContracts = [...missing, ...missingCapabilities, ...missingGlobalVerify, ...missingLauncherBoundaries, ...missingProjectCommands];
   if (missingContracts.length > 0) throw new Error(`${path}: canonical installation lifecycle is missing: ${missingContracts.join(", ")}`);
