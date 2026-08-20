@@ -308,7 +308,11 @@ function renderedCapabilitySection(content: string, name: string): string | unde
 }
 
 function hasCapabilitySection(content: string, name: string): boolean {
-  return renderedCapabilitySection(content, name) !== undefined;
+  const rendered = renderedCapabilitySection(content, name);
+  const marker = collectCapabilityMarkerOffsets(content, name)[0];
+  const install = collectSectionMarkerOffsets(content).get("install")?.[0];
+  const section = marker !== undefined && install !== undefined ? content.slice(marker, install) : "";
+  return rendered !== undefined && (name !== "verify" || /^##[ \t]+[^\n]+/mu.test(section));
 }
 
 
