@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, posix, relative, resolve } from "node:path";
 import { toText } from "hast-util-to-text";
-import type { Element, Root as HastRoot } from "hast";
+import type { Content, Element, Root as HastRoot } from "hast";
 import type { Code, Html, Parents, Root as MdastRoot } from "mdast";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
@@ -79,6 +79,11 @@ const REQUIRED_LAUNCHER_BOUNDARIES: Readonly<Record<string, readonly string[]>> 
     "不定义独立的 Skill payload、runtime tier、Board renderer、schema 或 verdict mode",
   ],
 };
+const REQUIRED_PLATFORM_BOUNDARIES: Readonly<Record<string, string>> = {
+  "README.md": "Native Windows and musl-only Linux are not supported",
+  "README.ko.md": "Native Windows와 musl-only Linux는 local artifact store와 command collector가 지원하지 않으며",
+  "README.zh.md": "Local artifact store 与 command collector 不支持原生 Windows 或 musl-only Linux",
+};
 const REQUIRED_PROJECT_LOCAL_COMMANDS: ReadonlyArray<readonly [string, RegExp]> = [
   ["project-local verify", /(?:^|\s)\.agents\/skills\/traceknot\/bin\/traceknot verify/u],
   ["project-local self-check", /(?:^|\s)\.agents\/skills\/traceknot\/bin\/traceknot self-check/u],
@@ -147,6 +152,21 @@ function visibleHtmlTree(content: string, removePre = false): HastRoot {
   return tree;
 }
 
+function renderedHtmlRange(content: string, start: number, end: number): string {
+  const tree = visibleHtmlTree(content);
+  const overlaps = (node: Content): boolean => {
+    const nodeStart = node.position?.start.offset;
+    const nodeEnd = node.position?.end.offset;
+    const positioned = nodeStart !== undefined && nodeEnd !== undefined;
+    if (node.type === "element" && positioned && nodeStart >= start && nodeEnd <= end) return true;
+    if (node.type === "element") node.children = node.children.filter(overlaps);
+    return positioned && nodeEnd > start && nodeStart < end
+      || node.type === "element" && node.children.length > 0;
+  };
+  tree.children = tree.children.filter(overlaps);
+  return toText(tree);
+}
+
 export function renderedMarkdownText(content: string): string {
   return toText(visibleHtmlTree(content, true));
 }
@@ -155,7 +175,7 @@ function renderedInstallLifecycle(content: string): string {
   const starts = markers.get("install") ?? [];
   const ends = markers.get("documentation") ?? [];
   if (starts.length !== 1 || ends.length !== 1 || ends[0]! <= starts[0]!) return "";
-  return toText(visibleHtmlTree(content.slice(starts[0], ends[0])));
+  return renderedHtmlRange(content, starts[0], ends[0]);
 }
 
 
@@ -247,7 +267,7 @@ function renderedCapabilitySection(content: string, name: string): string | unde
   });
   const ends = collectSectionMarkerOffsets(content).get("install") ?? [];
   if (starts.length !== 1 || ends.length !== 1 || ends[0]! <= starts[0]!) return undefined;
-  return toText(visibleHtmlTree(content.slice(starts[0], ends[0])));
+  return renderedHtmlRange(content, starts[0], ends[0]);
 }
 
 function hasCapabilitySection(content: string, name: string): boolean {
@@ -476,6 +496,9 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
   const missingGlobalLifecycleCommands = REQUIRED_GLOBAL_LIFECYCLE_COMMANDS
     .filter(([, pattern]) => !pattern.test(visibleLifecycle))
     .map(([label]) => label);
+  const missingPlatformBoundary = REQUIRED_PLATFORM_BOUNDARIES[path] !== undefined && !visibleDocument.includes(REQUIRED_PLATFORM_BOUNDARIES[path])
+    ? ["unsupported platform boundary"]
+    : [];
   const missingLauncherBoundaries = (REQUIRED_LAUNCHER_BOUNDARIES[path] ?? [])
     .filter(literal => !visibleLifecycle.includes(literal))
     .map(literal => `launcher boundary ${literal}`);
@@ -483,7 +506,7 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
     .filter(([label]) => label !== "project-local verify" || visibleVerify !== undefined)
     .filter(([label, pattern]) => !pattern.test(label === "project-local verify" ? visibleVerify ?? "" : visibleLifecycle))
     .map(([label]) => label);
-  const missingContracts = [...missing, ...missingCapabilities, ...missingGlobalVerify, ...missingGlobalLifecycleCommands, ...missingLauncherBoundaries, ...missingProjectCommands];
+  const missingContracts = [...missing, ...missingCapabilities, ...missingGlobalVerify, ...missingGlobalLifecycleCommands, ...missingLauncherBoundaries, ...missingPlatformBoundary, ...missingProjectCommands];
   if (missingContracts.length > 0) throw new Error(`${path}: canonical installation lifecycle is missing: ${missingContracts.join(", ")}`);
 }
 

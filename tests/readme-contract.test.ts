@@ -410,6 +410,27 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLifecycleContract("README.md", secondProduct)).toThrow("launcher boundary");
   });
 
+  test("preserves hidden ancestors around lifecycle and capability sections", () => {
+    const hiddenInstall = localizedReadmes[0]
+      .replace("<!-- readme-section:install -->", "<div hidden>\n\n<!-- readme-section:install -->")
+      .replace("<!-- readme-section:documentation -->", "</div>\n\n<!-- readme-section:documentation -->");
+    expect(() => checkReadmeSections("README.md", hiddenInstall)).not.toThrow();
+    expect(() => checkReadmeLifecycleContract("README.md", hiddenInstall)).toThrow("canonical installation lifecycle is missing");
+
+    const hiddenVerify = localizedReadmes[0]
+      .replace("<!-- readme-capability:verify -->", "<div hidden>\n\n<!-- readme-capability:verify -->")
+      .replace("<!-- readme-section:install -->", "</div>\n\n<!-- readme-section:install -->");
+    expect(() => checkReadmeLifecycleContract("README.md", hiddenVerify)).toThrow("global verify");
+  });
+
+  test("enforces unsupported native platform guidance", () => {
+    const reversed = localizedReadmes[0].replace(
+      "Native Windows and musl-only Linux are not supported",
+      "Native Windows and musl-only Linux are supported",
+    );
+    expect(() => checkReadmeLifecycleContract("README.md", reversed)).toThrow("unsupported platform boundary");
+  });
+
   test("documents the curl path only as an optional non-owning launcher", () => {
     const canonical = localizedReadmes[0];
     expect(canonical).toContain("optional prefix launcher/updater");
