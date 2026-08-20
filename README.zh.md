@@ -171,7 +171,7 @@ visual-composition obligation 必须提供绝对路径的 `visualCompositionOrac
 
 独立 producer 可以通过绝对 `executionCompletionPath` 返回 `verification-execution-completion/v1` envelope。Traceknot 会绑定 request、plan、obligation、snapshot、idempotency key、output、artifact 和 oracle digest，并使用 root-owned `/etc/traceknot/trusted-producer.json` 中的 Ed25519 `trusted-producer-policy/v1` 验证签名；不可信或不完整的输入 fail-closed。
 
-默认输出为 JSON。使用 `--format markdown` 获取可读报告，使用 `--report-only --run-id ID` 读取已完成运行而不重新执行命令。退出码为 `0`（PASS/PASS_WITH_ACCEPTED_RISK）、`1`（FAIL）、`2`（BLOCKED）、`3`（INCOMPLETE）、`64`（输入无效）和 `70`（内部错误）。
+默认输出为 JSON。使用 `--format markdown` 获取可读报告，使用 `--report-only --run-id ID` 读取已完成运行而不重新执行命令。退出码：`0` 表示 PASS 或 PASS_WITH_ACCEPTED_RISK，`1` 表示 FAIL，`2` 表示 BLOCKED，`3` 表示 INCOMPLETE，`64` 表示输入无效，`70` 表示内部错误。
 
 <!-- readme-section:install -->
 
