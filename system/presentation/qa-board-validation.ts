@@ -41,7 +41,7 @@ export function parseQaBoardManifest(value: unknown): QaBoardManifest {
   if (!nonnegativeInteger(manifest.sourceRevision) || typeof manifest.sourceState !== "string" || !STATES.has(manifest.sourceState) || typeof manifest.sourceUpdatedAt !== "string" || typeof manifest.generatedAt !== "string" || typeof manifest.verdict !== "string" || !VERDICTS.has(manifest.verdict)) throw new Error("Board manifest identity fields are invalid");
   if (!isIsoUtcTimestamp(manifest.sourceUpdatedAt) || !isIsoUtcTimestamp(manifest.generatedAt)) throw new Error("Board manifest timestamps are invalid");
   const assurance = record(manifest.assurance, "Board manifest assurance");
-  if (!exact(assurance, ["context", "requiredIndependence", "releaseStatus"])) throw new Error("Board manifest assurance is invalid");
+  if (!exact(assurance, ["context", "requiredIndependence", "releaseStatus"]) || !["local", "release"].includes(String(assurance.context)) || !["separate-verification-context", "independent-producer"].includes(String(assurance.requiredIndependence)) || !["not-evaluated", "satisfied", "insufficient"].includes(String(assurance.releaseStatus))) throw new Error("Board manifest assurance is invalid");
   const counts = record(manifest.counts, "Board manifest counts");
   if (!exact(counts, ["mandatory", "passed", "failed", "blocked", "incomplete"]) || Object.values(counts).some(item => !nonnegativeInteger(item))) throw new Error("Board manifest counts are invalid");
   const generatedBy = record(manifest.generatedBy, "Board manifest generatedBy");
@@ -54,6 +54,8 @@ export function parseQaBoardManifest(value: unknown): QaBoardManifest {
     const file = record(candidate, "Board manifest file");
     if (!exact(file, ["path", "role", "sha256", "bytes"], ["artifactDigest", "observationId"]) || typeof file.path !== "string" || !SAFE_PAGE.test(file.path)) throw new Error(`Board manifest file is invalid: ${String(file.path)}`);
     if (paths.has(file.path)) throw new Error("duplicate file declarations");
+    if (file.artifactDigest !== undefined && (typeof file.artifactDigest !== "string" || !DIGEST.test(file.artifactDigest))) throw new Error(`Board manifest artifactDigest is invalid: ${file.path}`);
+    if (file.observationId !== undefined && (typeof file.observationId !== "string" || file.observationId.length === 0)) throw new Error(`Board manifest observationId is invalid: ${file.path}`);
     if (typeof file.sha256 !== "string" || !DIGEST.test(file.sha256) || !nonnegativeInteger(file.bytes)) throw new Error(`Board manifest file is invalid: ${file.path}`);
     paths.add(file.path);
     const expectedRole = file.path === "index.html" ? "entrypoint" : file.path.endsWith(".html") ? "localized-view" : "screenshot-preview";
