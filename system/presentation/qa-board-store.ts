@@ -40,6 +40,7 @@ import {
 } from "./qa-board";
 import { detectQaBoardLocale } from "./qa-board-locale";
 import { containsBoundaryIdentityDeep } from "./session-identity";
+import { isIsoUtcTimestamp } from "./timestamp";
 export type BoardArtifactReader = Readonly<{
   readArtifact: (digest: string) => Promise<Uint8Array>;
 }>;
@@ -452,7 +453,6 @@ const SESSION_ID_MAX = 1024;
 const SESSION_ID_MIN = 8;
 const SESSION_HOST_MAX = 128;
 const SESSION_SAFE_TEXT = /^[^\u0000-\u001f\u007f]+$/u;
-const ISO_TIMESTAMP = /^\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2\d))T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?Z$/;
 const SESSION_STATES = new Set(["CREATED", "BASIS_ESTABLISHED", "DISCOVERY_COMPLETED", "PLANNED", "EXECUTING", "EVIDENCE_EVALUATED", "VERDICT_RESOLVED", "TERMINAL"]);
 const SESSION_VERDICTS: Readonly<Record<string, true>> = { PASS: true, PASS_WITH_ACCEPTED_RISK: true, FAIL: true, BLOCKED: true, INCOMPLETE: true };
 const EVALUATION_STATUSES: Readonly<Record<string, true>> = { ACCEPTED: true, REJECTED: true, INDETERMINATE: true };
@@ -491,11 +491,7 @@ function sessionId(value: unknown, label: string, maxLength: number): string {
 
 function validSessionTimestamp(value: unknown, label: string): string {
   const timestamp = sessionText(value, label, 64);
-  if (!ISO_TIMESTAMP.test(timestamp) || !Number.isFinite(Date.parse(timestamp))) throw new Error(`${label} must be an ISO-8601 UTC timestamp`);
-  const [year, month, day] = timestamp.slice(0, 10).split("-").map(Number) as [number, number, number];
-  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]!;
-  if (day > daysInMonth) throw new Error(`${label} must be an ISO-8601 UTC timestamp`);
+  if (!isIsoUtcTimestamp(timestamp)) throw new Error(`${label} must be an ISO-8601 UTC timestamp`);
   return timestamp;
 }
 
@@ -762,6 +758,9 @@ async function assertCurrentSelector(sessionPath: string, expectedName: string |
 async function ensureStableLinks(sessionFd: number, sessionPath: string): Promise<readonly string[]> {
   const links: Readonly<Record<string, string>> = {
     "index.html": "current/index.html",
+    "index.en.html": "current/index.en.html",
+    "index.ko.html": "current/index.ko.html",
+    "index.zh-CN.html": "current/index.zh-CN.html",
     "manifest.json": "current/manifest.json",
     "current.json": "current/current.json",
   };
@@ -1068,7 +1067,7 @@ async function sessionReclaim(
         manifestValue = undefined;
       }
     }
-    const generatedAt = manifestValue && typeof manifestValue.generatedAt === "string" && ISO_TIMESTAMP.test(manifestValue.generatedAt) ? Date.parse(manifestValue.generatedAt) : NaN;
+    const generatedAt = manifestValue && isIsoUtcTimestamp(manifestValue.generatedAt) ? Date.parse(manifestValue.generatedAt) : NaN;
     const sourceRevision = manifestValue && typeof manifestValue.sourceRevision === "number" && Number.isSafeInteger(manifestValue.sourceRevision) && manifestValue.sourceRevision >= 0 ? manifestValue.sourceRevision : -1;
     revisions.push({ name: entry.name, path, bytes: await sessionDirectoryBytes(path), generatedAt, sourceRevision, runId: manifestValue && typeof manifestValue.runId === "string" ? manifestValue.runId : undefined, sourceState: manifestValue && typeof manifestValue.sourceState === "string" ? manifestValue.sourceState : undefined, malformed: manifestValue === undefined || !Number.isFinite(generatedAt) || sourceRevision < 0 });
   }
@@ -1124,7 +1123,14 @@ export async function verifySessionBoardPublication(stateDir: string, publicatio
   try {
     assertPrivateRootPath(root, "Board state");
     const stableRoot = join(root.canonical, "sessions", publication.sessionKey);
-    const expectedLinks: Readonly<Record<string, string>> = { "index.html": "current/index.html", "manifest.json": "current/manifest.json", "current.json": "current/current.json" };
+    const expectedLinks: Readonly<Record<string, string>> = {
+      "index.html": "current/index.html",
+      "index.en.html": "current/index.en.html",
+      "index.ko.html": "current/index.ko.html",
+      "index.zh-CN.html": "current/index.zh-CN.html",
+      "manifest.json": "current/manifest.json",
+      "current.json": "current/current.json",
+    };
     for (const [name, target] of Object.entries(expectedLinks)) {
       const actual = await readlink(join(stableRoot, name)).catch(() => undefined);
       if (actual !== target) throw new Error(`Board stable link target is invalid: ${name}`);

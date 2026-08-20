@@ -286,7 +286,7 @@ describe("canonical Board publisher", () => {
   test("rejects invalid manifest timestamps and a mismatched session host", async () => {
     const timestampFixture = await boardFixture();
     try {
-      await replaceManifest(timestampFixture.entrypoint, manifest => { manifest.sourceUpdatedAt = "not-a-timestamp"; });
+      await replaceManifest(timestampFixture.entrypoint, manifest => { manifest.sourceUpdatedAt = "2026-02-31T12:00:00Z"; });
       const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${timestampFixture.entrypoint}\n` });
       await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: timestampFixture.root }))
         .rejects.toThrow("manifest timestamps are invalid");
@@ -372,6 +372,19 @@ describe("canonical Board publisher", () => {
         .rejects.toThrow("duplicate file declarations");
     } finally {
       await rm(duplicate.root, { recursive: true, force: true });
+    }
+
+    const wrongRole = await boardFixture();
+    try {
+      await replaceManifest(wrongRole.entrypoint, manifest => {
+        const localized = manifest.files.find(file => file.path === "index.ko.html");
+        if (localized !== undefined) localized.role = "screenshot-preview";
+      });
+      const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${wrongRole.entrypoint}\n` });
+      await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: wrongRole.root }))
+        .rejects.toThrow("manifest role does not match path");
+    } finally {
+      await rm(wrongRole.root, { recursive: true, force: true });
     }
 
     const undeclared = await boardFixture();

@@ -11,9 +11,9 @@ import { fileURLToPath } from "node:url";
 import { decodeHTML } from "entities";
 import { sessionReference, type QaBoardManifest } from "../presentation/qa-board";
 import { containsBoundaryIdentity, containsBoundaryIdentityDeep } from "../presentation/session-identity";
+import { isIsoUtcTimestamp } from "../presentation/timestamp";
 import { closeSecureRoot, openSecureRoot, readSecureRegularFile } from "./local-artifact-store";
 
-const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 
 export const BOARD_PUBLICATION_REQUIRED_CAPABILITIES = Object.freeze([
   "executeCommands",
@@ -229,7 +229,7 @@ function parsePublishedManifest(value: unknown): QaBoardManifest {
   for (const key of ["runId", "requestId", "rootIdentity", "snapshotId", "sourceUpdatedAt", "generatedAt"] as const) {
     if (typeof manifest[key] !== "string" || manifest[key].length === 0) throw Error(`canonical Board publisher manifest ${key} is invalid`);
   }
-  if (!ISO_UTC.test(String(manifest.sourceUpdatedAt)) || !ISO_UTC.test(String(manifest.generatedAt))) throw Error("canonical Board publisher manifest timestamps are invalid");
+  if (!isIsoUtcTimestamp(manifest.sourceUpdatedAt) || !isIsoUtcTimestamp(manifest.generatedAt)) throw Error("canonical Board publisher manifest timestamps are invalid");
   if (!Number.isSafeInteger(manifest.sourceRevision) || Number(manifest.sourceRevision) < 0) throw Error("canonical Board publisher manifest sourceRevision is invalid");
   if (!["CREATED", "BASIS_ESTABLISHED", "DISCOVERY_COMPLETED", "PLANNED", "EXECUTING", "EVIDENCE_EVALUATED", "VERDICT_RESOLVED", "TERMINAL"].includes(String(manifest.sourceState))) throw Error("canonical Board publisher manifest sourceState is invalid");
   if (!["PASS", "PASS_WITH_ACCEPTED_RISK", "FAIL", "BLOCKED", "INCOMPLETE"].includes(String(manifest.verdict))) throw Error("canonical Board publisher manifest verdict is invalid");
@@ -249,6 +249,8 @@ function parsePublishedManifest(value: unknown): QaBoardManifest {
     if (!closedKeys(file, ["path", "role", "sha256", "bytes"], ["artifactDigest", "observationId"])) throw Error("canonical Board publisher manifest file keys are invalid");
     if (typeof file.path !== "string" || !/^(?:index(?:\.(?:en|ko|zh-CN))?\.html|evidence\/[0-9a-f]{64}\.png)$/.test(file.path)) throw Error("canonical Board publisher manifest file path is invalid");
     if (!["entrypoint", "localized-view", "screenshot-preview"].includes(String(file.role)) || typeof file.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(file.sha256) || !Number.isSafeInteger(file.bytes) || Number(file.bytes) < 0) throw Error("canonical Board publisher manifest file contract is invalid");
+    const expectedRole = file.path === "index.html" ? "entrypoint" : file.path.endsWith(".html") ? "localized-view" : "screenshot-preview";
+    if (file.role !== expectedRole) throw Error(`canonical Board publisher manifest role does not match path: ${file.path}`);
     if (file.artifactDigest !== undefined && (typeof file.artifactDigest !== "string" || !/^[0-9a-f]{64}$/.test(file.artifactDigest))) throw Error("canonical Board publisher manifest artifact digest is invalid");
     if (file.observationId !== undefined && (typeof file.observationId !== "string" || file.observationId.length === 0)) throw Error("canonical Board publisher manifest observation ID is invalid");
     if (file.path === "index.html" && file.role === "entrypoint") entrypoints += 1;
@@ -373,7 +375,7 @@ export async function validatePublishedBoard(
       let bytes: Uint8Array;
       try { bytes = await readSecureRegularFile(root.fd, join(revisionRelative, file.path), 128 * 1024 * 1024); } catch { throw Error(`canonical Board publisher immutable file is not secure: ${file.path}`); }
       if (bytes.byteLength !== file.bytes || digest(bytes) !== file.sha256) throw Error(`canonical Board publisher immutable file hash mismatch: ${file.path}`);
-      if (expected?.sessionId !== undefined && (file.role === "entrypoint" || file.role === "localized-view")) {
+      if (expected?.sessionId !== undefined && file.path.endsWith(".html")) {
         let text: string;
         try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { throw Error(`canonical Board publisher page is not UTF-8: ${file.path}`); }
         if (containsBoundaryIdentity(text.includes("&") ? decodeHTML(text) : text, expected.sessionId)) throw Error(`canonical Board publisher page exposes the raw session ID: ${file.path}`);

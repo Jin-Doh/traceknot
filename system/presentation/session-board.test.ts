@@ -121,6 +121,9 @@ describe("session Board contract", () => {
     expect(await readlink(join(sessionRoot, "index.html"))).toBe("current/index.html");
     expect(await readlink(join(sessionRoot, "manifest.json"))).toBe("current/manifest.json");
     expect(await readlink(join(sessionRoot, "current.json"))).toBe("current/current.json");
+    expect(await readlink(join(sessionRoot, "index.en.html"))).toBe("current/index.en.html");
+    expect(await readlink(join(sessionRoot, "index.ko.html"))).toBe("current/index.ko.html");
+    expect(await readlink(join(sessionRoot, "index.zh-CN.html"))).toBe("current/index.zh-CN.html");
     expect(await readlink(join(sessionRoot, "current"))).toBe("boards/1-inv-1");
     expect((await readFile(publication.currentPath, "utf8"))).not.toContain("raw-session-id");
     expect(await readFile(join(publication.directory, "manifest.json"), "utf8")).not.toContain("raw-session-id");
