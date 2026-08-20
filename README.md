@@ -200,6 +200,13 @@ For a project-local installation, run `npx skills update traceknot --yes` and `n
 
 For a global Skills CLI install, invoke `$HOME/.agents/skills/traceknot/bin/traceknot`; for a project-local install, run `.agents/skills/traceknot/bin/traceknot` from the project root. Run `$HOME/.agents/skills/traceknot/bin/traceknot self-check` after a global installation or update; for a project-local installation, substitute `.agents/skills/traceknot/bin/traceknot self-check`. Session Board publication uses `$HOME/.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]` globally and `.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]` for a project-local installation. Do not fall back to an unrelated global executable. After read-back validation the publisher prints `Traceknot Board: file://.../sessions/<session-key>/index.html`. See [QA Board](docs/qa-board.md) for the `traceknot-session-board-update/v1` envelope, unavailable behavior, and `boardMaxPerSession` retention.
 
+```sh
+$HOME/.agents/skills/traceknot/bin/traceknot self-check
+.agents/skills/traceknot/bin/traceknot self-check
+$HOME/.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR
+.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR
+```
+
 ### Legacy curl launcher/bootstrap — optional
 
 The legacy curl entrypoint remains an optional prefix launcher/updater for environments that need it. It does not create, replace, retarget, update, or remove a Skills CLI-owned registration and does not define a separate Skill payload, runtime tier, Board renderer, schema, or verdict mode. Reinstall or update removes only a legacy symlink that points into the same prefix. The Skills CLI path above remains canonical. Inspect the script or use a fixed tag before running it in a controlled environment.

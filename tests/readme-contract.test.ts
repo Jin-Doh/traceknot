@@ -385,6 +385,25 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLifecycleContract("README.md", projectOnly)).toThrow("global Board update");
   });
 
+  test("requires executable command lines rather than commented or wrapped text", () => {
+    const requirements = [
+      ["$HOME/.agents/skills/traceknot/bin/traceknot verify", "global verify"],
+      [".agents/skills/traceknot/bin/traceknot verify", "project-local verify"],
+      ["$HOME/.agents/skills/traceknot/bin/traceknot self-check", "global self-check"],
+      [".agents/skills/traceknot/bin/traceknot self-check", "project-local self-check"],
+      ["$HOME/.agents/skills/traceknot/bin/traceknot board update", "global Board update"],
+      [".agents/skills/traceknot/bin/traceknot board update", "project-local Board update"],
+    ] as const;
+    let commented = localizedReadmes[0];
+    for (const [command] of requirements) commented = commented.replace(`\n${command}`, `\n# ${command}`);
+    for (const [, label] of requirements) expect(() => checkReadmeLifecycleContract("README.md", commented)).toThrow(label);
+    const wrapped = localizedReadmes[0].replace(
+      "$HOME/.agents/skills/traceknot/bin/traceknot verify",
+      "echo $HOME/.agents/skills/traceknot/bin/traceknot verify",
+    );
+    expect(() => checkReadmeLifecycleContract("README.md", wrapped)).toThrow("global verify");
+  });
+
   test("requires the project-local Verify path when the heading is localized", () => {
     const localizedHeading = localizedReadmes[0]
       .replace("## Verify CLI", "## 검증 명령")

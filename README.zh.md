@@ -175,6 +175,13 @@ npx skills remove traceknot --global --yes
 
 全局 Skills CLI 安装应调用 `$HOME/.agents/skills/traceknot/bin/traceknot`；项目本地安装则从项目根目录调用 `.agents/skills/traceknot/bin/traceknot`。全局安装或更新后运行 `$HOME/.agents/skills/traceknot/bin/traceknot self-check`；项目本地安装必须改用 `.agents/skills/traceknot/bin/traceknot self-check`。Session Board 发布也应按安装范围选择：全局安装使用 `$HOME/.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]`，项目本地安装使用 `.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]`。不得回退到无关的全局可执行文件。Read-back 验证后输出 `Traceknot Board: file://.../sessions/<session-key>/index.html`。`traceknot-session-board-update/v1` envelope、prerequisite 缺失行为和 `boardMaxPerSession` 保留策略请参阅 [QA Board](docs/qa-board.md)。
 
+```sh
+$HOME/.agents/skills/traceknot/bin/traceknot self-check
+.agents/skills/traceknot/bin/traceknot self-check
+$HOME/.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR
+.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR
+```
+
 ### Legacy curl launcher/bootstrap — 可选
 
 Legacy curl entrypoint 仅作为可选的 prefix launcher/updater 保留。它不会创建、替换、重新指向、更新或删除 Skills CLI 拥有的注册，也不定义独立的 Skill payload、runtime tier、Board renderer、schema 或 verdict mode。重新安装或更新只会删除指向同一 prefix 的 legacy symlink。上面的 Skills CLI 路径是规范路径。运行前请检查脚本或固定到具体 tag。

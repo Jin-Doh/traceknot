@@ -60,10 +60,10 @@ const REQUIRED_LIFECYCLE_LITERALS = [
   "TRACEKNOT_SKILLS_ROOT",
   "traceknot-update",
 ] as const;
-const REQUIRED_GLOBAL_VERIFY_COMMAND = /(?:^|\s)\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot verify/u;
+const REQUIRED_GLOBAL_VERIFY_COMMAND = /^\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot verify(?:\s|$)/u;
 const REQUIRED_GLOBAL_LIFECYCLE_COMMANDS: ReadonlyArray<readonly [string, RegExp]> = [
-  ["global self-check", /(?:^|\s)\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot self-check/u],
-  ["global Board update", /(?:^|\s)\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot board update/u],
+  ["global self-check", /^\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot self-check(?:\s|$)/u],
+  ["global Board update", /^\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot board update(?:\s|$)/u],
 ];
 const REQUIRED_LAUNCHER_BOUNDARIES: Readonly<Record<string, readonly string[]>> = {
   "README.md": [
@@ -90,9 +90,9 @@ const REQUIRED_BUN_MINIMUM_BOUNDARIES: Readonly<Record<string, string>> = {
   "README.zh.md": "Bun 1.3.14 或更高版本",
 };
 const REQUIRED_PROJECT_LOCAL_COMMANDS: ReadonlyArray<readonly [string, RegExp]> = [
-  ["project-local verify", /(?:^|\s)\.agents\/skills\/traceknot\/bin\/traceknot verify/u],
-  ["project-local self-check", /(?:^|\s)\.agents\/skills\/traceknot\/bin\/traceknot self-check/u],
-  ["project-local Board update", /(?:^|\s)\.agents\/skills\/traceknot\/bin\/traceknot board update/u],
+  ["project-local verify", /^\.agents\/skills\/traceknot\/bin\/traceknot verify(?:\s|$)/u],
+  ["project-local self-check", /^\.agents\/skills\/traceknot\/bin\/traceknot self-check(?:\s|$)/u],
+  ["project-local Board update", /^\.agents\/skills\/traceknot\/bin\/traceknot board update(?:\s|$)/u],
 ];
 const REQUIRED_OPERATIONAL_BLOCK_LITERALS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
   "README.md": {
@@ -263,13 +263,33 @@ function collectSharedCommands(content: string, path: string): Map<string, strin
 function collectOperationalCommands(content: string, path: string): Map<string, string> {
   return collectMarkedCommands(content, path, "operational-command");
 }
-function renderedCapabilitySection(content: string, name: string): string | undefined {
-  const starts: number[] = [];
+function collectCapabilityMarkerOffsets(content: string, name: string): number[] {
+  const offsets: number[] = [];
   visit(markdownTree(content), "html", (node: Html) => {
-    if (node.value.trim() === `<!-- readme-capability:${name} -->` && node.position?.start.offset !== undefined) {
-      starts.push(node.position.start.offset);
-    }
+    if (node.value.trim() === `<!-- readme-capability:${name} -->` && node.position?.start.offset !== undefined) offsets.push(node.position.start.offset);
   });
+  return offsets;
+}
+
+function fencedCommandLines(content: string, start: number | undefined, end: number | undefined): string[] {
+  if (start === undefined || end === undefined || end <= start) return [];
+  const lines: string[] = [];
+  const visibleText = renderedHtmlRange(content, start, end);
+  visit(markdownTree(content), "code", (node: Code) => {
+    const nodeStart = node.position?.start.offset;
+    const nodeEnd = node.position?.end.offset;
+    if (nodeStart === undefined || nodeEnd === undefined || nodeStart < start || nodeEnd > end || !isClosedFencedCode(content, node)) return;
+    lines.push(...node.value.split(/\r?\n/u).map(line => line.trim()).filter(line => line.length > 0 && !line.startsWith("#") && visibleText.includes(line)));
+  });
+  return lines;
+}
+
+function hasExecutableLine(lines: readonly string[], pattern: RegExp): boolean {
+  return lines.some(line => pattern.test(line));
+}
+
+function renderedCapabilitySection(content: string, name: string): string | undefined {
+  const starts = collectCapabilityMarkerOffsets(content, name);
   const ends = collectSectionMarkerOffsets(content).get("install") ?? [];
   if (starts.length !== 1 || ends.length !== 1 || ends[0]! <= starts[0]!) return undefined;
   return renderedHtmlRange(content, starts[0], ends[0]);
@@ -490,16 +510,21 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
   const visibleDocument = toText(visibleHtmlTree(content));
   const visibleLifecycle = renderedInstallLifecycle(content);
   const visibleVerify = renderedCapabilitySection(content, "verify");
+  const sectionOffsets = collectSectionMarkerOffsets(content);
+  const installOffset = sectionOffsets.get("install")?.[0];
+  const documentationOffset = sectionOffsets.get("documentation")?.[0];
+  const lifecycleCommandLines = fencedCommandLines(content, installOffset, documentationOffset);
+  const verifyCommandLines = fencedCommandLines(content, collectCapabilityMarkerOffsets(content, "verify")[0], installOffset);
   const documentLiterals = new Set(["macOS", "Linux", "libc.so.6", "musl", "Windows"]);
   const missing = REQUIRED_LIFECYCLE_LITERALS.filter(literal => !(documentLiterals.has(literal) ? visibleDocument : visibleLifecycle).includes(literal));
   const missingCapabilities = (REQUIRED_CAPABILITY_SECTIONS[path] ?? [])
     .filter(name => !hasCapabilitySection(content, name))
     .map(name => `capability section ${name}`);
-  const missingGlobalVerify = visibleVerify !== undefined && !REQUIRED_GLOBAL_VERIFY_COMMAND.test(visibleVerify)
+  const missingGlobalVerify = visibleVerify !== undefined && !hasExecutableLine(verifyCommandLines, REQUIRED_GLOBAL_VERIFY_COMMAND)
     ? ["global verify"]
     : [];
   const missingGlobalLifecycleCommands = REQUIRED_GLOBAL_LIFECYCLE_COMMANDS
-    .filter(([, pattern]) => !pattern.test(visibleLifecycle))
+    .filter(([, pattern]) => !hasExecutableLine(lifecycleCommandLines, pattern))
     .map(([label]) => label);
   const missingPlatformBoundary = REQUIRED_PLATFORM_BOUNDARIES[path] !== undefined && !visibleDocument.includes(REQUIRED_PLATFORM_BOUNDARIES[path])
     ? ["unsupported platform boundary"]
@@ -512,7 +537,7 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
     .map(literal => `launcher boundary ${literal}`);
   const missingProjectCommands = REQUIRED_PROJECT_LOCAL_COMMANDS
     .filter(([label]) => label !== "project-local verify" || visibleVerify !== undefined)
-    .filter(([label, pattern]) => !pattern.test(label === "project-local verify" ? visibleVerify ?? "" : visibleLifecycle))
+    .filter(([label, pattern]) => !hasExecutableLine(label === "project-local verify" ? verifyCommandLines : lifecycleCommandLines, pattern))
     .map(([label]) => label);
   const missingContracts = [...missing, ...missingCapabilities, ...missingGlobalVerify, ...missingGlobalLifecycleCommands, ...missingLauncherBoundaries, ...missingPlatformBoundary, ...missingBunMinimum, ...missingProjectCommands];
   if (missingContracts.length > 0) throw new Error(`${path}: canonical installation lifecycle is missing: ${missingContracts.join(", ")}`);
