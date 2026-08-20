@@ -424,6 +424,12 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLifecycleContract("README.md", invalid)).toThrow("global Board update");
     expect(() => checkReadmeLifecycleContract("README.md", invalid)).toThrow("project-local Board update");
   });
+  test("rejects help-only self-check examples", () => {
+    const invalid = localizedReadmes[0]
+      .replace("\n$HOME/.agents/skills/traceknot/bin/traceknot self-check", "\n$HOME/.agents/skills/traceknot/bin/traceknot self-check --help")
+      .replace("\n.agents/skills/traceknot/bin/traceknot self-check", "\n.agents/skills/traceknot/bin/traceknot self-check --help");
+    expect(() => checkReadmeLifecycleContract("README.md", invalid)).toThrow("global self-check");
+  });
 
   test("requires the project-local Verify path when the heading is localized", () => {
     const localizedHeading = localizedReadmes[0]
