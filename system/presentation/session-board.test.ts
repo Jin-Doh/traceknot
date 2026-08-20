@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, readlink, readdir, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readlink, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseSessionBoardUpdate, publishSessionBoardUpdate, sessionBoardKey, verifySessionBoardPublication, type SessionBoardUpdate } from "./qa-board-store";
@@ -124,6 +124,7 @@ describe("session Board contract", () => {
     expect(await readlink(join(sessionRoot, "index.en.html"))).toBe("current/index.en.html");
     expect(await readlink(join(sessionRoot, "index.ko.html"))).toBe("current/index.ko.html");
     expect(await readlink(join(sessionRoot, "index.zh-CN.html"))).toBe("current/index.zh-CN.html");
+    expect(await readlink(join(sessionRoot, "evidence"))).toBe("current/evidence");
     expect(await readlink(join(sessionRoot, "current"))).toBe("boards/1-inv-1");
     expect((await readFile(publication.currentPath, "utf8"))).not.toContain("raw-session-id");
     expect(await readFile(join(publication.directory, "manifest.json"), "utf8")).not.toContain("raw-session-id");
@@ -251,11 +252,23 @@ describe("session Board contract", () => {
       retentionPolicy: { boardMaxPerSession: 1 },
     })).rejects.toThrow("unsafe characters");
 
+
     expect(JSON.parse(await readFile(current.currentPath, "utf8"))).toMatchObject({ revisionPath: "boards/2-current-preflight" });
     expect(await readFile(join(current.directory, "index.html"))).toEqual(indexBefore);
     expect(await readFile(join(current.directory, "manifest.json"))).toEqual(manifestBefore);
     expect(await stat(join(current.directory, ".unsafe"))).toBeDefined();
     await expect(stat(join(fixtureValue.stateDir, "sessions", current.sessionKey, "boards", "3-incoming-preflight"))).rejects.toThrow();
+  });
+  test("fails closed when existing revision inventory cannot be read", async () => {
+    const fixtureValue = await fixture();
+    const first = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1")), ...fixtureValue });
+    const boardsPath = join(fixtureValue.stateDir, "sessions", first.sessionKey, "boards");
+    await chmod(boardsPath, 0o300);
+    try {
+      await expect(publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(2, "inv-2")), ...fixtureValue })).rejects.toThrow();
+    } finally {
+      await chmod(boardsPath, 0o700);
+    }
   });
 
   test("rotates active revisions by the session maximum without deleting current", async () => {

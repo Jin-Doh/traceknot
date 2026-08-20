@@ -761,6 +761,7 @@ async function ensureStableLinks(sessionFd: number, sessionPath: string): Promis
     "index.en.html": "current/index.en.html",
     "index.ko.html": "current/index.ko.html",
     "index.zh-CN.html": "current/index.zh-CN.html",
+    "evidence": "current/evidence",
     "manifest.json": "current/manifest.json",
     "current.json": "current/current.json",
   };
@@ -1053,7 +1054,10 @@ async function sessionReclaim(
   apply: boolean,
   removeLast?: string,
 ): Promise<void> {
-  const entries = await readdir(boardsPath, { withFileTypes: true }).catch(() => []);
+  const entries = await readdir(boardsPath, { withFileTypes: true }).catch(error => {
+    if (hasErrno(error, 2)) return [];
+    throw error;
+  });
   const revisions: SessionRevision[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.isSymbolicLink() || !SAFE_BOARD_NAME.test(entry.name)) continue;
@@ -1127,6 +1131,7 @@ export async function verifySessionBoardPublication(stateDir: string, publicatio
       "index.html": "current/index.html",
       "index.en.html": "current/index.en.html",
       "index.ko.html": "current/index.ko.html",
+      "evidence": "current/evidence",
       "index.zh-CN.html": "current/index.zh-CN.html",
       "manifest.json": "current/manifest.json",
       "current.json": "current/current.json",
