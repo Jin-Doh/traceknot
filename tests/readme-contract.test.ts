@@ -410,6 +410,14 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLifecycleContract("README.md", hidden)).toThrow("global self-check");
   });
 
+  test("requires mandatory Board update arguments", () => {
+    const invalid = localizedReadmes[0]
+      .replace("\n$HOME/.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR", "\n$HOME/.agents/skills/traceknot/bin/traceknot board update --help")
+      .replace("\n.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR", "\n.agents/skills/traceknot/bin/traceknot board update");
+    expect(() => checkReadmeLifecycleContract("README.md", invalid)).toThrow("global Board update");
+    expect(() => checkReadmeLifecycleContract("README.md", invalid)).toThrow("project-local Board update");
+  });
+
   test("requires the project-local Verify path when the heading is localized", () => {
     const localizedHeading = localizedReadmes[0]
       .replace("## Verify CLI", "## 검증 명령")
@@ -454,6 +462,12 @@ describe("README localization section contract", () => {
       "Native Windows and musl-only Linux are supported",
     );
     expect(() => checkReadmeLifecycleContract("README.md", reversed)).toThrow("unsupported platform boundary");
+  });
+
+  test("does not accept platform semantics preserved only in fenced code", () => {
+    const boundary = "Native Windows and musl-only Linux are not supported";
+    const codeOnly = `${localizedReadmes[0].replace(boundary, "Native Windows and musl-only Linux are supported")}\n\n\`\`\`text\n${boundary}\n\`\`\``;
+    expect(() => checkReadmeLifecycleContract("README.md", codeOnly)).toThrow("unsupported platform boundary");
   });
 
   test("enforces the Bun minimum-version guidance", () => {

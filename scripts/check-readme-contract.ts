@@ -63,7 +63,7 @@ const REQUIRED_LIFECYCLE_LITERALS = [
 const REQUIRED_GLOBAL_VERIFY_COMMAND = /^\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot verify(?:\s|$)/u;
 const REQUIRED_GLOBAL_LIFECYCLE_COMMANDS: ReadonlyArray<readonly [string, RegExp]> = [
   ["global self-check", /^\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot self-check(?:\s|$)/u],
-  ["global Board update", /^\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot board update(?:\s|$)/u],
+  ["global Board update", /^\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot board update --input UPDATE\.json --state-dir DIR(?:\s|$)/u],
 ];
 const REQUIRED_LAUNCHER_BOUNDARIES: Readonly<Record<string, readonly string[]>> = {
   "README.md": [
@@ -97,7 +97,7 @@ const REQUIRED_NODE_MINIMUM_BOUNDARIES: Readonly<Record<string, string>> = {
 const REQUIRED_PROJECT_LOCAL_COMMANDS: ReadonlyArray<readonly [string, RegExp]> = [
   ["project-local verify", /^\.agents\/skills\/traceknot\/bin\/traceknot verify(?:\s|$)/u],
   ["project-local self-check", /^\.agents\/skills\/traceknot\/bin\/traceknot self-check(?:\s|$)/u],
-  ["project-local Board update", /^\.agents\/skills\/traceknot\/bin\/traceknot board update(?:\s|$)/u],
+  ["project-local Board update", /^\.agents\/skills\/traceknot\/bin\/traceknot board update --input UPDATE\.json --state-dir DIR(?:\s|$)/u],
 ];
 const REQUIRED_OPERATIONAL_BLOCK_LITERALS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
   "README.md": {
@@ -519,7 +519,7 @@ export function checkOperationalCommandBlocks(path: string, content: string, req
   }
 }
 export function checkReadmeLifecycleContract(path: string, content: string): void {
-  const visibleDocument = toText(visibleHtmlTree(content));
+  const visibleDocument = renderedMarkdownText(content);
   const visibleLifecycle = renderedInstallLifecycle(content);
   const visibleVerify = renderedCapabilitySection(content, "verify");
   const sectionOffsets = collectSectionMarkerOffsets(content);
