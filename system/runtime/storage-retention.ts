@@ -201,11 +201,12 @@ function safeEntry(value: string): boolean {
   return safeId(value) || (/^\.[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value) && !value.includes(".."));
 }
 const SAFE_BOARD_ENTRY = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
+const SAFE_BOARD_STAGING_ENTRY = /^\.(?:pending|staging)-(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
 function safeStoragePath(relativePath: string): boolean {
   const components = relativePath.split("/");
   return components.every((component, index) => index === 3
     && ((components[0] === "runs" && components[2] === "boards") || (components[0] === "sessions" && components[2] === "boards"))
-    ? SAFE_BOARD_ENTRY.test(component)
+    ? SAFE_BOARD_ENTRY.test(component) || SAFE_BOARD_STAGING_ENTRY.test(component)
     : safeEntry(component));
 }
 
@@ -659,7 +660,17 @@ async function inspectSessionBoards(stateDir: string, now: number): Promise<{ bo
       const relativePath = `sessions/${session.name}/boards/${entry.name}`;
       const boardPath = join(boardsRoot, entry.name);
       if (!SAFE_BOARD_ENTRY.test(entry.name)) {
-        if (entry.isSymbolicLink()) symlinks.push(relativePath);
+        if (entry.isSymbolicLink()) {
+          symlinks.push(relativePath);
+          continue;
+        }
+        if (!SAFE_BOARD_STAGING_ENTRY.test(entry.name)) continue;
+        const pendingStat = await safeStat(boardPath);
+        if (pendingStat?.isDirectory) {
+          const pendingSize = await directorySize(boardPath);
+          staging.push({ kind: "staging", path: boardPath, relativePath, bytes: pendingSize.bytes, allocatedBytes: pendingSize.allocatedBytes, mtimeMs: Math.max(pendingStat.mtimeMs, pendingSize.mtimeMs), sessionKey: session.name });
+          symlinks.push(...pendingSize.symlinks.map(item => `${relativePath}/${item}`));
+        }
         continue;
       }
       if (entry.isSymbolicLink()) {
@@ -1174,7 +1185,7 @@ async function applyCandidates(inventory: StorageInventory, candidates: StorageM
   const deleted = { boards: [] as string[], runs: [] as string[], objects: [] as string[], collector: [] as string[], staging: [] as string[] };
   for (const [key, paths] of Object.entries(candidates) as [keyof typeof deleted, readonly string[]][]) {
     for (const relativePath of paths) {
-      const useArtifactRoot = key === "objects" || key === "collector" || key === "staging" && !relativePath.startsWith("runs/");
+      const useArtifactRoot = key === "objects" || key === "collector" || key === "staging" && !relativePath.startsWith("runs/") && !relativePath.startsWith("sessions/");
       const lock = useArtifactRoot ? artifactLock : stateLock;
       if (!lock) continue;
       const leasedEphemeralRoot = (key === "collector" || key === "staging") && !relativePath.includes("/") && (relativePath.startsWith(".collector-") || relativePath.startsWith(".staging-"));

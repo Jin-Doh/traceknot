@@ -499,7 +499,26 @@ describe("storage retention", () => {
     expect((await stat(boardPath)).isFile()).toBe(true);
   });
 
+  test("reclaims crashed pending session Board directories", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"2".repeat(64)}`;
+    const pendingPath = join(state, "sessions", sessionKey, "boards", ".pending-00000000-0000-4000-8000-000000000000");
+    await mkdir(pendingPath, { recursive: true });
+    const partialPath = join(pendingPath, "partial");
+    await writeFile(partialPath, "partial");
+    await utimes(pendingPath, new Date(OLD), new Date(OLD));
+    await utimes(partialPath, new Date(OLD), new Date(OLD));
+
+    const inventory = await inspectStorage({ stateDir: state, artifactDir: artifacts, now: NOW });
+    expect(inventory.staging).toEqual(expect.arrayContaining([expect.objectContaining({
+      relativePath: `sessions/${sessionKey}/boards/.pending-00000000-0000-4000-8000-000000000000`,
+    })]));
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, graceMs: 0 }, apply: true });
+    expect(applied.deleted.staging).toContain(`sessions/${sessionKey}/boards/.pending-00000000-0000-4000-8000-000000000000`);
+    expect(await stat(pendingPath).catch(() => undefined)).toBeUndefined();
+  });
   test("malformed Board manifests remain protected from automatic deletion", async () => {
+
     const { state, artifacts } = await fixture();
     await run(state, "active", { state: "EXECUTING", updatedAt: NOW });
     await board(state, "active", "damaged", OLD);
