@@ -95,6 +95,13 @@ describe("session Board contract", () => {
     }
   });
 
+  test("rejects a boundary-delimited ID after an unpaired low surrogate", async () => {
+    const fixtureValue = await fixture();
+    const sessionId = "abcdefgh";
+    const unsafe = { ...update(1, "inv-1"), sessionId, view: { ...view(1), changeSummary: `A\uDC00${sessionId}` } };
+    await expect(publishSessionBoardUpdate({ update: parseSessionBoardUpdate(unsafe), ...fixtureValue })).rejects.toThrow("raw session ID");
+  });
+
   test("rejects the raw session ID in persisted envelope fields", async () => {
     const sessionId = "raw-session-id";
     for (const overrides of [{ invocationId: sessionId }, { sessionHost: `host ${sessionId}` }]) {

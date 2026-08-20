@@ -39,6 +39,7 @@ import {
 
 } from "./qa-board";
 import { detectQaBoardLocale } from "./qa-board-locale";
+import { containsBoundaryIdentity } from "./session-identity";
 export type BoardArtifactReader = Readonly<{
   readArtifact: (digest: string) => Promise<Uint8Array>;
 }>;
@@ -566,33 +567,8 @@ function validateSessionPresentation(value: unknown, path = "$", seen = new Set<
   }
   seen.delete(value);
 }
-function codePointAt(value: string, index: number): string | undefined {
-  const codePoint = value.codePointAt(index);
-  return codePoint === undefined ? undefined : String.fromCodePoint(codePoint);
-}
-function codePointBefore(value: string, index: number): string | undefined {
-  if (index <= 0) return undefined;
-  const trailing = value.charCodeAt(index - 1);
-  const startsAt = trailing >= 0xdc00 && trailing <= 0xdfff && index >= 2 ? index - 2 : index - 1;
-  return codePointAt(value, startsAt);
-}
-function isSessionIdentityBoundary(character: string | undefined): boolean {
-  return character === undefined || !/[\p{L}\p{N}._-]/u.test(character);
-}
-
-
 function sessionPresentationContains(value: unknown, sessionIdValue: string, seen = new Set<unknown>()): boolean {
-  if (typeof value === "string") {
-    let index = value.indexOf(sessionIdValue);
-    while (index >= 0) {
-      const before = codePointBefore(value, index);
-      const afterIndex = index + sessionIdValue.length;
-      const after = afterIndex === value.length ? undefined : codePointAt(value, afterIndex);
-      if (isSessionIdentityBoundary(before) && isSessionIdentityBoundary(after)) return true;
-      index = value.indexOf(sessionIdValue, index + 1);
-    }
-    return false;
-  }
+  if (typeof value === "string") return containsBoundaryIdentity(value, sessionIdValue);
   if (value === null || typeof value !== "object" || seen.has(value)) return false;
   seen.add(value);
   const found = Array.isArray(value)

@@ -53,7 +53,7 @@ async function sessionBoard(
   const html = `<html>${boardId}</html>`;
   await mkdir(path, { recursive: true });
   await writeFile(join(path, "index.html"), html);
-  await writeFile(join(path, "manifest.json"), JSON.stringify({
+  const manifestBytes = Buffer.from(JSON.stringify({
     schemaVersion: "traceknot-qa-board/v1",
     sessionKey,
     runId: input.runId,
@@ -72,15 +72,16 @@ async function sessionBoard(
     generatedBy: { invocationId: boardId.length > 128 ? boardId.slice(boardId.indexOf("-") + 1) : boardId, sessionHost: "omp", sessionRef: sessionKey },
     files: [{ path: "index.html", role: "entrypoint", sha256: createHash("sha256").update(html).digest("hex"), bytes: Buffer.byteLength(html) }],
   }));
+  await writeFile(join(path, "manifest.json"), manifestBytes);
   await writeFile(join(path, "current.json"), JSON.stringify({
     schemaVersion: "traceknot-session-board-current/v1",
     sessionKey,
     sourceRevision: input.sourceRevision,
-    invocationId: boardId,
+    invocationId: boardId.length > 128 ? boardId.slice(boardId.indexOf("-") + 1) : boardId,
     revisionPath: `boards/${boardId}`,
     entrypoint: "index.html",
     entrypointSha256: createHash("sha256").update(html).digest("hex"),
-    manifestSha256: "a".repeat(64),
+    manifestSha256: createHash("sha256").update(manifestBytes).digest("hex"),
     sessionRef: sessionKey,
     generatedAt: input.generatedAt,
     authoritative: false,
@@ -280,6 +281,23 @@ describe("storage retention", () => {
     expect(applied.deleted.boards).toEqual([]);
     expect(applied.protected.malformed).toContain(`${prefix}1-old`);
     expect(applied.protected.malformed).toContain(`${prefix}2-new`);
+    expect(applied.protected.symlinks).toContain(`sessions/${sessionKey}/current`);
+  });
+
+  test("fails closed when the selected session revision is malformed", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"f".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
+    await sessionBoard(state, sessionKey, "1-recoverable", { runId: "run-a", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "2-broken-current", { runId: "run-b", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+    await writeFile(join(sessionRoot, "boards", "2-broken-current", "current.json"), "{");
+    await symlink("boards/2-broken-current", join(sessionRoot, "current"));
+
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).toEqual([]);
+    expect(applied.protected.malformed).toContain(`${prefix}1-recoverable`);
+    expect(applied.protected.malformed).toContain(`${prefix}2-broken-current`);
     expect(applied.protected.symlinks).toContain(`sessions/${sessionKey}/current`);
   });
 

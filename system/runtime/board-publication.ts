@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sessionReference, type QaBoardManifest } from "../presentation/qa-board";
+import { containsBoundaryIdentity } from "../presentation/session-identity";
 import { closeSecureRoot, openSecureRoot, readSecureRegularFile } from "./local-artifact-store";
 
 export const BOARD_PUBLICATION_REQUIRED_CAPABILITIES = Object.freeze([
@@ -188,18 +189,6 @@ function boardUriFromOutput(stdout: string, stderr: string): string {
   if (unique.length === 0) throw Error("canonical Board publisher did not report a file URI");
   if (unique.length > 1) throw Error("canonical Board publisher reported conflicting file URIs");
   return unique[0]!;
-}
-function containsBoundaryIdentity(value: string, identity: string): boolean {
-  let index = value.indexOf(identity);
-  while (index >= 0) {
-    const before = index === 0 ? undefined : value[index - 1];
-    const afterIndex = index + identity.length;
-    const after = afterIndex === value.length ? undefined : value[afterIndex];
-    const boundary = (character: string | undefined): boolean => character === undefined || !/[\p{L}\p{N}._-]/u.test(character);
-    if (boundary(before) && boundary(after)) return true;
-    index = value.indexOf(identity, index + 1);
-  }
-  return false;
 }
 
 function closedKeys(value: Readonly<Record<string, unknown>>, required: readonly string[], optional: readonly string[] = []): boolean {

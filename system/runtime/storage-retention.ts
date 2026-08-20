@@ -255,7 +255,28 @@ function validBoardManifest(value: unknown): value is JsonRecord {
     && (file.artifactDigest === undefined || typeof file.artifactDigest === "string" && DIGEST.test(file.artifactDigest))
     && (file.observationId === undefined || nonempty(file.observationId)));
 }
-async function validBoardContents(boardPath: string, manifest: unknown): Promise<boolean> {
+function validSessionBoardCurrent(
+  value: unknown,
+  manifest: JsonRecord,
+  boardId: string,
+  entrypointSha256: string,
+  manifestSha256: string,
+): boolean {
+  if (!isRecord(value) || !exactKeys(value, ["schemaVersion", "sessionKey", "sourceRevision", "invocationId", "revisionPath", "entrypoint", "entrypointSha256", "manifestSha256", "sessionRef", "generatedAt", "authoritative"])) return false;
+  return value.schemaVersion === "traceknot-session-board-current/v1"
+    && value.sessionKey === manifest.sessionKey
+    && value.sourceRevision === manifest.sourceRevision
+    && typeof value.invocationId === "string" && safeId(value.invocationId)
+    && value.revisionPath === `boards/${boardId}`
+    && value.entrypoint === "index.html"
+    && value.entrypointSha256 === entrypointSha256
+    && value.manifestSha256 === manifestSha256
+    && nonempty(value.sessionRef)
+    && value.generatedAt === manifest.generatedAt
+    && value.authoritative === false;
+}
+
+async function validBoardContents(boardPath: string, manifest: unknown, sessionBoardId?: string): Promise<boolean> {
   if (!validBoardManifest(manifest) || !Array.isArray(manifest.files)) return false;
   const declared = manifest.files as readonly JsonRecord[];
   const declaredPaths = declared.map(file => String(file.path));
@@ -295,6 +316,13 @@ async function validBoardContents(boardPath: string, manifest: unknown): Promise
     const path = String(file.path);
     const actual = actualFiles.get(path);
     if (!actual || actual.bytes !== file.bytes || actual.sha256 !== file.sha256) return false;
+  }
+  if (manifest.sessionKey !== undefined) {
+    const entrypoint = declared.find(file => file.path === "index.html");
+    const manifestFile = actualFiles.get("manifest.json");
+    const current = await readJson(join(boardPath, "current.json"));
+    if (sessionBoardId === undefined || !isRecord(entrypoint) || typeof entrypoint.sha256 !== "string" || manifestFile === undefined
+      || !validSessionBoardCurrent(current, manifest, sessionBoardId, entrypoint.sha256, manifestFile.sha256)) return false;
   }
   actualFiles.delete("manifest.json");
   return true;
@@ -594,14 +622,21 @@ async function inspectSessionBoards(stateDir: string, now: number): Promise<{ bo
     const currentStat = await safeStat(currentSelector);
     let currentPath: string | undefined;
     let currentMalformed = false;
+    let currentInspection: Readonly<{ path: string; manifest: unknown; valid: boolean }> | undefined;
     if (currentStat?.isSymlink) {
       const target = await readlink(currentSelector).catch(() => undefined);
       if (target !== undefined && /^boards\/(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/.test(target) && await rootStatus(join(sessionRoot, target)) === "directory") {
-        currentPath = target;
+        const boardId = target.slice("boards/".length);
+        const boardPath = join(sessionRoot, target);
+        const manifest = await readJson(join(boardPath, "manifest.json"));
+        const valid = await validBoardContents(boardPath, manifest, boardId);
+        currentInspection = { path: target, manifest, valid };
+        if (valid && isRecord(manifest) && manifest.sessionKey === session.name) currentPath = target;
+        else currentMalformed = true;
       } else {
         currentMalformed = true;
-        symlinks.push(`sessions/${session.name}/current`);
       }
+      if (currentMalformed) symlinks.push(`sessions/${session.name}/current`);
     } else if (currentStat !== undefined) {
       currentMalformed = true;
       symlinks.push(`sessions/${session.name}/current`);
@@ -627,11 +662,12 @@ async function inspectSessionBoards(stateDir: string, now: number): Promise<{ bo
       }
       if (!entry.isDirectory()) continue;
       const boardSize = await directorySize(boardPath);
-      const manifest = await readJson(join(boardPath, "manifest.json"));
+      const selectedInspection = currentInspection?.path === `boards/${entry.name}` ? currentInspection : undefined;
+      const manifest = selectedInspection?.manifest ?? await readJson(join(boardPath, "manifest.json"));
       const generatedAt = isRecord(manifest) ? asTimestamp(manifest.generatedAt) : undefined;
       const sourceUpdatedAt = isRecord(manifest) ? asTimestamp(manifest.sourceUpdatedAt) : undefined;
       const sourceState = isRecord(manifest) && typeof manifest.sourceState === "string" ? manifest.sourceState : undefined;
-      const valid = await validBoardContents(boardPath, manifest);
+      const valid = selectedInspection?.valid ?? await validBoardContents(boardPath, manifest, entry.name);
       const malformed = currentMalformed || !valid || !isRecord(manifest) || manifest.sessionKey !== session.name;
       const runId = valid && isRecord(manifest) && typeof manifest.runId === "string" && safeId(manifest.runId) ? manifest.runId : undefined;
       const sourceRevision = valid && isRecord(manifest) && typeof manifest.sourceRevision === "number" && nonnegativeInteger(manifest.sourceRevision) ? manifest.sourceRevision : undefined;

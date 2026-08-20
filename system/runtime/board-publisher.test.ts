@@ -74,6 +74,27 @@ async function boardFixture(overrides: Partial<FixtureIdentity> = {}): Promise<R
   return Object.freeze({ root, entrypoint: publication.entrypointUri, manifestPath: join(dirname(fileURLToPath(publication.entrypointUri)), "manifest.json") });
 }
 
+async function replaceEntrypoint(entrypointUri: string, htmlText: string): Promise<void> {
+  const sessionRoot = dirname(fileURLToPath(entrypointUri));
+  const currentPath = join(sessionRoot, "current.json");
+  const current = JSON.parse(await readFile(currentPath, "utf8")) as Record<string, unknown>;
+  const revisionRoot = join(sessionRoot, String(current.revisionPath));
+  const manifestPath = join(revisionRoot, "manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown> & { files: Array<Record<string, unknown>> };
+  const html = Buffer.from(htmlText);
+  await writeFile(join(revisionRoot, "index.html"), html);
+  manifest.files = manifest.files.map(file => file.path === "index.html"
+    ? { ...file, sha256: createHash("sha256").update(html).digest("hex"), bytes: html.byteLength }
+    : file);
+  const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
+  await writeFile(manifestPath, manifestBytes);
+  await writeFile(currentPath, `${JSON.stringify({
+    ...current,
+    entrypointSha256: createHash("sha256").update(html).digest("hex"),
+    manifestSha256: createHash("sha256").update(manifestBytes).digest("hex"),
+  }, null, 2)}\n`);
+}
+
 describe("canonical Board publisher", () => {
   test("invokes the CLI without shell interpolation and binds the observed session Board", async () => {
     const fixture = await boardFixture();
@@ -224,27 +245,24 @@ describe("canonical Board publisher", () => {
   test("rejects an integrity-consistent Board page that exposes the raw session ID", async () => {
     const fixture = await boardFixture();
     try {
-      const sessionRoot = dirname(fileURLToPath(fixture.entrypoint));
-      const currentPath = join(sessionRoot, "current.json");
-      const current = JSON.parse(await readFile(currentPath, "utf8")) as Record<string, unknown>;
-      const revisionRoot = join(sessionRoot, String(current.revisionPath));
-      const manifestPath = join(revisionRoot, "manifest.json");
-      const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown> & { files: Array<Record<string, unknown>> };
-      const html = Buffer.from("<!doctype html><p>session session-1</p>");
-      await writeFile(join(revisionRoot, "index.html"), html);
-      manifest.files = manifest.files.map(file => file.path === "index.html"
-        ? { ...file, sha256: createHash("sha256").update(html).digest("hex"), bytes: html.byteLength }
-        : file);
-      const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
-      await writeFile(manifestPath, manifestBytes);
-      await writeFile(currentPath, `${JSON.stringify({
-        ...current,
-        entrypointSha256: createHash("sha256").update(html).digest("hex"),
-        manifestSha256: createHash("sha256").update(manifestBytes).digest("hex"),
-      }, null, 2)}\n`);
+      await replaceEntrypoint(fixture.entrypoint, "<!doctype html><p>session session-1</p>");
       const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${fixture.entrypoint}\n` });
       await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: fixture.root }))
         .rejects.toThrow("page exposes the raw session ID");
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test("accepts a raw session ID only as part of a larger Unicode token", async () => {
+    const fixture = await boardFixture();
+    try {
+      const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${fixture.entrypoint}\n` });
+      for (const html of ["<!doctype html><p>\u{10400}session-1</p>", "<!doctype html><p>session-1\u{1D7D8}</p>"]) {
+        await replaceEntrypoint(fixture.entrypoint, html);
+        await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: fixture.root }))
+          .resolves.toMatchObject({ status: "generated" });
+      }
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }
