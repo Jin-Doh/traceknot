@@ -649,6 +649,7 @@ async function inspectSessionBoards(stateDir: string, now: number): Promise<{ bo
     }
     if (boardsStatus !== "directory") continue;
     const entries = await readdir(boardsRoot, { withFileTypes: true });
+    if (currentStat === undefined && entries.some(entry => entry.isDirectory() && SAFE_BOARD_ENTRY.test(entry.name))) currentMalformed = true;
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       const relativePath = `sessions/${session.name}/boards/${entry.name}`;
       const boardPath = join(boardsRoot, entry.name);

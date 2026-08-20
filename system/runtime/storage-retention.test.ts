@@ -284,6 +284,19 @@ describe("storage retention", () => {
     expect(applied.protected.malformed).toContain(`${prefix}2-new`);
     expect(applied.protected.symlinks).toContain(`sessions/${sessionKey}/current`);
   });
+  test("fails closed when a session with revisions has no current selector", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"7".repeat(64)}`;
+    await sessionBoard(state, sessionKey, "1-recoverable", { runId: "run-a", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "2-new", { runId: "run-b", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).toEqual([]);
+    expect(applied.protected.malformed).toContain(`${prefix}1-recoverable`);
+    expect(applied.protected.malformed).toContain(`${prefix}2-new`);
+  });
+
 
   test("fails closed when the selected session revision is malformed", async () => {
     const { state, artifacts } = await fixture();
@@ -338,8 +351,10 @@ describe("storage retention", () => {
   test("orders session count retention by publication time across runs", async () => {
     const { state, artifacts } = await fixture();
     const sessionKey = `s-${"d".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
     await sessionBoard(state, sessionKey, "100-old-active", { runId: "run-a", sourceRevision: 100, sourceState: "EXECUTING", generatedAt: OLD });
     await sessionBoard(state, sessionKey, "1-new-active", { runId: "run-b", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: NOW });
+    await symlink("boards/1-new-active", join(sessionRoot, "current"));
 
     const applied = await pruneStorage({
       stateDir: state,
@@ -369,9 +384,11 @@ describe("storage retention", () => {
   test("deletes maximum-length session Board names", async () => {
     const { state, artifacts } = await fixture();
     const sessionKey = `s-${"c".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
     const boardId = `1-${"a".repeat(128)}`;
     await sessionBoard(state, sessionKey, boardId, { runId: "session-run", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: OLD });
     await sessionBoard(state, sessionKey, "2-new", { runId: "session-run", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+    await symlink("boards/2-new", join(sessionRoot, "current"));
     const inventory = await inspectStorage({ stateDir: state, artifactDir: artifacts, now: NOW });
     expect(inventory.boards.map(item => item.relativePath)).toContain(`sessions/${sessionKey}/boards/${boardId}`);
     const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, boardQuotaBytes: 1024 * 1024 }, apply: true });
