@@ -84,6 +84,17 @@ describe("session Board contract", () => {
     expect(publication.current.revisionPath).toBe("boards/1-inv-1");
   });
 
+  test("treats adjacent non-BMP letters and numbers as part of a larger identity token", async () => {
+    const sessionId = "abcdefgh";
+    for (const adjacent of ["\u{10400}", "\u{1D7D8}"]) {
+      for (const changeSummary of [`${adjacent}${sessionId}`, `${sessionId}${adjacent}`]) {
+        const fixtureValue = await fixture();
+        const updateValue = { ...update(1, "inv-1"), sessionId, view: { ...view(1), changeSummary } };
+        await expect(publishSessionBoardUpdate({ update: parseSessionBoardUpdate(updateValue), ...fixtureValue })).resolves.toBeDefined();
+      }
+    }
+  });
+
   test("rejects the raw session ID in persisted envelope fields", async () => {
     const sessionId = "raw-session-id";
     for (const overrides of [{ invocationId: sessionId }, { sessionHost: `host ${sessionId}` }]) {

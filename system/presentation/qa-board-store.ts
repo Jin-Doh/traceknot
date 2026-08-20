@@ -566,6 +566,16 @@ function validateSessionPresentation(value: unknown, path = "$", seen = new Set<
   }
   seen.delete(value);
 }
+function codePointAt(value: string, index: number): string | undefined {
+  const codePoint = value.codePointAt(index);
+  return codePoint === undefined ? undefined : String.fromCodePoint(codePoint);
+}
+function codePointBefore(value: string, index: number): string | undefined {
+  if (index <= 0) return undefined;
+  const trailing = value.charCodeAt(index - 1);
+  const startsAt = trailing >= 0xdc00 && trailing <= 0xdfff && index >= 2 ? index - 2 : index - 1;
+  return codePointAt(value, startsAt);
+}
 function isSessionIdentityBoundary(character: string | undefined): boolean {
   return character === undefined || !/[\p{L}\p{N}._-]/u.test(character);
 }
@@ -575,9 +585,9 @@ function sessionPresentationContains(value: unknown, sessionIdValue: string, see
   if (typeof value === "string") {
     let index = value.indexOf(sessionIdValue);
     while (index >= 0) {
-      const before = index === 0 ? undefined : value[index - 1];
+      const before = codePointBefore(value, index);
       const afterIndex = index + sessionIdValue.length;
-      const after = afterIndex === value.length ? undefined : value[afterIndex];
+      const after = afterIndex === value.length ? undefined : codePointAt(value, afterIndex);
       if (isSessionIdentityBoundary(before) && isSessionIdentityBoundary(after)) return true;
       index = value.indexOf(sessionIdValue, index + 1);
     }
