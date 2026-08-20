@@ -71,7 +71,9 @@ The publisher derives a privacy-preserving session key:
 session-key = s-<sha256(sessionHost + NUL + sessionId)>
 ```
 
-The raw session ID is never stored in paths, manifests, HTML, or logs. A successful publication creates an immutable revision at:
+Publication treats the raw session ID as an identity token, not as a forbidden byte substring. It rejects standalone or boundary-delimited occurrences in paths, manifests, HTML, and other persisted Board text. An incidental occurrence embedded inside a larger `\p{L}`, `\p{N}`, `.`, `_`, or `-` token is not classified as session-identity propagation.
+
+A successful publication creates an immutable revision at:
 
 ```text
 sessions/<session-key>/boards/<sourceRevision>-<invocationId>/
@@ -105,7 +107,7 @@ No URI is printed for a failed or unvalidated publication. The stable `manifest.
 
 ## Verification integration and unavailable behavior
 
-Every Traceknot QA run attempts Board publication by default. Existing verification invocations that provide `--session-id` and `--session-host` publish through this same session store. The raw session ID is never persisted. The Board remains a presentation operation and the verification exit code is preserved.
+Every Traceknot QA run attempts Board publication by default. Existing verification invocations that provide `--session-id` and `--session-host` publish through this same session store. Boundary-delimited raw session identity is never accepted for persistence; incidental substrings inside unrelated larger tokens remain permitted by the same boundary rule. The Board remains a presentation operation and the verification exit code is preserved.
 
 If session identity, durable state, writable storage, artifact persistence, read-back validation, or another required prerequisite is unavailable, report `Board status: unavailable` with the missing prerequisite. Do not fabricate a session key, URI, manifest, run identity, counts, or evidence. The unavailable Board status does not change the QA verdict or evidence. A publication failure MUST NOT change the QA verdict. An explicit `--no-board` policy opt-out may report `Board status: disabled`; missing prerequisites are not `not-requested`.
 
@@ -120,6 +122,8 @@ Retention is session-scoped and uses the clean-cutover `boardMaxPerSession` fiel
 - the newest terminal Board checkpoint.
 
 Only unprotected revisions, including superseded active revisions, are reclaimable. Never delete the selected revision to satisfy the quota. If the new revision cannot fit after reclaimable pruning, fail Board publication with a quota reason, preserve the previous `current` selector and stable links, and leave the QA verdict unchanged.
+
+Before apply-mode reclaim deletes its first selected revision, it recursively preflights every selected tree against the same safe-name constraints used by deletion. A structural preflight failure therefore occurs before any selected revision is mutated, preserving the rollback target if publication must restore the previous `current` selector.
 
 A retention failure is reported as Board unavailability or publication failure with its reason. It is never evidence and never converts a completed verification verdict into an internal error.
 
