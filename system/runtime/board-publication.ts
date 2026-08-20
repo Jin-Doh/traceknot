@@ -321,6 +321,10 @@ export async function validatePublishedBoard(
     if (sessionRelative !== join("sessions", sessionKey)) throw Error("canonical Board publisher session Board is outside the requested state directory");
     const stableLinks = new Map([
       [entrypointPath, "current/index.html"],
+      [join(sessionRoot, "index.en.html"), "current/index.en.html"],
+      [join(sessionRoot, "index.ko.html"), "current/index.ko.html"],
+      [join(sessionRoot, "index.zh-CN.html"), "current/index.zh-CN.html"],
+      [join(sessionRoot, "evidence"), "current/evidence"],
       [manifestPath, "current/manifest.json"],
       [join(sessionRoot, "current.json"), "current/current.json"],
     ]);

@@ -315,6 +315,33 @@ describe("storage retention", () => {
     expect(applied.protected.symlinks).toContain(`sessions/${sessionKey}/current`);
   });
 
+  test("fails closed when selected session metadata has an impossible date", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"3".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
+    await sessionBoard(state, sessionKey, "1-recoverable", { runId: "run-a", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "2-current", { runId: "run-b", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+    const selectedRoot = join(sessionRoot, "boards", "2-current");
+    const manifestPath = join(selectedRoot, "manifest.json");
+    const currentPath = join(selectedRoot, "current.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
+    const manifestBytes = Buffer.from(JSON.stringify({ ...manifest, generatedAt: "2026-02-31T00:00:00Z" }));
+    await writeFile(manifestPath, manifestBytes);
+    const current = JSON.parse(await readFile(currentPath, "utf8")) as Record<string, unknown>;
+    await writeFile(currentPath, JSON.stringify({
+      ...current,
+      generatedAt: "2026-02-31T00:00:00Z",
+      manifestSha256: createHash("sha256").update(manifestBytes).digest("hex"),
+    }));
+    await symlink("boards/2-current", join(sessionRoot, "current"));
+
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).toEqual([]);
+    expect(applied.protected.malformed).toContain(`${prefix}1-recoverable`);
+    expect(applied.protected.malformed).toContain(`${prefix}2-current`);
+  });
+
   test("fails closed when selected session metadata carries a different session reference", async () => {
     const { state, artifacts } = await fixture();
     const sessionKey = `s-${"9".repeat(64)}`;

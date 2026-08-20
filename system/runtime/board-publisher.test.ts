@@ -195,6 +195,20 @@ describe("canonical Board publisher", () => {
       await rm(missingEntrypoint.root, { recursive: true, force: true });
     }
   });
+  test("requires every stable localized and evidence indirection", async () => {
+    for (const name of ["index.en.html", "index.ko.html", "index.zh-CN.html", "evidence"]) {
+      const fixture = await boardFixture();
+      try {
+        await rm(join(dirname(fileURLToPath(fixture.entrypoint)), name), { recursive: true, force: true });
+        const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${fixture.entrypoint}\n` });
+        await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: fixture.root }))
+          .rejects.toThrow("invalid stable session link");
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true });
+      }
+    }
+  });
+
 
   test("rejects snapshot and run identity mismatches", async () => {
     for (const overrides of [{ snapshotId: "snapshot-other" }, { runId: "run-other" }]) {

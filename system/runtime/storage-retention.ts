@@ -4,12 +4,12 @@ import { lstat, readdir, readFile, readlink, realpath } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { ARTIFACT_CANONICAL_LOCK_FILE, ArtifactNotFoundError, assertPrivateRootPath, assertSecureRoot, closeSecureDescriptor, closeSecureRoot, openOrCreateSecureDirectoryPath, openSecureDirectory, openSecureRoot, readSecureRegularFile, secureFlock, secureFsync, secureOpenAt, secureRenameAt, secureRmdirAt, secureUnlinkAt, STORAGE_MAINTENANCE_LOCK_FILE, type SecureRootDescriptor } from "./local-artifact-store";
 import { assertCanonicalRun } from "./verification-run";
+import { isIsoUtcTimestamp } from "../presentation/timestamp";
 
 const DIGEST = /^[0-9a-f]{64}$/;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const RUN_STATE = "state.json";
 const PINS_FILE = ".traceknot-pins.json";
-const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const GC_MARKS_FILE = ".traceknot-gc-marks.json";
 const EPHEMERAL_LEASE_FILE = ".ephemeral.lease";
 const ARTIFACT_WRITE_TEMP = /^\.tmp-[0-9a-f]{64}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -242,7 +242,7 @@ function validBoardManifest(value: unknown): value is JsonRecord {
   if (value.schemaVersion !== "traceknot-qa-board/v1" || !nonempty(value.runId) || !nonempty(value.requestId) || !nonempty(value.rootIdentity) || !nonempty(value.snapshotId) || !nonnegativeInteger(value.sourceRevision)) return false;
   if (value.sessionKey !== undefined && (typeof value.sessionKey !== "string" || !/^s-[0-9a-f]{64}$/.test(value.sessionKey))) return false;
   if (!["CREATED", "BASIS_ESTABLISHED", "DISCOVERY_COMPLETED", "PLANNED", "EXECUTING", "EVIDENCE_EVALUATED", "VERDICT_RESOLVED", "TERMINAL"].includes(String(value.sourceState))) return false;
-  if (typeof value.sourceUpdatedAt !== "string" || !ISO_UTC.test(value.sourceUpdatedAt) || typeof value.generatedAt !== "string" || !ISO_UTC.test(value.generatedAt) || value.entrypoint !== "index.html" || value.authoritative !== false || !validBoardAssurance(value.assurance) || !["PASS", "PASS_WITH_ACCEPTED_RISK", "FAIL", "BLOCKED", "INCOMPLETE"].includes(String(value.verdict))) return false;
+  if (!isIsoUtcTimestamp(value.sourceUpdatedAt) || !isIsoUtcTimestamp(value.generatedAt) || value.entrypoint !== "index.html" || value.authoritative !== false || !validBoardAssurance(value.assurance) || !["PASS", "PASS_WITH_ACCEPTED_RISK", "FAIL", "BLOCKED", "INCOMPLETE"].includes(String(value.verdict))) return false;
   if (!isRecord(value.counts) || !exactKeys(value.counts, ["mandatory", "passed", "failed", "blocked", "incomplete"]) || !Object.values(value.counts).every(nonnegativeInteger)) return false;
   if (!isRecord(value.generatedBy) || !exactKeys(value.generatedBy, ["invocationId", "sessionHost", "sessionRef"]) || !nonempty(value.generatedBy.invocationId) || !safeId(value.generatedBy.invocationId) || !nonempty(value.generatedBy.sessionHost) || value.generatedBy.sessionHost.length > 128 || !nonempty(value.generatedBy.sessionRef)) return false;
   if (!Array.isArray(value.files)) return false;
