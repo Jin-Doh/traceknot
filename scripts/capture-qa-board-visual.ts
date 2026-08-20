@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -77,7 +77,6 @@ const cases: readonly CaptureCase[] = [
 ];
 
 const profileDir = await mkdtemp(join(tmpdir(), "traceknot-qa-board-chrome-"));
-const port = 9300 + Math.floor(Math.random() * 500);
 const browser = Bun.spawn([
   browserPath,
   "--headless=new",
@@ -85,7 +84,7 @@ const browser = Bun.spawn([
   "--disable-gpu",
   "--hide-scrollbars",
   "--allow-file-access-from-files",
-  `--remote-debugging-port=${port}`,
+  "--remote-debugging-port=0",
   `--user-data-dir=${profileDir}`,
   "about:blank",
 ], { stdout: "ignore", stderr: "ignore" });
@@ -93,16 +92,17 @@ const browser = Bun.spawn([
 let client: CdpClient | undefined;
 try {
   let websocketUrl: string | undefined;
-  for (let attempt = 0; attempt < 100 && websocketUrl === undefined; attempt++) {
+  for (let attempt = 0; attempt < 600 && websocketUrl === undefined; attempt++) {
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/json/version`);
-      const version = await response.json() as { webSocketDebuggerUrl?: string };
-      websocketUrl = version.webSocketDebuggerUrl;
+      const [port, path] = (await readFile(join(profileDir, "DevToolsActivePort"), "utf8")).trim().split(/\r?\n/u);
+      if (port !== undefined && /^\d+$/.test(port) && path?.startsWith("/devtools/browser/")) {
+        websocketUrl = `ws://127.0.0.1:${port}${path}`;
+      }
     } catch {
       await Bun.sleep(50);
     }
   }
-  if (websocketUrl === undefined) throw new Error("Chrome DevTools endpoint did not become ready");
+  if (websocketUrl === undefined) throw new Error("Chrome DevTools endpoint did not become ready within 30 seconds");
   client = await CdpClient.connect(websocketUrl);
   const observations: Array<Record<string, unknown>> = [];
 
