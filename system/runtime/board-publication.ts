@@ -250,6 +250,18 @@ function containsActiveHtml(source: string): boolean {
   return active;
 }
 
+function renderedCssContent(source: string): string {
+  const values: string[] = [];
+  const declarations = /\bcontent\s*:\s*((?:"(?:\\.|[^"\\])*"\s*)+|(?:'(?:\\.|[^'\\])*'\s*)+)/giu;
+  const strings = /"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'/gu;
+  for (const match of source.matchAll(declarations)) {
+    let value = "";
+    for (const item of match[1]!.matchAll(strings)) value += item[1] ?? item[2] ?? "";
+    values.push(decodeCssEscapes(value));
+  }
+  return values.join("");
+}
+
 function closedKeys(value: Readonly<Record<string, unknown>>, required: readonly string[], optional: readonly string[] = []): boolean {
   const keys = Object.keys(value);
   return required.every(key => key in value) && keys.every(key => required.includes(key) || optional.includes(key));
@@ -348,8 +360,10 @@ export async function validatePublishedBoard(
         if (containsActiveHtml(text)) throw Error(`canonical Board publisher page contains active HTML: ${file.path}`);
         const decodedSource = text.includes("&") ? decodeHTML(text) : text;
         const decodedCss = decodeCssEscapes(text);
+        const decodedCssContent = renderedCssContent(text);
         if (containsBoundaryIdentity(decodedSource, expected.sessionId)
           || containsBoundaryIdentity(decodedCss, expected.sessionId)
+          || containsBoundaryIdentity(decodedCssContent, expected.sessionId)
           || containsBoundaryIdentity(renderedPageText(text), expected.sessionId)) throw Error(`canonical Board publisher page exposes the raw session ID: ${file.path}`);
       }
       if (file.path === "index.html" && file.role === "entrypoint") {
