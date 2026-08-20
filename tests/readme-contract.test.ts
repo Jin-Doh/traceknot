@@ -409,6 +409,13 @@ describe("README localization section contract", () => {
     const hidden = localizedReadmes[0].replace(commandBlock, `<div hidden>\n\n${commandBlock}\n\n</div>`);
     expect(() => checkReadmeLifecycleContract("README.md", hidden)).toThrow("global self-check");
   });
+  test("requires operational Verify arguments", () => {
+    const invalid = localizedReadmes[0].replace(
+      "$HOME/.agents/skills/traceknot/bin/traceknot verify --request request.json --manifest manifest.json --root .",
+      "$HOME/.agents/skills/traceknot/bin/traceknot verify --help",
+    );
+    expect(() => checkReadmeLifecycleContract("README.md", invalid)).toThrow("global verify");
+  });
 
   test("requires mandatory Board update arguments", () => {
     const invalid = localizedReadmes[0]
