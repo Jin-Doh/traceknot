@@ -1026,11 +1026,12 @@ async function existingSessionRevisionMatches(
   return true;
 }
 
-async function retainedSessionRevisionIsValid(root: SecureRootDescriptor, revisionPath: string, manifestValue: UnknownRecord): Promise<boolean> {
+async function retainedSessionRevisionIsValid(root: SecureRootDescriptor, revisionPath: string, sessionKey: string, manifestValue: UnknownRecord): Promise<boolean> {
   try {
     const manifestBytes = await readSecureRegularFile(root.fd, secureRelativePath(root, join(revisionPath, "manifest.json")), 4 * 1024 * 1024);
     const currentBytes = await readSecureRegularFile(root.fd, secureRelativePath(root, join(revisionPath, "current.json")), 1024 * 1024);
     const manifest = parseQaBoardManifest(manifestValue);
+    if (manifest.sessionKey !== sessionKey) return false;
     const currentValue = JSON.parse(new TextDecoder().decode(currentBytes)) as unknown;
     const boardId = revisionPath.split("/").at(-1)!;
     const current = parseQaBoardCurrent(currentValue, String(manifest.sessionKey), `boards/${boardId}`);
@@ -1093,7 +1094,7 @@ async function sessionReclaim(
       }
     }
     const generatedAt = manifestValue && isIsoUtcTimestamp(manifestValue.generatedAt) ? Date.parse(manifestValue.generatedAt) : NaN;
-    const contentsValid = manifestValue !== undefined && await retainedSessionRevisionIsValid(root, path, manifestValue);
+    const contentsValid = manifestValue !== undefined && await retainedSessionRevisionIsValid(root, path, sessionKey, manifestValue);
     const sourceRevision = manifestValue && typeof manifestValue.sourceRevision === "number" && Number.isSafeInteger(manifestValue.sourceRevision) && manifestValue.sourceRevision >= 0 ? manifestValue.sourceRevision : -1;
     revisions.push({ name: entry.name, path, bytes: await sessionDirectoryBytes(path), generatedAt, sourceRevision, runId: manifestValue && typeof manifestValue.runId === "string" ? manifestValue.runId : undefined, sourceState: manifestValue && typeof manifestValue.sourceState === "string" ? manifestValue.sourceState : undefined, malformed: !contentsValid || !Number.isFinite(generatedAt) || sourceRevision < 0 });
   }
