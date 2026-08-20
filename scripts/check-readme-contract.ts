@@ -504,7 +504,7 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
   const missingPlatformBoundary = REQUIRED_PLATFORM_BOUNDARIES[path] !== undefined && !visibleDocument.includes(REQUIRED_PLATFORM_BOUNDARIES[path])
     ? ["unsupported platform boundary"]
     : [];
-  const missingBunMinimum = REQUIRED_BUN_MINIMUM_BOUNDARIES[path] !== undefined && !visibleDocument.includes(REQUIRED_BUN_MINIMUM_BOUNDARIES[path])
+  const missingBunMinimum = REQUIRED_BUN_MINIMUM_BOUNDARIES[path] !== undefined && !visibleLifecycle.includes(REQUIRED_BUN_MINIMUM_BOUNDARIES[path])
     ? ["Bun minimum version boundary"]
     : [];
   const missingLauncherBoundaries = (REQUIRED_LAUNCHER_BOUNDARIES[path] ?? [])

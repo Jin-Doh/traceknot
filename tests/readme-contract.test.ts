@@ -432,7 +432,9 @@ describe("README localization section contract", () => {
   });
 
   test("enforces the Bun minimum-version guidance", () => {
-    const reversed = localizedReadmes[0].replaceAll("Bun 1.3.14 or later", "Bun 1.3.14 or earlier");
+    const reversed = localizedReadmes[0]
+      .replace("Bun 1.3.14 or later", "Bun 1.3.14 or earlier")
+      .replace("Bun 1.3.14 or later", "Bun 1.3.14 or earlier");
     expect(() => checkReadmeLifecycleContract("README.md", reversed)).toThrow("Bun minimum version boundary");
   });
 
