@@ -367,6 +367,14 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLifecycleContract("README.md", withoutVerifyMarker)).toThrow("capability section verify");
   });
 
+  test("requires both global and project-local Verify commands", () => {
+    const withoutGlobalVerify = localizedReadmes[0].replace(
+      "$HOME/.agents/skills/traceknot/bin/traceknot verify --request",
+      ".agents/skills/traceknot/bin/traceknot verify --request",
+    );
+    expect(() => checkReadmeLifecycleContract("README.md", withoutGlobalVerify)).toThrow("global verify");
+  });
+
   test("requires the project-local Verify path when the heading is localized", () => {
     const localizedHeading = localizedReadmes[0]
       .replace("## Verify CLI", "## 검증 명령")
@@ -380,6 +388,16 @@ describe("README localization section contract", () => {
   test("derives lifecycle bounds from parsed section markers rather than fenced examples", () => {
     const decoy = "```md\n<!-- readme-section:install -->\n<!-- readme-section:documentation -->\n```";
     expect(() => checkReadmeLifecycleContract("README-decoy", `${decoy}\n${localizedReadmes[0]}`)).not.toThrow();
+  });
+
+  test("enforces the optional non-owning launcher boundary", () => {
+    const requiredTier = localizedReadmes[0].replace("optional prefix launcher/updater", "required prefix runtime tier");
+    expect(() => checkReadmeLifecycleContract("README.md", requiredTier)).toThrow("launcher boundary");
+    const secondProduct = localizedReadmes[0].replace(
+      "does not define a separate Skill payload, runtime tier, Board renderer, schema, or verdict mode",
+      "defines a separate Skill payload, runtime tier, Board renderer, schema, and verdict mode",
+    );
+    expect(() => checkReadmeLifecycleContract("README.md", secondProduct)).toThrow("launcher boundary");
   });
 
   test("documents the curl path only as an optional non-owning launcher", () => {

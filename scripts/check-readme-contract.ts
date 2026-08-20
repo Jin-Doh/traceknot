@@ -60,6 +60,21 @@ const REQUIRED_LIFECYCLE_LITERALS = [
   "TRACEKNOT_SKILLS_ROOT",
   "traceknot-update",
 ] as const;
+const REQUIRED_GLOBAL_VERIFY_COMMAND = /(?:^|\s)\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot verify/u;
+const REQUIRED_LAUNCHER_BOUNDARIES: Readonly<Record<string, readonly string[]>> = {
+  "README.md": [
+    "optional prefix launcher/updater",
+    "does not define a separate Skill payload, runtime tier, Board renderer, schema, or verdict mode",
+  ],
+  "README.ko.md": [
+    "선택적 prefix launcher/updater",
+    "별도의 Skill payload, runtime tier, Board renderer, schema 또는 verdict mode를 정의하지 않습니다",
+  ],
+  "README.zh.md": [
+    "可选的 prefix launcher/updater",
+    "不定义独立的 Skill payload、runtime tier、Board renderer、schema 或 verdict mode",
+  ],
+};
 const REQUIRED_PROJECT_LOCAL_COMMANDS: ReadonlyArray<readonly [string, RegExp]> = [
   ["project-local verify", /(?:^|\s)\.agents\/skills\/traceknot\/bin\/traceknot verify/u],
   ["project-local self-check", /(?:^|\s)\.agents\/skills\/traceknot\/bin\/traceknot self-check/u],
@@ -442,11 +457,17 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
   const missingCapabilities = (REQUIRED_CAPABILITY_SECTIONS[path] ?? [])
     .filter(name => !hasCapabilitySection(content, name))
     .map(name => `capability section ${name}`);
+  const missingGlobalVerify = hasCapabilitySection(content, "verify") && !REQUIRED_GLOBAL_VERIFY_COMMAND.test(visibleDocument)
+    ? ["global verify"]
+    : [];
+  const missingLauncherBoundaries = (REQUIRED_LAUNCHER_BOUNDARIES[path] ?? [])
+    .filter(literal => !visibleLifecycle.includes(literal))
+    .map(literal => `launcher boundary ${literal}`);
   const missingProjectCommands = REQUIRED_PROJECT_LOCAL_COMMANDS
     .filter(([label]) => label !== "project-local verify" || hasCapabilitySection(content, "verify"))
     .filter(([label, pattern]) => !pattern.test(label === "project-local verify" ? visibleDocument : visibleLifecycle))
     .map(([label]) => label);
-  const missingContracts = [...missing, ...missingCapabilities, ...missingProjectCommands];
+  const missingContracts = [...missing, ...missingCapabilities, ...missingGlobalVerify, ...missingLauncherBoundaries, ...missingProjectCommands];
   if (missingContracts.length > 0) throw new Error(`${path}: canonical installation lifecycle is missing: ${missingContracts.join(", ")}`);
 }
 
