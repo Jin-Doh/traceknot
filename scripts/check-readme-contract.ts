@@ -60,7 +60,7 @@ const REQUIRED_LIFECYCLE_LITERALS = [
   "TRACEKNOT_SKILLS_ROOT",
   "traceknot-update",
 ] as const;
-const REQUIRED_GLOBAL_VERIFY_COMMAND = /^\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot verify --request \S+ --manifest \S+(?!\s+--help)(?:\s|$)/u;
+const REQUIRED_GLOBAL_VERIFY_COMMAND = /^\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot verify --request \S+ --manifest \S+ --root \S+\s*$/u;
 const REQUIRED_GLOBAL_LIFECYCLE_COMMANDS: ReadonlyArray<readonly [string, RegExp]> = [
   ["global self-check", /^\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot self-check(?!\s+(?:--help|-h)(?:\s|$))(?:\s|$)/u],
   ["global Board update", /^\$HOME\/\.agents\/skills\/traceknot\/bin\/traceknot board update --input UPDATE\.json --state-dir DIR(?!\s+--help(?:\s|$))(?:\s|$)/u],
@@ -95,7 +95,7 @@ const REQUIRED_NODE_MINIMUM_BOUNDARIES: Readonly<Record<string, string>> = {
   "README.zh.md": "Node.js 22.20 或更高版本",
 };
 const REQUIRED_PROJECT_LOCAL_COMMANDS: ReadonlyArray<readonly [string, RegExp]> = [
-  ["project-local verify", /^\.agents\/skills\/traceknot\/bin\/traceknot verify --request \S+ --manifest \S+(?!\s+--help)(?:\s|$)/u],
+  ["project-local verify", /^\.agents\/skills\/traceknot\/bin\/traceknot verify --request \S+ --manifest \S+ --root \S+\s*$/u],
   ["project-local self-check", /^\.agents\/skills\/traceknot\/bin\/traceknot self-check(?!\s+(?:--help|-h)(?:\s|$))(?:\s|$)/u],
   ["project-local Board update", /^\.agents\/skills\/traceknot\/bin\/traceknot board update --input UPDATE\.json --state-dir DIR(?!\s+--help(?:\s|$))(?:\s|$)/u],
 ];
