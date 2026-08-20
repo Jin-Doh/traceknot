@@ -27,6 +27,12 @@ export function containsBoundaryIdentity(value: string, identity: string): boole
   }
   return false;
 }
+export function decodeCssEscapes(value: string): string {
+  return value.replace(/\\([0-9a-fA-F]{1,6})(?:[ \t\r\n]|(?=$))/gu, (_, hexadecimal: string) => {
+    const codePoint = Number.parseInt(hexadecimal, 16);
+    return codePoint === 0 || codePoint > 0x10ffff ? "\uFFFD" : String.fromCodePoint(codePoint);
+  });
+}
 
 export function containsBoundaryIdentityDeep(value: unknown, identity: string, seen = new Set<unknown>()): boolean {
   if (typeof value === "string") return containsBoundaryIdentity(value, identity);

@@ -334,6 +334,19 @@ describe("canonical Board publisher", () => {
     }
   });
 
+  test("rejects a CSS-escaped raw session ID", async () => {
+    const sessionId = "abcdefgh";
+    const fixture = await boardFixture({ sessionId });
+    try {
+      await replaceEntrypoint(fixture.entrypoint, "<!doctype html><style>body::after{content:\"\\61 \\62 \\63 \\64 \\65 \\66 \\67 \\68 \"}</style>");
+      const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${fixture.entrypoint}\n` });
+      await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, sessionId, stateDir: fixture.root }))
+        .rejects.toThrow("page exposes the raw session ID");
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
   test("rejects an integrity-consistent Board page that exposes the raw session ID", async () => {
     const fixture = await boardFixture();
     try {

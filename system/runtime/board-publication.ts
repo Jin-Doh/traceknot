@@ -12,7 +12,7 @@ import { decodeHTML } from "entities";
 import { parse } from "parse5";
 import { sessionReference, type QaBoardManifest } from "../presentation/qa-board";
 import { parseQaBoardCurrent, parseQaBoardManifest, validateManifestCurrentBinding, type QaBoardCurrent } from "../presentation/qa-board-validation";
-import { containsBoundaryIdentity, containsBoundaryIdentityDeep } from "../presentation/session-identity";
+import { containsBoundaryIdentity, containsBoundaryIdentityDeep, decodeCssEscapes } from "../presentation/session-identity";
 import { isIsoUtcTimestamp } from "../presentation/timestamp";
 import { closeSecureRoot, openSecureRoot, readSecureRegularFile } from "./local-artifact-store";
 
@@ -331,7 +331,9 @@ export async function validatePublishedBoard(
         let text: string;
         try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { throw Error(`canonical Board publisher page is not UTF-8: ${file.path}`); }
         const decodedSource = text.includes("&") ? decodeHTML(text) : text;
+        const decodedCss = decodeCssEscapes(text);
         if (containsBoundaryIdentity(decodedSource, expected.sessionId)
+          || containsBoundaryIdentity(decodedCss, expected.sessionId)
           || containsBoundaryIdentity(renderedPageText(text), expected.sessionId)) throw Error(`canonical Board publisher page exposes the raw session ID: ${file.path}`);
       }
       if (file.path === "index.html" && file.role === "entrypoint") {
