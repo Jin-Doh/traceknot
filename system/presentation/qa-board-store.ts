@@ -39,7 +39,7 @@ import {
 
 } from "./qa-board";
 import { detectQaBoardLocale } from "./qa-board-locale";
-import { containsBoundaryIdentity } from "./session-identity";
+import { containsBoundaryIdentityDeep } from "./session-identity";
 export type BoardArtifactReader = Readonly<{
   readArtifact: (digest: string) => Promise<Uint8Array>;
 }>;
@@ -566,16 +566,6 @@ function validateSessionPresentation(value: unknown, path = "$", seen = new Set<
     }
   }
   seen.delete(value);
-}
-function sessionPresentationContains(value: unknown, sessionIdValue: string, seen = new Set<unknown>()): boolean {
-  if (typeof value === "string") return containsBoundaryIdentity(value, sessionIdValue);
-  if (value === null || typeof value !== "object" || seen.has(value)) return false;
-  seen.add(value);
-  const found = Array.isArray(value)
-    ? value.some(item => sessionPresentationContains(item, sessionIdValue, seen))
-    : Object.values(value as UnknownRecord).some(item => sessionPresentationContains(item, sessionIdValue, seen));
-  seen.delete(value);
-  return found;
 }
 
 
@@ -1174,9 +1164,9 @@ export async function publishSessionBoardUpdate(input: Readonly<{
   showProjectSupport?: boolean;
 }>): Promise<SessionBoardPublicationResult> {
   const update = parseSessionBoardUpdate(input.update);
-  if (sessionPresentationContains(update.view, update.sessionId)) throw new Error("Board view contains the raw session ID");
+  if (containsBoundaryIdentityDeep(update.view, update.sessionId)) throw new Error("Board view contains the raw session ID");
   const invocationId = update.invocationId ?? randomUUID();
-  if (sessionPresentationContains([update.sessionHost, invocationId], update.sessionId)) throw new Error("Board publication envelope contains the raw session ID");
+  if (containsBoundaryIdentityDeep([update.sessionHost, invocationId], update.sessionId)) throw new Error("Board publication envelope contains the raw session ID");
   const sessionKey = sessionBoardKey(update.sessionHost, update.sessionId);
   const boardName = `${update.view.revision}-${invocationId}`;
   if (!SAFE_BOARD_NAME.test(boardName)) throw new Error("Board revision contains unsafe characters");

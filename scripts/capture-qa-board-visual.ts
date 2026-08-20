@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -77,6 +77,9 @@ const cases: readonly CaptureCase[] = [
 ];
 
 const profileDir = await mkdtemp(join(tmpdir(), "traceknot-qa-board-chrome-"));
+const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response(null, { status: 204 }) });
+const port = reservation.port;
+await reservation.stop(true);
 const browser = Bun.spawn([
   browserPath,
   "--headless=new",
@@ -84,7 +87,7 @@ const browser = Bun.spawn([
   "--disable-gpu",
   "--hide-scrollbars",
   "--allow-file-access-from-files",
-  "--remote-debugging-port=0",
+  `--remote-debugging-port=${port}`,
   `--user-data-dir=${profileDir}`,
   "about:blank",
 ], { stdout: "ignore", stderr: "ignore" });
@@ -94,10 +97,13 @@ try {
   let endpoint: Readonly<{ port: number; browserId: string }> | undefined;
   for (let attempt = 0; attempt < 600 && endpoint === undefined; attempt++) {
     try {
-      const [portText, path] = (await readFile(join(profileDir, "DevToolsActivePort"), "utf8")).trim().split(/\r?\n/u);
-      const port = Number(portText);
-      const browserId = path?.match(/^\/devtools\/browser\/([A-Za-z0-9-]+)$/)?.[1];
-      if (Number.isInteger(port) && port > 0 && port <= 65535 && browserId !== undefined) endpoint = { port, browserId };
+      const response = await fetch(`http://127.0.0.1:${port}/json/version`);
+      const version = await response.json() as { webSocketDebuggerUrl?: string };
+      const url = new URL(version.webSocketDebuggerUrl ?? "");
+      const browserId = url.pathname.match(/^\/devtools\/browser\/([A-Za-z0-9-]+)$/)?.[1];
+      if (url.protocol === "ws:" && url.hostname === "127.0.0.1" && Number(url.port) === port && browserId !== undefined) {
+        endpoint = { port, browserId };
+      }
     } catch {
       await Bun.sleep(50);
     }

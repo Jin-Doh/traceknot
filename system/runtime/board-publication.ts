@@ -4,13 +4,13 @@ import {
   type CapabilitySet,
 } from "./capability-model";
 
-import { lstat, readlink } from "node:fs/promises";
+import { lstat, readdir, readlink } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decodeHTML } from "entities";
 import { sessionReference, type QaBoardManifest } from "../presentation/qa-board";
-import { containsBoundaryIdentity } from "../presentation/session-identity";
+import { containsBoundaryIdentity, containsBoundaryIdentityDeep } from "../presentation/session-identity";
 import { closeSecureRoot, openSecureRoot, readSecureRegularFile } from "./local-artifact-store";
 
 export const BOARD_PUBLICATION_REQUIRED_CAPABILITIES = Object.freeze([
@@ -191,6 +191,28 @@ function boardUriFromOutput(stdout: string, stderr: string): string {
   if (unique.length > 1) throw Error("canonical Board publisher reported conflicting file URIs");
   return unique[0]!;
 }
+async function inventoryPublishedRevision(directory: string, relativePath = ""): Promise<Readonly<{ files: Set<string>; directories: Set<string> }>> {
+  const files = new Set<string>();
+  const directories = new Set<string>();
+  const entries = await readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    const child = relativePath ? `${relativePath}/${entry.name}` : entry.name;
+    if (entry.isSymbolicLink()) throw Error(`canonical Board publisher revision contains a symlink: ${child}`);
+    if (entry.isFile()) files.add(child);
+    else if (entry.isDirectory()) {
+      directories.add(child);
+      const nested = await inventoryPublishedRevision(join(directory, entry.name), child);
+      for (const file of nested.files) files.add(file);
+      for (const nestedDirectory of nested.directories) directories.add(nestedDirectory);
+    } else throw Error(`canonical Board publisher revision contains an unsupported entry: ${child}`);
+  }
+  return { files, directories };
+}
+
+function sameSet(actual: ReadonlySet<string>, expected: ReadonlySet<string>): boolean {
+  return actual.size === expected.size && [...actual].every(item => expected.has(item));
+}
+
 
 function closedKeys(value: Readonly<Record<string, unknown>>, required: readonly string[], optional: readonly string[] = []): boolean {
   const keys = Object.keys(value);
@@ -311,6 +333,7 @@ export async function validatePublishedBoard(
     try { currentBytes = await readSecureRegularFile(root.fd, join(revisionRelative, "current.json"), 1024 * 1024); } catch { throw Error("canonical Board publisher selected revision is invalid or escapes the session state root"); }
     let currentValue: unknown;
     try { currentValue = JSON.parse(new TextDecoder().decode(currentBytes)) as unknown; } catch { throw Error("canonical Board publisher reported malformed current.json"); }
+    if (expected?.sessionId !== undefined && containsBoundaryIdentityDeep(currentValue, expected.sessionId)) throw Error("canonical Board publisher current pointer exposes the raw session ID");
     if (expected?.sessionId !== undefined && containsBoundaryIdentity(new TextDecoder("utf-8", { fatal: true }).decode(currentBytes), expected.sessionId)) throw Error("canonical Board publisher current pointer exposes the raw session ID");
     const current = parsePublishedCurrent(currentValue, sessionKey, selectorTarget);
     const digest = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -320,6 +343,7 @@ export async function validatePublishedBoard(
     if (digest(immutableManifestBytes) !== current.manifestSha256) throw Error("canonical Board publisher immutable manifest does not match current pointer");
     let manifestValue: unknown;
     try { manifestValue = JSON.parse(new TextDecoder().decode(immutableManifestBytes)) as unknown; } catch { throw Error("canonical Board publisher reported malformed immutable manifest"); }
+    if (expected?.sessionId !== undefined && containsBoundaryIdentityDeep(manifestValue, expected.sessionId)) throw Error("canonical Board publisher manifest exposes the raw session ID");
     const manifest = parsePublishedManifest(manifestValue);
     if (manifest.authoritative !== false
       || manifest.sessionKey !== sessionKey
@@ -327,6 +351,16 @@ export async function validatePublishedBoard(
       || manifest.generatedBy.invocationId !== current.invocationId
       || manifest.generatedBy.sessionRef !== current.sessionRef
       || manifest.generatedAt !== current.generatedAt) throw Error("canonical Board publisher immutable manifest identity does not match current pointer");
+    const declaredPaths = manifest.files.map(file => file.path);
+    if (new Set(declaredPaths).size !== declaredPaths.length) throw Error("canonical Board publisher manifest contains duplicate file declarations");
+    const expectedFiles = new Set(["manifest.json", "current.json", ...declaredPaths]);
+    const expectedDirectories = new Set(["evidence"]);
+    for (const path of declaredPaths) {
+      const components = path.split("/");
+      for (let index = 1; index < components.length; index += 1) expectedDirectories.add(components.slice(0, index).join("/"));
+    }
+    const inventory = await inventoryPublishedRevision(join(root.canonical, revisionRelative));
+    if (!sameSet(inventory.files, expectedFiles) || !sameSet(inventory.directories, expectedDirectories)) throw Error("canonical Board publisher revision inventory does not match the manifest");
     if (expected?.sessionId !== undefined && expected.sessionHost !== undefined && current.sessionRef !== sessionReference(expected.sessionHost, expected.sessionId)) throw Error("canonical Board publisher session identity does not match current pointer");
     if (expected?.snapshotId !== undefined && manifest.snapshotId !== expected.snapshotId) throw Error("canonical Board publisher snapshot identity does not match the request");
     if (expected?.runId !== undefined && manifest.runId !== expected.runId) throw Error("canonical Board publisher run identity does not match the request");

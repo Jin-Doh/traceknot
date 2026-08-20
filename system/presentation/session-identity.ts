@@ -27,3 +27,15 @@ export function containsBoundaryIdentity(value: string, identity: string): boole
   }
   return false;
 }
+
+export function containsBoundaryIdentityDeep(value: unknown, identity: string, seen = new Set<unknown>()): boolean {
+  if (typeof value === "string") return containsBoundaryIdentity(value, identity);
+  if (value === null || typeof value !== "object" || seen.has(value)) return false;
+  seen.add(value);
+  const found = Array.isArray(value)
+    ? value.some(item => containsBoundaryIdentityDeep(item, identity, seen))
+    : Object.entries(value).some(([key, item]) =>
+      containsBoundaryIdentity(key, identity) || containsBoundaryIdentityDeep(item, identity, seen));
+  seen.delete(value);
+  return found;
+}

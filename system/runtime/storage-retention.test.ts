@@ -52,6 +52,7 @@ async function sessionBoard(
   const path = join(state, "sessions", sessionKey, "boards", boardId);
   const html = `<html>${boardId}</html>`;
   await mkdir(path, { recursive: true });
+  await mkdir(join(path, "evidence"));
   await writeFile(join(path, "index.html"), html);
   const manifestBytes = Buffer.from(JSON.stringify({
     schemaVersion: "traceknot-qa-board/v1",

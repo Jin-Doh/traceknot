@@ -281,7 +281,7 @@ async function validBoardContents(boardPath: string, manifest: unknown, sessionB
   const declared = manifest.files as readonly JsonRecord[];
   const declaredPaths = declared.map(file => String(file.path));
   if (new Set(declaredPaths).size !== declaredPaths.length || !declaredPaths.includes("index.html")) return false;
-  const expectedDirs = new Set<string>();
+  const expectedDirs = new Set<string>(manifest.sessionKey === undefined ? [] : ["evidence"]);
   for (const path of declaredPaths) {
     const components = path.split("/");
     for (let index = 1; index < components.length; index += 1) expectedDirs.add(components.slice(0, index).join("/"));

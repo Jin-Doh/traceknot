@@ -95,6 +95,25 @@ async function replaceEntrypoint(entrypointUri: string, htmlText: string): Promi
   }, null, 2)}\n`);
 }
 
+async function replaceManifest(
+  entrypointUri: string,
+  mutate: (manifest: Record<string, unknown> & { files: Array<Record<string, unknown>> }) => void,
+  serialize: (manifest: Record<string, unknown>) => string = manifest => `${JSON.stringify(manifest, null, 2)}\n`,
+): Promise<void> {
+  const sessionRoot = dirname(fileURLToPath(entrypointUri));
+  const currentPath = join(sessionRoot, "current.json");
+  const current = JSON.parse(await readFile(currentPath, "utf8")) as Record<string, unknown>;
+  const manifestPath = join(sessionRoot, String(current.revisionPath), "manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown> & { files: Array<Record<string, unknown>> };
+  mutate(manifest);
+  const manifestBytes = Buffer.from(serialize(manifest));
+  await writeFile(manifestPath, manifestBytes);
+  await writeFile(currentPath, `${JSON.stringify({
+    ...current,
+    manifestSha256: createHash("sha256").update(manifestBytes).digest("hex"),
+  }, null, 2)}\n`);
+}
+
 describe("canonical Board publisher", () => {
   test("invokes the CLI without shell interpolation and binds the observed session Board", async () => {
     const fixture = await boardFixture();
@@ -300,6 +319,47 @@ describe("canonical Board publisher", () => {
         .rejects.toThrow("page exposes the raw session ID");
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects a JSON-escaped raw session ID in immutable metadata", async () => {
+    const sessionId = "abcd&efgh";
+    const fixture = await boardFixture({ sessionId });
+    try {
+      await replaceManifest(
+        fixture.entrypoint,
+        manifest => { manifest.requestId = sessionId; },
+        manifest => `${JSON.stringify(manifest, null, 2).replace(sessionId, "abcd\\u0026efgh")}\n`,
+      );
+      const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${fixture.entrypoint}\n` });
+      await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, sessionId, stateDir: fixture.root }))
+        .rejects.toThrow("manifest exposes the raw session ID");
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects duplicate declarations and undeclared revision files", async () => {
+    const duplicate = await boardFixture();
+    try {
+      await replaceManifest(duplicate.entrypoint, manifest => { manifest.files.push({ ...manifest.files[1] }); });
+      const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${duplicate.entrypoint}\n` });
+      await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: duplicate.root }))
+        .rejects.toThrow("duplicate file declarations");
+    } finally {
+      await rm(duplicate.root, { recursive: true, force: true });
+    }
+
+    const undeclared = await boardFixture();
+    try {
+      const sessionRoot = dirname(fileURLToPath(undeclared.entrypoint));
+      const current = JSON.parse(await readFile(join(sessionRoot, "current.json"), "utf8")) as Record<string, unknown>;
+      await writeFile(join(sessionRoot, String(current.revisionPath), "undeclared.txt"), "undeclared");
+      const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${undeclared.entrypoint}\n` });
+      await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: undeclared.root }))
+        .rejects.toThrow("revision inventory does not match");
+    } finally {
+      await rm(undeclared.root, { recursive: true, force: true });
     }
   });
 
