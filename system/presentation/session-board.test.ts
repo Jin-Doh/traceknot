@@ -202,6 +202,26 @@ describe("session Board contract", () => {
     await expect(stat(join(fixtureValue.stateDir, "sessions", current.sessionKey, "boards", "3-incoming-b"))).rejects.toThrow();
   });
 
+  test("preflights previous-current reclaim before any destructive rollback-target deletion", async () => {
+    const fixtureValue = await fixture();
+    const current = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(2, "current-preflight", "EXECUTING")), ...fixtureValue });
+    const indexBefore = await readFile(join(current.directory, "index.html"));
+    const manifestBefore = await readFile(join(current.directory, "manifest.json"));
+    await mkdir(join(current.directory, ".unsafe"));
+
+    await expect(publishSessionBoardUpdate({
+      update: parseSessionBoardUpdate(update(3, "incoming-preflight", "EXECUTING")),
+      ...fixtureValue,
+      retentionPolicy: { boardMaxPerSession: 1 },
+    })).rejects.toThrow("unsafe characters");
+
+    expect(JSON.parse(await readFile(current.currentPath, "utf8"))).toMatchObject({ revisionPath: "boards/2-current-preflight" });
+    expect(await readFile(join(current.directory, "index.html"))).toEqual(indexBefore);
+    expect(await readFile(join(current.directory, "manifest.json"))).toEqual(manifestBefore);
+    expect(await stat(join(current.directory, ".unsafe"))).toBeDefined();
+    await expect(stat(join(fixtureValue.stateDir, "sessions", current.sessionKey, "boards", "3-incoming-preflight"))).rejects.toThrow();
+  });
+
   test("rotates active revisions by the session maximum without deleting current", async () => {
     const fixtureValue = await fixture();
     await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1", "EXECUTING")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 2 } });

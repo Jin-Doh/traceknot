@@ -242,6 +242,42 @@ function parsePublishedManifest(value: unknown): QaBoardManifest {
   return manifest as unknown as QaBoardManifest;
 }
 
+type PublishedCurrent = Readonly<{
+  schemaVersion: "traceknot-session-board-current/v1";
+  sessionKey: string;
+  sourceRevision: number;
+  invocationId: string;
+  revisionPath: string;
+  entrypoint: "index.html";
+  entrypointSha256: string;
+  manifestSha256: string;
+  sessionRef: string;
+  generatedAt: string;
+  authoritative: false;
+}>;
+
+function parsePublishedCurrent(value: unknown, sessionKey: string, selectorTarget: string): PublishedCurrent {
+  const current = object(value, "canonical Board current pointer");
+  const required = ["schemaVersion", "sessionKey", "sourceRevision", "invocationId", "revisionPath", "entrypoint", "entrypointSha256", "manifestSha256", "sessionRef", "generatedAt", "authoritative"] as const;
+  if (!closedKeys(current, required)) throw Error("canonical Board publisher current pointer keys are invalid");
+  if (current.schemaVersion !== "traceknot-session-board-current/v1" || current.sessionKey !== sessionKey || current.revisionPath !== selectorTarget || current.entrypoint !== "index.html" || current.authoritative !== false) {
+    throw Error("canonical Board publisher reported an invalid current pointer");
+  }
+  if (!Number.isSafeInteger(current.sourceRevision) || Number(current.sourceRevision) < 0) throw Error("canonical Board publisher current pointer sourceRevision is invalid");
+  if (typeof current.invocationId !== "string" || !/^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(current.invocationId)) throw Error("canonical Board publisher current pointer invocationId is invalid");
+  if (typeof current.entrypointSha256 !== "string" || !/^[0-9a-f]{64}$/.test(current.entrypointSha256) || typeof current.manifestSha256 !== "string" || !/^[0-9a-f]{64}$/.test(current.manifestSha256)) {
+    throw Error("canonical Board publisher current pointer digest is invalid");
+  }
+  if (typeof current.sessionRef !== "string" || current.sessionRef.length === 0) throw Error("canonical Board publisher current pointer sessionRef is invalid");
+  if (typeof current.generatedAt !== "string" || !/^\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2\d))T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?Z$/.test(current.generatedAt) || !Number.isFinite(Date.parse(current.generatedAt))) {
+    throw Error("canonical Board publisher current pointer generatedAt is invalid");
+  }
+  const [year, month, day] = current.generatedAt.slice(0, 10).split("-").map(Number) as [number, number, number];
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]!;
+  if (day > daysInMonth) throw Error("canonical Board publisher current pointer generatedAt is invalid");
+  return current as unknown as PublishedCurrent;
+}
 
 export async function validatePublishedBoard(
   entrypoint: string,
@@ -283,10 +319,10 @@ export async function validatePublishedBoard(
     const revisionRelative = join(sessionRelative, selectorTarget);
     let currentBytes: Uint8Array;
     try { currentBytes = await readSecureRegularFile(root.fd, join(revisionRelative, "current.json"), 1024 * 1024); } catch { throw Error("canonical Board publisher selected revision is invalid or escapes the session state root"); }
-    let current: Record<string, unknown>;
-    try { current = JSON.parse(new TextDecoder().decode(currentBytes)) as Record<string, unknown>; } catch { throw Error("canonical Board publisher reported malformed current.json"); }
+    let currentValue: unknown;
+    try { currentValue = JSON.parse(new TextDecoder().decode(currentBytes)) as unknown; } catch { throw Error("canonical Board publisher reported malformed current.json"); }
     if (expected?.sessionId !== undefined && containsBoundaryIdentity(new TextDecoder("utf-8", { fatal: true }).decode(currentBytes), expected.sessionId)) throw Error("canonical Board publisher current pointer exposes the raw session ID");
-    if (current.schemaVersion !== "traceknot-session-board-current/v1" || current.sessionKey !== sessionKey || current.entrypoint !== "index.html" || current.authoritative !== false || current.revisionPath !== selectorTarget || typeof current.entrypointSha256 !== "string" || !/^[0-9a-f]{64}$/.test(current.entrypointSha256) || typeof current.manifestSha256 !== "string" || !/^[0-9a-f]{64}$/.test(current.manifestSha256) || typeof current.sessionRef !== "string") throw Error("canonical Board publisher reported an invalid current pointer");
+    const current = parsePublishedCurrent(currentValue, sessionKey, selectorTarget);
     const digest = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
     let immutableManifestBytes: Uint8Array;
     try { immutableManifestBytes = await readSecureRegularFile(root.fd, join(revisionRelative, "manifest.json"), 4 * 1024 * 1024); } catch { throw Error("canonical Board publisher immutable manifest is not a secure regular file"); }

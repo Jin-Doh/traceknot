@@ -879,6 +879,17 @@ function closeSessionDirectories(handles: SessionBoardDirectoryHandles): void {
   }
 }
 
+async function assertTreeRemovalPreflight(parentPath: string, name: string): Promise<void> {
+  if (!SAFE_BOARD_NAME.test(name) && !name.startsWith(".pending-")) throw new Error("Board cleanup target contains unsafe characters");
+  const directoryPath = join(parentPath, name);
+  const entries = await readdir(directoryPath, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isDirectory() && !entry.isSymbolicLink()) {
+      await assertTreeRemovalPreflight(directoryPath, entry.name);
+    }
+  }
+}
+
 async function removeTreeAt(parentFd: number, parentPath: string, name: string): Promise<void> {
   if (!SAFE_BOARD_NAME.test(name) && !name.startsWith(".pending-")) throw new Error("Board cleanup target contains unsafe characters");
   let directoryFd: number;
@@ -1123,6 +1134,7 @@ async function sessionReclaim(
   if (predictedCount > max || predictedBytes > quota) throw new Error(`Board publication quota exceeded for session ${sessionKey}`);
   if (!apply) return;
   const deletionOrder = [...selected].sort((a, b) => Number(a.name === removeLast) - Number(b.name === removeLast));
+  for (const candidate of deletionOrder) await assertTreeRemovalPreflight(boardsPath, candidate.name);
   for (const candidate of deletionOrder) {
     await removeTreeAt(boardsFd, boardsPath, candidate.name);
     bytes -= candidate.bytes;

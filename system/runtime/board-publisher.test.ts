@@ -197,6 +197,30 @@ describe("canonical Board publisher", () => {
       await rm(fixture.root, { recursive: true, force: true });
     }
   });
+  test("rejects incomplete, unsafe, or open-shaped current pointer contracts", async () => {
+    const mutations: Array<(current: Record<string, unknown>) => void> = [
+      current => { delete current.sourceRevision; },
+      current => { current.unexpected = true; },
+      current => { current.invocationId = "../unsafe"; },
+      current => { current.generatedAt = "not-a-timestamp"; },
+    ];
+    for (const mutate of mutations) {
+      const fixture = await boardFixture();
+      try {
+        const sessionRoot = dirname(fileURLToPath(fixture.entrypoint));
+        const currentPath = join(sessionRoot, "current.json");
+        const current = JSON.parse(await readFile(currentPath, "utf8")) as Record<string, unknown>;
+        mutate(current);
+        await writeFile(currentPath, `${JSON.stringify(current, null, 2)}\n`);
+        const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${fixture.entrypoint}\n` });
+        await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: fixture.root }))
+          .rejects.toThrow(/current pointer/u);
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true });
+      }
+    }
+  });
+
   test("rejects an integrity-consistent Board page that exposes the raw session ID", async () => {
     const fixture = await boardFixture();
     try {
