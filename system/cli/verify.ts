@@ -41,7 +41,7 @@ import { FileVerificationRepository } from "../runtime/file-repository";
 import { buildQaBoardView, type QaBoardLocale } from "../presentation/qa-board";
 import { detectQaBoardLocale } from "../presentation/qa-board-locale";
 import { openBoard } from "../presentation/board-opener";
-import { markProjectSupportSeen, publishSessionBoardUpdate, verifySessionBoardPublication } from "../presentation/qa-board-store";
+import { markProjectSupportSeen, publishSessionBoardUpdate } from "../presentation/qa-board-store";
 import { notifyBoard } from "../presentation/user-notifier";
 
 export const VERIFY_EXIT_CODES = Object.freeze({ PASS: 0, FAIL: 1, BLOCKED: 2, INCOMPLETE: 3, USAGE: 64, INTERNAL: 70 });
@@ -866,19 +866,15 @@ async function generateBoardForResult(options: CliOptions, result: RunVerificati
       artifactReader: artifactStore,
       locale: options.boardLocale,
     });
-    await verifySessionBoardPublication(options.stateDir, publication);
     const boardUri = publication.entrypointUri;
     const projectSupportIncluded = publication.projectSupportIncluded;
-    const verifyBoard = () => verifySessionBoardPublication(options.stateDir, publication);
     published = true;
     stderr(`Traceknot Board: ${boardUri}\n`);
     if (!options.noNotify) {
-      await verifyBoard();
       const notification = await runtime.notifyBoard({ title: "Traceknot QA finished", message: `${result.verdict.qaVerdict}: ${result.verdict.obligationSummary.failed} failed`, boardUri });
       if (notification === "failed") stderr("Traceknot Board: desktop notification failed\n");
     }
     if (options.openBoard) {
-      await verifyBoard();
       const opened = await runtime.openBoard(boardUri);
       if (opened === "failed") stderr("Traceknot Board: browser opener failed\n");
       if (opened === "opened" && projectSupportIncluded) {

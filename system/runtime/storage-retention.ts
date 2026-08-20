@@ -246,6 +246,7 @@ function validBoardManifest(value: unknown): value is JsonRecord {
   if (!["CREATED", "BASIS_ESTABLISHED", "DISCOVERY_COMPLETED", "PLANNED", "EXECUTING", "EVIDENCE_EVALUATED", "VERDICT_RESOLVED", "TERMINAL"].includes(String(value.sourceState))) return false;
   if (!isIsoUtcTimestamp(value.sourceUpdatedAt) || !isIsoUtcTimestamp(value.generatedAt) || value.entrypoint !== "index.html" || value.authoritative !== false || !validBoardAssurance(value.assurance) || !["PASS", "PASS_WITH_ACCEPTED_RISK", "FAIL", "BLOCKED", "INCOMPLETE"].includes(String(value.verdict))) return false;
   if (!isRecord(value.counts) || !exactKeys(value.counts, ["mandatory", "passed", "failed", "blocked", "incomplete"]) || !Object.values(value.counts).every(nonnegativeInteger)) return false;
+  if (Number((value.counts as JsonRecord).mandatory) !== ["passed", "failed", "blocked", "incomplete"].reduce((total, key) => total + Number((value.counts as JsonRecord)[key]), 0)) return false;
   if (!isRecord(value.generatedBy) || !exactKeys(value.generatedBy, ["invocationId", "sessionHost", "sessionRef"]) || !nonempty(value.generatedBy.invocationId) || !safeId(value.generatedBy.invocationId) || !nonempty(value.generatedBy.sessionHost) || value.generatedBy.sessionHost.length > 128 || !nonempty(value.generatedBy.sessionRef)) return false;
   if (!Array.isArray(value.files)) return false;
   return value.files.every(file => isRecord(file)
