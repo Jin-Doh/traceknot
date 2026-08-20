@@ -76,7 +76,7 @@ Publication derives:
 session-key = s-<sha256(sessionHost + NUL + sessionId)>
 ```
 
-The raw session ID MUST NOT appear in a path, manifest, page, or log. Each publication creates an immutable revision at:
+The raw session ID MUST NOT appear as a standalone value or boundary-delimited identity token in a path, manifest, page, or log. The guard is intentionally boundary-aware: an incidental byte substring inside a larger `\p{L}`, `\p{N}`, `.`, `_`, or `-` token is not treated as session-identity propagation. Each publication creates an immutable revision at:
 
 ```text
 sessions/<session-key>/boards/<sourceRevision>-<invocationId>/
@@ -96,11 +96,13 @@ Existing `verify --session-id ... --session-host ...` publication uses this same
 
 Retention uses the clean-cutover `boardMaxPerSession` policy. Protect the revision selected by `current`, explicitly pinned run-linked revisions, and the newest terminal Board checkpoint. Reclaim superseded active and other unprotected revisions; never delete the selected revision to satisfy quota. If the new publication cannot fit after reclaimable pruning, fail Board publication with a quota reason, preserve the prior current selector, and leave the QA verdict unchanged.
 
+Before apply-mode reclaim deletes its first selected revision, it MUST recursively preflight every selected tree against the same safe-name constraints used by deletion. A structural preflight failure therefore occurs before any selected revision is mutated, preserving the rollback target if publication must restore the prior `current` selector.
+
 Board generation, notification, opening, and retention are presentation/storage operations. A failure MUST be reported with its missing prerequisite or quota reason and MUST NOT become evidence, upgrade a verdict, or alter a completed verification result. It MUST NOT change the QA verdict.
 
 ## Renderer and trust boundary
 
-The renderer may copy only fields already present in the validated `QaBoardView` and canonical QA records: target snapshot, source run and revision, terminal verdict, structured counts, basis, risks, conditions, obligations, evidence references, defects, residual risk, capability limits, exact commands, and observed outputs. Preserve values exactly where displayed; missing values remain unavailable.
+The renderer may copy only fields already present in the validated `QaBoardView` and canonical QA records: target snapshot, source run and revision, terminal verdict, structured counts, basis, risks, conditions, obligations, evidence references, defects, residual risk, capability limits, exact commands, paths, and observed outputs. Preserve values exactly where displayed; missing values remain unavailable.
 
 The canonical renderer requirements are:
 
