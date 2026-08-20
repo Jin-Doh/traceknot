@@ -3,7 +3,7 @@ import { open, type FileHandle } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { LocalArtifactStore } from "../runtime/local-artifact-store";
 import { openBoard } from "../presentation/board-opener";
-import { markProjectSupportSeen, parseSessionBoardUpdate, publishSessionBoardUpdate, verifySessionBoardPublication } from "../presentation/qa-board-store";
+import { markProjectSupportSeen, parseSessionBoardUpdate, publishSessionBoardUpdate } from "../presentation/qa-board-store";
 import { notifyBoard } from "../presentation/user-notifier";
 import { detectQaBoardLocale } from "../presentation/qa-board-locale";
 import type { QaBoardLocale } from "../presentation/qa-board";
@@ -132,7 +132,7 @@ export async function runBoardUpdate(
     const update = parseSessionBoardUpdate(await readBoardUpdateInput(options.inputPath));
     artifactStore = new LocalArtifactStore(options.artifactDir);
     const publication = await publishSessionBoardUpdate({ update, stateDir: options.stateDir, artifactReader: artifactStore, locale: options.boardLocale });
-    await verifySessionBoardPublication(options.stateDir, publication);
+    // publishSessionBoardUpdate verifies the committed revision while holding the maintenance lock.
     stderr(`Traceknot Board: ${publication.entrypointUri}\n`);
     if (!options.noNotify) {
       const notification = await runtime.notifyBoard({ title: "Traceknot QA finished", message: `${publication.manifest.verdict}: ${publication.manifest.counts.failed} failed`, boardUri: publication.entrypointUri });

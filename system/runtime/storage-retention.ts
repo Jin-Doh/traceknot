@@ -282,6 +282,7 @@ async function validBoardContents(boardPath: string, manifest: unknown, sessionB
   if (!validBoardManifest(manifest) || !Array.isArray(manifest.files)) return false;
   const declared = manifest.files as readonly JsonRecord[];
   const declaredPaths = declared.map(file => String(file.path));
+  if (new Set(declaredPaths).size !== declaredPaths.length) return false;
   const expectedPages = manifest.sessionKey === undefined ? ["index.html"] : QA_BOARD_PAGE_PATHS;
   if (!expectedPages.every(path => declaredPaths.includes(path))) return false;
   const expectedDirs = new Set<string>(manifest.sessionKey === undefined ? [] : ["evidence"]);
