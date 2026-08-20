@@ -1025,6 +1025,17 @@ async function existingSessionRevisionMatches(
   return true;
 }
 
+async function retainedSessionRevisionIsValid(root: SecureRootDescriptor, revisionPath: string, manifestValue: UnknownRecord): Promise<boolean> {
+  try {
+    const manifest = manifestValue as unknown as QaBoardManifest;
+    const manifestBytes = await readSecureRegularFile(root.fd, secureRelativePath(root, join(revisionPath, "manifest.json")), 4 * 1024 * 1024);
+    const currentBytes = await readSecureRegularFile(root.fd, secureRelativePath(root, join(revisionPath, "current.json")), 1024 * 1024);
+    return await existingSessionRevisionMatches(root, revisionPath, manifest, manifestBytes, currentBytes);
+  } catch {
+    return false;
+  }
+}
+
 
 type SessionRevision = {
   name: string;
@@ -1072,8 +1083,9 @@ async function sessionReclaim(
       }
     }
     const generatedAt = manifestValue && isIsoUtcTimestamp(manifestValue.generatedAt) ? Date.parse(manifestValue.generatedAt) : NaN;
+    const contentsValid = manifestValue !== undefined && await retainedSessionRevisionIsValid(root, path, manifestValue);
     const sourceRevision = manifestValue && typeof manifestValue.sourceRevision === "number" && Number.isSafeInteger(manifestValue.sourceRevision) && manifestValue.sourceRevision >= 0 ? manifestValue.sourceRevision : -1;
-    revisions.push({ name: entry.name, path, bytes: await sessionDirectoryBytes(path), generatedAt, sourceRevision, runId: manifestValue && typeof manifestValue.runId === "string" ? manifestValue.runId : undefined, sourceState: manifestValue && typeof manifestValue.sourceState === "string" ? manifestValue.sourceState : undefined, malformed: manifestValue === undefined || !Number.isFinite(generatedAt) || sourceRevision < 0 });
+    revisions.push({ name: entry.name, path, bytes: await sessionDirectoryBytes(path), generatedAt, sourceRevision, runId: manifestValue && typeof manifestValue.runId === "string" ? manifestValue.runId : undefined, sourceState: manifestValue && typeof manifestValue.sourceState === "string" ? manifestValue.sourceState : undefined, malformed: !contentsValid || !Number.isFinite(generatedAt) || sourceRevision < 0 });
   }
   const pinsBytes = await readOptionalSecure(root, join(root.canonical, ".traceknot-pins.json"), 1024 * 1024);
   let pinned: Set<string>;

@@ -321,6 +321,19 @@ describe("canonical Board publisher", () => {
     }
   });
 
+  test("rejects a raw session ID split across rendered HTML nodes", async () => {
+    const sessionId = "abcdefgh";
+    const fixture = await boardFixture({ sessionId });
+    try {
+      await replaceEntrypoint(fixture.entrypoint, "<!doctype html><p>abcd<span></span>efgh</p>");
+      const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${fixture.entrypoint}\n` });
+      await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, sessionId, stateDir: fixture.root }))
+        .rejects.toThrow("page exposes the raw session ID");
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
   test("rejects an integrity-consistent Board page that exposes the raw session ID", async () => {
     const fixture = await boardFixture();
     try {
@@ -387,6 +400,19 @@ describe("canonical Board publisher", () => {
     } finally {
       await rm(duplicate.root, { recursive: true, force: true });
     }
+    const missingLocale = await boardFixture();
+    try {
+      await replaceManifest(missingLocale.entrypoint, manifest => {
+        manifest.files = manifest.files.filter(file => file.path !== "index.ko.html");
+      });
+      await rm(join(dirname(fileURLToPath(missingLocale.entrypoint)), "current", "index.ko.html"));
+      const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${missingLocale.entrypoint}\n` });
+      await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: missingLocale.root }))
+        .rejects.toThrow("missing required page");
+    } finally {
+      await rm(missingLocale.root, { recursive: true, force: true });
+    }
+
 
     const wrongRole = await boardFixture();
     try {

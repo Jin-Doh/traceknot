@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decodeHTML } from "entities";
+import { parse } from "parse5";
 import { sessionReference, type QaBoardManifest } from "../presentation/qa-board";
 import { containsBoundaryIdentity, containsBoundaryIdentityDeep } from "../presentation/session-identity";
 import { isIsoUtcTimestamp } from "../presentation/timestamp";
@@ -216,6 +217,17 @@ function sameSet(actual: ReadonlySet<string>, expected: ReadonlySet<string>): bo
 }
 
 
+type ParsedHtmlNode = Readonly<{ nodeName: string; value?: string; childNodes?: readonly ParsedHtmlNode[] }>;
+function renderedPageText(source: string): string {
+  const text: string[] = [];
+  const visitNode = (node: ParsedHtmlNode): void => {
+    if (node.nodeName === "#text" && node.value !== undefined) text.push(node.value);
+    for (const child of node.childNodes ?? []) visitNode(child);
+  };
+  visitNode(parse(source) as unknown as ParsedHtmlNode);
+  return text.join("");
+}
+
 function closedKeys(value: Readonly<Record<string, unknown>>, required: readonly string[], optional: readonly string[] = []): boolean {
   const keys = Object.keys(value);
   return required.every(key => key in value) && keys.every(key => required.includes(key) || optional.includes(key));
@@ -256,6 +268,10 @@ function parsePublishedManifest(value: unknown): QaBoardManifest {
     if (file.path === "index.html" && file.role === "entrypoint") entrypoints += 1;
   }
   if (entrypoints !== 1) throw Error("canonical Board publisher manifest must declare exactly one entrypoint");
+  const declaredPaths = new Set(manifest.files.map(file => (file as Readonly<{ path: string }>).path));
+  for (const requiredPath of ["index.html", "index.en.html", "index.ko.html", "index.zh-CN.html"]) {
+    if (!declaredPaths.has(requiredPath)) throw Error(`canonical Board publisher manifest is missing required page: ${requiredPath}`);
+  }
   return manifest as unknown as QaBoardManifest;
 }
 
@@ -382,7 +398,9 @@ export async function validatePublishedBoard(
       if (expected?.sessionId !== undefined && file.path.endsWith(".html")) {
         let text: string;
         try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { throw Error(`canonical Board publisher page is not UTF-8: ${file.path}`); }
-        if (containsBoundaryIdentity(text.includes("&") ? decodeHTML(text) : text, expected.sessionId)) throw Error(`canonical Board publisher page exposes the raw session ID: ${file.path}`);
+        const decodedSource = text.includes("&") ? decodeHTML(text) : text;
+        if (containsBoundaryIdentity(decodedSource, expected.sessionId)
+          || containsBoundaryIdentity(renderedPageText(text), expected.sessionId)) throw Error(`canonical Board publisher page exposes the raw session ID: ${file.path}`);
       }
       if (file.path === "index.html" && file.role === "entrypoint") {
         if (digest(bytes) !== current.entrypointSha256) throw Error("canonical Board publisher immutable entrypoint does not match current pointer");

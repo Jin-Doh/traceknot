@@ -271,6 +271,24 @@ describe("session Board contract", () => {
     }
   });
 
+  test("does not protect a corrupted terminal revision during reclamation", async () => {
+    const fixtureValue = await fixture();
+    const validTerminal = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "terminal-valid")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 10 } });
+    const corruptTerminal = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(2, "terminal-corrupt")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 10 } });
+    await writeFile(join(corruptTerminal.directory, "index.html"), "corrupted");
+    const current = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(3, "current-active", "EXECUTING")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 10 } });
+
+    const incoming = await publishSessionBoardUpdate({
+      update: parseSessionBoardUpdate(update(4, "incoming-active", "EXECUTING")),
+      ...fixtureValue,
+      retentionPolicy: { boardMaxPerSession: 3 },
+    });
+    expect(await stat(validTerminal.directory)).toBeDefined();
+    expect(await stat(corruptTerminal.directory)).toBeDefined();
+    expect(JSON.parse(await readFile(current.currentPath, "utf8"))).toMatchObject({ revisionPath: "boards/4-incoming-active" });
+    expect(incoming.current.revisionPath).toBe("boards/4-incoming-active");
+  });
+
   test("rotates active revisions by the session maximum without deleting current", async () => {
     const fixtureValue = await fixture();
     await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1", "EXECUTING")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 2 } });
