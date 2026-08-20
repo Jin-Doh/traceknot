@@ -81,7 +81,7 @@ function parseArgs(argv: readonly string[]): BoardOptions {
   return { inputPath: resolve(inputPath), stateDir: absoluteState, artifactDir: resolve(artifactDir ?? join(absoluteState, "artifacts")), openBoard: open, noNotify, boardLocale, help };
 }
 
-async function readInput(path: string): Promise<unknown> {
+export async function readBoardUpdateInput(path: string, afterStat?: () => Promise<void>): Promise<unknown> {
   const flags = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0) | ((constants as Record<string, number | undefined>).O_CLOEXEC ?? 0);
   let handle: FileHandle;
   try { handle = await open(path, flags); } catch { fail("Board update input must be a regular file and must not be a symlink"); }
@@ -89,11 +89,12 @@ async function readInput(path: string): Promise<unknown> {
     const information = await handle.stat();
     if (!information.isFile()) fail("Board update input must be a regular file");
     if (information.size > MAX_INPUT_BYTES) fail("Board update input exceeds the maximum size");
+    await afterStat?.();
     const bytes = new Uint8Array(information.size);
     let offset = 0;
     while (offset < bytes.byteLength) {
       const { bytesRead } = await handle.read(bytes, offset, bytes.byteLength - offset, offset);
-      if (bytesRead === 0) break;
+      if (bytesRead === 0) fail("Board update input changed while being read");
       offset += bytesRead;
     }
     const probe = new Uint8Array(1);
@@ -128,7 +129,7 @@ export async function runBoardUpdate(
   }
   let artifactStore: LocalArtifactStore | undefined;
   try {
-    const update = parseSessionBoardUpdate(await readInput(options.inputPath));
+    const update = parseSessionBoardUpdate(await readBoardUpdateInput(options.inputPath));
     artifactStore = new LocalArtifactStore(options.artifactDir);
     const publication = await publishSessionBoardUpdate({ update, stateDir: options.stateDir, artifactReader: artifactStore, locale: options.boardLocale });
     await verifySessionBoardPublication(options.stateDir, publication);

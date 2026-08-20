@@ -301,6 +301,25 @@ describe("storage retention", () => {
     expect(applied.protected.symlinks).toContain(`sessions/${sessionKey}/current`);
   });
 
+  test("fails closed when selected session metadata carries a different session reference", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"9".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
+    await sessionBoard(state, sessionKey, "1-recoverable", { runId: "run-a", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "2-current", { runId: "run-b", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+    const currentPath = join(sessionRoot, "boards", "2-current", "current.json");
+    const current = JSON.parse(await readFile(currentPath, "utf8")) as Record<string, unknown>;
+    await writeFile(currentPath, JSON.stringify({ ...current, sessionRef: `s-${"8".repeat(64)}` }));
+    await symlink("boards/2-current", join(sessionRoot, "current"));
+
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).toEqual([]);
+    expect(applied.protected.malformed).toContain(`${prefix}1-recoverable`);
+    expect(applied.protected.malformed).toContain(`${prefix}2-current`);
+    expect(applied.protected.symlinks).toContain(`sessions/${sessionKey}/current`);
+  });
+
   test("orders session terminal retention by publication time across runs", async () => {
     const { state, artifacts } = await fixture();
     const sessionKey = `s-${"c".repeat(64)}`;

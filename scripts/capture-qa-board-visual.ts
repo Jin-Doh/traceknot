@@ -36,8 +36,8 @@ class CdpClient {
     });
   }
 
-  static async connect(url: string): Promise<CdpClient> {
-    const socket = new WebSocket(url);
+  static async connect(port: number, browserId: string): Promise<CdpClient> {
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/devtools/browser/${browserId}`);
     await new Promise<void>((resolveOpen, rejectOpen) => {
       socket.addEventListener("open", () => resolveOpen(), { once: true });
       socket.addEventListener("error", () => rejectOpen(new Error("Chrome DevTools websocket failed")), { once: true });
@@ -91,19 +91,19 @@ const browser = Bun.spawn([
 
 let client: CdpClient | undefined;
 try {
-  let websocketUrl: string | undefined;
-  for (let attempt = 0; attempt < 600 && websocketUrl === undefined; attempt++) {
+  let endpoint: Readonly<{ port: number; browserId: string }> | undefined;
+  for (let attempt = 0; attempt < 600 && endpoint === undefined; attempt++) {
     try {
-      const [port, path] = (await readFile(join(profileDir, "DevToolsActivePort"), "utf8")).trim().split(/\r?\n/u);
-      if (port !== undefined && /^\d+$/.test(port) && path?.startsWith("/devtools/browser/")) {
-        websocketUrl = `ws://127.0.0.1:${port}${path}`;
-      }
+      const [portText, path] = (await readFile(join(profileDir, "DevToolsActivePort"), "utf8")).trim().split(/\r?\n/u);
+      const port = Number(portText);
+      const browserId = path?.match(/^\/devtools\/browser\/([A-Za-z0-9-]+)$/)?.[1];
+      if (Number.isInteger(port) && port > 0 && port <= 65535 && browserId !== undefined) endpoint = { port, browserId };
     } catch {
       await Bun.sleep(50);
     }
   }
-  if (websocketUrl === undefined) throw new Error("Chrome DevTools endpoint did not become ready within 30 seconds");
-  client = await CdpClient.connect(websocketUrl);
+  if (endpoint === undefined) throw new Error("Chrome DevTools endpoint did not become ready within 30 seconds");
+  client = await CdpClient.connect(endpoint.port, endpoint.browserId);
   const observations: Array<Record<string, unknown>> = [];
 
   for (const capture of cases) {

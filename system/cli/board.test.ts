@@ -3,7 +3,7 @@ import { mkdtemp, readFile, readdir, readlink, realpath, rm, stat, symlink, trun
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { BOARD_EXIT_CODES, runBoardUpdate } from "./board";
+import { BOARD_EXIT_CODES, readBoardUpdateInput, runBoardUpdate } from "./board";
 
 const sessionId = "raw-board-session-id";
 
@@ -147,6 +147,17 @@ describe("traceknot board CLI", () => {
       );
       expect(status).toBe(BOARD_EXIT_CODES.USAGE);
       expect(stderr.join("")).toContain("Board update input is not valid JSON");
+    } finally {
+      await fixtureValue.cleanup();
+    }
+  });
+
+  test("rejects an input file that shrinks after its size is observed", async () => {
+    const fixtureValue = await fixture("board-shrinking-input");
+    try {
+      await expect(readBoardUpdateInput(fixtureValue.inputPath, async () => {
+        await truncate(fixtureValue.inputPath, 2);
+      })).rejects.toThrow("Board update input changed while being read");
     } finally {
       await fixtureValue.cleanup();
     }

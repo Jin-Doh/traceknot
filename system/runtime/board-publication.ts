@@ -8,6 +8,7 @@ import { lstat, readlink } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { decodeHTML } from "entities";
 import { sessionReference, type QaBoardManifest } from "../presentation/qa-board";
 import { containsBoundaryIdentity } from "../presentation/session-identity";
 import { closeSecureRoot, openSecureRoot, readSecureRegularFile } from "./local-artifact-store";
@@ -320,7 +321,12 @@ export async function validatePublishedBoard(
     let manifestValue: unknown;
     try { manifestValue = JSON.parse(new TextDecoder().decode(immutableManifestBytes)) as unknown; } catch { throw Error("canonical Board publisher reported malformed immutable manifest"); }
     const manifest = parsePublishedManifest(manifestValue);
-    if (manifest.authoritative !== false || manifest.sessionKey !== sessionKey || manifest.generatedBy.sessionRef !== current.sessionRef) throw Error("canonical Board publisher immutable manifest identity does not match current pointer");
+    if (manifest.authoritative !== false
+      || manifest.sessionKey !== sessionKey
+      || manifest.sourceRevision !== current.sourceRevision
+      || manifest.generatedBy.invocationId !== current.invocationId
+      || manifest.generatedBy.sessionRef !== current.sessionRef
+      || manifest.generatedAt !== current.generatedAt) throw Error("canonical Board publisher immutable manifest identity does not match current pointer");
     if (expected?.sessionId !== undefined && expected.sessionHost !== undefined && current.sessionRef !== sessionReference(expected.sessionHost, expected.sessionId)) throw Error("canonical Board publisher session identity does not match current pointer");
     if (expected?.snapshotId !== undefined && manifest.snapshotId !== expected.snapshotId) throw Error("canonical Board publisher snapshot identity does not match the request");
     if (expected?.runId !== undefined && manifest.runId !== expected.runId) throw Error("canonical Board publisher run identity does not match the request");
@@ -332,7 +338,7 @@ export async function validatePublishedBoard(
       if (expected?.sessionId !== undefined && (file.role === "entrypoint" || file.role === "localized-view")) {
         let text: string;
         try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { throw Error(`canonical Board publisher page is not UTF-8: ${file.path}`); }
-        if (containsBoundaryIdentity(text, expected.sessionId)) throw Error(`canonical Board publisher page exposes the raw session ID: ${file.path}`);
+        if (containsBoundaryIdentity(text.includes("&") ? decodeHTML(text) : text, expected.sessionId)) throw Error(`canonical Board publisher page exposes the raw session ID: ${file.path}`);
       }
       if (file.path === "index.html" && file.role === "entrypoint") {
         if (digest(bytes) !== current.entrypointSha256) throw Error("canonical Board publisher immutable entrypoint does not match current pointer");

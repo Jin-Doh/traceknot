@@ -242,6 +242,28 @@ describe("canonical Board publisher", () => {
     }
   });
 
+  test("rejects current metadata that disagrees with the immutable manifest", async () => {
+    const mutations: Array<(current: Record<string, unknown>) => void> = [
+      current => { current.sourceRevision = Number(current.sourceRevision) + 1; },
+      current => { current.invocationId = "different-invocation"; },
+      current => { current.generatedAt = "2026-08-19T00:00:01Z"; },
+    ];
+    for (const mutate of mutations) {
+      const fixture = await boardFixture();
+      try {
+        const currentPath = join(dirname(fileURLToPath(fixture.entrypoint)), "current.json");
+        const current = JSON.parse(await readFile(currentPath, "utf8")) as Record<string, unknown>;
+        mutate(current);
+        await writeFile(currentPath, `${JSON.stringify(current, null, 2)}\n`);
+        const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${fixture.entrypoint}\n` });
+        await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: fixture.root }))
+          .rejects.toThrow("immutable manifest identity does not match current pointer");
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true });
+      }
+    }
+  });
+
   test("rejects an integrity-consistent Board page that exposes the raw session ID", async () => {
     const fixture = await boardFixture();
     try {
@@ -263,6 +285,19 @@ describe("canonical Board publisher", () => {
         await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: fixture.root }))
           .resolves.toMatchObject({ status: "generated" });
       }
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects an HTML-entity encoded raw session ID", async () => {
+    const sessionId = "abcd&efgh";
+    const fixture = await boardFixture({ sessionId });
+    try {
+      await replaceEntrypoint(fixture.entrypoint, "<!doctype html><p>abcd&amp;efgh</p>");
+      const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${fixture.entrypoint}\n` });
+      await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, sessionId, stateDir: fixture.root }))
+        .rejects.toThrow("page exposes the raw session ID");
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }

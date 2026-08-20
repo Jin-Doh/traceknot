@@ -271,7 +271,7 @@ function validSessionBoardCurrent(
     && value.entrypoint === "index.html"
     && value.entrypointSha256 === entrypointSha256
     && value.manifestSha256 === manifestSha256
-    && nonempty(value.sessionRef)
+    && isRecord(manifest.generatedBy) && value.sessionRef === manifest.generatedBy.sessionRef
     && value.generatedAt === manifest.generatedAt
     && value.authoritative === false;
 }
