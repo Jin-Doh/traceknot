@@ -38,7 +38,7 @@ const REQUIRED_SECTIONS = [
 const REQUIRED_CAPABILITY_SECTIONS: Readonly<Record<string, readonly string[]>> = {
   "README.md": ["verify"],
   "README.ko.md": ["verify"],
-  "README.zh.md": [],
+  "README.zh.md": ["verify"],
 };
 const REQUIRED_SHARED_COMMANDS = ["skill-install", "full-toolkit-install", "full-toolkit-pinned-install", "full-toolkit-uninstall", "full-toolkit-custom-uninstall", "ci"] as const;
 const REQUIRED_RENDERED_BOUNDARIES = [

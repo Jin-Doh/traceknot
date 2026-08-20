@@ -150,6 +150,20 @@ Traceknot 适用于实现验证、缺陷修复确认、发布检查、仓库审�
 | npm package 或专用 Skill registry 条目 | **暂不提供。** 可以通过 Skills CLI 直接从 GitHub 安装 |
 
 规范 Skill bundle 和宿主中立核心现在即可使用。对运行框架完成状态作出权威声明仍属于单独的集成项目。
+<!-- readme-capability:verify -->
+
+## Verify CLI
+
+Verify CLI 会通过本地 collector 执行经过校验的显式命令 manifest，并以原子方式持久化每个 VerificationRun checkpoint。请使用与安装范围一致的 executable；仅项目本地安装不得回退到无关的全局 executable。运行状态和 content-addressed artifact 默认写入外部用户缓存，不会修改正在验证的 Git snapshot：
+
+```sh
+# 全局安装
+$HOME/.agents/skills/traceknot/bin/traceknot verify --request request.json --manifest manifest.json --root .
+# 项目本地安装
+.agents/skills/traceknot/bin/traceknot verify --request request.json --manifest manifest.json --root .
+```
+
+request 必须标识当前 Git `rootIdentity` 和 `snapshotId`；任一字段都可以使用字面值 `auto`。`verification-manifest/v1` 为每个 obligation 指定带参数的绝对 executable、绝对 `executionCompletionPath`，或同时指定二者；不接受 shell-string interpolation。
 
 <!-- readme-section:install -->
 
