@@ -11,7 +11,7 @@ import Ajv2020 from "ajv/dist/2020";
 const NOW = "2026-08-15T00:00:00.000Z";
 const OLD = "2025-01-01T00:00:00.000Z";
 const digest = "a".repeat(64);
-const policy: StorageRetentionPolicy = { boardTtlMs: 1, boardMaxPerRun: 1, boardQuotaBytes: 1, canonicalRunTtlMs: 1, canonicalQuotaBytes: 1, graceMs: 1 };
+const policy: StorageRetentionPolicy = { boardTtlMs: 1, boardMaxPerRun: 1, boardMaxPerSession: 1, boardQuotaBytes: 1, canonicalRunTtlMs: 1, canonicalQuotaBytes: 1, graceMs: 1 };
 const fixtureRoots: string[] = [];
 
 afterEach(async () => {
@@ -40,6 +40,55 @@ async function board(state: string, runId: string, boardId: string, generatedAt 
   await mkdir(path, { recursive: true });
   await writeFile(join(path, "index.html"), "<html></html>");
   await writeFile(join(path, "manifest.json"), JSON.stringify({ schemaVersion: "traceknot-qa-board/v1", runId, requestId: "request", rootIdentity: "root", snapshotId: "snapshot", sourceRevision: 1, sourceState: "TERMINAL", sourceUpdatedAt: generatedAt, generatedAt, entrypoint: "index.html", authoritative: false, assurance: { context: "release", requiredIndependence: "separate-verification-context", releaseStatus: "satisfied" }, verdict: "PASS", counts: { mandatory: 0, passed: 0, failed: 0, blocked: 0, incomplete: 0 }, generatedBy: { invocationId: boardId.length > 128 && boardId.startsWith("9-") ? boardId.slice(2) : boardId, sessionHost: "test", sessionRef: "test" }, files: [{ path: "index.html", role: "entrypoint", sha256: createHash("sha256").update("<html></html>").digest("hex"), bytes: 13 }] }));
+  await utimes(path, new Date(OLD), new Date(OLD));
+}
+
+async function sessionBoard(
+  state: string,
+  sessionKey: string,
+  boardId: string,
+  input: { runId: string; sourceRevision: number; sourceState: string; generatedAt: string },
+): Promise<void> {
+  const path = join(state, "sessions", sessionKey, "boards", boardId);
+  const html = `<html>${boardId}</html>`;
+  const pagePaths = ["index.html", "index.en.html", "index.ko.html", "index.zh-CN.html"] as const;
+  await mkdir(path, { recursive: true });
+  await mkdir(join(path, "evidence"));
+  for (const pagePath of pagePaths) await writeFile(join(path, pagePath), html);
+  const manifestValue = {
+    schemaVersion: "traceknot-qa-board/v1",
+    sessionKey,
+    runId: input.runId,
+    requestId: "request",
+    rootIdentity: "root",
+    snapshotId: "snapshot",
+    sourceRevision: input.sourceRevision,
+    sourceState: input.sourceState,
+    sourceUpdatedAt: input.generatedAt,
+    generatedAt: input.generatedAt,
+    entrypoint: "index.html",
+    authoritative: false,
+    assurance: { context: "release", requiredIndependence: "separate-verification-context", releaseStatus: "satisfied" },
+    verdict: "PASS",
+    counts: { mandatory: 0, passed: 0, failed: 0, blocked: 0, incomplete: 0 },
+    generatedBy: { invocationId: boardId.length > 128 ? boardId.slice(boardId.indexOf("-") + 1) : boardId, sessionHost: "omp", sessionRef: sessionKey },
+    files: pagePaths.map(pagePath => ({ path: pagePath, role: pagePath === "index.html" ? "entrypoint" : "localized-view", sha256: createHash("sha256").update(html).digest("hex"), bytes: Buffer.byteLength(html) })),
+  };
+  const manifestBytes = Buffer.from(JSON.stringify(manifestValue));
+  await writeFile(join(path, "manifest.json"), manifestBytes);
+  await writeFile(join(path, "current.json"), JSON.stringify({
+    schemaVersion: "traceknot-session-board-current/v1",
+    sessionKey,
+    sourceRevision: input.sourceRevision,
+    invocationId: boardId.length > 128 ? boardId.slice(boardId.indexOf("-") + 1) : boardId,
+    revisionPath: `boards/${boardId}`,
+    entrypoint: "index.html",
+    entrypointSha256: createHash("sha256").update(html).digest("hex"),
+    manifestSha256: createHash("sha256").update(manifestBytes).digest("hex"),
+    sessionRef: sessionKey,
+    generatedAt: input.generatedAt,
+    authoritative: false,
+  }));
   await utimes(path, new Date(OLD), new Date(OLD));
 }
 function storageCli(args: readonly string[]): { exitCode: number; stdout: string; stderr: string } {
@@ -190,6 +239,200 @@ describe("storage retention", () => {
     expect(report.candidates.boards).toEqual(["runs/active/boards/1-old"]);
     expect(report.candidates.boards).not.toContain("runs/active/boards/2-new");
   });
+
+  test("session retention preserves selected, pinned, and monotonic newest terminal revisions under quota", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"b".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
+    await run(state, "pinned", { state: "TERMINAL", updatedAt: OLD });
+    await pinRun(state, "pinned");
+    await rm(join(state, "runs", "pinned"), { recursive: true, force: true });
+    await sessionBoard(state, sessionKey, "7-late-clock", { runId: "unpinned", sourceRevision: 7, sourceState: "TERMINAL", generatedAt: NOW });
+    await sessionBoard(state, sessionKey, "8-old", { runId: "unpinned", sourceRevision: 8, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "9-current", { runId: "unpinned", sourceRevision: 9, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "10-terminal", { runId: "unpinned", sourceRevision: 10, sourceState: "TERMINAL", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "11-pinned", { runId: "pinned", sourceRevision: 11, sourceState: "EXECUTING", generatedAt: OLD });
+    await symlink("boards/9-current", join(sessionRoot, "current"));
+
+    const inventory = await inspectStorage({ stateDir: state, artifactDir: artifacts, now: NOW });
+    expect(inventory.counts.malformedBoards).toBe(0);
+
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).toContain(`${prefix}7-late-clock`);
+    expect(applied.deleted.boards).toContain(`${prefix}8-old`);
+    expect(applied.deleted.boards).not.toContain(`${prefix}9-current`);
+    expect(applied.deleted.boards).not.toContain(`${prefix}10-terminal`);
+    expect(applied.deleted.boards).not.toContain(`${prefix}11-pinned`);
+    expect(await readFile(join(sessionRoot, "current", "index.html"), "utf8")).toContain("9-current");
+
+    await unpinRun(state, "pinned");
+    const unpinned = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    expect(unpinned.deleted.boards).toContain(`${prefix}11-pinned`);
+    expect(await readFile(join(sessionRoot, "current", "index.html"), "utf8")).toContain("9-current");
+  });
+  test("fails closed on a dangling session current selector", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"e".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
+    await sessionBoard(state, sessionKey, "1-old", { runId: "run-a", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "2-new", { runId: "run-b", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+    await symlink("boards/missing", join(sessionRoot, "current"));
+
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).toEqual([]);
+    expect(applied.protected.malformed).toContain(`${prefix}1-old`);
+    expect(applied.protected.malformed).toContain(`${prefix}2-new`);
+    expect(applied.protected.symlinks).toContain(`sessions/${sessionKey}/current`);
+  });
+  test("fails closed when a session with revisions has no current selector", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"7".repeat(64)}`;
+    await sessionBoard(state, sessionKey, "1-recoverable", { runId: "run-a", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "2-new", { runId: "run-b", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).toEqual([]);
+    expect(applied.protected.malformed).toContain(`${prefix}1-recoverable`);
+    expect(applied.protected.malformed).toContain(`${prefix}2-new`);
+  });
+
+
+  test("fails closed when the selected session revision is malformed", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"f".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
+    await sessionBoard(state, sessionKey, "1-recoverable", { runId: "run-a", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "2-broken-current", { runId: "run-b", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+    await writeFile(join(sessionRoot, "boards", "2-broken-current", "current.json"), "{");
+    await symlink("boards/2-broken-current", join(sessionRoot, "current"));
+
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).toEqual([]);
+    expect(applied.protected.malformed).toContain(`${prefix}1-recoverable`);
+    expect(applied.protected.malformed).toContain(`${prefix}2-broken-current`);
+    expect(applied.protected.symlinks).toContain(`sessions/${sessionKey}/current`);
+  });
+
+  test("fails closed when selected session metadata has an impossible date", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"3".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
+    await sessionBoard(state, sessionKey, "1-recoverable", { runId: "run-a", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "2-current", { runId: "run-b", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+    const selectedRoot = join(sessionRoot, "boards", "2-current");
+    const manifestPath = join(selectedRoot, "manifest.json");
+    const currentPath = join(selectedRoot, "current.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
+    const manifestBytes = Buffer.from(JSON.stringify({ ...manifest, generatedAt: "2026-02-31T00:00:00Z" }));
+    await writeFile(manifestPath, manifestBytes);
+    const current = JSON.parse(await readFile(currentPath, "utf8")) as Record<string, unknown>;
+    await writeFile(currentPath, JSON.stringify({
+      ...current,
+      generatedAt: "2026-02-31T00:00:00Z",
+      manifestSha256: createHash("sha256").update(manifestBytes).digest("hex"),
+    }));
+    await symlink("boards/2-current", join(sessionRoot, "current"));
+
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).toEqual([]);
+    expect(applied.protected.malformed).toContain(`${prefix}1-recoverable`);
+    expect(applied.protected.malformed).toContain(`${prefix}2-current`);
+  });
+
+  test("fails closed when selected session metadata carries a different session reference", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"9".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
+    await sessionBoard(state, sessionKey, "1-recoverable", { runId: "run-a", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "2-current", { runId: "run-b", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+    const currentPath = join(sessionRoot, "boards", "2-current", "current.json");
+    const current = JSON.parse(await readFile(currentPath, "utf8")) as Record<string, unknown>;
+    await writeFile(currentPath, JSON.stringify({ ...current, sessionRef: `s-${"8".repeat(64)}` }));
+    await symlink("boards/2-current", join(sessionRoot, "current"));
+
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).toEqual([]);
+    expect(applied.protected.malformed).toContain(`${prefix}1-recoverable`);
+    expect(applied.protected.malformed).toContain(`${prefix}2-current`);
+    expect(applied.protected.symlinks).toContain(`sessions/${sessionKey}/current`);
+  });
+
+  test("fails closed when selected session metadata carries a different invocation ID", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"6".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
+    await sessionBoard(state, sessionKey, "1-recoverable", { runId: "run-a", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "2-current", { runId: "run-b", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+    const currentPath = join(sessionRoot, "boards", "2-current", "current.json");
+    const current = JSON.parse(await readFile(currentPath, "utf8")) as Record<string, unknown>;
+    await writeFile(currentPath, JSON.stringify({ ...current, invocationId: "different-invocation" }));
+    await symlink("boards/2-current", join(sessionRoot, "current"));
+
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).toEqual([]);
+    expect(applied.protected.malformed).toContain(`${prefix}1-recoverable`);
+    expect(applied.protected.malformed).toContain(`${prefix}2-current`);
+  });
+
+  test("fails closed when a selected revision replaces its evidence directory", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"5".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
+    await sessionBoard(state, sessionKey, "1-recoverable", { runId: "run-a", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "2-current", { runId: "run-b", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+    const selectedRoot = join(sessionRoot, "boards", "2-current");
+    await rm(join(selectedRoot, "evidence"), { recursive: true });
+    await mkdir(join(selectedRoot, "undeclared"));
+    await symlink("boards/2-current", join(sessionRoot, "current"));
+
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy, apply: true });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).toEqual([]);
+    expect(applied.protected.malformed).toContain(`${prefix}1-recoverable`);
+    expect(applied.protected.malformed).toContain(`${prefix}2-current`);
+  });
+
+  test("orders session terminal retention by publication time across runs", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"c".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
+    await sessionBoard(state, sessionKey, "10-old-terminal", { runId: "run-a", sourceRevision: 10, sourceState: "TERMINAL", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "1-new-terminal", { runId: "run-b", sourceRevision: 1, sourceState: "TERMINAL", generatedAt: NOW });
+    await sessionBoard(state, sessionKey, "2-current", { runId: "run-c", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+    await symlink("boards/2-current", join(sessionRoot, "current"));
+
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, boardMaxPerSession: 1, boardQuotaBytes: 1024 * 1024 }, apply: true });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).not.toContain(`${prefix}1-new-terminal`);
+    expect(applied.deleted.boards).not.toContain(`${prefix}2-current`);
+  });
+  test("orders session count retention by publication time across runs", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"d".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
+    await sessionBoard(state, sessionKey, "100-old-active", { runId: "run-a", sourceRevision: 100, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "1-new-active", { runId: "run-b", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: NOW });
+    await symlink("boards/1-new-active", join(sessionRoot, "current"));
+
+    const applied = await pruneStorage({
+      stateDir: state,
+      artifactDir: artifacts,
+      now: NOW,
+      policy: { ...policy, boardTtlMs: 365 * 24 * 60 * 60 * 1000, boardMaxPerSession: 1, boardQuotaBytes: 1024 * 1024 },
+      apply: true,
+    });
+    const prefix = `sessions/${sessionKey}/boards/`;
+    expect(applied.deleted.boards).toContain(`${prefix}100-old-active`);
+    expect(applied.deleted.boards).not.toContain(`${prefix}1-new-active`);
+  });
+
   test("retains maximum-length Board names through inventory and deletion", async () => {
     const { state, artifacts } = await fixture();
     const boardId = `9-${"a".repeat(128)}`;
@@ -201,6 +444,20 @@ describe("storage retention", () => {
     expect(report.candidates.boards).toContain(`runs/active/boards/${boardId}`);
     const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, boardQuotaBytes: 1024 * 1024 }, apply: true });
     expect(applied.deleted.boards).toContain(`runs/active/boards/${boardId}`);
+  });
+
+  test("deletes maximum-length session Board names", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"c".repeat(64)}`;
+    const sessionRoot = join(state, "sessions", sessionKey);
+    const boardId = `1-${"a".repeat(128)}`;
+    await sessionBoard(state, sessionKey, boardId, { runId: "session-run", sourceRevision: 1, sourceState: "EXECUTING", generatedAt: OLD });
+    await sessionBoard(state, sessionKey, "2-new", { runId: "session-run", sourceRevision: 2, sourceState: "EXECUTING", generatedAt: NOW });
+    await symlink("boards/2-new", join(sessionRoot, "current"));
+    const inventory = await inspectStorage({ stateDir: state, artifactDir: artifacts, now: NOW });
+    expect(inventory.boards.map(item => item.relativePath)).toContain(`sessions/${sessionKey}/boards/${boardId}`);
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, boardQuotaBytes: 1024 * 1024 }, apply: true });
+    expect(applied.deleted.boards).toContain(`sessions/${sessionKey}/boards/${boardId}`);
   });
 
   test("Board TTL and global quota apply independently of per-run count", async () => {
@@ -215,7 +472,55 @@ describe("storage retention", () => {
     expect(quota.candidates.boards).toEqual(["runs/fresh-run/boards/only-fresh", "runs/old-run/boards/only-old"]);
   });
 
+  test("reports safe-name non-directory Board entries without aborting inspection", async () => {
+    const { state, artifacts } = await fixture();
+    await run(state, "active", { state: "EXECUTING", updatedAt: NOW });
+    const boardPath = join(state, "runs", "active", "boards", "not-a-directory");
+    await mkdir(join(state, "runs", "active", "boards"), { recursive: true });
+    await writeFile(boardPath, "malformed Board entry");
+    const inventory = await inspectStorage({ stateDir: state, artifactDir: artifacts, now: NOW });
+    expect(inventory.staging).toEqual(expect.arrayContaining([expect.objectContaining({ relativePath: "runs/active/boards/not-a-directory", malformed: true })]));
+    await expect(pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy })).resolves.toBeDefined();
+  });
+
+  test("reports safe-name non-directory session Board entries without aborting inspection", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"4".repeat(64)}`;
+    const boardsPath = join(state, "sessions", sessionKey, "boards");
+    const boardPath = join(boardsPath, "not-a-directory");
+    await mkdir(boardsPath, { recursive: true });
+    await writeFile(boardPath, "malformed session Board entry");
+    await utimes(boardPath, new Date(OLD), new Date(OLD));
+
+    const inventory = await inspectStorage({ stateDir: state, artifactDir: artifacts, now: NOW });
+    expect(inventory.staging).toEqual(expect.arrayContaining([expect.objectContaining({
+      relativePath: `sessions/${sessionKey}/boards/not-a-directory`,
+      malformed: true,
+    })]));
+    await expect(pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy })).resolves.toBeDefined();
+    expect((await stat(boardPath)).isFile()).toBe(true);
+  });
+
+  test("reclaims crashed pending session Board directories", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"2".repeat(64)}`;
+    const pendingPath = join(state, "sessions", sessionKey, "boards", ".pending-00000000-0000-4000-8000-000000000000");
+    await mkdir(pendingPath, { recursive: true });
+    const partialPath = join(pendingPath, "partial");
+    await writeFile(partialPath, "partial");
+    await utimes(pendingPath, new Date(OLD), new Date(OLD));
+    await utimes(partialPath, new Date(OLD), new Date(OLD));
+
+    const inventory = await inspectStorage({ stateDir: state, artifactDir: artifacts, now: NOW });
+    expect(inventory.staging).toEqual(expect.arrayContaining([expect.objectContaining({
+      relativePath: `sessions/${sessionKey}/boards/.pending-00000000-0000-4000-8000-000000000000`,
+    })]));
+    const applied = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, graceMs: 0 }, apply: true });
+    expect(applied.deleted.staging).toContain(`sessions/${sessionKey}/boards/.pending-00000000-0000-4000-8000-000000000000`);
+    expect(await stat(pendingPath).catch(() => undefined)).toBeUndefined();
+  });
   test("malformed Board manifests remain protected from automatic deletion", async () => {
+
     const { state, artifacts } = await fixture();
     await run(state, "active", { state: "EXECUTING", updatedAt: NOW });
     await board(state, "active", "damaged", OLD);
@@ -252,8 +557,8 @@ describe("storage retention", () => {
   test("board max zero does not retain any publication", async () => {
     const { state, artifacts } = await fixture();
     await run(state, "active", { state: "EXECUTING", updatedAt: NOW });
-    await board(state, "active", "only", OLD);
-    const report = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, boardMaxPerRun: 0 } });
+    await board(state, "active", "only", NOW);
+    const report = await pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy: { ...policy, boardMaxPerRun: 0, boardTtlMs: 365 * 24 * 60 * 60 * 1000, boardQuotaBytes: 1024 * 1024 } });
     expect(report.candidates.boards).toEqual(["runs/active/boards/only"]);
   });
 

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.dev/contracts/codeql-policy.schema.json",
+  "title": "Traceknot CodeQL security floor policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "failAtOrAbove",
+    "maxUnexceptedAlerts",
+    "exceptions"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "traceknot-codeql-policy/v1"
+    },
+    "failAtOrAbove": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10
+    },
+    "maxUnexceptedAlerts": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ruleId",
+          "fingerprint",
+          "owner",
+          "reason",
+          "mitigation",
+          "expiresOn"
+        ],
+        "properties": {
+          "ruleId": { "type": "string", "minLength": 1 },
+          "fingerprint": { "type": "string", "minLength": 1 },
+          "owner": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 },
+          "mitigation": { "type": "string", "minLength": 1 },
+          "expiresOn": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          }
+        }
+      }
+    }
+  }
+}

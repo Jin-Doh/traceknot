@@ -29,7 +29,7 @@ An advisory style finding does not fail the repository gate. Scanner failure, ma
 
 ## Execution
 
-Require a host-advertised static analyzer or reviewer that can apply the configured language policy and, after remediation, compare the original and rewritten artifacts. The installed portable Skill contains the verification obligations but does not install an executable prose scanner or its runtime dependencies. If no suitable verifier is available for a mandatory obligation, report `BLOCKED`; never substitute the rewriting provider's self-report.
+Require a host-advertised static analyzer or reviewer that can apply the configured language policy and, after remediation, compare the original and rewritten artifacts. The canonical Skill bundle includes the Traceknot CLI and Board renderer, but prose-quality remains a separate verification obligation; it does not claim that the bundled CLI is a prose scanner. If no suitable verifier is available for a mandatory obligation, report `BLOCKED`; never substitute the rewriting provider's self-report.
 
 The Traceknot source repository includes `scripts/audit-prose-quality.ts` as a reference implementation for maintaining that repository. Source-repository contributors can run it through the documented `bun run prose-quality` command. The repository maps `README.zh.md` to `zh-Hans`; it does not create or infer a Traditional Chinese publication target. Other repositories and installed-Skill users must use a host-provided equivalent unless they deliberately adopt the reference implementation and its dependencies.
 

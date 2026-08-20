@@ -183,6 +183,17 @@ PATH=$FAKE_BIN:$PATH
 export FAKE_HTTP_DATE FAKE_FIXTURE FAKE_ARCHIVE_NAME PATH
 sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null
 PREFIX_CANON=$(CDPATH='' cd -P "$PREFIX" && pwd)
+assert_flat_launcher() {
+    test -L "$PREFIX/bin/traceknot"
+    test "$(readlink "$PREFIX/bin/traceknot")" = "$PREFIX_CANON/skill/bin/traceknot"
+    test -x "$PREFIX/bin/traceknot"
+}
+assert_managed_launcher() {
+    test -L "$PREFIX/bin/traceknot"
+    test "$(readlink "$PREFIX/bin/traceknot")" = "$PREFIX_CANON/current/skill/bin/traceknot"
+    test -x "$PREFIX/bin/traceknot"
+}
+assert_flat_launcher
 test -x "$PREFIX/bin/traceknot-update"
 test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 1
 grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null
@@ -200,12 +211,14 @@ test ! -e "$PREFIX/current"
 # Runtime opt-out must survive a subsequent ordinary reinstall.
 "$PREFIX/bin/traceknot-update" disable --prefix "$PREFIX" >/dev/null
 test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 0
+assert_flat_launcher
 if grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null 2>&1; then
     printf '%s\n' 'runtime disable unexpectedly left an automatic-update schedule' >&2
     exit 1
 fi
 sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null
 test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 0
+assert_flat_launcher
 if grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null 2>&1; then
     printf '%s\n' 'ordinary reinstall unexpectedly re-enabled runtime opt-out' >&2
     exit 1
@@ -281,23 +294,43 @@ fi
 unset FAKE_GH_FAIL
 test ! -e "$PREFIX/current"
 
+# A pre-Skills installer owned a regular root launcher. Reject an unowned
+# replacement before mutation, then migrate the manifest-owned legacy file.
+rm -f "$PREFIX/bin/traceknot"
+cp "$PREFIX/skill/bin/traceknot" "$PREFIX/bin/traceknot"
+test -f "$PREFIX/bin/traceknot"
+test ! -L "$PREFIX/bin/traceknot"
+MANIFEST_BACKUP=$TMP_DIR/install-manifest.backup
+cp "$PREFIX/.traceknot-install-manifest" "$MANIFEST_BACKUP"
+sed '/^bin\/traceknot$/d' "$MANIFEST_BACKUP" > "$PREFIX/.traceknot-install-manifest"
+if "$PREFIX/bin/traceknot-update" apply --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'unowned regular launcher unexpectedly replaced' >&2
+    exit 1
+fi
+test ! -e "$PREFIX/current"
+test ! -e "$PREFIX/.traceknot-update/transaction"
+cp "$MANIFEST_BACKUP" "$PREFIX/.traceknot-install-manifest"
+
 "$PREFIX/bin/traceknot-update" enable --prefix "$PREFIX" >/dev/null
 "$PREFIX/bin/traceknot-update" apply --prefix "$PREFIX" >/dev/null
 test -L "$PREFIX/current"
 test -f "$PREFIX/current/skill/SKILL.md"
 test -f "$PREFIX/.traceknot-update/active.json"
 test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = "$TAG"
-test -L "$TRACEKNOT_SKILLS_ROOT/traceknot"
-test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/skill"
+test ! -e "$TRACEKNOT_SKILLS_ROOT/traceknot"
+assert_managed_launcher
+"$PREFIX/bin/traceknot" self-check >/dev/null
 # An interrupted managed-to-flat cutover is completed from its durable journal.
 printf '%s\n' traceknot-reinstall-reset/v1 > "$PREFIX/.traceknot-update/reinstall-reset"
 rm -f "$TRACEKNOT_SKILLS_ROOT/traceknot"
+mkdir -p "$TRACEKNOT_SKILLS_ROOT"
 ln -s "$PREFIX_CANON/skill" "$TRACEKNOT_SKILLS_ROOT/traceknot"
 "$PREFIX/current/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null
 test ! -e "$PREFIX/.traceknot-update/reinstall-reset"
 test ! -e "$PREFIX/current"
 test ! -e "$PREFIX/releases"
-test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/skill"
+test ! -e "$TRACEKNOT_SKILLS_ROOT/traceknot"
+assert_flat_launcher
 grep -F "$PREFIX_CANON/bin/traceknot-update" "$CRONTAB_FILE" >/dev/null
 if grep -F "$PREFIX_CANON/current/bin/traceknot-update" "$CRONTAB_FILE" >/dev/null 2>&1; then
     printf '%s\n' 'reinstall recovery left cron pointed at the removed managed updater' >&2
@@ -305,9 +338,10 @@ if grep -F "$PREFIX_CANON/current/bin/traceknot-update" "$CRONTAB_FILE" >/dev/nu
 fi
 "$PREFIX/bin/traceknot-update" --prefix "$PREFIX" --auto >/dev/null
 "$PREFIX/bin/traceknot-update" apply --prefix "$PREFIX" >/dev/null
-# Ordinary reinstall retargets registration to the newly installed flat payload.
+# Ordinary reinstall keeps registration ownership with the Skills CLI.
 sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null
-test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/skill"
+assert_flat_launcher
+test ! -e "$TRACEKNOT_SKILLS_ROOT/traceknot"
 test ! -e "$PREFIX/current"
 test ! -e "$PREFIX/rollback"
 test ! -e "$PREFIX/.traceknot-update/active.json"
@@ -319,13 +353,15 @@ mkdir -p "$PREPARED_CANDIDATE"
 printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
     operation=apply phase=prepared previous= \
     "candidate=$PREPARED_CANDIDATE" "staging=$PREFIX_CANON/releases/.staging-prepared" \
-    "registrationPrevious=$PREFIX_CANON/skill" rollbackPrevious= \
+    registrationPrevious= rollbackPrevious= \
     > "$PREFIX/.traceknot-update/transaction"
 sh "$ROOT/install.sh" --prefix "$PREFIX" >/dev/null
 test ! -e "$PREFIX/releases"
 test ! -e "$PREFIX/.traceknot-update/transaction"
+assert_flat_launcher
 "$PREFIX/bin/traceknot-update" apply --prefix "$PREFIX" >/dev/null
-test "$(readlink "$TRACEKNOT_SKILLS_ROOT/traceknot")" = "$PREFIX_CANON/current/skill"
+test ! -e "$TRACEKNOT_SKILLS_ROOT/traceknot"
+assert_managed_launcher
 
 # Transaction snapshot destinations refuse symbolic links.
 SNAPSHOT_TARGET=$TMP_DIR/snapshot-target
@@ -359,10 +395,14 @@ test ! -e "$PREFIX/.traceknot-update/transaction"
 # A rolled-back release can be verified and reapplied from its retained directory.
 "$PREFIX/current/bin/traceknot-update" rollback --prefix "$PREFIX" >/dev/null
 test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = legacy
+test ! -e "$TRACEKNOT_SKILLS_ROOT/traceknot"
+assert_managed_launcher
 legacy_check=$("$PREFIX/bin/traceknot-update" check --prefix "$PREFIX")
 printf '%s\n' "$legacy_check" | grep -F "Eligible update: $TAG" >/dev/null
 "$PREFIX/bin/traceknot-update" apply --prefix "$PREFIX" >/dev/null
 test "$(jq -r .releaseTag "$PREFIX/.traceknot-update/active.json")" = "$TAG"
+test ! -e "$TRACEKNOT_SKILLS_ROOT/traceknot"
+assert_managed_launcher
 test -f "$PREFIX/current/skill/SKILL.md"
 # Committed recovery prunes a release that is no longer current or rollback.
 OBSOLETE=$PREFIX_CANON/releases/obsolete
@@ -370,7 +410,7 @@ mkdir -p "$OBSOLETE"
 printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
     operation=apply phase=committed "previous=$(readlink "$PREFIX/rollback")" \
     "candidate=$(readlink "$PREFIX/current")" staging= \
-    "registrationPrevious=$PREFIX_CANON/current/skill" \
+    "registrationPrevious=" \
     "rollbackPrevious=$OBSOLETE" > "$PREFIX/.traceknot-update/transaction"
 "$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null
 test ! -e "$OBSOLETE"
@@ -538,7 +578,7 @@ ALIASED_CURRENT=$(readlink "$PREFIX/current")
 printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' \
     operation=apply phase=prepared "previous=$ALIASED_CURRENT" \
     "candidate=$ALIASED_CURRENT" "staging=$PREFIX_CANON/releases/.staging-alias" \
-    "registrationPrevious=$PREFIX_CANON/current/skill" \
+    "registrationPrevious=" \
     "rollbackPrevious=$(readlink "$PREFIX/rollback")" > "$PREFIX/.traceknot-update/transaction"
 if "$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>&1; then
     printf '%s\n' 'aliased recovery journal unexpectedly accepted' >&2

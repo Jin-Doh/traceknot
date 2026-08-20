@@ -174,11 +174,15 @@ UI content-resilience obligation에는 절대 경로 `uiResilienceOraclePath`를
 
 ## 설치 방법
 
-### Portable Skill — 권장
+### Skills CLI — 정식 설치 경로
 
-빠른 시작 명령은 Skills CLI로 `skill/SKILL.md`와 참조 문서를 설치합니다. Codex에만 설치하려면 `--agent codex`를 추가하고, 현재 프로젝트 안에 설치하려면 `--global`을 생략합니다.
+빠른 시작 명령은 `SKILL.md`, 참조 문서, 실행 파일 `skill/bin/traceknot`를 포함한 완전한 `skill/` tree를 Skills CLI로 설치합니다. 생성된 CLI에는 Bun 1.3.14 이상이 필요합니다. Codex에만 설치하려면 `--agent codex`를 추가하고, 현재 프로젝트 안에 설치하려면 `--global`을 생략합니다.
 
-조회, 업데이트, 제거도 같은 CLI에서 처리합니다.
+```sh
+npx skills add Jin-Doh/traceknot --skill traceknot --global
+```
+
+같은 완전한 payload를 다음 CLI로 관리합니다.
 
 ```sh
 npx skills list --global
@@ -186,17 +190,19 @@ npx skills update traceknot --global --yes
 npx skills remove traceknot --global --yes
 ```
 
-### 전체 Toolkit — 고급
+프로젝트 로컬 설치는 프로젝트 루트에서 `npx skills update traceknot --yes`와 `npx skills remove traceknot --yes`를 실행하며 `--global`을 사용하지 않습니다.
 
-Skill과 함께 schema, capability manifest, 호스트 중립 코어, 검증된 release updater가 필요할 때 사용합니다.
+전역 Skills CLI 설치는 `$HOME/.agents/skills/traceknot/bin/traceknot`으로 실행하고, 프로젝트 로컬 설치는 프로젝트 루트에서 `.agents/skills/traceknot/bin/traceknot`을 실행합니다. 전역 설치나 업데이트 후에는 `$HOME/.agents/skills/traceknot/bin/traceknot self-check`를 실행하고, 프로젝트 로컬 설치에서는 `.agents/skills/traceknot/bin/traceknot self-check`로 바꿔 실행합니다. Session Board 발행도 전역 설치에서는 `$HOME/.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]`, 프로젝트 로컬 설치에서는 `.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]`를 사용합니다. 관련 없는 전역 실행 파일로 대신 실행하면 안 됩니다. Read-back 검증 뒤에는 `Traceknot Board: file://.../sessions/<session-key>/index.html`을 출력합니다. `traceknot-session-board-update/v1` envelope, prerequisite 부재 동작, `boardMaxPerSession` 보존 정책은 [QA Board](docs/qa-board.md)를 참고하세요.
+
+### Legacy curl launcher/bootstrap — 선택 사항
+
+Legacy curl entrypoint는 필요한 환경을 위한 선택적 prefix launcher/updater로만 남아 있습니다. Skills CLI가 소유한 등록을 생성·교체·재지정·업데이트·제거하지 않으며, 별도의 Skill payload, runtime tier, Board renderer, schema 또는 verdict mode를 정의하지 않습니다. 재설치나 업데이트는 같은 prefix를 가리키는 legacy symlink만 제거합니다. 위 Skills CLI 경로가 정식입니다. 실행 전 스크립트를 검토하거나 고정 tag를 사용하세요.
 
 <!-- shared-command:full-toolkit-install -->
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh
 ```
-
-통제된 환경에서는 실행 전에 스크립트를 검토하거나 고정 tag를 사용하세요. Installer는 `sudo` 없이 동작하고 `--dry-run`을 지원하며, 기본 경로는 `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`입니다.
 
 Bootstrap 스크립트와 다운로드 payload를 같은 tag 또는 commit으로 함께 고정합니다.
 
@@ -208,9 +214,9 @@ curl -fsSL "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/i
   | TRACEKNOT_REF="$TRACEKNOT_REF" sh
 ```
 
-Skills CLI와 전체 Toolkit installer는 같은 사용자 영역 Skill 등록을 관리합니다. 설치 방식을 바꾸기 전에 기존 설치를 먼저 제거해야 합니다. 적용 조건, 검증, rollback, opt-out 정책은 [자동 업데이트 문서](docs/automatic-updates.md)를 참고하세요.
+Launcher는 `traceknot-update`를 통해 자체 prefix의 release 파일만 관리합니다. 상태 확인, check, apply, rollback, enable, disable 작업은 [자동 업데이트 문서](docs/automatic-updates.md)를 참고하세요. `npx skills update traceknot --global --yes`는 정식 Skills CLI 등록을 독립적으로 업데이트합니다. Launcher가 해당 등록을 쓰지 않으므로 두 설치는 함께 존재할 수 있습니다. 아래 고정 uninstaller 명령은 launcher가 관리하는 파일만 제거합니다.
 
-기본 경로의 전체 Toolkit은 다음 명령으로 제거합니다.
+Launcher가 관리하는 파일은 다음 명령으로 제거합니다.
 
 <!-- shared-command:full-toolkit-uninstall -->
 
@@ -218,9 +224,7 @@ Skills CLI와 전체 Toolkit installer는 같은 사용자 영역 Skill 등록�
 curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh | sh
 ```
 
-사용자 지정 설치 경로라면 `sh` 뒤에 `-s -- --prefix /absolute/path`를 붙입니다.
-
-사용자 지정 Skills root도 사용했다면 installer에 지정했던 같은 값을 uninstaller에 전달합니다.
+사용자 지정 설치 경로라면 `sh` 뒤에 `-s -- --prefix /absolute/path`를 붙입니다. `TRACEKNOT_SKILLS_ROOT`는 기본 위치가 아닌 곳의 legacy Traceknot 소유 등록 symlink를 이전하거나 제거할 때만 필요합니다.
 
 <!-- shared-command:full-toolkit-custom-uninstall -->
 
@@ -229,7 +233,7 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
   | TRACEKNOT_SKILLS_ROOT=/absolute/skills sh -s -- --prefix /absolute/path
 ```
 
-활성 layout과 legacy layout의 경로 선택을 포함한 updater 실행 명령은 [자동 업데이트 문서](docs/automatic-updates.md)에 있습니다.
+Legacy launcher는 선택 사항이며 `npx skills add`/`npx skills update`를 정식 설치 lifecycle로 대체하지 않습니다.
 
 <!-- readme-section:documentation -->
 

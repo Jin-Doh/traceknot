@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/verdict.v1.json",
+  "title": "QA completion verdict",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requestId", "snapshotId", "qaVerdict", "authoritative", "obligationSummary", "coverage", "openDefectIds", "acceptedRiskIds", "residualRisks", "rationale"],
+  "properties": {
+    "schemaVersion": { "const": "qa-verdict/v1" },
+    "requestId": { "type": "string", "minLength": 1 },
+    "snapshotId": { "type": "string", "minLength": 1 },
+    "qaVerdict": { "enum": ["PASS", "PASS_WITH_ACCEPTED_RISK", "FAIL", "BLOCKED", "INCOMPLETE"] },
+    "authoritative": { "type": "boolean" },
+    "obligationSummary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mandatory", "passed", "failed", "blocked", "incomplete"],
+      "properties": {
+        "mandatory": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "blocked": { "type": "integer", "minimum": 0 },
+        "incomplete": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "coverage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["basis", "risks", "conditions", "mandatoryObligations"],
+      "properties": {
+        "basis": { "$ref": "#/$defs/coverage" },
+        "risks": { "$ref": "#/$defs/coverage" },
+        "conditions": { "$ref": "#/$defs/coverage" },
+        "mandatoryObligations": { "$ref": "#/$defs/coverage" }
+      }
+    },
+    "openDefectIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "acceptedRiskIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "residualRisks": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "rationale": { "type": "string", "minLength": 1 },
+    "harnessCompletion": { "enum": ["unknown", "in_progress", "complete", "failed"] }
+  },
+  "$defs": {
+    "coverage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["total", "covered", "uncoveredIds"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "covered": { "type": "integer", "minimum": 0 },
+        "uncoveredIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+      }
+    }
+  }
+}

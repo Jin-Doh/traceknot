@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/qa-board-view.v1.json",
+  "title": "Traceknot QA Board view",
+  "$comment": "This schema validates the closed Board projection shape. The session Board parser remains authoritative for aggregate and cross-field semantic invariants.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["runId", "requestId", "rootIdentity", "snapshotId", "revision", "sourceState", "sourceUpdatedAt", "changeSummary", "assurance", "verdict", "authoritative", "rationale", "counts", "findings", "coverage", "openDefectIds", "acceptedRiskIds", "residualRisks"],
+  "properties": {
+    "runId": { "$ref": "#/$defs/runId" },
+    "requestId": { "$ref": "#/$defs/safeText" },
+    "rootIdentity": { "$ref": "#/$defs/safeText" },
+    "snapshotId": { "$ref": "#/$defs/safeText" },
+    "revision": { "$ref": "#/$defs/nonnegativeInteger" },
+    "sourceState": { "enum": ["CREATED", "BASIS_ESTABLISHED", "DISCOVERY_COMPLETED", "PLANNED", "EXECUTING", "EVIDENCE_EVALUATED", "VERDICT_RESOLVED", "TERMINAL"] },
+    "sourceUpdatedAt": { "$ref": "#/$defs/timestamp" },
+    "changeSummary": { "$ref": "#/$defs/safeText" },
+    "assurance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["context", "requiredIndependence", "releaseStatus"],
+      "properties": {
+        "context": { "enum": ["local", "release"] },
+        "requiredIndependence": { "enum": ["separate-verification-context", "independent-producer"] },
+        "releaseStatus": { "enum": ["not-evaluated", "satisfied", "insufficient"] }
+      }
+    },
+    "verdict": { "enum": ["PASS", "PASS_WITH_ACCEPTED_RISK", "FAIL", "BLOCKED", "INCOMPLETE"] },
+    "authoritative": { "const": false },
+    "rationale": { "$ref": "#/$defs/safeText" },
+    "counts": { "$ref": "#/$defs/counts" },
+    "findings": { "type": "array", "maxItems": 10000, "items": { "$ref": "#/$defs/finding" } },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis", "risks", "conditions", "mandatoryObligations"],
+      "properties": {
+        "basis": { "$ref": "#/$defs/coverage" },
+        "risks": { "$ref": "#/$defs/coverage" },
+        "conditions": { "$ref": "#/$defs/coverage" },
+        "mandatoryObligations": { "$ref": "#/$defs/coverage" }
+      }
+    },
+    "openDefectIds": { "$ref": "#/$defs/idList" },
+    "acceptedRiskIds": { "$ref": "#/$defs/idList" },
+    "residualRisks": { "$ref": "#/$defs/idList" }
+  },
+  "allOf": [
+    {
+      "if": { "type": "object", "properties": { "verdict": { "const": "PASS" } } },
+      "then": {
+        "type": "object",
+        "properties": {
+          "counts": { "$ref": "#/$defs/allClearCounts" },
+          "openDefectIds": { "type": "array", "maxItems": 0 },
+          "acceptedRiskIds": { "type": "array", "maxItems": 0 },
+          "residualRisks": { "type": "array", "maxItems": 0 },
+          "coverage": { "$ref": "#/$defs/completeRequiredCoverage" }
+        }
+      }
+    },
+    {
+      "if": { "type": "object", "properties": { "verdict": { "const": "PASS_WITH_ACCEPTED_RISK" } } },
+      "then": {
+        "type": "object",
+        "properties": {
+          "counts": { "$ref": "#/$defs/allClearCounts" },
+          "openDefectIds": { "type": "array", "maxItems": 0 },
+          "acceptedRiskIds": { "type": "array", "minItems": 1 },
+          "residualRisks": { "type": "array", "minItems": 1 },
+          "coverage": { "$ref": "#/$defs/completeRequiredCoverage" }
+        }
+      }
+    },
+    {
+      "if": { "type": "object", "properties": { "verdict": { "const": "FAIL" } } },
+      "then": {
+        "type": "object",
+        "anyOf": [
+          { "type": "object", "properties": { "counts": { "type": "object", "properties": { "failed": { "type": "integer", "minimum": 1 } } } } },
+          { "type": "object", "properties": { "openDefectIds": { "type": "array", "minItems": 1 } } }
+        ]
+      }
+    },
+    {
+      "if": { "type": "object", "properties": { "verdict": { "const": "BLOCKED" } } },
+      "then": {
+        "type": "object",
+        "properties": {
+          "counts": { "type": "object", "properties": { "failed": { "type": "integer", "const": 0 }, "blocked": { "type": "integer", "minimum": 1 } } },
+          "openDefectIds": { "type": "array", "maxItems": 0 },
+          "acceptedRiskIds": { "type": "array" }
+        }
+      }
+    },
+    {
+      "if": { "type": "object", "properties": { "verdict": { "const": "INCOMPLETE" } } },
+      "then": {
+        "type": "object",
+        "properties": {
+          "counts": { "type": "object", "properties": { "failed": { "type": "integer", "const": 0 }, "blocked": { "type": "integer", "const": 0 } } },
+          "openDefectIds": { "type": "array", "maxItems": 0 },
+          "acceptedRiskIds": { "type": "array" }
+        },
+        "anyOf": [
+          { "type": "object", "properties": { "counts": { "type": "object", "properties": { "incomplete": { "type": "integer", "minimum": 1 } } } } },
+          { "type": "object", "properties": { "coverage": { "$ref": "#/$defs/incompleteRequiredCoverage" } } }
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "safeText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "idText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "timestamp": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 64,
+      "pattern": "^\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2\\d))T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?Z$"
+    },
+    "nonnegativeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mandatory", "passed", "failed", "blocked", "incomplete"],
+      "properties": {
+        "mandatory": { "$ref": "#/$defs/nonnegativeInteger" },
+        "passed": { "$ref": "#/$defs/nonnegativeInteger" },
+        "failed": { "$ref": "#/$defs/nonnegativeInteger" },
+        "blocked": { "$ref": "#/$defs/nonnegativeInteger" },
+        "incomplete": { "$ref": "#/$defs/nonnegativeInteger" }
+      }
+    },
+    "allClearCounts": {
+      "allOf": [
+        { "$ref": "#/$defs/counts" },
+        { "type": "object", "properties": { "failed": { "const": 0 }, "blocked": { "const": 0 }, "incomplete": { "const": 0 } } }
+      ]
+    },
+    "idList": {
+      "type": "array",
+      "maxItems": 10000,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/idText" }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "covered", "uncoveredIds"],
+      "properties": {
+        "total": { "$ref": "#/$defs/nonnegativeInteger" },
+        "covered": { "$ref": "#/$defs/nonnegativeInteger" },
+        "uncoveredIds": { "$ref": "#/$defs/idList" }
+      }
+    },
+    "completeRequiredCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis", "risks", "conditions", "mandatoryObligations"],
+      "properties": {
+        "basis": { "$ref": "#/$defs/completeCoverage" },
+        "risks": { "$ref": "#/$defs/completeCoverage" },
+        "conditions": { "$ref": "#/$defs/completeCoverage" },
+        "mandatoryObligations": { "$ref": "#/$defs/completeCoverage" }
+      }
+    },
+    "completeCoverage": {
+      "allOf": [
+        { "$ref": "#/$defs/coverage" },
+        { "type": "object", "properties": { "uncoveredIds": { "type": "array", "maxItems": 0 } } }
+      ]
+    },
+    "incompleteRequiredCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis", "risks", "conditions", "mandatoryObligations"],
+      "properties": {
+        "basis": { "$ref": "#/$defs/coverage" },
+        "risks": { "$ref": "#/$defs/coverage" },
+        "conditions": { "$ref": "#/$defs/coverage" },
+        "mandatoryObligations": { "$ref": "#/$defs/coverage" }
+      },
+      "anyOf": [
+        { "type": "object", "properties": { "basis": { "type": "object", "properties": { "uncoveredIds": { "type": "array", "minItems": 1 } } } } },
+        { "type": "object", "properties": { "risks": { "type": "object", "properties": { "uncoveredIds": { "type": "array", "minItems": 1 } } } } },
+        { "type": "object", "properties": { "conditions": { "type": "object", "properties": { "uncoveredIds": { "type": "array", "minItems": 1 } } } } }
+      ]
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["obligationId", "mandatory", "status", "expectedResults", "summary", "screenshots", "artifacts"],
+      "properties": {
+        "obligationId": { "$ref": "#/$defs/safeText" },
+        "mandatory": { "type": "boolean" },
+        "status": { "enum": ["PASS", "FAIL", "BLOCKED", "INCOMPLETE"] },
+        "expectedResults": { "type": "array", "maxItems": 10000, "items": { "$ref": "#/$defs/safeText" } },
+        "summary": { "$ref": "#/$defs/safeText" },
+        "producer": { "$ref": "#/$defs/producer" },
+        "evaluation": { "$ref": "#/$defs/evaluation" },
+        "screenshots": { "type": "array", "maxItems": 10000, "items": { "$ref": "#/$defs/screenshot" } },
+        "artifacts": { "type": "array", "maxItems": 10000, "items": { "$ref": "#/$defs/artifact" } }
+      }
+    },
+    "screenshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "observationId"],
+      "properties": {
+        "digest": { "$ref": "#/$defs/digest" },
+        "observationId": { "$ref": "#/$defs/safeText" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "digest"],
+      "properties": {
+        "type": { "$ref": "#/$defs/safeText" },
+        "digest": { "$ref": "#/$defs/digest" },
+        "path": { "$ref": "#/$defs/safePath" }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "identity", "independence"],
+      "properties": {
+        "kind": { "enum": ["self", "harness-managed", "deterministic-verifier", "ci", "human", "external-system"] },
+        "identity": { "$ref": "#/$defs/safeText" },
+        "independence": { "enum": ["self-check", "separate-verification-context", "independent-producer", "external-approval"] }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "rejectionReasons"],
+      "properties": {
+        "status": { "enum": ["ACCEPTED", "REJECTED", "INDETERMINATE"] },
+        "rejectionReasons": { "type": "array", "maxItems": 10000, "items": { "$ref": "#/$defs/safeText" } }
+      }
+    },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "safePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^(?!/)(?!.*\\.\\.)(?!.*\\\\)[^\\u0000-\\u001f\\u007f]+$"
+    }
+  }
+}

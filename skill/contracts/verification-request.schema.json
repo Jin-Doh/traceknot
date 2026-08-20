@@ -1,0 +1,267 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/verification-request.v1.json",
+  "title": "Verification request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requestId", "project", "change", "testBasis"],
+  "properties": {
+    "schemaVersion": { "const": "verification-request/v1" },
+    "requestId": { "type": "string", "minLength": 1 },
+    "project": {
+      "type": "object", "additionalProperties": false,
+      "required": ["rootIdentity", "snapshotId"],
+      "properties": {
+        "rootIdentity": { "type": "string", "minLength": 1 },
+        "snapshotId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "change": {
+      "type": "object", "additionalProperties": false,
+      "required": ["summary", "paths"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1 },
+        "paths": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "uiImpact": { "enum": ["functional-only", "significant"] }
+      }
+    },
+    "testBasis": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "kind", "origin", "text"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["request", "requirement", "acceptance-criterion", "defect", "contract", "invariant", "policy"] },
+          "origin": { "enum": ["explicit", "derived"] },
+          "text": { "type": "string", "minLength": 1 },
+          "source": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "assuranceContext": { "enum": ["local", "release"] },
+    "visualComposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "decision", "basisIds", "rationale", "surfaces", "viewports"],
+      "properties": {
+        "schemaVersion": { "const": "visual-composition-scope/v1" },
+        "decision": { "enum": ["required", "not-required", "unknown"] },
+        "basisIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "rationale": { "type": "string", "minLength": 1 },
+        "surfaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["surfaceId", "stateIds", "viewportIds"],
+            "properties": {
+              "surfaceId": { "type": "string", "minLength": 1 },
+              "stateIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+              "viewportIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+            }
+          }
+        },
+        "viewports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "width", "height"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "width": { "type": "number", "exclusiveMinimum": 0 },
+              "height": { "type": "number", "exclusiveMinimum": 0 },
+              "devicePixelRatio": { "type": "number", "exclusiveMinimum": 0 },
+              "label": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "decision": { "enum": ["required", "unknown"] } }, "required": ["decision"] },
+          "then": {
+            "properties": {
+              "surfaces": { "type": "array", "minItems": 1 },
+              "viewports": { "type": "array", "minItems": 1 }
+            }
+          }
+        }
+      ]
+    },
+    "uiResilience": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "decision", "basisIds", "rationale", "surfaces", "viewports"],
+      "properties": {
+        "schemaVersion": { "const": "ui-resilience-scope/v1" },
+        "decision": { "enum": ["required", "unknown"] },
+        "basisIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "rationale": { "type": "string", "minLength": 1 },
+        "surfaces": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["surfaceId", "stateIds", "viewportIds", "capabilities", "fixtures", "regions", "profileApplicability"],
+            "properties": {
+              "surfaceId": { "type": "string", "minLength": 1 },
+              "stateIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+              "viewportIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+              "capabilities": { "type": "array", "minItems": 1, "items": { "enum": ["rendered-text", "responsive-layout", "localized-content", "rtl-content", "truncation", "animation", "hover-focus-content"] }, "uniqueItems": true },
+              "fixtures": {
+                "type": "array", "minItems": 1,
+                "items": {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["fixtureId", "kind", "contentDigest"],
+                  "properties": {
+                    "fixtureId": { "type": "string", "minLength": 1 },
+                    "kind": { "enum": ["representative", "long-natural-language", "long-unbroken-token", "pseudo-expanded", "rtl"] },
+                    "contentDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+                  }
+                }
+              },
+              "regions": {
+                "type": "array", "minItems": 1,
+                "items": {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["regionId", "policy", "basisIds"],
+                  "properties": {
+                    "regionId": { "type": "string", "minLength": 1 },
+                    "policy": { "enum": ["no-overflow", "wrap", "scroll-x", "truncate-with-access"] },
+                    "basisIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+                    "maxLines": { "type": "integer", "minimum": 1 }
+                  },
+                  "allOf": [
+                    { "if": { "properties": { "policy": { "const": "truncate-with-access" } }, "required": ["policy"] }, "then": { "properties": { "maxLines": true }, "required": ["maxLines"] }, "else": { "properties": { "maxLines": false } } }
+                  ]
+                }
+              },
+              "profileApplicability": {
+                "type": "array", "minItems": 8, "maxItems": 8, "uniqueItems": true,
+                "allOf": [
+                  { "contains": { "type": "object", "properties": { "profile": { "const": "text-overflow" } }, "required": ["profile"] }, "minContains": 1, "maxContains": 1 },
+                  { "contains": { "type": "object", "properties": { "profile": { "const": "resize-text-200" } }, "required": ["profile"] }, "minContains": 1, "maxContains": 1 },
+                  { "contains": { "type": "object", "properties": { "profile": { "const": "reflow-320" } }, "required": ["profile"] }, "minContains": 1, "maxContains": 1 },
+                  { "contains": { "type": "object", "properties": { "profile": { "const": "text-spacing-wcag" } }, "required": ["profile"] }, "minContains": 1, "maxContains": 1 },
+                  { "contains": { "type": "object", "properties": { "profile": { "const": "pseudo-localization" } }, "required": ["profile"] }, "minContains": 1, "maxContains": 1 },
+                  { "contains": { "type": "object", "properties": { "profile": { "const": "rtl" } }, "required": ["profile"] }, "minContains": 1, "maxContains": 1 },
+                  { "contains": { "type": "object", "properties": { "profile": { "const": "reduced-motion" } }, "required": ["profile"] }, "minContains": 1, "maxContains": 1 },
+                  { "contains": { "type": "object", "properties": { "profile": { "const": "hover-focus-content" } }, "required": ["profile"] }, "minContains": 1, "maxContains": 1 }
+                ],
+                "items": {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["profile", "status", "basisIds", "rationale"],
+                  "properties": {
+                    "profile": { "enum": ["text-overflow", "resize-text-200", "reflow-320", "text-spacing-wcag", "pseudo-localization", "rtl", "reduced-motion", "hover-focus-content"] },
+                    "status": { "enum": ["required", "not-applicable", "unknown"] },
+                    "basisIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+                    "rationale": { "type": "string", "minLength": 1 },
+                    "approvalReceipt": {
+                      "type": "object", "additionalProperties": false,
+                      "required": ["schemaVersion", "receiptId", "issuer", "keyId", "requestId", "snapshotId", "conditionId", "surfaceId", "profile", "basisIds", "rationale", "signature"],
+                      "properties": {
+                        "schemaVersion": { "const": "ui-applicability-approval-receipt/v1" },
+                        "receiptId": { "type": "string", "minLength": 1 },
+                        "issuer": { "type": "string", "minLength": 1 },
+                        "keyId": { "type": "string", "minLength": 1 },
+                        "requestId": { "type": "string", "minLength": 1 },
+                        "snapshotId": { "type": "string", "minLength": 1 },
+                        "conditionId": { "type": "string", "minLength": 1 },
+                        "surfaceId": { "type": "string", "minLength": 1 },
+                        "profile": { "enum": ["text-overflow", "resize-text-200", "reflow-320", "text-spacing-wcag", "pseudo-localization", "rtl", "reduced-motion", "hover-focus-content"] },
+                        "basisIds": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+                        "rationale": { "type": "string", "minLength": 1 },
+                        "signature": { "type": "string", "minLength": 1 }
+                      }
+                    }
+                  },
+                  "allOf": [
+                    { "if": { "properties": { "status": { "const": "not-applicable" } }, "required": ["status"] }, "then": { "properties": { "approvalReceipt": true }, "required": ["approvalReceipt"] }, "else": { "properties": { "approvalReceipt": false } } }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "viewports": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["id", "width", "height"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "width": { "type": "number", "exclusiveMinimum": 0 },
+              "height": { "type": "number", "exclusiveMinimum": 0 },
+              "devicePixelRatio": { "type": "number", "exclusiveMinimum": 0 },
+              "label": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "decision": { "enum": ["required", "unknown"] } }, "required": ["decision"] },
+          "then": { "properties": { "surfaces": { "type": "array", "minItems": 1 }, "viewports": { "type": "array", "minItems": 1 } } }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "anyOf": [
+          { "properties": { "visualComposition": true }, "required": ["visualComposition"] },
+          { "properties": { "uiResilience": true }, "required": ["uiResilience"] }
+        ]
+      },
+      "then": {
+        "properties": {
+          "change": {
+            "type": "object",
+            "properties": { "uiImpact": true },
+            "required": ["uiImpact"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "change": {
+            "type": "object",
+            "properties": { "uiImpact": { "const": "significant" } },
+            "required": ["uiImpact"]
+          }
+        },
+        "required": ["change"]
+      },
+      "then": {
+        "properties": { "visualComposition": { "type": "object" }, "uiResilience": { "type": "object" } },
+        "required": ["visualComposition", "uiResilience"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "change": {
+            "type": "object",
+            "properties": { "uiImpact": { "const": "functional-only" } },
+            "required": ["uiImpact"]
+          }
+        },
+        "required": ["change"]
+      },
+      "then": {
+        "properties": {
+          "visualComposition": {
+            "type": "object",
+            "properties": { "decision": { "const": "not-required" } },
+            "required": ["decision"]
+          }
+        },
+        "required": ["visualComposition"]
+      }
+    }
+  ]
+}

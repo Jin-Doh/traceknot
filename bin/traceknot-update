@@ -285,18 +285,6 @@ CONFIG_SKILLS_ROOT=$(sed -n 's/^skillsRoot=//p' "$CONFIG")
 if [ -z "${TRACEKNOT_SKILLS_ROOT+x}" ] && [ -n "$CONFIG_SKILLS_ROOT" ]; then
     SKILLS_ROOT=$CONFIG_SKILLS_ROOT
 fi
-if [ -z "${TRACEKNOT_SKILLS_ROOT+x}" ] && [ -z "$CONFIG_SKILLS_ROOT" ]; then
-    legacy_registration=$SKILLS_ROOT/traceknot
-    if [ -L "$legacy_registration" ]; then
-        legacy_registration_target=$(readlink "$legacy_registration")
-        case "$legacy_registration_target" in
-            "$PREFIX/skill"|"$PREFIX/current/skill") ;;
-            *) fail 'legacy update configuration requires TRACEKNOT_SKILLS_ROOT' ;;
-        esac
-    else
-        fail 'legacy update configuration requires TRACEKNOT_SKILLS_ROOT'
-    fi
-fi
 case "$SKILLS_ROOT" in
     /*) ;;
     *) fail 'configured Skills root must be absolute' ;;
@@ -442,12 +430,10 @@ fi
 
 command -v curl >/dev/null 2>&1 || fail 'curl is required'
 command -v jq >/dev/null 2>&1 || fail 'jq is required'
-
 if [ "$AUTO_INVOCATION" -eq 1 ]; then
     AUTOMATIC=$(sed -n 's/^automatic=//p' "$CONFIG")
     [ "$AUTOMATIC" -eq 1 ] || exit 0
 fi
-
 replace_symlink() {
     link_target=$1
     link_path=$2
@@ -465,21 +451,59 @@ replace_symlink() {
     rm -f "$link_tmp"
     fail "cannot atomically replace symlink: $link_path"
 }
-assert_registration_owned() {
-    expected_target=${1:-}
-    if [ -L "$REGISTRATION" ]; then
-        actual_target=$(readlink "$REGISTRATION")
-        case "$actual_target" in
-            "$PREFIX/skill"|"$PREFIX/current/skill") ;;
-            "$expected_target") [ -n "$expected_target" ] ||
-                fail "refusing unrelated Skill registration: $REGISTRATION" ;;
-            *) fail "refusing unrelated Skill registration: $REGISTRATION" ;;
-        esac
-    elif [ -e "$REGISTRATION" ]; then
-        fail "refusing unrelated Skill registration: $REGISTRATION"
+assert_launcher_replaceable() {
+    launcher_path=$PREFIX/bin/traceknot
+    if [ -L "$launcher_path" ] || [ ! -e "$launcher_path" ]; then
+        return
+    fi
+    [ -f "$launcher_path" ] ||
+        fail "refusing unrelated launcher path: $launcher_path"
+    grep -Fx 'bin/traceknot' "$INSTALL_MANIFEST" >/dev/null 2>&1 ||
+        fail "refusing unowned launcher path: $launcher_path"
+}
+replace_launcher() {
+    launcher_target=$1
+    launcher_path=$PREFIX/bin/traceknot
+    assert_launcher_replaceable
+    if [ -L "$launcher_path" ] || [ ! -e "$launcher_path" ]; then
+        replace_symlink "$launcher_target" "$launcher_path"
+        return
+    fi
+    launcher_tmp=$launcher_path.tmp.$$
+    rm -f "$launcher_tmp"
+    ln -s "$launcher_target" "$launcher_tmp"
+    if mv -fh "$launcher_tmp" "$launcher_path" 2>/dev/null; then
+        return
+    fi
+    if mv -fT "$launcher_tmp" "$launcher_path" 2>/dev/null; then
+        return
+    fi
+    rm -f "$launcher_tmp"
+    fail "cannot atomically migrate launcher: $launcher_path"
+}
+release_runtime() {
+    release_root=$1
+    if [ -x "$release_root/skill/bin/traceknot" ]; then
+        printf '%s/skill/bin/traceknot\n' "$release_root"
+    else
+        printf '%s/bin/traceknot\n' "$release_root"
     fi
 }
-
+cutover_legacy_registration() {
+    expected_target=${1:-}
+    if [ ! -L "$REGISTRATION" ]; then
+        return
+    fi
+    actual_target=$(readlink "$REGISTRATION")
+    case "$actual_target" in
+        "$PREFIX/skill"|"$PREFIX/current/skill")
+            rm -f "$REGISTRATION"
+            ;;
+        "$expected_target")
+            [ -n "$expected_target" ] && rm -f "$REGISTRATION"
+            ;;
+    esac
+}
 sync_transaction_state() {
     command -v sync >/dev/null 2>&1 || fail 'sync is required for durable activation'
     sync
@@ -533,7 +557,6 @@ prune_obsolete_release() {
         fail "obsolete release is not a directory: $obsolete_path"
     rm -rf "$obsolete_path"
 }
-
 recover_reinstall_reset() {
     if [ ! -e "$REINSTALL_RESET" ] && [ ! -L "$REINSTALL_RESET" ]; then
         return
@@ -546,9 +569,9 @@ recover_reinstall_reset() {
         [ -d "$RELEASES_DIR" ] && [ ! -L "$RELEASES_DIR" ] ||
             fail 'unsafe releases directory during flat reinstall recovery'
     fi
-    assert_registration_owned
-    mkdir -p "$SKILLS_ROOT"
-    replace_symlink "$PREFIX/skill" "$REGISTRATION"
+    assert_launcher_replaceable
+    cutover_legacy_registration
+    replace_launcher "$PREFIX/skill/bin/traceknot"
     rm -f "$CURRENT" "$ROLLBACK" "$ACTIVE_STATE" "$ROLLBACK_STATE" \
         "$JOURNAL" "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE"
     rm -rf "$RELEASES_DIR"
@@ -610,31 +633,28 @@ recover_transaction() {
         ''|"$PREFIX/skill"|"$PREFIX/current/skill") ;;
         *) fail 'invalid previous Skill registration in transaction' ;;
     esac
+    assert_launcher_replaceable
 
     if [ "$phase" = committed ]; then
         if [ "$operation" = apply ]; then
             prune_obsolete_release "$rollback_previous"
         fi
+        [ ! -d "$CURRENT" ] || replace_launcher "$(release_runtime "$CURRENT")"
         sync_transaction_state
         rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
         sync_transaction_state
         return
     fi
 
-    assert_registration_owned "$registration_previous"
+    cutover_legacy_registration "$registration_previous"
     if [ -d "$previous" ]; then
         replace_symlink "$previous" "$CURRENT"
+        replace_launcher "$(release_runtime "$CURRENT")"
     fi
     if [ -n "$rollback_previous" ] && [ -d "$rollback_previous" ]; then
         replace_symlink "$rollback_previous" "$ROLLBACK"
     else
         rm -f "$ROLLBACK"
-    fi
-    if [ -n "$registration_previous" ]; then
-        mkdir -p "$SKILLS_ROOT"
-        replace_symlink "$registration_previous" "$REGISTRATION"
-    elif [ -L "$REGISTRATION" ] && [ "$(readlink "$REGISTRATION")" = "$PREFIX/current/skill" ]; then
-        rm -f "$REGISTRATION"
     fi
     if [ -f "$TX_ACTIVE_BEFORE" ]; then
         recover_active_tmp=$ACTIVE_STATE.tmp.recover.$$
@@ -665,25 +685,26 @@ perform_rollback() {
     [ -L "$CURRENT" ] || fail 'no updater-managed release is active'
     [ -L "$ROLLBACK" ] || fail 'no previous release is available'
     [ -f "$ROLLBACK_STATE" ] || fail 'previous release metadata is unavailable'
-    assert_registration_owned "$PREFIX/current/skill"
+    cutover_legacy_registration "$PREFIX/current/skill"
     rollback_registration_previous=
-    if [ -L "$REGISTRATION" ]; then
-        rollback_registration_previous=$(readlink "$REGISTRATION")
-    fi
     rollback_from=$(readlink "$CURRENT")
     rollback_to=$(readlink "$ROLLBACK")
     validate_managed_release_path "$rollback_from"
     validate_managed_release_path "$rollback_to"
     [ -d "$rollback_from" ] && [ -d "$rollback_to" ] || fail 'rollback target is missing'
+    assert_launcher_replaceable
     [ -f "$ACTIVE_STATE" ] || fail 'active release metadata is unavailable'
     copy_exclusive "$ACTIVE_STATE" "$TX_ACTIVE_BEFORE"
     copy_exclusive "$ROLLBACK_STATE" "$TX_ROLLBACK_BEFORE"
     write_journal rollback prepared "$rollback_from" "$rollback_to" '' "$rollback_registration_previous" "$rollback_to"
     sync_transaction_state
     replace_symlink "$rollback_to" "$CURRENT"
+    replace_launcher "$(release_runtime "$CURRENT")"
     replace_symlink "$rollback_from" "$ROLLBACK"
-    mkdir -p "$SKILLS_ROOT"
-    replace_symlink "$CURRENT/skill" "$REGISTRATION"
+    if [ -x "$CURRENT/skill/bin/traceknot" ] && ! "$CURRENT/skill/bin/traceknot" self-check >/dev/null 2>&1; then
+        recover_transaction
+        fail 'rollback runtime self-check failed; previous release restored'
+    fi
     write_journal rollback activated "$rollback_from" "$rollback_to" '' "$rollback_registration_previous" "$rollback_to"
     sync_transaction_state
     rollback_active_tmp=$ACTIVE_STATE.tmp.rollback.$$
@@ -917,6 +938,7 @@ ARTIFACT_URL=$SELECTED_ARTIFACT_URL
 printf 'Eligible update: %s (%s)\n' "$RELEASE_TAG" "$ARTIFACT_SHA"
 [ "$COMMAND" = apply ] || exit 0
 [ "$DRY_RUN" -eq 0 ] || { printf 'Would apply %s to %s\n' "$RELEASE_TAG" "$PREFIX"; exit 0; }
+assert_launcher_replaceable
 
 command -v gh >/dev/null 2>&1 || fail 'gh is required to verify artifact provenance'
 command -v tar >/dev/null 2>&1 || fail 'tar is required to extract the release'
@@ -970,6 +992,7 @@ if find "$STAGING" ! -type f ! -type d -print | grep . >/dev/null; then
 fi
 [ -f "$STAGING/LICENSE" ] || fail 'staged release is incomplete'
 [ -f "$STAGING/skill/SKILL.md" ] || fail 'staged release is incomplete'
+[ -x "$STAGING/skill/bin/traceknot" ] || fail 'staged Skill runtime is missing'
 [ -x "$STAGING/bin/traceknot-update" ] || fail 'staged updater is missing'
 
 PREVIOUS=
@@ -1028,15 +1051,7 @@ EOF
 else
     fail 'current activation path is not a symlink'
 fi
-if [ -L "$REGISTRATION" ]; then
-    REGISTRATION_PREVIOUS=$(readlink "$REGISTRATION")
-    case "$REGISTRATION_PREVIOUS" in
-        "$PREFIX/skill"|"$PREFIX/current/skill") ;;
-        *) fail "refusing unrelated Skill registration: $REGISTRATION" ;;
-    esac
-elif [ -e "$REGISTRATION" ]; then
-    fail 'refusing unrelated Skill registration'
-fi
+cutover_legacy_registration
 
 if [ -f "$ACTIVE_STATE" ]; then
     copy_exclusive "$ACTIVE_STATE" "$TX_ACTIVE_BEFORE"
@@ -1065,14 +1080,20 @@ write_journal apply installed "$PREVIOUS" "$FINAL" "$STAGING" "$REGISTRATION_PRE
 sync_transaction_state
 replace_symlink "$PREVIOUS" "$ROLLBACK"
 replace_symlink "$FINAL" "$CURRENT"
+replace_launcher "$(release_runtime "$CURRENT")"
 write_journal apply activated "$PREVIOUS" "$FINAL" "$STAGING" "$REGISTRATION_PREVIOUS" "$ROLLBACK_PREVIOUS"
 sync_transaction_state
-mkdir -p "$SKILLS_ROOT"
-replace_symlink "$CURRENT/skill" "$REGISTRATION"
 
-if [ ! -f "$CURRENT/skill/SKILL.md" ] || [ ! -x "$CURRENT/bin/traceknot-update" ]; then
+
+if [ ! -f "$CURRENT/skill/SKILL.md" ] ||
+   [ ! -x "$CURRENT/skill/bin/traceknot" ] ||
+   [ ! -x "$CURRENT/bin/traceknot-update" ]; then
     recover_transaction
     fail 'post-activation smoke check failed; previous release restored'
+fi
+if ! "$CURRENT/skill/bin/traceknot" self-check >/dev/null 2>&1; then
+    recover_transaction
+    fail 'post-activation runtime self-check failed; previous release restored'
 fi
 
 active_tmp=$ACTIVE_STATE.tmp.$$

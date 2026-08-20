@@ -41,19 +41,43 @@ if sh "$ROOT/install.sh" --prefix "$CONFLICT_PREFIX" >/dev/null 2>&1; then
     exit 1
 fi
 test "$(cat "$CONFLICT_PREFIX/skill/SKILL.md")" = do-not-overwrite
+# Any external Skill registration is outside launcher ownership, even when it
+# does not yet contain the generated runtime.
+MALFORMED_SKILLS_ROOT=$TMP_DIR/malformed-skills
+MALFORMED_REGISTRATION_PATH=$MALFORMED_SKILLS_ROOT/traceknot
+MALFORMED_PREFIX=$TMP_DIR/malformed-registration-prefix
+mkdir -p "$MALFORMED_REGISTRATION_PATH"
+printf '%s\n' preserve-malformed-registration > "$MALFORMED_REGISTRATION_PATH/SKILL.md"
+TRACEKNOT_SKILLS_ROOT=$MALFORMED_SKILLS_ROOT sh "$ROOT/install.sh" \
+    --prefix "$MALFORMED_PREFIX" --disable-auto-update >/dev/null
+test "$(cat "$MALFORMED_REGISTRATION_PATH/SKILL.md")" = preserve-malformed-registration
+test -x "$MALFORMED_PREFIX/bin/traceknot"
+TRACEKNOT_SKILLS_ROOT=$MALFORMED_SKILLS_ROOT sh "$ROOT/uninstall.sh" \
+    --prefix "$MALFORMED_PREFIX" >/dev/null
+test "$(cat "$MALFORMED_REGISTRATION_PATH/SKILL.md")" = preserve-malformed-registration
+rm -rf "$MALFORMED_SKILLS_ROOT"
 
-# An unowned registration must be preserved with non-destructive guidance.
+
+# A real Skills CLI registration is external ownership: preserve it while the
+# optional prefix launcher follows the managed current release.
 REGISTRATION_PATH=$TRACEKNOT_SKILLS_ROOT/traceknot
-mkdir -p "$REGISTRATION_PATH"
+REGISTRATION_PREFIX=$TMP_DIR/registration-conflict
+mkdir -p "$REGISTRATION_PATH/bin"
+REGISTRATION_PREFIX_CANON=$(CDPATH='' cd -P "$TMP_DIR" && pwd)/registration-conflict
 printf '%s\n' do-not-overwrite > "$REGISTRATION_PATH/SKILL.md"
-if registration_output=$(sh "$ROOT/install.sh" \
-    --prefix "$TMP_DIR/registration-conflict" 2>&1); then
-    printf '%s\n' 'unowned Skill registration unexpectedly overwritten' >&2
-    exit 1
-fi
-printf '%s\n' "$registration_output" |
-    grep -F 'remove it only if intended, or choose another TRACEKNOT_SKILLS_ROOT' >/dev/null
+cat > "$REGISTRATION_PATH/bin/traceknot" <<'EOF'
+#!/bin/sh
+printf '%s\n' external-registration-runtime
+EOF
+chmod +x "$REGISTRATION_PATH/bin/traceknot"
+sh "$ROOT/install.sh" --prefix "$REGISTRATION_PREFIX" --disable-auto-update >/dev/null
 test "$(cat "$REGISTRATION_PATH/SKILL.md")" = do-not-overwrite
+test -x "$REGISTRATION_PREFIX/bin/traceknot"
+test "$(readlink "$REGISTRATION_PREFIX/bin/traceknot")" = "$REGISTRATION_PREFIX_CANON/skill/bin/traceknot"
+test "$("$REGISTRATION_PREFIX/bin/traceknot" verify --help)" != external-registration-runtime
+sh "$ROOT/uninstall.sh" --prefix "$REGISTRATION_PREFIX" >/dev/null
+test "$(cat "$REGISTRATION_PATH/SKILL.md")" = do-not-overwrite
+test -x "$REGISTRATION_PATH/bin/traceknot"
 rm -rf "$REGISTRATION_PATH"
 
 # A fresh prefix honors the updater lock before writing any payload.
@@ -73,40 +97,28 @@ sh "$ROOT/install.sh" --prefix "$PREFIX"
 PREFIX_CANON=$(CDPATH='' cd -P "$PREFIX" && pwd)
 test -f "$PREFIX/LICENSE"
 test -f "$PREFIX/skill/SKILL.md"
-test -f "$PREFIX/skill/references/test-process.md"
-test -f "$PREFIX/skill/references/adversarial-risk-discovery.md"
-test -f "$PREFIX/contracts/verdict.schema.json"
-test -f "$PREFIX/contracts/risk-discovery-report.schema.json"
-test -f "$PREFIX/contracts/verification-request.schema.json"
-test -f "$PREFIX/contracts/qa-board-manifest.schema.json"
-test -f "$PREFIX/contracts/storage-maintenance-report.schema.json"
-test -f "$PREFIX/adapters/codex/capability.json"
-test -f "$PREFIX/adapters/claude-code/capability.json"
-test -f "$PREFIX/system/core/qa-core.ts"
-test -f "$PREFIX/system/core/qa-core.test.ts"
-test -f "$PREFIX/system/runtime/verification-run.ts"
-test -f "$PREFIX/system/runtime/local-shell-collector.ts"
-test -f "$PREFIX/system/cli/verify.ts"
-test -f "$PREFIX/system/cli/storage.ts"
-test -f "$PREFIX/system/runtime/storage-retention.ts"
-test -f "$PREFIX/system/presentation/qa-board.ts"
-test -f "$PREFIX/system/presentation/qa-board-store.ts"
+test -x "$PREFIX/skill/bin/traceknot"
+test ! -e "$PREFIX/contracts"
+test ! -e "$PREFIX/adapters"
+test ! -e "$PREFIX/system"
 test -x "$PREFIX/bin/traceknot"
+test "$(readlink "$PREFIX/bin/traceknot")" = "$PREFIX_CANON/skill/bin/traceknot"
 test -n "$("$PREFIX/bin/traceknot" verify --help)"
 test -n "$("$PREFIX/bin/traceknot" storage --help)"
 test -x "$PREFIX/bin/traceknot-update"
 test -f "$PREFIX/.traceknot-install-manifest"
-test -L "$REGISTRATION_PATH"
-test "$(readlink "$REGISTRATION_PATH")" = "$PREFIX_CANON/skill"
+test ! -e "$REGISTRATION_PATH"
 test -f "$PREFIX/skill/references/proof-carrying-success.md"
 grep -F '[Proof-carrying success](references/proof-carrying-success.md)' \
     "$PREFIX/skill/SKILL.md" >/dev/null
-test -f "$REGISTRATION_PATH/references/proof-carrying-success.md"
-grep -F '[Proof-carrying success](references/proof-carrying-success.md)' \
-    "$REGISTRATION_PATH/SKILL.md" >/dev/null
+"$PREFIX/bin/traceknot" self-check >/dev/null
 test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 1
 grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null
 test "$(cat "$PREFIX/unrelated-sentinel.txt")" = keep-me
+
+# Reinstall removes a legacy launcher-owned registration instead of retargeting it.
+mkdir -p "$TRACEKNOT_SKILLS_ROOT"
+ln -s "$PREFIX_CANON/skill" "$REGISTRATION_PATH"
 
 # Reinstall must not require the previously installed updater to know new commands.
 cat > "$PREFIX/bin/traceknot-update" <<'EOF'
@@ -120,12 +132,12 @@ mkdir -p "$PREFIX/releases"
 printf '%s\n' keep-release > "$PREFIX/releases/unrelated-sentinel"
 # Reinstalling over the same prefix must succeed and preserve unrelated files.
 sh "$ROOT/install.sh" --prefix "$PREFIX"
-test -f "$PREFIX/system/core/qa-core.ts"
+test -x "$PREFIX/skill/bin/traceknot"
 test "$(cat "$PREFIX/unrelated-sentinel.txt")" = keep-me
 test "$(cat "$PREFIX/releases/unrelated-sentinel")" = keep-release
 test -x "$PREFIX/bin/traceknot-update"
-test -L "$REGISTRATION_PATH"
-test "$(readlink "$REGISTRATION_PATH")" = "$PREFIX_CANON/skill"
+test "$(readlink "$PREFIX/bin/traceknot")" = "$PREFIX_CANON/skill/bin/traceknot"
+test ! -e "$REGISTRATION_PATH"
 test "$(grep -Fc "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE")" = 1
 
 # Explicit opt-out persists disabled state and creates no schedule, including across ordinary reinstall.
@@ -140,7 +152,8 @@ if grep -F "# traceknot-auto-update:$DISABLED_PREFIX" "$CRONTAB_FILE" >/dev/null
 fi
 env -u TRACEKNOT_SKILLS_ROOT sh "$ROOT/install.sh" --prefix "$DISABLED_PREFIX" >/dev/null
 test "$(sed -n 's/^automatic=//p' "$DISABLED_PREFIX/.traceknot-update/config")" = 0
-test "$(readlink "$DISABLED_SKILLS/traceknot")" = "$(CDPATH='' cd -P "$DISABLED_PREFIX" && pwd)/skill"
+test ! -e "$DISABLED_SKILLS/traceknot"
+test "$(readlink "$DISABLED_PREFIX/bin/traceknot")" = "$(CDPATH='' cd -P "$DISABLED_PREFIX" && pwd)/skill/bin/traceknot"
 if grep -F "# traceknot-auto-update:$DISABLED_PREFIX" "$CRONTAB_FILE" >/dev/null 2>&1; then
     printf '%s\n' 'ordinary reinstall unexpectedly re-enabled opted-out updates' >&2
     exit 1
@@ -222,14 +235,39 @@ if TRACEKNOT_SKILLS_ROOT=$CONFIG_SKILLS sh "$ROOT/install.sh" \
 fi
 test ! -e "$OUTSIDE_CONFIG"
 grep -F preserve-config-payload "$CONFIG_PREFIX/skill/SKILL.md" >/dev/null
-# Preview modes must not create or remove anything.
+# Preview modes report the same non-owning registration behavior without mutation.
 PREVIEW_PREFIX=$TMP_DIR/preview
-TRACEKNOT_SKILLS_ROOT=$TMP_DIR/preview-skills sh "$ROOT/install.sh" --prefix "$PREVIEW_PREFIX" --dry-run >/dev/null
+PREVIEW_SKILLS=$TMP_DIR/preview-skills
+PREVIEW_OUTPUT=$(TRACEKNOT_SKILLS_ROOT=$PREVIEW_SKILLS sh "$ROOT/install.sh" --prefix "$PREVIEW_PREFIX" --dry-run)
+printf '%s\n' "$PREVIEW_OUTPUT" | grep -F 'do not create a Skill registration' >/dev/null
 test ! -e "$PREVIEW_PREFIX"
+test ! -e "$PREVIEW_SKILLS/traceknot"
+
+PREVIEW_EXTERNAL_PREFIX=$TMP_DIR/preview-external-prefix
+PREVIEW_EXTERNAL_SKILLS=$TMP_DIR/preview-external-skills
+mkdir -p "$PREVIEW_EXTERNAL_SKILLS/traceknot"
+PREVIEW_EXTERNAL_SKILLS_CANON=$(CDPATH='' cd -P "$PREVIEW_EXTERNAL_SKILLS" && pwd)
+printf '%s\n' preserve-external > "$PREVIEW_EXTERNAL_SKILLS/traceknot/SKILL.md"
+PREVIEW_EXTERNAL_OUTPUT=$(TRACEKNOT_SKILLS_ROOT=$PREVIEW_EXTERNAL_SKILLS sh "$ROOT/install.sh" --prefix "$PREVIEW_EXTERNAL_PREFIX" --dry-run)
+printf '%s\n' "$PREVIEW_EXTERNAL_OUTPUT" | grep -F "leave existing Skill registration $PREVIEW_EXTERNAL_SKILLS_CANON/traceknot untouched" >/dev/null
+test "$(cat "$PREVIEW_EXTERNAL_SKILLS/traceknot/SKILL.md")" = preserve-external
+test ! -e "$PREVIEW_EXTERNAL_PREFIX"
+
+PREVIEW_LEGACY_PREFIX_CANON=$(CDPATH='' cd -P "$TMP_DIR" && pwd)/preview-legacy-prefix
+PREVIEW_LEGACY_PREFIX=$TMP_DIR/preview-legacy-prefix
+PREVIEW_LEGACY_SKILLS=$TMP_DIR/preview-legacy-skills
+mkdir -p "$PREVIEW_LEGACY_SKILLS"
+PREVIEW_LEGACY_SKILLS_CANON=$(CDPATH='' cd -P "$PREVIEW_LEGACY_SKILLS" && pwd)
+ln -s "$PREVIEW_LEGACY_PREFIX_CANON/skill" "$PREVIEW_LEGACY_SKILLS/traceknot"
+PREVIEW_LEGACY_OUTPUT=$(TRACEKNOT_SKILLS_ROOT=$PREVIEW_LEGACY_SKILLS sh "$ROOT/install.sh" --prefix "$PREVIEW_LEGACY_PREFIX" --dry-run)
+printf '%s\n' "$PREVIEW_LEGACY_OUTPUT" | grep -F "remove legacy Skill registration $PREVIEW_LEGACY_SKILLS_CANON/traceknot" >/dev/null
+test -L "$PREVIEW_LEGACY_SKILLS/traceknot"
+test ! -e "$PREVIEW_LEGACY_PREFIX"
+
 sh "$ROOT/uninstall.sh" --prefix "$PREFIX" --dry-run >/dev/null
-test -f "$PREFIX/system/core/qa-core.ts"
+test -x "$PREFIX/skill/bin/traceknot"
 test -f "$PREFIX/.traceknot-install-manifest"
-test -L "$REGISTRATION_PATH"
+test ! -e "$REGISTRATION_PATH"
 
 # A damaged installation without an executable updater still removes its schedule.
 chmod -x "$PREFIX/bin/traceknot-update"
@@ -242,11 +280,11 @@ test ! -e "$PREFIX/.traceknot-update.lock"
 sh "$ROOT/uninstall.sh" --prefix "$PREFIX"
 test ! -e "$PREFIX/LICENSE"
 test ! -e "$PREFIX/skill/SKILL.md"
-test ! -e "$PREFIX/contracts/verdict.schema.json"
+test ! -e "$PREFIX/skill/contracts/verdict.schema.json"
 test ! -e "$PREFIX/skill/references/adversarial-risk-discovery.md"
-test ! -e "$PREFIX/contracts/risk-discovery-report.schema.json"
-test ! -e "$PREFIX/adapters/codex/capability.json"
-test ! -e "$PREFIX/system/core/qa-core.ts"
+test ! -e "$PREFIX/skill/contracts/risk-discovery-report.schema.json"
+test ! -e "$PREFIX/skill/adapters/codex/capability.json"
+test ! -e "$PREFIX/skill/bin/traceknot"
 test ! -e "$PREFIX/bin/traceknot-update"
 test ! -e "$PREFIX/.traceknot-install-manifest"
 test ! -e "$REGISTRATION_PATH"

@@ -32,6 +32,7 @@ type Native = {
     mkdirat: (dirfd: number, path: Buffer, mode: number) => number;
     renameat: (oldfd: number, oldpath: Buffer, newfd: number, newpath: Buffer) => number;
     linkat: (oldfd: number, oldpath: Buffer, newfd: number, newpath: Buffer, flags: number) => number;
+    symlinkat: (target: Buffer, newfd: number, linkpath: Buffer) => number;
     unlinkat: (dirfd: number, path: Buffer, flags: number) => number;
     fchmod: (fd: number, mode: number) => number;
     fsync: (fd: number) => number;
@@ -55,6 +56,7 @@ function loadNative(): Native | undefined {
       renameat: { args: [FFIType.i32, FFIType.cstring, FFIType.i32, FFIType.cstring], returns: FFIType.i32 },
       unlinkat: { args: [FFIType.i32, FFIType.cstring, FFIType.i32], returns: FFIType.i32 },
       linkat: { args: [FFIType.i32, FFIType.cstring, FFIType.i32, FFIType.cstring, FFIType.i32], returns: FFIType.i32 },
+      symlinkat: { args: [FFIType.cstring, FFIType.i32, FFIType.cstring], returns: FFIType.i32 },
       fchmod: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
       fsync: { args: [FFIType.i32], returns: FFIType.i32 },
       close: { args: [FFIType.i32], returns: FFIType.i32 },
@@ -69,6 +71,7 @@ function loadNative(): Native | undefined {
         mkdirat: symbols.mkdirat,
         renameat: symbols.renameat,
         linkat: symbols.linkat,
+        symlinkat: symbols.symlinkat,
         unlinkat: symbols.unlinkat,
         fchmod: symbols.fchmod,
         fsync: symbols.fsync,
@@ -122,6 +125,9 @@ export class ArtifactNotFoundError extends ArtifactPathError {
 function native(): Native {
   if (!NATIVE) throw new ArtifactPathError(`artifact storage is unsupported on platform ${process.platform}`);
   return NATIVE;
+}
+export function assertLocalArtifactRuntimeSupported(): void {
+  native();
 }
 function errnoFrom(symbols: Native["symbols"]): number {
   return ffiRead.i32(symbols.errno() as unknown as Parameters<typeof ffiRead.i32>[0]);
@@ -272,6 +278,10 @@ export function secureMkdirAt(directoryFd: number, name: string, mode = 0o700): 
 }
 export function secureRenameAt(oldDirectoryFd: number, oldName: string, newDirectoryFd: number, newName: string): void {
   check(native().symbols.renameat(oldDirectoryFd, validateName(oldName), newDirectoryFd, validateName(newName)), `rename ${oldName}`);
+}
+export function secureSymlinkAt(directoryFd: number, target: string, name: string): void {
+  if (typeof target !== "string" || target.length === 0 || target.includes("\0")) throw new ArtifactPathError("unsafe symlink target");
+  check(native().symbols.symlinkat(cstring(target), directoryFd, validateName(name)), `symlink ${name}`);
 }
 export function secureUnlinkAt(directoryFd: number, name: string): void {
   check(native().symbols.unlinkat(directoryFd, validateName(name), 0), `unlink ${name}`);

@@ -174,11 +174,15 @@ JSON is the default machine-readable report. Use `--format markdown` for a human
 
 ## Installation choices
 
-### Portable Skill — recommended
+### Skills CLI — canonical installation
 
-The Quick Start command installs `skill/SKILL.md` and its references through the Skills CLI. Add `--agent codex` to target Codex only, or omit `--global` to install into the current project.
+The Quick Start command installs the complete `skill/` tree, including `SKILL.md`, references, and executable `skill/bin/traceknot`. The generated CLI requires Bun 1.3.14 or later. Add `--agent codex` to target Codex only, or omit `--global` to install into the current project.
 
-Manage the installation with the same CLI:
+```sh
+npx skills add Jin-Doh/traceknot --skill traceknot --global
+```
+
+Manage the same complete payload with the Skills CLI:
 
 ```sh
 npx skills list --global
@@ -186,9 +190,13 @@ npx skills update traceknot --global --yes
 npx skills remove traceknot --global --yes
 ```
 
-### Full toolkit — advanced
+For a project-local installation, run `npx skills update traceknot --yes` and `npx skills remove traceknot --yes` from the project root; do not pass `--global`.
 
-Install the Skill together with the schemas, capability manifests, host-neutral core, and verified release updater:
+For a global Skills CLI install, invoke `$HOME/.agents/skills/traceknot/bin/traceknot`; for a project-local install, run `.agents/skills/traceknot/bin/traceknot` from the project root. Run `$HOME/.agents/skills/traceknot/bin/traceknot self-check` after a global installation or update; for a project-local installation, substitute `.agents/skills/traceknot/bin/traceknot self-check`. Session Board publication uses `$HOME/.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]` globally and `.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR [--artifact-dir DIR] [--open-board] [--no-notify]` for a project-local installation. Do not fall back to an unrelated global executable. After read-back validation the publisher prints `Traceknot Board: file://.../sessions/<session-key>/index.html`. See [QA Board](docs/qa-board.md) for the `traceknot-session-board-update/v1` envelope, unavailable behavior, and `boardMaxPerSession` retention.
+
+### Legacy curl launcher/bootstrap — optional
+
+The legacy curl entrypoint remains an optional prefix launcher/updater for environments that need it. It does not create, replace, retarget, update, or remove a Skills CLI-owned registration and does not define a separate Skill payload, runtime tier, Board renderer, schema, or verdict mode. Reinstall or update removes only a legacy symlink that points into the same prefix. The Skills CLI path above remains canonical. Inspect the script or use a fixed tag before running it in a controlled environment.
 
 <!-- shared-command:full-toolkit-install -->
 
@@ -196,9 +204,7 @@ Install the Skill together with the schemas, capability manifests, host-neutral 
 curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/install.sh | sh
 ```
 
-Inspect the script or use a fixed tag before running it in a controlled environment. The installer works without `sudo`, supports `--dry-run`, and defaults to `${XDG_DATA_HOME:-$HOME/.local/share}/traceknot`.
-
-Pin both the bootstrap script and downloaded payload to the same tag or commit:
+Pin the bootstrap script and downloaded payload to the same tag or commit:
 
 <!-- shared-command:full-toolkit-pinned-install -->
 
@@ -208,9 +214,9 @@ curl -fsSL "https://raw.githubusercontent.com/Jin-Doh/traceknot/$TRACEKNOT_REF/i
   | TRACEKNOT_REF="$TRACEKNOT_REF" sh
 ```
 
-The Skills CLI and full-toolkit installer manage the same user-local Skill registration. Remove one installation before switching methods. See [automatic updates](docs/automatic-updates.md) for eligibility, verification, rollback, and opt-out behavior.
+The launcher manages only its prefix release files through `traceknot-update`; use [automatic updates](docs/automatic-updates.md) for status, check, apply, rollback, enable, and disable operations. `npx skills update traceknot --global --yes` independently updates the canonical Skills CLI registration. The two can coexist because the launcher never writes that registration. Use the pinned uninstaller below to remove only launcher-managed files.
 
-Remove the default full-toolkit installation with:
+Remove launcher-managed files with:
 
 <!-- shared-command:full-toolkit-uninstall -->
 
@@ -218,9 +224,7 @@ Remove the default full-toolkit installation with:
 curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh | sh
 ```
 
-For a custom installation prefix, append `-s -- --prefix /absolute/path` after `sh`.
-
-If the installation also used a custom Skills root, pass the same value to the uninstaller:
+For a custom installation prefix, append `-s -- --prefix /absolute/path` after `sh`. `TRACEKNOT_SKILLS_ROOT` is needed only when migrating or removing a legacy Traceknot-owned registration symlink from a non-default location:
 
 <!-- shared-command:full-toolkit-custom-uninstall -->
 
@@ -229,7 +233,7 @@ curl -fsSL https://raw.githubusercontent.com/Jin-Doh/traceknot/main/uninstall.sh
   | TRACEKNOT_SKILLS_ROOT=/absolute/skills sh -s -- --prefix /absolute/path
 ```
 
-Runnable updater commands, including active-layout and legacy-layout path selection, are documented in [automatic updates](docs/automatic-updates.md).
+The legacy launcher is optional; it never replaces `npx skills add`/`npx skills update` as the canonical installation lifecycle.
 
 <!-- readme-section:documentation -->
 

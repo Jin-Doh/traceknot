@@ -6,17 +6,17 @@ Traceknot enables delayed automatic update checks by default, with an explicit i
 
 The seven-day delay is a safety buffer, not a trust mechanism. Release immutability, artifact provenance, digest verification, atomic activation, and rollback remain mandatory.
 
-This policy applies only to the full-toolkit installation created by `install.sh`. A Skill installed with `npx skills add Jin-Doh/traceknot` is managed by the Skills CLI and uses `npx skills update` instead. Both methods own `$HOME/.agents/skills/traceknot`; users must remove the current installation before switching methods.
+The Skills CLI owns the canonical Skill lifecycle and uses `npx skills update`. The optional `install.sh` path manages only user-local prefix files and never creates or retargets a Skills CLI registration; it may remove only a legacy symlink that points into the same prefix. Both installations may coexist.
 
 ## Current-state review
 
-The installer and updater now:
+The optional prefix installer and updater:
 
-- install into a user-local prefix and record owned paths;
+- install into a user-local prefix and record only prefix-owned paths;
+- leave every Skills CLI-owned registration untouched and remove only a legacy symlink pointing into the same prefix;
 - enable one daily verified update check by default;
 - support `--disable-auto-update` during installation and `traceknot-update disable` afterward;
-- stage immutable releases, verify provenance and digest, activate atomically, and retain one rollback target;
-- serialize update and uninstall operations and recover interrupted transactions.
+- stage immutable releases, verify provenance and digest, activate atomically, retain one rollback target, serialize update and uninstall operations, and recover interrupted transactions.
 
 ## Running the updater
 
@@ -113,7 +113,7 @@ ${prefix}/
   rollback -> releases/<prior> # previous known-good activation target
 ```
 
-The shared Skill registration points to `${prefix}/current/skill`. Activation uses a write-ahead transaction record, durable staged files, and same-directory symlink rename. Required ordering is: persist the prepared transaction and staged payload; persist the rollback target; atomically replace `current`; persist active state; run the smoke check; then mark committed. Startup recovery reconciles the transaction record, `current`, rollback target, and active manifest before any new check. A crash at any boundary deterministically completes the new activation or restores the prior activation. Retain the active and one prior version; remove older versions only after a successful subsequent invocation.
+The optional launcher at `${prefix}/bin/traceknot` follows `${prefix}/current/skill/bin/traceknot` while its release updater is active. Activation persists the transaction and staged payload, persists rollback, atomically replaces `current`, persists active state, runs the installed runtime self-check, and marks the transaction committed. Startup recovery reconciles only prefix-owned state. It removes a legacy registration symlink only when that symlink points into this prefix; it never creates or retargets a registration.
 
 ### Components
 
@@ -146,7 +146,7 @@ Invalid transitions fail closed. Cancellation before activation removes staging.
 6. A version is never downgraded automatically. Reinstalling the same digest is a no-op; the same version with a different digest is a security failure.
 7. Update state and activation targets must be regular owned paths beneath the canonical prefix, with the installer's existing symlink checks retained.
 8. Logs must not contain tokens. GitHub authentication, if supported later, is read from the environment and never persisted.
-9. Skills CLI and full-toolkit registrations are mutually exclusive; the installer preserves an existing unowned Skill directory and reports the removal command instead of overwriting it.
+9. The optional launcher leaves every Skills CLI-owned registration untouched and may remove only a legacy symlink that points into its own prefix. Users update the canonical registration with `npx skills update traceknot --global --yes`.
 
 ## Release promotion and operations
 
@@ -202,17 +202,17 @@ The updater's seven-day observation delay limits immediate adoption but is not a
 
 - Add the schema-backed resolver, observation store, policy engine, status output, and locking.
 - Ship `check`, `status`, `enable`, and `disable`; do not apply updates.
-- Import a v1 manifest as a legacy state while preserving the configured default or explicit opt-out. Before first managed activation, copy the owned flat payload into a verified `releases/legacy-<digest>` rollback snapshot without changing the live files. The first activation transaction must persist that snapshot and original Skill-registration target, then atomically activate `current` and replace the registration through the same recovery journal. Startup recovery restores both the legacy payload target and original registration if the transaction does not commit.
+- Import a v1 manifest as legacy prefix state while preserving the configured default or opt-out. Before first managed activation, copy the flat payload into a verified rollback snapshot, atomically activate `current`, update only the prefix launcher, and remove a legacy prefix-owned registration symlink if present. Recovery never creates or retargets a Skill registration.
 
 **Exit:** strict boundary, backdating, forward and backward local-clock jumps, invalid calendar dates, mutation, prerelease, malformed metadata, race, and offline scenarios return the expected decision without changing installed files.
 
 ### Phase 2 — transactional application
 
 - Add verified download, safe extraction, versioned staging, atomic activation, smoke check, and rollback.
-- Move Skill registration to `${prefix}/current/skill` only after the active release exists.
+- Keep `${prefix}/bin/traceknot` bound to the active `${prefix}/current/skill/bin/traceknot`; never create or retarget a Skill registration.
 - Preserve custom-prefix, explicit opt-out, and dry-run workflows.
 
-**Exit:** fault injection at every filesystem boundary leaves a complete old or new install, and the original registration remains usable after rollback.
+**Exit:** fault injection at every filesystem boundary leaves a complete old or new prefix install, the Skills CLI registration remains unchanged, and any legacy prefix-owned registration symlink is absent after successful migration.
 
 ### Phase 3 — default-on controlled adoption
 
@@ -246,7 +246,7 @@ The updater's seven-day observation delay limits immediate adoption but is not a
 | OBL-003 | COND-003 | BASIS-006, BASIS-007 / RISK-003, RISK-006 | Test result | State engine / independent-producer | Every allowed transition works; every invalid transition fails closed and preserves active state. |
 | OBL-004 | COND-004 | BASIS-006 / RISK-003 | Experiment | Filesystem transaction / independent-producer | Process-kill and power-loss simulation at every journal boundary prove old-or-new atomicity, restart reconciliation, and rollback. |
 | OBL-005 | COND-005 | BASIS-006 / RISK-005 | Scenario result | Concurrent processes / independent-producer | Concurrent check/apply attempts serialize; stale lock handling never permits two writers. |
-| OBL-006 | COND-006 | BASIS-004, BASIS-008 / RISK-004 | Scenario result | Installer lifecycle / independent-producer | Default/custom prefixes, v1 manifests, legacy rollback snapshots, original Skill registration, dry-run, pinned refs, install, and uninstall retain their contracts. |
+| OBL-006 | COND-006 | BASIS-004, BASIS-008 / RISK-004 | Scenario result | Installer lifecycle / independent-producer | Default/custom prefixes, v1 manifests, legacy rollback snapshots, dry-run, pinned refs, install, update, rollback, and uninstall retain their contracts while Skills CLI registrations remain untouched and legacy prefix-owned symlinks are removed. |
 | OBL-007 | COND-007 | BASIS-003, BASIS-005 / RISK-001 | Build result | Release candidate / independent-producer | Canonical CI, deterministic package, schema validation, trusted-workflow attestation verification, immutable publication gate, and offline verification pass. |
 | OBL-008 | COND-008 | BASIS-001, BASIS-002, BASIS-007 / RISK-001, RISK-002, RISK-003, RISK-006 | Scenario result | Installed product / independent-producer | A fresh installation schedules one daily check, observes for more than seven days using controlled trusted time, applies, smoke-checks, reports status, rolls back under injected failure, and both opt-out paths disable cleanly. |
 | OBL-009 | COND-009 | BASIS-005, BASIS-009 / RISK-001, RISK-007 | Scenario result and Environment approval | Release promotion / external-approval | The approved full SHA still equals current `main`, the version and tag are unused, required reviewers approve the `release` Environment, and the canonical gate passes before publication. |

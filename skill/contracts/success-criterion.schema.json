@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traceknot.kyungho.info/schemas/success-criterion.v1.json",
+  "title": "Canonical verification success criterion",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "criterionId", "kind", "expected", "requiredScope", "requiredIndependence", "requiredArtifacts"],
+  "properties": {
+    "schemaVersion": { "const": "success-criterion/v1" },
+    "criterionId": { "type": "string", "minLength": 1 },
+    "kind": { "enum": ["structured-assertion", "qualitative-review"] },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assertions"],
+      "properties": {
+        "assertions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["field", "operator", "value"],
+            "properties": {
+              "field": { "type": "string", "minLength": 1 },
+              "operator": { "enum": ["equals", "not-equals", "less-than-or-equal", "greater-than-or-equal", "contains"] },
+              "value": { "anyOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }, { "type": "null" }] }
+            }
+          }
+        }
+      }
+    },
+    "requiredScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "selectors"],
+      "properties": {
+        "kind": { "enum": ["repository-canonical", "suite", "files", "flow", "review"] },
+        "selectors": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "requiredIndependence": { "enum": ["self-check", "separate-verification-context", "independent-producer", "external-approval"] },
+    "requiredArtifacts": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

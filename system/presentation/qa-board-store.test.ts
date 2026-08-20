@@ -86,7 +86,7 @@ test("writes an immutable Board bundle and verifies screenshot bytes", async () 
 test("shows project support once and records only a local marker", async () => {
   const fixture = await stateFixture();
   try {
-    const input = { view: viewWithScreenshot(), stateDir: fixture.root, generatedAt: "2026-08-15T00:01:00Z", artifactReader: { readArtifact: async () => SCREENSHOT_BYTES } };
+    const input = { view: viewWithScreenshot(), stateDir: fixture.root, locale: "en" as const, generatedAt: "2026-08-15T00:01:00Z", artifactReader: { readArtifact: async () => SCREENSHOT_BYTES } };
     const first = await writeQaBoardBundle({ ...input, invocationId: "support-first" });
     expect(first.projectSupportIncluded).toBe(true);
     expect(await readFile(join(first.directory, "index.html"), "utf8")).toContain("Project support");

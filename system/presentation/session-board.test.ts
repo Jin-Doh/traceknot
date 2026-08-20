@@ -1,0 +1,318 @@
+import { describe, expect, test } from "bun:test";
+import { chmod, mkdir, mkdtemp, readFile, readlink, readdir, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { parseSessionBoardUpdate, publishSessionBoardUpdate, sessionBoardKey, verifySessionBoardPublication, type SessionBoardUpdate } from "./qa-board-store";
+import type { QaBoardView } from "./qa-board";
+
+const view = (revision: number, sourceState: QaBoardView["sourceState"] = "TERMINAL"): QaBoardView => ({
+  runId: "run-1",
+  requestId: "request-1",
+  rootIdentity: "root-1",
+  snapshotId: "snapshot-1",
+  revision,
+  sourceState,
+  sourceUpdatedAt: "2026-08-18T00:00:00Z",
+  changeSummary: "session Board test",
+  assurance: { context: "release", requiredIndependence: "separate-verification-context", releaseStatus: "satisfied" },
+  verdict: "PASS",
+  authoritative: false,
+  rationale: "test",
+  counts: { mandatory: 0, passed: 0, failed: 0, blocked: 0, incomplete: 0 },
+  findings: [],
+  coverage: {
+    basis: { total: 0, covered: 0, uncoveredIds: [] },
+    risks: { total: 0, covered: 0, uncoveredIds: [] },
+    conditions: { total: 0, covered: 0, uncoveredIds: [] },
+    mandatoryObligations: { total: 0, covered: 0, uncoveredIds: [] },
+  },
+  openDefectIds: [],
+  acceptedRiskIds: [],
+  residualRisks: [],
+});
+
+const update = (revision: number, invocationId: string, sourceState: QaBoardView["sourceState"] = "TERMINAL"): SessionBoardUpdate => ({
+  schemaVersion: "traceknot-session-board-update/v1",
+  sessionId: "raw-session-id",
+  sessionHost: "omp",
+  generatedAt: `2026-08-18T00:00:0${revision}Z`,
+  invocationId,
+  view: view(revision, sourceState),
+});
+
+async function fixture(): Promise<{ stateDir: string; artifactReader: { readArtifact: (digest: string) => Promise<Uint8Array> } }> {
+  const stateDir = await mkdtemp(join(tmpdir(), "traceknot-session-board-test-"));
+  return { stateDir, artifactReader: { readArtifact: async () => new Uint8Array() } };
+}
+
+describe("session Board contract", () => {
+  test("rejects malformed presentation input and authoritative views", () => {
+    expect(() => parseSessionBoardUpdate({ ...update(1, "inv-1"), view: { ...view(1), authoritative: true } })).toThrow("authoritative");
+    expect(() => parseSessionBoardUpdate({ ...update(1, "inv-1"), generatedAt: "not-a-timestamp" })).toThrow("timestamp");
+    expect(() => parseSessionBoardUpdate({ ...update(1, "inv-1"), view: { ...view(1), counts: { mandatory: 1, passed: 0, failed: 0, blocked: 0, incomplete: 0 } } })).toThrow("inconsistent");
+  });
+
+  test("rejects malformed pin state before reclaiming revisions", async () => {
+    for (const pins of ["{", "{}"]) {
+      const fixtureValue = await fixture();
+      const first = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1")), ...fixtureValue });
+      await writeFile(join(fixtureValue.stateDir, ".traceknot-pins.json"), pins);
+      await expect(publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(2, "inv-2")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 0 } })).rejects.toThrow("pin file is malformed");
+      expect(JSON.parse(await readFile(first.currentPath, "utf8"))).toMatchObject({ revisionPath: "boards/1-inv-1" });
+    }
+  });
+
+  test("rejects a raw session identity value or boundary-delimited token in the presentation view", async () => {
+    for (const sessionId of ["raw-session-id", "quote\"id"]) {
+      for (const changeSummary of [sessionId, `session ${sessionId}`]) {
+        const fixtureValue = await fixture();
+        const unsafe = { ...update(1, "inv-1"), sessionId, view: { ...view(1), changeSummary } };
+        await expect(publishSessionBoardUpdate({ update: parseSessionBoardUpdate(unsafe), ...fixtureValue })).rejects.toThrow("raw session ID");
+        await expect(stat(join(fixtureValue.stateDir, "sessions"))).rejects.toThrow();
+      }
+    }
+  });
+
+  test("rejects session IDs shorter than the privacy scanning contract", () => {
+    expect(() => parseSessionBoardUpdate({ ...update(1, "inv-1"), sessionId: "short" })).toThrow("at least 8 characters");
+  });
+
+  test("accepts a valid session ID only as part of an unrelated larger token", async () => {
+    const fixtureValue = await fixture();
+    const updateValue = { ...update(1, "inv-1"), sessionId: "abcdefgh", view: { ...view(1), changeSummary: "prefixabcdefghsuffix" } };
+    const publication = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(updateValue), ...fixtureValue });
+    expect(publication.current.revisionPath).toBe("boards/1-inv-1");
+  });
+
+  test("treats adjacent non-BMP letters and numbers as part of a larger identity token", async () => {
+    const sessionId = "abcdefgh";
+    for (const adjacent of ["\u{10400}", "\u{1D7D8}"]) {
+      for (const changeSummary of [`${adjacent}${sessionId}`, `${sessionId}${adjacent}`]) {
+        const fixtureValue = await fixture();
+        const updateValue = { ...update(1, "inv-1"), sessionId, view: { ...view(1), changeSummary } };
+        await expect(publishSessionBoardUpdate({ update: parseSessionBoardUpdate(updateValue), ...fixtureValue })).resolves.toBeDefined();
+      }
+    }
+  });
+
+  test("rejects a boundary-delimited ID after an unpaired low surrogate", async () => {
+    const fixtureValue = await fixture();
+    const sessionId = "abcdefgh";
+    const unsafe = { ...update(1, "inv-1"), sessionId, view: { ...view(1), changeSummary: `A\uDC00${sessionId}` } };
+    await expect(publishSessionBoardUpdate({ update: parseSessionBoardUpdate(unsafe), ...fixtureValue })).rejects.toThrow("raw session ID");
+  });
+
+  test("rejects the raw session ID in persisted envelope fields", async () => {
+    const sessionId = "raw-session-id";
+    for (const overrides of [{ invocationId: sessionId }, { sessionHost: `host ${sessionId}` }]) {
+      const fixtureValue = await fixture();
+      const unsafe = { ...update(1, "inv-1"), sessionId, ...overrides };
+      await expect(publishSessionBoardUpdate({ update: parseSessionBoardUpdate(unsafe), ...fixtureValue })).rejects.toThrow("envelope contains the raw session ID");
+      await expect(stat(join(fixtureValue.stateDir, "sessions"))).rejects.toThrow();
+    }
+  });
+
+  test("publishes a stable URI bound to an immutable revision without raw session identity", async () => {
+    const fixtureValue = await fixture();
+    const publication = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1")), ...fixtureValue });
+    await verifySessionBoardPublication(fixtureValue.stateDir, publication);
+    expect(publication.entrypointUri).toMatch(/\/sessions\/s-[0-9a-f]{64}\/index\.html$/);
+    const sessionRoot = join(fixtureValue.stateDir, "sessions", publication.sessionKey);
+    expect(await readlink(join(sessionRoot, "index.html"))).toBe("current/index.html");
+    expect(await readlink(join(sessionRoot, "manifest.json"))).toBe("current/manifest.json");
+    expect(await readlink(join(sessionRoot, "current.json"))).toBe("current/current.json");
+    expect(await readlink(join(sessionRoot, "index.en.html"))).toBe("current/index.en.html");
+    expect(await readlink(join(sessionRoot, "index.ko.html"))).toBe("current/index.ko.html");
+    expect(await readlink(join(sessionRoot, "index.zh-CN.html"))).toBe("current/index.zh-CN.html");
+    expect(await readlink(join(sessionRoot, "evidence"))).toBe("current/evidence");
+    expect(await readlink(join(sessionRoot, "current"))).toBe("boards/1-inv-1");
+    expect((await readFile(publication.currentPath, "utf8"))).not.toContain("raw-session-id");
+    expect(await readFile(join(publication.directory, "manifest.json"), "utf8")).not.toContain("raw-session-id");
+  });
+
+  test("rejects current metadata that disagrees with the selected manifest", async () => {
+    const fixtureValue = await fixture();
+    const publication = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1")), ...fixtureValue });
+    const mismatches = [
+      { ...publication.current, sourceRevision: 999 },
+      { ...publication.current, invocationId: "other-invocation" },
+      { ...publication.current, generatedAt: "2026-08-18T00:00:09Z" },
+    ];
+    for (const current of mismatches) {
+      await writeFile(publication.currentPath, `${JSON.stringify(current, null, 2)}\n`);
+      await expect(verifySessionBoardPublication(fixtureValue.stateDir, { ...publication, current }))
+        .rejects.toThrow("immutable manifest identity is invalid");
+    }
+  });
+
+  test("replays a stable invocation idempotently and rejects conflicting reuse", async () => {
+    const fixtureValue = await fixture();
+    const updateValue = parseSessionBoardUpdate(update(1, "stable-invocation"));
+    const first = await publishSessionBoardUpdate({ update: updateValue, ...fixtureValue });
+    const replay = await publishSessionBoardUpdate({ update: updateValue, ...fixtureValue });
+    expect(replay.directory).toBe(first.directory);
+    expect(replay.current).toEqual(first.current);
+    expect(await readdir(join(fixtureValue.stateDir, "sessions", first.sessionKey, "boards"))).toEqual(["1-stable-invocation"]);
+
+    const conflicting = parseSessionBoardUpdate({
+      ...update(1, "stable-invocation"),
+      generatedAt: "2026-08-18T00:00:02Z",
+      view: { ...view(1), changeSummary: "conflicting replay" },
+    });
+    await expect(publishSessionBoardUpdate({ update: conflicting, ...fixtureValue })).rejects.toThrow("different content");
+    expect(await readdir(join(fixtureValue.stateDir, "sessions", first.sessionKey, "boards"))).toEqual(["1-stable-invocation"]);
+  });
+
+  test("selects a new run even when its revision restarts lower", async () => {
+    const fixtureValue = await fixture();
+    const first = { ...update(9, "inv-1"), view: { ...view(9), runId: "run-a" } };
+    const second = { ...update(1, "inv-2"), generatedAt: "2026-08-18T00:00:10Z", view: { ...view(1), runId: "run-b" } };
+    await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(first), ...fixtureValue });
+    const publication = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(second), ...fixtureValue });
+    expect(publication.current.revisionPath).toBe("boards/1-inv-2");
+    expect(publication.manifest.runId).toBe("run-b");
+  });
+
+  test("does not rewind current for delayed cross-run updates or stable retries", async () => {
+    const fixtureValue = await fixture();
+    const first = parseSessionBoardUpdate({ ...update(1, "stable-a"), generatedAt: "2026-08-18T00:00:01Z", view: { ...view(1), runId: "run-a" } });
+    const second = parseSessionBoardUpdate({ ...update(1, "stable-b"), generatedAt: "2026-08-18T00:00:02Z", view: { ...view(1), runId: "run-b" } });
+    const delayed = parseSessionBoardUpdate({ ...update(2, "delayed-a"), generatedAt: "2026-08-18T00:00:00Z", view: { ...view(2), runId: "run-a" } });
+    await publishSessionBoardUpdate({ update: first, ...fixtureValue });
+    const selected = await publishSessionBoardUpdate({ update: second, ...fixtureValue });
+    expect((await publishSessionBoardUpdate({ update: delayed, ...fixtureValue })).current).toEqual(selected.current);
+    expect((await publishSessionBoardUpdate({ update: first, ...fixtureValue })).current).toEqual(selected.current);
+    expect(JSON.parse(await readFile(selected.currentPath, "utf8"))).toMatchObject({ revisionPath: "boards/1-stable-b" });
+  });
+  test("reclaims the previous current during a tight cutover quota", async () => {
+    const fixtureValue = await fixture();
+    const first = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 1 } });
+    const second = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(2, "inv-2")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 1 } });
+    expect(second.current.revisionPath).toBe("boards/2-inv-2");
+    await expect(stat(first.directory)).rejects.toThrow();
+    expect(await readdir(join(fixtureValue.stateDir, "sessions", second.sessionKey, "boards"))).toEqual(["2-inv-2"]);
+  });
+
+  test("protects the newest terminal checkpoint by publication time across runs", async () => {
+    const fixtureValue = await fixture();
+    const first = { ...update(10, "inv-a"), generatedAt: "2026-08-18T00:00:01Z", view: { ...view(10), runId: "run-a" } };
+    const second = { ...update(1, "inv-b"), generatedAt: "2026-08-18T00:00:02Z", view: { ...view(1), runId: "run-b" } };
+    const third = { ...update(1, "inv-c", "EXECUTING"), generatedAt: "2026-08-18T00:00:03Z", view: { ...view(1, "EXECUTING"), runId: "run-c" } };
+    await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(first), ...fixtureValue });
+    await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(second), ...fixtureValue });
+    const current = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(third), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 2 } });
+    await expect(stat(join(fixtureValue.stateDir, "sessions", current.sessionKey, "boards", "10-inv-a"))).rejects.toThrow();
+    expect(await stat(join(fixtureValue.stateDir, "sessions", current.sessionKey, "boards", "1-inv-b"))).toBeDefined();
+    expect(current.current.revisionPath).toBe("boards/1-inv-c");
+  });
+
+  test("replaces current while preserving immutable history and honoring session quota", async () => {
+    const fixtureValue = await fixture();
+    const first = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 2 } });
+    const second = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(2, "inv-2")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 2 } });
+    expect(second.current.revisionPath).toBe("boards/2-inv-2");
+    expect(await stat(first.directory)).toBeDefined();
+    const names = await readdir(join(fixtureValue.stateDir, "sessions", sessionBoardKey("omp", "raw-session-id"), "boards"));
+    expect(names.sort()).toEqual(["1-inv-1", "2-inv-2"]);
+  });
+
+  test("keeps a stale revision while returning the actual selected current", async () => {
+    const fixtureValue = await fixture();
+    const selected = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(2, "inv-2")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 10 } });
+    const stale = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 10 } });
+    expect(stale.current.revisionPath).toBe(selected.current.revisionPath);
+    expect(await stat(join(fixtureValue.stateDir, "sessions", selected.sessionKey, "boards", "1-inv-1"))).toBeDefined();
+  });
+
+  test("rolls back current before removing the incoming revision when reclaim fails", async () => {
+    const fixtureValue = await fixture();
+    const current = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(2, "current-a", "EXECUTING")), ...fixtureValue });
+    await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "stale-a", "EXECUTING")), ...fixtureValue });
+    await mkdir(join(fixtureValue.stateDir, "sessions", current.sessionKey, "boards", "1-stale-a", ".unsafe"));
+    await expect(publishSessionBoardUpdate({
+      update: parseSessionBoardUpdate(update(3, "incoming-b", "EXECUTING")),
+      ...fixtureValue,
+      retentionPolicy: { boardMaxPerSession: 1 },
+    })).rejects.toThrow();
+    expect(JSON.parse(await readFile(current.currentPath, "utf8"))).toMatchObject({ revisionPath: "boards/2-current-a" });
+    expect(await stat(current.directory)).toBeDefined();
+    await expect(stat(join(fixtureValue.stateDir, "sessions", current.sessionKey, "boards", "3-incoming-b"))).rejects.toThrow();
+  });
+
+  test("preflights previous-current reclaim before any destructive rollback-target deletion", async () => {
+    const fixtureValue = await fixture();
+    const current = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(2, "current-preflight", "EXECUTING")), ...fixtureValue });
+    const indexBefore = await readFile(join(current.directory, "index.html"));
+    const manifestBefore = await readFile(join(current.directory, "manifest.json"));
+    await mkdir(join(current.directory, ".unsafe"));
+
+    await expect(publishSessionBoardUpdate({
+      update: parseSessionBoardUpdate(update(3, "incoming-preflight", "EXECUTING")),
+      ...fixtureValue,
+      retentionPolicy: { boardMaxPerSession: 1 },
+    })).rejects.toThrow("unsafe characters");
+
+
+    expect(JSON.parse(await readFile(current.currentPath, "utf8"))).toMatchObject({ revisionPath: "boards/2-current-preflight" });
+    expect(await readFile(join(current.directory, "index.html"))).toEqual(indexBefore);
+    expect(await readFile(join(current.directory, "manifest.json"))).toEqual(manifestBefore);
+    expect(await stat(join(current.directory, ".unsafe"))).toBeDefined();
+    await expect(stat(join(fixtureValue.stateDir, "sessions", current.sessionKey, "boards", "3-incoming-preflight"))).rejects.toThrow();
+  });
+  test("fails closed when existing revision inventory cannot be read", async () => {
+    const fixtureValue = await fixture();
+    const first = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1")), ...fixtureValue });
+    const boardsPath = join(fixtureValue.stateDir, "sessions", first.sessionKey, "boards");
+    await chmod(boardsPath, 0o300);
+    try {
+      await expect(publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(2, "inv-2")), ...fixtureValue })).rejects.toThrow();
+    } finally {
+      await chmod(boardsPath, 0o700);
+    }
+  });
+
+  test("does not protect a corrupted terminal revision during reclamation", async () => {
+    const fixtureValue = await fixture();
+    const validTerminal = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "terminal-valid")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 10 } });
+    const corruptTerminal = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(2, "terminal-corrupt")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 10 } });
+    await writeFile(join(corruptTerminal.directory, "index.html"), "corrupted");
+    const current = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(3, "current-active", "EXECUTING")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 10 } });
+
+    const incoming = await publishSessionBoardUpdate({
+      update: parseSessionBoardUpdate(update(4, "incoming-active", "EXECUTING")),
+      ...fixtureValue,
+      retentionPolicy: { boardMaxPerSession: 3 },
+    });
+    expect(await stat(validTerminal.directory)).toBeDefined();
+    expect(await stat(corruptTerminal.directory)).toBeDefined();
+    expect(JSON.parse(await readFile(current.currentPath, "utf8"))).toMatchObject({ revisionPath: "boards/4-incoming-active" });
+    expect(incoming.current.revisionPath).toBe("boards/4-incoming-active");
+  });
+
+  test("rotates active revisions by the session maximum without deleting current", async () => {
+    const fixtureValue = await fixture();
+    await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1", "EXECUTING")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 2 } });
+    await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(2, "inv-2", "EXECUTING")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 2 } });
+    const current = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(3, "inv-3", "EXECUTING")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 2 } });
+    const names = await readdir(join(fixtureValue.stateDir, "sessions", current.sessionKey, "boards"));
+    expect(names.sort()).toEqual(["2-inv-2", "3-inv-3"]);
+    expect(current.current.revisionPath).toBe("boards/3-inv-3");
+  });
+
+  test("fails quota publication without replacing the prior current pointer", async () => {
+    const fixtureValue = await fixture();
+    const first = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1")), ...fixtureValue });
+    await expect(publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(2, "inv-2", "EXECUTING")), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 0 } })).rejects.toThrow("quota");
+    const current = JSON.parse(await readFile(first.currentPath, "utf8")) as { revisionPath: string };
+    expect(current.revisionPath).toBe("boards/1-inv-1");
+    await expect(stat(join(fixtureValue.stateDir, "sessions", first.sessionKey, "boards", "2-inv-2"))).rejects.toThrow();
+  });
+
+  test("serializes concurrent updates and publishes one immutable revision per invocation", async () => {
+    const fixtureValue = await fixture();
+    const results = await Promise.all(["inv-a", "inv-b"].map(invocationId => publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, invocationId)), ...fixtureValue, retentionPolicy: { boardMaxPerSession: 10 } })));
+    const current = JSON.parse(await readFile(join(fixtureValue.stateDir, "sessions", results[0]!.sessionKey, "current", "current.json"), "utf8")) as { invocationId: string };
+    expect(current.invocationId).toBe("inv-b");
+    expect(await readdir(join(fixtureValue.stateDir, "sessions", results[0]!.sessionKey, "boards"))).toHaveLength(2);
+  });
+});

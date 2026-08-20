@@ -1,150 +1,150 @@
 # Traceknot QA Board
 
-Traceknot can project a completed verification run into a static, non-authoritative QA Board. The Board is a presentation artifact; the canonical verification run, verdict, and evidence remain authoritative.
+Traceknot projects accepted QA records into a static, non-authoritative Board. The canonical verification run, QA verdict, and evidence remain authoritative; Board publication never upgrades a verdict or turns presentation data into evidence.
 
-## CLI
+## Canonical Skill installation
 
-Generate a Board during verification:
-
-```sh
-traceknot verify \
-  --request REQUEST.json \
-  --manifest MANIFEST.json \
-  --state-dir /secure/state \
-  --artifact-dir /secure/artifacts \
-  --board \
-  --no-notify
-```
-
-Regenerate a Board from a persisted terminal run without executing obligations:
+The Skills CLI is the canonical installation and update path. It copies the complete `skill/` tree, including the runnable `skill/bin/traceknot`, references, schemas, host capability manifests, and Board renderer. Node.js 22.20 or later is required for `npx`; Bun 1.3.14 or later on macOS or glibc-based Linux with `libc.so.6` is required for the generated Verify and Board CLI. Native Windows and musl-only Linux are unsupported by the artifact store and command collector, and `traceknot self-check` fails closed when the native library is unavailable.
 
 ```sh
-traceknot verify \
-  --run-id RUN_ID \
-  --report-only \
-  --board \
-  --no-notify
+# Global installation
+npx skills add Jin-Doh/traceknot --skill traceknot --global
+npx skills update traceknot --global --yes
+$HOME/.agents/skills/traceknot/bin/traceknot self-check
+# Project-local installation, from the project root
+npx skills add Jin-Doh/traceknot --skill traceknot --yes
+npx skills update traceknot --yes
+.agents/skills/traceknot/bin/traceknot self-check
 ```
 
-`Board` generation is enabled by default for CLI verification. Use `--no-board` to disable it; `--board` remains accepted as an explicit enable flag. `--open-board` implies Board generation and asks the platform opener to open the generated `file://` URI. `--board-locale auto|en|ko|zh-CN` selects the language of `index.html`; `auto` is the default and resolves `LC_ALL`, then `LC_MESSAGES`, then `LANG`, with English as the fallback. `--session-id` is never written raw; the manifest stores a SHA-256 session reference. `--invocation-id` is optional and must be a safe identifier; CI uses it to make the Board directory deterministic for that action invocation.
+For a global Skills CLI install, invoke `$HOME/.agents/skills/traceknot/bin/traceknot`; for a project-local install, run `.agents/skills/traceknot/bin/traceknot` from the project root. `traceknot self-check` fails closed unless the generated executable, required schemas, host capability manifests, semantic update parser, and static renderer are available from the same installed Skill root.
 
-The CLI preserves the verification verdict exit code. Board generation, notification, and opening are isolated: failures emit a `Traceknot Board unavailable:` or platform warning on stderr and do not convert a completed verification verdict into an internal error.
+The legacy curl installer installs only an optional prefix launcher and updater. It does not create, replace, retarget, update, or remove a Skills CLI-owned registration and does not define a second payload, Board contract, or feature tier. Reinstall or update removes only a legacy symlink that points into that same prefix.
 
-Every bundle includes English, Korean, and Simplified Chinese views. The language switcher moves between those local static pages without scripts or network access. Only interface labels are localized; persisted summaries, evidence, identifiers, and verdict rationale remain byte-for-byte faithful to the canonical run.
+## Board update interface
 
-## Assurance context
+Build an update document from the existing `QaBoardView` projection and publish it through the executable from the same installation scope:
 
-The CLI defaults to `release` assurance and accepts `--assurance local|release`. The selected context is persisted in the request, CLI report, Board view, and Board manifest:
+```sh
+# Global installation
+$HOME/.agents/skills/traceknot/bin/traceknot board update \
+  --input UPDATE.json \
+  --state-dir DIR \
+  [--artifact-dir DIR] \
+  [--open-board] \
+  [--no-notify]
+# Project-local installation
+.agents/skills/traceknot/bin/traceknot board update \
+  --input UPDATE.json \
+  --state-dir DIR \
+  [--artifact-dir DIR] \
+  [--open-board] \
+  [--no-notify]
+```
 
-- `local` records a development verification path. UI composition and resilience obligations require a `separate-verification-context`; the report marks release assurance as `not-evaluated`.
-- `release` is the publication gate. UI composition and resilience obligations require an `independent-producer`; a release report is `satisfied` only for `PASS` or `PASS_WITH_ACCEPTED_RISK`.
+`UPDATE.json` uses the single `traceknot-session-board-update/v1` envelope:
 
-The CLI rejects a request whose persisted `assuranceContext` disagrees with `--assurance`. Assurance metadata does not upgrade a QA verdict, complete harness work, or replace signed external execution evidence.
+```json
+{
+  "schemaVersion": "traceknot-session-board-update/v1",
+  "sessionId": "observed session identifier",
+  "sessionHost": "observed host identifier",
+  "generatedAt": "canonical UTC RFC 3339 timestamp",
+  "invocationId": "optional safe invocation identifier",
+  "view": "existing QaBoardView projection"
+}
+```
 
-## Visual presentation
+`sessionId` is an opaque identifier of at least eight characters. The view must not contain it as a standalone value or boundary-delimited token; publication rejects such input before writing.
 
-Each localized page is a static projection of persisted verification data:
+`invocationId` is optional; when omitted, the publisher uses a fresh random UUID, so retries publish distinct immutable revisions. Callers that need idempotent publication must provide a stable invocation ID. `view` is presentation data only. It must be copied from validated canonical records and cannot establish evidence, alter counts, or change the QA verdict.
 
-- **Verification health** shows mandatory passed checks over the mandatory total, with a status distribution for passed, failed, blocked, and incomplete obligations.
-- **Verification flow** connects the persisted coverage areas, mandatory checks, accepted evidence, and final verdict into one readable path. It is explanatory only; it does not infer or recalculate the canonical verdict.
-- Coverage rows use proportional bars and explicitly label zero-total areas as `Not applicable`, `해당 없음`, or `不适用`; finding lists use status-colored rails to preserve scan order.
+The CLI validates the entire envelope before writing. It rejects unsafe strings and paths, malformed counts, statuses, or digests, inconsistent totals, an `authoritative` value other than `false`, and invalid timestamps. The renderer escapes dynamic values, uses no network resources or user-provided scripts, and reuses the existing artifact preview limits and byte-level digest checks.
 
-The layout is responsive at desktop and mobile widths, supports the three bundled locales, and does not require JavaScript, network access, or remote assets.
+The published JSON Schemas are closed structural contracts. Cross-field arithmetic and aggregate-to-finding consistency are enforced by the same runtime parser used by `board update`; schema validation alone is not acceptance. `parseSessionBoardUpdate` is the canonical semantic validator.
 
-### Optional project support
+## Session-scoped publication
 
-The first locally opened Board may include a separate, non-authoritative project-support panel with a fixed link to the Traceknot GitHub repository. It is not a verification finding, does not enter attention lists, counts, coverage, verdicts, manifests, or exit codes, and does not query GitHub, `gh`, authentication, or star status.
-
-When the Board is opened successfully with `--open-board`, the CLI creates an empty `presentation/star-cta-v1.seen` marker below `--state-dir`. Future Board bundles omit the panel. Board generation without `--open-board`, headless environments, opener failure, and marker-write failure do not affect the verification result. Marker access is descriptor-relative, symlink-resistant, idempotent, and stores no user or account data.
-
-## Bundle layout
-
-Boards are immutable invocation directories below the durable run state:
+The publisher derives a privacy-preserving session key:
 
 ```text
-runs/<run-id>/boards/<revision>-<invocation-id>/
+session-key = s-<sha256(sessionHost + NUL + sessionId)>
+```
+
+The raw session ID is never stored in paths, manifests, HTML, or logs. A successful publication creates an immutable revision at:
+
+```text
+sessions/<session-key>/boards/<sourceRevision>-<invocationId>/
 ├── index.html
 ├── index.en.html
 ├── index.ko.html
 ├── index.zh-CN.html
 ├── manifest.json
+├── current.json
 └── evidence/
     └── <sha256>.png
 ```
 
-The writer uses descriptor-pinned secure filesystem primitives, rejects unsafe IDs and symlink traversal, and requires the state root itself to have no group or world write access. Canonical ancestors must be owned by the current user or root; a writable ancestor is accepted only with the sticky bit, as with `/tmp`. The writer checks the project-support marker without opening the entry, writes files through temporary files plus rename, fsyncs file and directory updates, and never overwrites a published Board revision. Screenshot previews are copied from the canonical artifact store only after byte-level SHA-256 verification and bounded by the Board preview limits.
+The publisher creates fixed stable links under `sessions/<session-key>/` that resolve through one `current` selector:
 
-`manifest.json` records source run identity, snapshot identity, revision, verdict, counts, generated-by metadata, and file digests. It declares `authoritative: false`. HTML escapes untrusted text and uses a restrictive default-deny CSP; the Board does not fetch remote resources or execute user-provided scripts.
-
-## Desktop integration
-
-Desktop notifications are opt-in with `--notify`; `--no-notify` remains an explicit suppression flag. Board generation and browser opening do not imply a notification:
-
-- macOS: `osascript` with user values passed as arguments, not interpolated into AppleScript source.
-- Linux: `notify-send` when a desktop display is available.
-- CI, SSH, non-desktop, unsupported, or unavailable command environments: suppressed or reported as unavailable.
-
-`--open-board` uses `open` on macOS and `xdg-open` on Linux. It accepts only local `file://` URIs. Immediately before a desktop notification or opener handoff, the CLI reopens the private state root and checks every published Board file against the byte count and SHA-256 digest in `manifest.json`; a mismatch suppresses desktop exposure and leaves the canonical verdict unchanged.
-
-## GitHub Action
-
-The composite Action exposes `board: true|false` (default `true`). Set `board: false` to pass `--no-board` and disable Board generation. In manifest mode, `board: true` passes `--board`, `--no-notify`, a bounded invocation ID, and `--session-host github-actions`. The generated Board remains immutable below the retained run state, and the Board artifact selects only the published `<revision>-<invocation-id>` bundle, never a private pending tree. With `board: false`, no Board upload is attempted. Canonical evidence upload excludes only the Board directories while retaining canonical run-state metadata.
-
-The canonical artifact name is `${artifact-name}-${invocation-id}` and the Board artifact name is `${artifact-name}-board-${invocation-id}`. Both names are invocation-unique. `artifact-retention-days` defaults to `30`, and `board-retention-days` defaults to `14`; both must be integers from `1` through `90`. Validation occurs before verification starts.
-
-Summary publication runs first, followed by canonical evidence upload, Board upload (when enabled and generated), optional SARIF upload, and finally optional local cleanup. Board upload is skipped unless input preparation succeeded, so it never consumes missing invocation-scoped paths. Set `cleanup-local-after-upload: true` to remove the private evidence directory after all publication steps succeed; if any required upload fails, local evidence remains available for recovery. The default is `false`, so `report-path`, `evidence-path`, and `board-path` remain valid on the runner after the Action finishes.
-
-On persistent self-hosted runners, provide a private, writable `RUNNER_TEMP` on the runner volume and restrict access to the runner service account. The default keeps each invocation's local evidence for post-step inspection; use `cleanup-local-after-upload: true` when local inspection is not needed, and separately schedule host-level cleanup for abandoned directories after interrupted jobs. Artifact retention controls GitHub-hosted copies and does not replace local runner cleanup.
-
-Self-hosting mode keeps the existing canonical CI gate and does not enable desktop presentation behavior.
-
-## Local storage lifecycle
-
-Verification applies maintenance automatically only when both storage paths are omitted and a Board is generated in the standard per-repository `~/.cache/traceknot` location. It prunes once before publication and again after atomic publication so count and quota rules include the new Board. Failures are warnings and never change the verification verdict. Explicit durable state/artifact paths are never pruned implicitly; inspect them first:
-
-```sh
-traceknot storage status \
-  --state-dir /secure/state \
-  --artifact-dir /secure/artifacts
+```text
+sessions/<session-key>/index.html
+sessions/<session-key>/manifest.json
+sessions/<session-key>/current.json
 ```
 
-`traceknot storage prune` is a dry run unless `--apply` is present. The default cache policy retains Boards for 30 days and at most 10 Boards per run, canonical run state for 90 days, and newly unreferenced objects for a 24-hour grace period. It also applies 1 GiB Board and 5 GiB canonical quotas. These defaults are intended for the standard `~/.cache/traceknot` layout; explicitly managed durable directories remain observe-only until an operator invokes prune.
+Each immutable revision contains the three target files. A single fsynced rename atomically switches `current` to `boards/<sourceRevision>-<invocationId>`, so all stable paths select the same revision.
 
-```sh
-traceknot storage prune \
-  --state-dir /secure/state \
-  --artifact-dir /secure/artifacts
+It reads the published files back and validates the recorded digests before printing the stable URI:
 
-traceknot storage prune \
-  --state-dir /secure/state \
-  --artifact-dir /secure/artifacts \
-  --apply
+```text
+Traceknot Board: file://.../sessions/<session-key>/index.html
 ```
 
-Every prune emits a `traceknot-storage-maintenance/v1` report conforming to `contracts/storage-maintenance-report.schema.json`. The report includes inventory totals, policy values, candidates, actual deletions, protected entries, and warnings. Active, pinned, malformed, future-dated, and newest terminal runs are protected. Canonical objects referenced by retained runs remain protected; newly unreferenced objects receive a fresh grace interval before deletion. Exact crash-left artifact publication temporaries (`.objects/.tmp-<digest>-<uuid>`) are reclaimed as staging after the same grace interval; unknown `.objects` files remain malformed and protected. Symlinks are never followed or deleted.
-Applied maintenance coordinates with repository readers/writers, canonical artifact publication, Board publication, and invocation-scoped collector lifetime leases through advisory locks. Contended in-process readers and writers retry without blocking the JavaScript event loop. Board publication holds its lease from temporary-directory creation through atomic rename, and collector teardown releases its lifetime lease even when content deletion fails so a later maintenance pass can recover the residual tree.
+No URI is printed for a failed or unvalidated publication. The stable `manifest.json` is the one Board manifest; no second manifest or status namespace exists. It declares `authoritative: false` and records the validated publication and observed view data required by the shared Board contract.
 
-Pinning is explicit and durable:
+## Verification integration and unavailable behavior
 
-```sh
-traceknot storage pin RUN_ID --state-dir /secure/state --artifact-dir /secure/artifacts
-traceknot storage unpin RUN_ID --state-dir /secure/state --artifact-dir /secure/artifacts
-```
+Every Traceknot QA run attempts Board publication by default. Existing verification invocations that provide `--session-id` and `--session-host` publish through this same session store. The raw session ID is never persisted. The Board remains a presentation operation and the verification exit code is preserved.
 
-Run `status` before and after applied maintenance. A partial deletion or concurrent replacement is reported rather than treated as success; canonical verification verdicts are never changed by storage maintenance.
+If session identity, durable state, writable storage, artifact persistence, read-back validation, or another required prerequisite is unavailable, report `Board status: unavailable` with the missing prerequisite. Do not fabricate a session key, URI, manifest, run identity, counts, or evidence. The unavailable Board status does not change the QA verdict or evidence. A publication failure MUST NOT change the QA verdict. An explicit `--no-board` policy opt-out may report `Board status: disabled`; missing prerequisites are not `not-requested`.
 
-## Verification
+A host adapter may advertise command execution, snapshot binding, and persistence only through a current capability handshake bound to this session and target snapshot. Host names, lifecycle hooks, and agent completion claims never grant those capabilities. The same publication states and validation rules apply across OMP, Codex, Claude Code, OpenCode, and GajaeCode.
 
-The Board contract is covered by:
+## Retention
 
-```sh
-bun test system/presentation/qa-board.test.ts \
-  system/presentation/qa-board-store.test.ts \
-  system/presentation/user-notifier.test.ts \
-  system/presentation/board-opener.test.ts \
-  system/runtime/verify-cli.test.ts \
-  system/runtime/storage-retention.test.ts \
-  tests/github-action-contract.test.ts
-```
+Retention is session-scoped and uses the clean-cutover `boardMaxPerSession` field. Protect:
 
-The canonical repository gate remains `sh scripts/ci`.
+- the revision selected by `current`;
+- explicitly pinned run-linked revisions; and
+- the newest terminal Board checkpoint.
+
+Only unprotected revisions, including superseded active revisions, are reclaimable. Never delete the selected revision to satisfy the quota. If the new revision cannot fit after reclaimable pruning, fail Board publication with a quota reason, preserve the previous `current` selector and stable links, and leave the QA verdict unchanged.
+
+A retention failure is reported as Board unavailability or publication failure with its reason. It is never evidence and never converts a completed verification verdict into an internal error.
+
+## Visual presentation
+
+Each localized page is a static projection of the persisted `QaBoardView`:
+
+- verification health displays observed mandatory passed checks and status distribution;
+- verification flow connects persisted coverage, obligations, accepted evidence, and verdict without recalculating the verdict;
+- coverage rows label zero-total areas as `Not applicable`, `해당 없음`, or `不适用`;
+- finding lists preserve scan order with status-colored rails;
+- interface labels may be localized to English, Korean, and Simplified Chinese, while summaries, identifiers, evidence, commands, paths, and verdict rationale remain unchanged.
+
+The bundle is responsive at desktop and mobile widths, contains no network requests or remote assets, and does not require JavaScript. HTML escapes every untrusted value and uses a restrictive default-deny content policy.
+
+`--open-board` may hand the validated local `file://` URI to the platform opener. `--no-notify` suppresses desktop notifications; notification and opening failures are warnings and never alter the Board, evidence, or QA verdict. Only local `file://` URIs are eligible for opener handoff.
+
+## GitHub Action and host integrations
+
+A GitHub Action or host integration that publishes a Board must construct the same `traceknot-session-board-update/v1` envelope, provide `sessionHost` and `sessionId`, and retain the session state needed for read-back validation. It must select the immutable published revision after publication, never a private temporary tree. Action artifact retention is independent of session Board retention; it does not replace `boardMaxPerSession` protection or local cleanup.
+
+With Board publication disabled by explicit policy, no Board upload is attempted. With a missing session or persistence prerequisite, the Action reports unavailable and retains the canonical verification result. Canonical evidence upload must not treat Board HTML or its manifest as evidence.
+
+## Storage inspection
+
+Storage inspection and cleanup must preserve the stable current pointer and all protected revisions. Operators should inspect explicit durable directories before applying maintenance. Canonical verification verdicts are never changed by storage maintenance.
+
+The Board contract is covered by the repository's focused presentation, runtime, storage-retention, and Action contract tests. The canonical repository gate remains `sh scripts/ci`.

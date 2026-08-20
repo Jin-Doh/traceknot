@@ -59,6 +59,8 @@ bun x --no-install tsc --ignoreConfig --noEmit --strict --types bun \
     scripts/check-readme-contract.ts
 printf '%s\n' '==> portable Skill egress boundary'
 bun scripts/check-skill-egress.ts
+printf '%s\n' '==> generated Skill runtime parity'
+bun run check:skill-runtime
 
 printf '%s\n' '==> prompt-injection risk'
 bun scripts/audit-prompt-injection.ts --threshold high
@@ -80,13 +82,17 @@ bun run test
 bun run typecheck
 
 printf '%s\n' '==> canonical schemas and capability records'
-# Compile the evaluation document with its published record contract registered;
+# Compile schemas that compose published records with their dependencies registered;
 # all other schemas remain independently self-contained.
 for schema in contracts/*.schema.json; do
     if [ "$schema" = contracts/evidence-evaluation-document.schema.json ]; then
         bun x --no-install ajv compile --spec=draft2020 \
             -s "$schema" \
             -r contracts/evidence-evaluation.schema.json
+    elif [ "$schema" = contracts/traceknot-session-board-update.schema.json ]; then
+        bun x --no-install ajv compile --spec=draft2020 \
+            -s "$schema" \
+            -r contracts/qa-board-view.schema.json
     elif [ "$schema" = contracts/capability-v2.schema.json ] ||
          [ "$schema" = contracts/risk-discovery-report.schema.json ]; then
         bun x --no-install ajv compile --spec=draft2020 \

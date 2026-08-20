@@ -38,6 +38,7 @@ function usage(): string {
     "  --apply               Apply prune candidates (prune is dry-run by default)",
     "  --run-id ID           Run ID for pin/unpin",
     "  --now ISO             Deterministic inspection time (for maintenance tooling)",
+    "  --board-max-per-session N  Maximum immutable session Boards to retain",
   ].join("\n");
 }
 
@@ -72,7 +73,7 @@ function parse(args: readonly string[]): Parsed {
       index += 1;
       continue;
     }
-    if (arg === "--board-ttl-days" || arg === "--board-max-per-run" || arg === "--board-quota-bytes" || arg === "--canonical-run-ttl-days" || arg === "--canonical-quota-bytes" || arg === "--grace-hours") {
+    if (arg === "--board-ttl-days" || arg === "--board-max-per-run" || arg === "--board-max-per-session" || arg === "--board-quota-bytes" || arg === "--canonical-run-ttl-days" || arg === "--canonical-quota-bytes" || arg === "--grace-hours") {
       if (!value || value.startsWith("--")) fail(`${arg} requires a value`);
       const number = Number(value);
       if (!Number.isFinite(number) || number < 0) fail(`${arg} must be a non-negative number`);
@@ -80,6 +81,7 @@ function parse(args: readonly string[]): Parsed {
       else if (arg === "--canonical-run-ttl-days") policy.canonicalRunTtlMs = number * DAY_MS;
       else if (arg === "--grace-hours") policy.graceMs = number * HOUR_MS;
       else if (arg === "--board-max-per-run") policy.boardMaxPerRun = Math.floor(number);
+      else if (arg === "--board-max-per-session") policy.boardMaxPerSession = Math.floor(number);
       else if (arg === "--board-quota-bytes") policy.boardQuotaBytes = Math.floor(number);
       else policy.canonicalQuotaBytes = Math.floor(number);
       index += 1;

@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import type { EvidenceEvaluation, Observation } from "../core/qa-core";
 import type { BoardSource } from "./qa-board";
 import { buildQaBoardView, renderQaBoardHtml, resolveQaBoardLocale, sessionReference, sha256 } from "./qa-board";
+import { detectQaBoardLocale, parseMacPreferredLanguages } from "./qa-board-locale";
 
 const SNAPSHOT = "snapshot-1";
 const REQUEST = "request-1";
@@ -106,7 +108,8 @@ describe("QA Board projection", () => {
     const html = renderQaBoardHtml(buildQaBoardView(hostile));
     expect(html).toContain("&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;");
     expect(html).not.toContain("<script>");
-    expect(html).not.toContain("http://");
+    expect(html).not.toContain('src="http://');
+    expect(html).not.toContain('href="http://');
     expect(html).not.toContain("https://");
     expect(html).toContain("read-only projection");
   });
@@ -153,16 +156,16 @@ describe("QA Board projection", () => {
     expect(html).toContain('class="health-ring tone-complete"');
     expect(html).toContain('style="--health:100%"');
     expect(html).toContain('class="distribution-segment segment-pass"');
-    expect(html).toContain('class="flow" role="img"');
-    expect(html).toContain('class="findings"');
-    expect(html).toContain(".findings::before");
+    expect(html).toContain('class="flow" role="list"');
+    expect(html).toContain('<details class="finding status-pass">');
+    expect(html).toContain(".finding[open] .disclosure");
   });
 
-  test("keeps the verification flow fully visible in its card", () => {
+  test("keeps the verification flow fully visible and responsive", () => {
     const html = renderQaBoardHtml(buildQaBoardView(source()));
-    expect(html).toContain(".flow{display:grid;grid-template-columns:28px minmax(0,1fr);gap:0 9px;overflow:visible}");
-    expect(html).toContain(".flow-step{grid-column:1 / -1;min-width:0}");
-    expect(html).toContain(".flow-connector{grid-column:1;width:2px;min-width:2px;height:18px;margin-left:12px}");
+    expect(html).toContain("grid-template-columns:repeat(6,minmax(0,1fr))");
+    expect(html).toContain(".flow-step:not(:last-child)::after");
+    expect(html).toContain("@media(max-width:900px)");
   });
 
   test("keeps verification flow order independent of coverage object insertion order", () => {
@@ -210,6 +213,68 @@ describe("QA Board projection", () => {
     expect(resolveQaBoardLocale("zh-Hans-CN")).toBe("zh-CN");
     expect(resolveQaBoardLocale("fr-FR", "en_GB")).toBe("en");
     expect(resolveQaBoardLocale(undefined, "fr-FR")).toBe("en");
+  });
+
+  test("selects the default locale from explicit and platform preferences", () => {
+    expect(detectQaBoardLocale({
+      env: { LC_ALL: "en_US.UTF-8", LANG: "en_US.UTF-8" },
+      platform: "darwin",
+      preferredLanguages: ["ko-KR", "en-US"],
+      runtimeLocale: "ko-KR",
+    })).toBe("en");
+    expect(detectQaBoardLocale({
+      env: { LANG: "en_US.UTF-8" },
+      platform: "darwin",
+      preferredLanguages: ["ko-KR", "en-US"],
+      runtimeLocale: "en-US",
+    })).toBe("ko");
+    expect(detectQaBoardLocale({
+      env: { LANGUAGE: "zh_CN:en_US", LANG: "en_US.UTF-8" },
+      platform: "linux",
+      preferredLanguages: [],
+      runtimeLocale: "en-US",
+    })).toBe("zh-CN");
+    expect(detectQaBoardLocale({
+      env: { LANG: "C.UTF-8" },
+      platform: "linux",
+      preferredLanguages: [],
+      runtimeLocale: "ko-KR",
+    })).toBe("ko");
+  });
+
+  test("parses macOS AppleLanguages output without shell evaluation", () => {
+    expect(parseMacPreferredLanguages('(\n    "ko-KR",\n    "en-KR"\n)')).toEqual(["ko-KR", "en-KR"]);
+    expect(parseMacPreferredLanguages("ko_KR")).toEqual(["ko_KR"]);
+  });
+
+  test("uses native disclosure for detail while keeping failures open", () => {
+    const passView = buildQaBoardView(source());
+    const passHtml = renderQaBoardHtml(passView);
+    expect(passHtml).toContain('<details class="finding status-pass">');
+    expect(passHtml).not.toContain('<details class="finding status-pass" open>');
+    const blockedHtml = renderQaBoardHtml({
+      ...passView,
+      verdict: "BLOCKED",
+      counts: { mandatory: 1, passed: 0, failed: 0, blocked: 1, incomplete: 0 },
+      findings: [{ ...passView.findings[0]!, status: "BLOCKED" as const }],
+    });
+    expect(blockedHtml).toContain('<details class="finding status-blocked" open>');
+    expect(blockedHtml).not.toContain("<script");
+  });
+
+  test("embeds the official Traceknot mark without altering its SVG", () => {
+    const html = renderQaBoardHtml(buildQaBoardView(source()));
+    const officialLogo = readFileSync(new URL("../../assets/traceknot-mark.svg", import.meta.url), "utf8");
+    expect(html).toContain(officialLogo);
+    expect(html).not.toContain(">TK</span>");
+  });
+
+  test("publishes keyboard, contrast, and reduced-motion affordances", () => {
+    const html = renderQaBoardHtml(buildQaBoardView(source()));
+    expect(html).toContain('class="skip-link"');
+    expect(html).toContain(".finding-header:focus-visible");
+    expect(html).toContain("@media(prefers-reduced-motion:reduce)");
+    expect(html).toContain("@media(forced-colors:active)");
   });
   test("emits mobile-safe wrapping and labeled coverage rows", () => {
     const initial = source();

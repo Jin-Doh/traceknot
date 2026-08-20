@@ -3,7 +3,6 @@ import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, type FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { inflateSync } from "node:zlib";
 import type { Artifact, Producer } from "../core/qa-core";
 import { isVisualCompositionOracle, type VisualCompositionOracle } from "../core/visual-composition";
@@ -39,9 +38,10 @@ import { ArtifactNotFoundError, assertPrivateRootPath, assertSecureRoot, closeSe
 import { LocalShellCollector, type ShellArtifactDeclaration } from "../runtime/local-shell-collector";
 import { pruneStorage } from "../runtime/storage-retention";
 import { FileVerificationRepository } from "../runtime/file-repository";
-import { buildQaBoardView, resolveQaBoardLocale, type QaBoardLocale } from "../presentation/qa-board";
+import { buildQaBoardView, type QaBoardLocale } from "../presentation/qa-board";
+import { detectQaBoardLocale } from "../presentation/qa-board-locale";
 import { openBoard } from "../presentation/board-opener";
-import { markProjectSupportSeen, verifyQaBoardBundleForOpen, writeQaBoardBundle } from "../presentation/qa-board-store";
+import { markProjectSupportSeen, publishSessionBoardUpdate } from "../presentation/qa-board-store";
 import { notifyBoard } from "../presentation/user-notifier";
 
 export const VERIFY_EXIT_CODES = Object.freeze({ PASS: 0, FAIL: 1, BLOCKED: 2, INCOMPLETE: 3, USAGE: 64, INTERNAL: 70 });
@@ -102,8 +102,8 @@ function usage(): string {
     "  --board                 Generate a static QA Board bundle (default)",
     "  --no-board              Disable QA Board generation",
     "  --board-locale LOCALE   Board language: auto, en, ko, or zh-CN (default: auto)",
-    "  --no-notify             Suppress desktop notification after Board generation (default)",
-    "  --notify                Enable desktop notification after Board generation",
+    "  --no-notify             Suppress desktop notification after Board generation",
+    "  --notify                Enable desktop notification after Board generation (default)",
     "  --open-board            Open the generated Board in the desktop browser",
     "  --session-id ID         Hash this agent session identifier in the Board manifest",
     "  --session-host HOST     Record the agent session host in the Board manifest",
@@ -329,8 +329,8 @@ function parseArgs(argv: readonly string[]): CliOptions {
   let format: "json" | "markdown" = "json";
   let reportOnly = false;
   let board = true;
-  let boardLocale = resolveQaBoardLocale(process.env.LC_ALL, process.env.LC_MESSAGES, process.env.LANG);
-  let noNotify = true;
+  let boardLocale = detectQaBoardLocale();
+  let noNotify = false;
   let openBoard = false;
   let sessionId: string | undefined;
   let sessionHost = "unavailable";
@@ -355,7 +355,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
     else if (arg === "--board-locale") {
       const value = next();
       if (value !== "auto" && value !== "en" && value !== "ko" && value !== "zh-CN") fail("--board-locale must be auto, en, ko, or zh-CN");
-      boardLocale = value === "auto" ? resolveQaBoardLocale(process.env.LC_ALL, process.env.LC_MESSAGES, process.env.LANG) : value;
+      boardLocale = value === "auto" ? detectQaBoardLocale() : value;
     }
     else if (arg === "--no-notify") noNotify = true;
     else if (arg === "--notify") noNotify = false;
@@ -837,36 +837,47 @@ async function maintainDefaultCache(options: CliOptions, stderr: (text: string) 
 }
 
 async function generateBoardForResult(options: CliOptions, result: RunVerificationResult, stderr: (text: string) => void, runtime: BoardRuntime = { notifyBoard, openBoard, markProjectSupportSeen }): Promise<void> {
-  if (!options.board) return;
+  if (!options.board) {
+    stderr("Traceknot Board status: disabled\n");
+    return;
+  }
   await maintainDefaultCache(options, stderr, [result.run.runId]);
+  if (options.sessionId === undefined || options.sessionHost === "unavailable") {
+    stderr("Traceknot Board status: unavailable\n");
+    return;
+  }
   let published = false;
   let artifactStore: LocalArtifactStore | undefined;
   try {
     if (options.reportOnly) await assertExternalDirectory(options.rootDir, options.artifactDir, "artifact-dir");
     artifactStore = new LocalArtifactStore(options.artifactDir);
-    const board = await writeQaBoardBundle({
-      view: buildQaBoardView({ run: result.run, verdict: result.verdict, documents: result.documents }),
-      invocationId: options.invocationId,
+    const view = buildQaBoardView({ run: result.run, verdict: result.verdict, documents: result.documents });
+    const generatedAt = new Date().toISOString();
+    const publication = await publishSessionBoardUpdate({
+      update: {
+        schemaVersion: "traceknot-session-board-update/v1",
+        sessionId: options.sessionId,
+        sessionHost: options.sessionHost,
+        generatedAt,
+        ...(options.invocationId === undefined ? {} : { invocationId: options.invocationId }),
+        view,
+      },
       stateDir: options.stateDir,
-      sessionHost: options.sessionHost,
-      sessionId: options.sessionId,
-      locale: options.boardLocale,
-      generatedAt: new Date().toISOString(),
       artifactReader: artifactStore,
+      locale: options.boardLocale,
     });
+    const boardUri = publication.entrypointUri;
+    const projectSupportIncluded = publication.projectSupportIncluded;
     published = true;
-    const boardUri = pathToFileURL(board.entrypoint).href;
     stderr(`Traceknot Board: ${boardUri}\n`);
     if (!options.noNotify) {
-      await verifyQaBoardBundleForOpen(options.stateDir, board);
       const notification = await runtime.notifyBoard({ title: "Traceknot QA finished", message: `${result.verdict.qaVerdict}: ${result.verdict.obligationSummary.failed} failed`, boardUri });
       if (notification === "failed") stderr("Traceknot Board: desktop notification failed\n");
     }
     if (options.openBoard) {
-      await verifyQaBoardBundleForOpen(options.stateDir, board);
       const opened = await runtime.openBoard(boardUri);
       if (opened === "failed") stderr("Traceknot Board: browser opener failed\n");
-      if (opened === "opened" && board.projectSupportIncluded) {
+      if (opened === "opened" && projectSupportIncluded) {
         await runtime.markProjectSupportSeen(options.stateDir).catch(error => stderr(`Traceknot Board support marker unavailable: ${error instanceof Error ? error.message : String(error)}\n`));
       }
     }
