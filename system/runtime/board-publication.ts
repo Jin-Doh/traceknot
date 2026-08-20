@@ -13,6 +13,8 @@ import { sessionReference, type QaBoardManifest } from "../presentation/qa-board
 import { containsBoundaryIdentity, containsBoundaryIdentityDeep } from "../presentation/session-identity";
 import { closeSecureRoot, openSecureRoot, readSecureRegularFile } from "./local-artifact-store";
 
+const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+
 export const BOARD_PUBLICATION_REQUIRED_CAPABILITIES = Object.freeze([
   "executeCommands",
   "bindSnapshot",
@@ -227,6 +229,7 @@ function parsePublishedManifest(value: unknown): QaBoardManifest {
   for (const key of ["runId", "requestId", "rootIdentity", "snapshotId", "sourceUpdatedAt", "generatedAt"] as const) {
     if (typeof manifest[key] !== "string" || manifest[key].length === 0) throw Error(`canonical Board publisher manifest ${key} is invalid`);
   }
+  if (!ISO_UTC.test(String(manifest.sourceUpdatedAt)) || !ISO_UTC.test(String(manifest.generatedAt))) throw Error("canonical Board publisher manifest timestamps are invalid");
   if (!Number.isSafeInteger(manifest.sourceRevision) || Number(manifest.sourceRevision) < 0) throw Error("canonical Board publisher manifest sourceRevision is invalid");
   if (!["CREATED", "BASIS_ESTABLISHED", "DISCOVERY_COMPLETED", "PLANNED", "EXECUTING", "EVIDENCE_EVALUATED", "VERDICT_RESOLVED", "TERMINAL"].includes(String(manifest.sourceState))) throw Error("canonical Board publisher manifest sourceState is invalid");
   if (!["PASS", "PASS_WITH_ACCEPTED_RISK", "FAIL", "BLOCKED", "INCOMPLETE"].includes(String(manifest.verdict))) throw Error("canonical Board publisher manifest verdict is invalid");
@@ -362,6 +365,7 @@ export async function validatePublishedBoard(
     const inventory = await inventoryPublishedRevision(join(root.canonical, revisionRelative));
     if (!sameSet(inventory.files, expectedFiles) || !sameSet(inventory.directories, expectedDirectories)) throw Error("canonical Board publisher revision inventory does not match the manifest");
     if (expected?.sessionId !== undefined && expected.sessionHost !== undefined && current.sessionRef !== sessionReference(expected.sessionHost, expected.sessionId)) throw Error("canonical Board publisher session identity does not match current pointer");
+    if (expected?.sessionHost !== undefined && manifest.generatedBy.sessionHost !== expected.sessionHost) throw Error("canonical Board publisher session host does not match the request");
     if (expected?.snapshotId !== undefined && manifest.snapshotId !== expected.snapshotId) throw Error("canonical Board publisher snapshot identity does not match the request");
     if (expected?.runId !== undefined && manifest.runId !== expected.runId) throw Error("canonical Board publisher run identity does not match the request");
     let entrypointValidated = false;

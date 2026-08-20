@@ -264,6 +264,7 @@ describe("canonical Board publisher", () => {
   test("rejects current metadata that disagrees with the immutable manifest", async () => {
     const mutations: Array<(current: Record<string, unknown>) => void> = [
       current => { current.sourceRevision = Number(current.sourceRevision) + 1; },
+
       current => { current.invocationId = "different-invocation"; },
       current => { current.generatedAt = "2026-08-19T00:00:01Z"; },
     ];
@@ -280,6 +281,29 @@ describe("canonical Board publisher", () => {
       } finally {
         await rm(fixture.root, { recursive: true, force: true });
       }
+    }
+  });
+  test("rejects invalid manifest timestamps and a mismatched session host", async () => {
+    const timestampFixture = await boardFixture();
+    try {
+      await replaceManifest(timestampFixture.entrypoint, manifest => { manifest.sourceUpdatedAt = "not-a-timestamp"; });
+      const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${timestampFixture.entrypoint}\n` });
+      await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: timestampFixture.root }))
+        .rejects.toThrow("manifest timestamps are invalid");
+    } finally {
+      await rm(timestampFixture.root, { recursive: true, force: true });
+    }
+
+    const hostFixture = await boardFixture();
+    try {
+      await replaceManifest(hostFixture.entrypoint, manifest => {
+        manifest.generatedBy = { ...(manifest.generatedBy as Record<string, unknown>), sessionHost: "different-host" };
+      });
+      const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${hostFixture.entrypoint}\n` });
+      await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, stateDir: hostFixture.root }))
+        .rejects.toThrow("session host does not match");
+    } finally {
+      await rm(hostFixture.root, { recursive: true, force: true });
     }
   });
 
