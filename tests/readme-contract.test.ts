@@ -362,6 +362,16 @@ describe("README localization section contract", () => {
       }
     }
   });
+  test("requires the project-local Verify path when the heading is localized", () => {
+    const localizedHeading = localizedReadmes[0]
+      .replace("## Verify CLI", "## 검증 명령")
+      .replace(
+        "# Project-local installation\n.agents/skills/traceknot/bin/traceknot verify",
+        "# Project-local installation\n$HOME/.agents/skills/traceknot/bin/traceknot verify",
+      );
+    expect(() => checkReadmeLifecycleContract("README-localized-verify", localizedHeading)).toThrow("project-local verify");
+  });
+
   test("derives lifecycle bounds from parsed section markers rather than fenced examples", () => {
     const decoy = "```md\n<!-- readme-section:install -->\n<!-- readme-section:documentation -->\n```";
     expect(() => checkReadmeLifecycleContract("README-decoy", `${decoy}\n${localizedReadmes[0]}`)).not.toThrow();

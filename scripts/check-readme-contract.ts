@@ -214,6 +214,14 @@ function collectSharedCommands(content: string, path: string): Map<string, strin
 function collectOperationalCommands(content: string, path: string): Map<string, string> {
   return collectMarkedCommands(content, path, "operational-command");
 }
+function hasVerifyCommand(content: string): boolean {
+  let found = false;
+  visit(markdownTree(content), "code", (node: Code) => {
+    if (node.value.includes("traceknot verify") && node.value.includes("--request")) found = true;
+  });
+  return found;
+}
+
 
 function loadReadmes(): ReadmeRecord[] {
   return README_PATHS.map((path) => {
@@ -427,7 +435,7 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
   const documentLiterals = new Set(["macOS", "Linux", "libc.so.6", "musl", "Windows"]);
   const missing = REQUIRED_LIFECYCLE_LITERALS.filter(literal => !(documentLiterals.has(literal) ? visibleDocument : visibleLifecycle).includes(literal));
   const missingProjectCommands = REQUIRED_PROJECT_LOCAL_COMMANDS
-    .filter(([label]) => label !== "project-local verify" || visibleDocument.includes("Verify CLI"))
+    .filter(([label]) => label !== "project-local verify" || hasVerifyCommand(content))
     .filter(([label, pattern]) => !pattern.test(label === "project-local verify" ? visibleDocument : visibleLifecycle))
     .map(([label]) => label);
   const missingContracts = [...missing, ...missingProjectCommands];
