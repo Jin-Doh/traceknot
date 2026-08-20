@@ -1,5 +1,7 @@
 /// <reference types="bun" />
 
+import { spawn } from "node:child_process";
+import type { Readable, Writable } from "node:stream";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -24,37 +26,61 @@ class CdpClient {
   private nextId = 1;
   private readonly pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
 
-  private constructor(private readonly socket: WebSocket) {
-    socket.addEventListener("message", event => {
-      const message = JSON.parse(String(event.data)) as { id?: number; result?: unknown; error?: { message?: string } };
-      if (message.id === undefined) return;
-      const waiter = this.pending.get(message.id);
-      if (waiter === undefined) return;
-      this.pending.delete(message.id);
-      if (message.error !== undefined) waiter.reject(new Error(message.error.message ?? "CDP command failed"));
-      else waiter.resolve(message.result);
-    });
+  private constructor(private readonly input: Writable) {}
+
+  private receive(message: { id?: number; result?: unknown; error?: { message?: string } }): void {
+    if (message.id === undefined) return;
+    const waiter = this.pending.get(message.id);
+    if (waiter === undefined) return;
+    this.pending.delete(message.id);
+    if (message.error !== undefined) waiter.reject(new Error(message.error.message ?? "CDP command failed"));
+    else waiter.resolve(message.result);
   }
 
-  static async connect(port: number, browserId: string): Promise<CdpClient> {
-    const socket = new WebSocket(`ws://127.0.0.1:${port}/devtools/browser/${browserId}`);
-    await new Promise<void>((resolveOpen, rejectOpen) => {
-      socket.addEventListener("open", () => resolveOpen(), { once: true });
-      socket.addEventListener("error", () => rejectOpen(new Error("Chrome DevTools websocket failed")), { once: true });
+  private rejectPending(error: Error): void {
+    for (const waiter of this.pending.values()) waiter.reject(error);
+    this.pending.clear();
+  }
+
+  static async connect(input: Writable, output: Readable): Promise<CdpClient> {
+    const client = new CdpClient(input);
+    let buffered = Buffer.alloc(0);
+    output.on("data", (chunk: Buffer) => {
+      buffered = Buffer.concat([buffered, chunk]);
+      let delimiter = buffered.indexOf(0);
+      while (delimiter >= 0) {
+        const payload = buffered.subarray(0, delimiter);
+        buffered = buffered.subarray(delimiter + 1);
+        if (payload.byteLength > 0) client.receive(JSON.parse(payload.toString("utf8")) as { id?: number; result?: unknown; error?: { message?: string } });
+        delimiter = buffered.indexOf(0);
+      }
     });
-    return new CdpClient(socket);
+    output.on("error", error => client.rejectPending(error));
+    output.on("close", () => client.rejectPending(new Error("Chrome DevTools pipe closed")));
+    let readinessTimer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        client.send("Browser.getVersion"),
+        new Promise<never>((_, reject) => {
+          readinessTimer = setTimeout(() => reject(new Error("Chrome DevTools pipe did not become ready within 30 seconds")), 30_000);
+        }),
+      ]);
+    } finally {
+      clearTimeout(readinessTimer);
+    }
+    return client;
   }
 
   send<T>(method: string, params: Record<string, unknown> = {}, sessionId?: string): Promise<T> {
     const id = this.nextId++;
     return new Promise<T>((resolveResult, rejectResult) => {
       this.pending.set(id, { resolve: value => resolveResult(value as T), reject: rejectResult });
-      this.socket.send(JSON.stringify({ id, method, params, ...(sessionId === undefined ? {} : { sessionId }) }));
+      this.input.write(`${JSON.stringify({ id, method, params, ...(sessionId === undefined ? {} : { sessionId }) })}\0`);
     });
   }
 
   close(): void {
-    this.socket.close();
+    this.input.end();
   }
 }
 
@@ -77,39 +103,28 @@ const cases: readonly CaptureCase[] = [
 ];
 
 const profileDir = await mkdtemp(join(tmpdir(), "traceknot-qa-board-chrome-"));
-const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response(null, { status: 204 }) });
-const port = reservation.port;
-await reservation.stop(true);
-const browser = Bun.spawn([
-  browserPath,
+const browser = spawn(browserPath, [
   "--headless=new",
   "--no-sandbox",
   "--disable-gpu",
   "--hide-scrollbars",
   "--allow-file-access-from-files",
-  `--remote-debugging-port=${port}`,
+  "--remote-debugging-pipe",
+  "--remote-debugging-io-pipes=3,4",
   `--user-data-dir=${profileDir}`,
   "about:blank",
-], { stdout: "ignore", stderr: "ignore" });
+], { stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"] });
+const browserInput = browser.stdio[3] as Writable | null;
+const browserOutput = browser.stdio[4] as Readable | null;
+if (browserInput === null || browserOutput === null) throw new Error("Chrome DevTools pipes are unavailable");
+const browserExited = new Promise<void>((resolveExit, rejectExit) => {
+  browser.once("exit", () => resolveExit());
+  browser.once("error", rejectExit);
+});
 
 let client: CdpClient | undefined;
 try {
-  let endpoint: Readonly<{ port: number; browserId: string }> | undefined;
-  for (let attempt = 0; attempt < 600 && endpoint === undefined; attempt++) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/json/version`);
-      const version = await response.json() as { webSocketDebuggerUrl?: string };
-      const url = new URL(version.webSocketDebuggerUrl ?? "");
-      const browserId = url.pathname.match(/^\/devtools\/browser\/([A-Za-z0-9-]+)$/)?.[1];
-      if (url.protocol === "ws:" && url.hostname === "127.0.0.1" && Number(url.port) === port && browserId !== undefined) {
-        endpoint = { port, browserId };
-      }
-    } catch {
-      await Bun.sleep(50);
-    }
-  }
-  if (endpoint === undefined) throw new Error("Chrome DevTools endpoint did not become ready within 30 seconds");
-  client = await CdpClient.connect(endpoint.port, endpoint.browserId);
+  client = await CdpClient.connect(browserInput, browserOutput);
   const observations: Array<Record<string, unknown>> = [];
 
   for (const capture of cases) {
@@ -204,7 +219,7 @@ try {
   console.log(`Captured ${cases.length} QA Board visual scenarios for ${snapshotId}`);
 } finally {
   client?.close();
-  browser.kill();
-  await browser.exited;
+  if (browser.exitCode === null) browser.kill();
+  await browserExited;
   await rm(profileDir, { recursive: true, force: true });
 }
