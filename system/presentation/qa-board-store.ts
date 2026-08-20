@@ -1143,7 +1143,12 @@ export async function verifySessionBoardPublication(stateDir: string, publicatio
     const revisionManifestBytes = await readSecureRegularFile(root.fd, secureRelativePath(root, join(publication.directory, "manifest.json")), 4 * 1024 * 1024);
     const revisionManifest = JSON.parse(new TextDecoder().decode(revisionManifestBytes)) as QaBoardManifest;
     if (JSON.stringify(revisionManifest) !== JSON.stringify(publication.manifest)) throw new Error("Board immutable manifest changed before open");
-    if (revisionManifest.authoritative !== false || revisionManifest.generatedBy.sessionRef !== current.sessionRef) throw new Error("Board immutable manifest identity is invalid");
+    if (revisionManifest.authoritative !== false
+      || revisionManifest.sessionKey !== current.sessionKey
+      || revisionManifest.sourceRevision !== current.sourceRevision
+      || revisionManifest.generatedBy.invocationId !== current.invocationId
+      || revisionManifest.generatedBy.sessionRef !== current.sessionRef
+      || revisionManifest.generatedAt !== current.generatedAt) throw new Error("Board immutable manifest identity is invalid");
     for (const file of revisionManifest.files) {
       const bytes = await readSecureRegularFile(root.fd, secureRelativePath(root, join(publication.directory, file.path)), SESSION_FILE_LIMIT);
       if (bytes.byteLength !== file.bytes || sha256(bytes) !== file.sha256) throw new Error(`Board immutable file changed before open: ${file.path}`);

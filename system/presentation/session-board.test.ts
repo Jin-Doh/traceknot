@@ -126,6 +126,21 @@ describe("session Board contract", () => {
     expect(await readFile(join(publication.directory, "manifest.json"), "utf8")).not.toContain("raw-session-id");
   });
 
+  test("rejects current metadata that disagrees with the selected manifest", async () => {
+    const fixtureValue = await fixture();
+    const publication = await publishSessionBoardUpdate({ update: parseSessionBoardUpdate(update(1, "inv-1")), ...fixtureValue });
+    const mismatches = [
+      { ...publication.current, sourceRevision: 999 },
+      { ...publication.current, invocationId: "other-invocation" },
+      { ...publication.current, generatedAt: "2026-08-18T00:00:09Z" },
+    ];
+    for (const current of mismatches) {
+      await writeFile(publication.currentPath, `${JSON.stringify(current, null, 2)}\n`);
+      await expect(verifySessionBoardPublication(fixtureValue.stateDir, { ...publication, current }))
+        .rejects.toThrow("immutable manifest identity is invalid");
+    }
+  });
+
   test("replays a stable invocation idempotently and rejects conflicting reuse", async () => {
     const fixtureValue = await fixture();
     const updateValue = parseSessionBoardUpdate(update(1, "stable-invocation"));
