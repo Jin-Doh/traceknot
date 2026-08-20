@@ -362,6 +362,11 @@ describe("README localization section contract", () => {
       }
     }
   });
+  test("requires declared capability markers for each locale", () => {
+    const withoutVerifyMarker = localizedReadmes[0].replace("<!-- readme-capability:verify -->", "");
+    expect(() => checkReadmeLifecycleContract("README.md", withoutVerifyMarker)).toThrow("capability section verify");
+  });
+
   test("requires the project-local Verify path when the heading is localized", () => {
     const localizedHeading = localizedReadmes[0]
       .replace("## Verify CLI", "## 검증 명령")

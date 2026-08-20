@@ -35,6 +35,11 @@ const REQUIRED_SECTIONS = [
   "documentation",
   "development",
 ] as const;
+const REQUIRED_CAPABILITY_SECTIONS: Readonly<Record<string, readonly string[]>> = {
+  "README.md": ["verify"],
+  "README.ko.md": ["verify"],
+  "README.zh.md": [],
+};
 const REQUIRED_SHARED_COMMANDS = ["skill-install", "full-toolkit-install", "full-toolkit-pinned-install", "full-toolkit-uninstall", "full-toolkit-custom-uninstall", "ci"] as const;
 const REQUIRED_RENDERED_BOUNDARIES = [
   "authoritative: false",
@@ -434,11 +439,14 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
   const visibleLifecycle = renderedInstallLifecycle(content);
   const documentLiterals = new Set(["macOS", "Linux", "libc.so.6", "musl", "Windows"]);
   const missing = REQUIRED_LIFECYCLE_LITERALS.filter(literal => !(documentLiterals.has(literal) ? visibleDocument : visibleLifecycle).includes(literal));
+  const missingCapabilities = (REQUIRED_CAPABILITY_SECTIONS[path] ?? [])
+    .filter(name => !hasCapabilitySection(content, name))
+    .map(name => `capability section ${name}`);
   const missingProjectCommands = REQUIRED_PROJECT_LOCAL_COMMANDS
     .filter(([label]) => label !== "project-local verify" || hasCapabilitySection(content, "verify"))
     .filter(([label, pattern]) => !pattern.test(label === "project-local verify" ? visibleDocument : visibleLifecycle))
     .map(([label]) => label);
-  const missingContracts = [...missing, ...missingProjectCommands];
+  const missingContracts = [...missing, ...missingCapabilities, ...missingProjectCommands];
   if (missingContracts.length > 0) throw new Error(`${path}: canonical installation lifecycle is missing: ${missingContracts.join(", ")}`);
 }
 
