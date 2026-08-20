@@ -15,7 +15,7 @@ function isIdentityBoundary(character: string | undefined): boolean {
   return character === undefined || !/[\p{L}\p{N}._-]/u.test(character);
 }
 
-export function containsBoundaryIdentity(value: string, identity: string): boolean {
+function containsBoundaryIdentityLiteral(value: string, identity: string): boolean {
   if (identity.length === 0) return false;
   let index = value.indexOf(identity);
   while (index >= 0) {
@@ -32,6 +32,11 @@ export function decodeCssEscapes(value: string): string {
     const codePoint = Number.parseInt(hexadecimal, 16);
     return codePoint === 0 || codePoint > 0x10ffff ? "\uFFFD" : String.fromCodePoint(codePoint);
   });
+}
+
+export function containsBoundaryIdentity(value: string, identity: string): boolean {
+  return containsBoundaryIdentityLiteral(value, identity)
+    || containsBoundaryIdentityLiteral(decodeCssEscapes(value), identity);
 }
 
 export function containsBoundaryIdentityDeep(value: unknown, identity: string, seen = new Set<unknown>()): boolean {
