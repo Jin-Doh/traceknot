@@ -545,6 +545,7 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
   const verifyCommandLines = fencedCommandLines(content, collectCapabilityMarkerOffsets(content, "verify")[0], installOffset);
   const documentLiterals = new Set(["macOS", "Linux", "libc.so.6", "musl", "Windows"]);
   const missing = REQUIRED_LIFECYCLE_LITERALS.filter(literal => !(documentLiterals.has(literal) ? visibleDocument : visibleLifecycle).includes(literal));
+  const missingSkillInstall = REQUIRED_CAPABILITY_SECTIONS[path] !== undefined && !lifecycleCommandLines.includes(REQUIRED_SKILL_INSTALL_COMMAND) ? ["skill-install"] : [];
   const missingCapabilities = (REQUIRED_CAPABILITY_SECTIONS[path] ?? [])
     .filter(name => !hasCapabilitySection(content, name))
     .map(name => `capability section ${name}`);
@@ -571,7 +572,7 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
     .filter(([label]) => label !== "project-local verify" || visibleVerify !== undefined)
     .filter(([label, pattern]) => !hasExecutableLine(label === "project-local verify" ? verifyCommandLines : lifecycleCommandLines, pattern))
     .map(([label]) => label);
-  const missingContracts = [...missing, ...missingCapabilities, ...missingGlobalVerify, ...missingGlobalLifecycleCommands, ...missingLauncherBoundaries, ...missingPlatformBoundary, ...missingBunMinimum, ...missingNodeMinimum, ...missingProjectCommands];
+  const missingContracts = [...missing, ...missingSkillInstall, ...missingCapabilities, ...missingGlobalVerify, ...missingGlobalLifecycleCommands, ...missingLauncherBoundaries, ...missingPlatformBoundary, ...missingBunMinimum, ...missingNodeMinimum, ...missingProjectCommands];
   if (missingContracts.length > 0) throw new Error(`${path}: canonical installation lifecycle is missing: ${missingContracts.join(", ")}`);
 }
 

@@ -165,6 +165,14 @@ $HOME/.agents/skills/traceknot/bin/traceknot verify --request request.json --man
 
 request 必须标识当前 Git `rootIdentity` 和 `snapshotId`；任一字段都可以使用字面值 `auto`。`verification-manifest/v1` 为每个 obligation 指定带参数的绝对 executable、绝对 `executionCompletionPath`，或同时指定二者；不接受 shell-string interpolation。
 
+CLI 的 local collector 是由 harness 管理的 separate-verification-context producer，不会为自己的 command result 或调用者提供的 oracle 文件声明 `independent-producer` provenance。需要独立证据的 visual-composition、UI-resilience 或其他 obligation 不能仅凭这些输入通过。
+
+visual-composition obligation 必须提供绝对路径的 `visualCompositionOraclePath`，并声明每个 screenshot、design-token-resolution 和 approved-visual-reference artifact 的原始 `type`、`digest` 与 `path`。UI content-resilience obligation 必须提供 `uiResilienceOraclePath` 及适用的 approval artifact；不适用的 profile 也必须保存 approval。缺少独立证据、完整文本访问或认证 review receipt 时，结果为 `INCOMPLETE`，不能伪造为 `PASS`。
+
+独立 producer 可以通过绝对 `executionCompletionPath` 返回 `verification-execution-completion/v1` envelope。Traceknot 会绑定 request、plan、obligation、snapshot、idempotency key、output、artifact 和 oracle digest，并使用 root-owned `/etc/traceknot/trusted-producer.json` 中的 Ed25519 `trusted-producer-policy/v1` 验证签名；不可信或不完整的输入 fail-closed。
+
+默认输出为 JSON。使用 `--format markdown` 获取可读报告，使用 `--report-only --run-id ID` 读取已完成运行而不重新执行命令。退出码为 `0`（PASS/PASS_WITH_ACCEPTED_RISK）、`1`（FAIL）、`2`（BLOCKED）、`3`（INCOMPLETE）、`64`（输入无效）和 `70`（内部错误）。
+
 <!-- readme-section:install -->
 
 ## 安装方式
