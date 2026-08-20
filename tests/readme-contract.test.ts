@@ -404,6 +404,12 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLifecycleContract("README.md", wrapped)).toThrow("global verify");
   });
 
+  test("rejects hidden fenced commands even when prose repeats their text", () => {
+    const commandBlock = "```sh\n$HOME/.agents/skills/traceknot/bin/traceknot self-check\n.agents/skills/traceknot/bin/traceknot self-check\n$HOME/.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR\n.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR\n```";
+    const hidden = localizedReadmes[0].replace(commandBlock, `<div hidden>\n\n${commandBlock}\n\n</div>`);
+    expect(() => checkReadmeLifecycleContract("README.md", hidden)).toThrow("global self-check");
+  });
+
   test("requires the project-local Verify path when the heading is localized", () => {
     const localizedHeading = localizedReadmes[0]
       .replace("## Verify CLI", "## 검증 명령")

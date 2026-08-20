@@ -274,12 +274,19 @@ function collectCapabilityMarkerOffsets(content: string, name: string): number[]
 function fencedCommandLines(content: string, start: number | undefined, end: number | undefined): string[] {
   if (start === undefined || end === undefined || end <= start) return [];
   const lines: string[] = [];
-  const visibleText = renderedHtmlRange(content, start, end);
+  const visibleCodeRanges: Array<readonly [number, number]> = [];
+  visit(visibleHtmlTree(content), "element", (node: Element) => {
+    const nodeStart = node.position?.start.offset;
+    const nodeEnd = node.position?.end.offset;
+    if (node.tagName === "pre" && nodeStart !== undefined && nodeEnd !== undefined) visibleCodeRanges.push([nodeStart, nodeEnd]);
+  });
   visit(markdownTree(content), "code", (node: Code) => {
     const nodeStart = node.position?.start.offset;
     const nodeEnd = node.position?.end.offset;
     if (nodeStart === undefined || nodeEnd === undefined || nodeStart < start || nodeEnd > end || !isClosedFencedCode(content, node)) return;
-    lines.push(...node.value.split(/\r?\n/u).map(line => line.trim()).filter(line => line.length > 0 && !line.startsWith("#") && visibleText.includes(line)));
+    const visible = visibleCodeRanges.some(([visibleStart, visibleEnd]) => visibleStart <= nodeStart && visibleEnd >= nodeEnd);
+    if (!visible) return;
+    lines.push(...node.value.split(/\r?\n/u).map(line => line.trim()).filter(line => line.length > 0 && !line.startsWith("#")));
   });
   return lines;
 }
