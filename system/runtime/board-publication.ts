@@ -259,16 +259,16 @@ function renderedCssContent(source: string): string {
     for (const item of match[1]!.matchAll(strings)) value += item[1] ?? item[2] ?? "";
     values.push(decodeCssEscapes(value));
   }
-  const attrDeclarations = /\bcontent\s*:\s*((?:attr\(\s*[-\w:]+\s*\)\s*)+)/giu;
-  const attrTokens = /attr\(\s*([-\w:]+)\s*\)/giu;
-  for (const match of source.matchAll(attrDeclarations)) {
-    let value = "";
-    for (const token of match[1]!.matchAll(attrTokens)) {
-      const attribute = new RegExp(`\\b${token[1]}\\s*=\\s*(["'])(.*?)\\1`, "giu");
-      for (const item of source.matchAll(attribute)) value += item[2] ?? "";
+  const attrDeclarations = [...source.matchAll(/\bcontent\s*:\s*((?:attr\(\s*[-\w:]+\s*\)\s*)+)/giu)]
+    .map(match => [...match[1]!.matchAll(/attr\(\s*([-\w:]+)\s*\)/giu)].map(token => token[1]!));
+  const visitNode = (node: ParsedHtmlNode): void => {
+    const attributes = new Map((node.attrs ?? []).map(attribute => [attribute.name, attribute.value]));
+    for (const names of attrDeclarations) {
+      if (names.every(name => attributes.has(name))) values.push(decodeCssEscapes(names.map(name => attributes.get(name)!).join("")));
     }
-    values.push(decodeCssEscapes(value));
-  }
+    for (const child of node.childNodes ?? []) visitNode(child);
+  };
+  visitNode(parse(source) as unknown as ParsedHtmlNode);
   return values.join("");
 }
 

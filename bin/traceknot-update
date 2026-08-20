@@ -481,6 +481,14 @@ replace_launcher() {
     rm -f "$launcher_tmp"
     fail "cannot atomically migrate launcher: $launcher_path"
 }
+release_runtime() {
+    release_root=$1
+    if [ -x "$release_root/skill/bin/traceknot" ]; then
+        printf '%s/skill/bin/traceknot\n' "$release_root"
+    else
+        printf '%s/bin/traceknot\n' "$release_root"
+    fi
+}
 cutover_legacy_registration() {
     expected_target=${1:-}
     if [ ! -L "$REGISTRATION" ]; then
@@ -631,7 +639,7 @@ recover_transaction() {
         if [ "$operation" = apply ]; then
             prune_obsolete_release "$rollback_previous"
         fi
-        [ ! -d "$CURRENT" ] || replace_launcher "$CURRENT/skill/bin/traceknot"
+        [ ! -d "$CURRENT" ] || replace_launcher "$(release_runtime "$CURRENT")"
         sync_transaction_state
         rm -f "$TX_ACTIVE_BEFORE" "$TX_ROLLBACK_BEFORE" "$JOURNAL"
         sync_transaction_state
@@ -641,7 +649,7 @@ recover_transaction() {
     cutover_legacy_registration "$registration_previous"
     if [ -d "$previous" ]; then
         replace_symlink "$previous" "$CURRENT"
-        replace_launcher "$CURRENT/skill/bin/traceknot"
+        replace_launcher "$(release_runtime "$CURRENT")"
     fi
     if [ -n "$rollback_previous" ] && [ -d "$rollback_previous" ]; then
         replace_symlink "$rollback_previous" "$ROLLBACK"
@@ -691,9 +699,9 @@ perform_rollback() {
     write_journal rollback prepared "$rollback_from" "$rollback_to" '' "$rollback_registration_previous" "$rollback_to"
     sync_transaction_state
     replace_symlink "$rollback_to" "$CURRENT"
-    replace_launcher "$CURRENT/skill/bin/traceknot"
+    replace_launcher "$(release_runtime "$CURRENT")"
     replace_symlink "$rollback_from" "$ROLLBACK"
-    if ! "$CURRENT/skill/bin/traceknot" self-check >/dev/null 2>&1; then
+    if [ -x "$CURRENT/skill/bin/traceknot" ] && ! "$CURRENT/skill/bin/traceknot" self-check >/dev/null 2>&1; then
         recover_transaction
         fail 'rollback runtime self-check failed; previous release restored'
     fi
@@ -1072,7 +1080,7 @@ write_journal apply installed "$PREVIOUS" "$FINAL" "$STAGING" "$REGISTRATION_PRE
 sync_transaction_state
 replace_symlink "$PREVIOUS" "$ROLLBACK"
 replace_symlink "$FINAL" "$CURRENT"
-replace_launcher "$CURRENT/skill/bin/traceknot"
+replace_launcher "$(release_runtime "$CURRENT")"
 write_journal apply activated "$PREVIOUS" "$FINAL" "$STAGING" "$REGISTRATION_PREVIOUS" "$ROLLBACK_PREVIOUS"
 sync_transaction_state
 
