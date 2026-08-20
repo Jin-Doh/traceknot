@@ -84,12 +84,14 @@ class CdpClient {
   }
 }
 
+type StressProfile = "text-200" | "text-spacing" | "pseudo-localized" | "rtl" | "reduced-motion" | "focus";
 type CaptureCase = Readonly<{
   name: string;
   html: string;
   width: number;
   height: number;
   dark?: boolean;
+  stress?: StressProfile;
 }>;
 
 const cases: readonly CaptureCase[] = [
@@ -100,6 +102,12 @@ const cases: readonly CaptureCase[] = [
   { name: "pass-en-reflow-320", html: "qa-board-pass-en.html", width: 320, height: 800 },
   { name: "pass-ko-dark-desktop", html: "qa-board-pass-ko.html", width: 1440, height: 1000, dark: true },
   { name: "pass-zh-CN-desktop", html: "qa-board-pass-zh-CN.html", width: 1440, height: 1000 },
+  { name: "pass-en-text-200", html: "qa-board-pass-en.html", width: 1440, height: 1000, stress: "text-200" },
+  { name: "pass-en-text-spacing", html: "qa-board-pass-en.html", width: 1440, height: 1000, stress: "text-spacing" },
+  { name: "pass-en-pseudo-mobile", html: "qa-board-pass-en.html", width: 390, height: 844, stress: "pseudo-localized" },
+  { name: "pass-en-rtl", html: "qa-board-pass-en.html", width: 1440, height: 1000, stress: "rtl" },
+  { name: "pass-en-reduced-motion", html: "qa-board-pass-en.html", width: 1440, height: 1000, stress: "reduced-motion" },
+  { name: "pass-en-focus", html: "qa-board-pass-en.html", width: 1440, height: 1000, stress: "focus" },
 ];
 
 const profileDir = await mkdtemp(join(tmpdir(), "traceknot-qa-board-chrome-"));
@@ -141,7 +149,10 @@ try {
     }, session);
     await client.send("Emulation.setEmulatedMedia", {
       media: "screen",
-      features: [{ name: "prefers-color-scheme", value: capture.dark ? "dark" : "light" }],
+      features: [
+        { name: "prefers-color-scheme", value: capture.dark ? "dark" : "light" },
+        { name: "prefers-reduced-motion", value: capture.stress === "reduced-motion" ? "reduce" : "no-preference" },
+      ],
     }, session);
     const url = pathToFileURL(resolve(inputDir, capture.html)).href;
     await client.send("Page.navigate", { url }, session);
@@ -160,6 +171,15 @@ try {
       awaitPromise: true,
       returnByValue: true,
     }, session);
+    const stressExpressions: Partial<Record<StressProfile, string>> = {
+      "text-200": "document.documentElement.style.fontSize = '200%'",
+      "text-spacing": `(() => { const style = document.createElement('style'); style.textContent = '*{line-height:1.5!important;letter-spacing:.12em!important;word-spacing:.16em!important}p{margin-bottom:2em!important}'; document.head.append(style); })()`,
+      "pseudo-localized": `(() => { const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let node; while ((node = walker.nextNode())) { if (node.data.trim()) node.data = '[!! ' + node.data.replace(/[A-Za-z]/g, value => value + value) + ' !!]'; } })()`,
+      rtl: "document.documentElement.dir = 'rtl'",
+      focus: "document.querySelector('.finding-header')?.focus()",
+    };
+    const stressExpression = capture.stress === undefined ? undefined : stressExpressions[capture.stress];
+    if (stressExpression !== undefined) await client.send("Runtime.evaluate", { expression: stressExpression }, session);
 
     const measured = await client.send<{ result: { value: Record<string, unknown> } }>("Runtime.evaluate", {
       expression: `(() => {
@@ -167,8 +187,15 @@ try {
         const logo = document.querySelector('.brand-mark svg')?.getBoundingClientRect();
         const summary = document.querySelector('.summary-card')?.getBoundingClientRect();
         return {
+          stressProfile: ${JSON.stringify(capture.stress ?? "baseline")},
           documentTitle: document.title,
           language: root.lang,
+          direction: getComputedStyle(root).direction,
+          rootFontSize: getComputedStyle(root).fontSize,
+          rootScrollBehavior: getComputedStyle(root).scrollBehavior,
+          bodyLetterSpacing: getComputedStyle(document.body).letterSpacing,
+          pseudoLocalized: document.body.textContent?.includes('[!!') ?? false,
+          activeElementClass: document.activeElement?.className ?? '',
           viewportWidth: window.innerWidth,
           viewportHeight: window.innerHeight,
           clientWidth: root.clientWidth,
@@ -192,6 +219,12 @@ try {
       throw new Error(`${capture.name}: official logo is missing or has unexpected geometry`);
     }
     if (metrics.snapshotId !== snapshotId) throw new Error(`${capture.name}: rendered snapshot ${metrics.snapshotId} does not match ${snapshotId}`);
+    if (capture.stress === "text-200" && Number.parseFloat(String(metrics.rootFontSize)) < 32) throw new Error(`${capture.name}: 200% text resize was not applied`);
+    if (capture.stress === "text-spacing" && metrics.bodyLetterSpacing === "normal") throw new Error(`${capture.name}: WCAG text spacing was not applied`);
+    if (capture.stress === "pseudo-localized" && metrics.pseudoLocalized !== true) throw new Error(`${capture.name}: pseudo-localization was not applied`);
+    if (capture.stress === "rtl" && metrics.direction !== "rtl") throw new Error(`${capture.name}: RTL direction was not applied`);
+    if (capture.stress === "reduced-motion" && metrics.rootScrollBehavior !== "auto") throw new Error(`${capture.name}: reduced-motion styling was not applied`);
+    if (capture.stress === "focus" && !String(metrics.activeElementClass).includes("finding-header")) throw new Error(`${capture.name}: focus target was not applied`);
 
     const layout = await client.send<{ cssContentSize: { width: number; height: number } }>("Page.getLayoutMetrics", {}, session);
     const full = await client.send<{ data: string }>("Page.captureScreenshot", {
