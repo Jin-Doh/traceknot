@@ -266,7 +266,7 @@ function validSessionBoardCurrent(
   return value.schemaVersion === "traceknot-session-board-current/v1"
     && value.sessionKey === manifest.sessionKey
     && value.sourceRevision === manifest.sourceRevision
-    && typeof value.invocationId === "string" && safeId(value.invocationId)
+    && typeof value.invocationId === "string" && safeId(value.invocationId) && isRecord(manifest.generatedBy) && value.invocationId === manifest.generatedBy.invocationId
     && value.revisionPath === `boards/${boardId}`
     && value.entrypoint === "index.html"
     && value.entrypointSha256 === entrypointSha256
@@ -311,7 +311,11 @@ async function validBoardContents(boardPath: string, manifest: unknown, sessionB
   };
   await visit(boardPath);
   const metadataFiles = manifest.sessionKey === undefined ? ["manifest.json"] : ["manifest.json", "current.json"];
-  if (invalid || metadataFiles.some(path => !actualFiles.has(path)) || actualFiles.size !== declaredPaths.length + metadataFiles.length || actualDirs.size !== expectedDirs.size) return false;
+  if (invalid
+    || metadataFiles.some(path => !actualFiles.has(path))
+    || actualFiles.size !== declaredPaths.length + metadataFiles.length
+    || actualDirs.size !== expectedDirs.size
+    || [...actualDirs].some(path => !expectedDirs.has(path))) return false;
   for (const file of declared) {
     const path = String(file.path);
     const actual = actualFiles.get(path);
