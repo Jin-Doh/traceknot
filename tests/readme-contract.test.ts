@@ -356,6 +356,10 @@ describe("README localization section contract", () => {
       expect(() => checkReadmeLifecycleContract(`README-global-only-${index}`, globalOnly)).toThrow("project-local");
       const hiddenOnly = `${globalOnly}\n<!-- .agents/skills/traceknot/bin/traceknot verify; .agents/skills/traceknot/bin/traceknot self-check; .agents/skills/traceknot/bin/traceknot board update -->`;
       expect(() => checkReadmeLifecycleContract(`README-hidden-${index}`, hiddenOnly)).toThrow("project-local");
+      for (const absolutePrefix of ["${HOME}/", "/home/user/"]) {
+        const absoluteOnly = content.replaceAll(".agents/skills/traceknot/bin/traceknot", `${absolutePrefix}.agents/skills/traceknot/bin/traceknot`);
+        expect(() => checkReadmeLifecycleContract(`README-absolute-only-${index}`, absoluteOnly)).toThrow("project-local");
+      }
     }
   });
   test("derives lifecycle bounds from parsed section markers rather than fenced examples", () => {

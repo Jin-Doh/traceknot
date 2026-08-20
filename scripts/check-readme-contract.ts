@@ -56,9 +56,9 @@ const REQUIRED_LIFECYCLE_LITERALS = [
   "traceknot-update",
 ] as const;
 const REQUIRED_PROJECT_LOCAL_COMMANDS: ReadonlyArray<readonly [string, RegExp]> = [
-  ["project-local verify", /(?<!\$HOME\/)\.agents\/skills\/traceknot\/bin\/traceknot verify/u],
-  ["project-local self-check", /(?<!\$HOME\/)\.agents\/skills\/traceknot\/bin\/traceknot self-check/u],
-  ["project-local Board update", /(?<!\$HOME\/)\.agents\/skills\/traceknot\/bin\/traceknot board update/u],
+  ["project-local verify", /(?:^|\s)\.agents\/skills\/traceknot\/bin\/traceknot verify/u],
+  ["project-local self-check", /(?:^|\s)\.agents\/skills\/traceknot\/bin\/traceknot self-check/u],
+  ["project-local Board update", /(?:^|\s)\.agents\/skills\/traceknot\/bin\/traceknot board update/u],
 ];
 const REQUIRED_OPERATIONAL_BLOCK_LITERALS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
   "README.md": {
