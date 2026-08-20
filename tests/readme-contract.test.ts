@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { checkOperationalCommandBlocks, checkPublicationInventory, checkReadmeBoundaries, checkReadmeDocumentationLinks, checkReadmeLanguageNavigation, checkReadmeLocalLinks, checkReadmeSections, checkReadmeSharedCommands } from "../scripts/check-readme-contract";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { checkOperationalCommandBlocks, checkPublicationInventory, checkReadmeBoundaries, checkReadmeDocumentationLinks, checkReadmeLanguageNavigation, checkReadmeLifecycleContract, checkReadmeLocalLinks, checkReadmeSections, checkReadmeSharedCommands, renderedMarkdownText } from "../scripts/check-readme-contract";
+
+const root = resolve(import.meta.dir, "..");
+const localizedReadmes = [
+  readFileSync(resolve(root, "README.md"), "utf8"),
+  readFileSync(resolve(root, "README.ko.md"), "utf8"),
+  readFileSync(resolve(root, "README.zh.md"), "utf8"),
+] as const;
+const automaticUpdates = readFileSync(resolve(root, "docs/automatic-updates.md"), "utf8");
 
 const sections = [
   "hero",
@@ -295,5 +305,210 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeSharedCommands([{ path: "README.md", content: malformed }])).toThrow(
       "must be followed by a fenced block",
     );
+  });
+  test("requires one canonical Skill payload and update lifecycle in every locale", () => {
+    for (const content of localizedReadmes) {
+      expect(content).toContain("npx skills add Jin-Doh/traceknot --skill traceknot --global");
+      expect(content).toContain("npx skills update traceknot --global --yes");
+      expect(content).toContain("skill/bin/traceknot");
+      expect(content).toContain("$HOME/.agents/skills/traceknot/bin/traceknot");
+      expect(content).toMatch(/(?:^|[\s`])\.agents\/skills\/traceknot\/bin\/traceknot/);
+      expect(content).toContain("Traceknot Board: file://.../sessions/<session-key>/index.html");
+      expect(content).toContain("Bun 1.3.14");
+      expect(content).toContain("traceknot self-check");
+      expect(content).toContain(".agents/skills/traceknot/bin/traceknot self-check");
+      expect(content).toContain(".agents/skills/traceknot/bin/traceknot board update");
+      const rendered = renderedMarkdownText(content);
+      expect(rendered).not.toMatch(/Skills-only|Skill-only|portable Skill|Portable Skill|full-toolkit/iu);
+      expect(content).toContain("bun run build:skill-runtime");
+      expect(content).toContain("bun run check:skill-runtime");
+      expect(rendered).not.toMatch(/Portable Board (?:status|location|manifest|publisher|authority|limitation)/iu);
+    }
+  });
+  test("documents global and project-local Verify executables where the Verify section exists", () => {
+    for (const content of localizedReadmes.slice(0, 2)) {
+      expect(content).toContain("$HOME/.agents/skills/traceknot/bin/traceknot verify");
+      expect(content).toContain(".agents/skills/traceknot/bin/traceknot verify");
+    }
+  });
+
+  test("keeps global and project-local update commands scope-bound", () => {
+    expect(automaticUpdates).toContain("$HOME/.agents/skills/traceknot/bin/traceknot self-check");
+    expect(automaticUpdates).toContain(".agents/skills/traceknot/bin/traceknot self-check");
+    expect(automaticUpdates).toContain("Never substitute an unrelated global executable");
+    expect(automaticUpdates).toContain("npx skills update traceknot --yes");
+    expect(automaticUpdates).toContain("run the structural and installed-runtime self-checks; persist active state; then mark committed");
+  });
+
+  test("states the bundled CLI platform boundary in every locale", () => {
+    for (const content of localizedReadmes) {
+      expect(content).toContain("macOS");
+      expect(content).toContain("Linux");
+      expect(content).toMatch(/Windows/u);
+    }
+  });
+
+  test("standalone README checker rejects lifecycle drift in every locale", () => {
+    for (const [index, content] of localizedReadmes.entries()) {
+      const drifted = content.replace("npx skills update traceknot --yes", "npx skills update traceknot --global --yes");
+      expect(() => checkReadmeLifecycleContract(`README-${index}`, drifted)).toThrow("canonical installation lifecycle is missing");
+      const globalOnly = content.replaceAll(".agents/skills/traceknot/bin/traceknot", "$HOME/.agents/skills/traceknot/bin/traceknot");
+      expect(() => checkReadmeLifecycleContract(`README-global-only-${index}`, globalOnly)).toThrow("project-local");
+      const hiddenOnly = `${globalOnly}\n<!-- .agents/skills/traceknot/bin/traceknot verify; .agents/skills/traceknot/bin/traceknot self-check; .agents/skills/traceknot/bin/traceknot board update -->`;
+      expect(() => checkReadmeLifecycleContract(`README-hidden-${index}`, hiddenOnly)).toThrow("project-local");
+      for (const absolutePrefix of ["${HOME}/", "/home/user/"]) {
+        const absoluteOnly = content.replaceAll(".agents/skills/traceknot/bin/traceknot", `${absolutePrefix}.agents/skills/traceknot/bin/traceknot`);
+        expect(() => checkReadmeLifecycleContract(`README-absolute-only-${index}`, absoluteOnly)).toThrow("project-local");
+      }
+    }
+  });
+  test("requires declared capability markers for each locale", () => {
+    const withoutVerifyMarker = localizedReadmes[0].replace("<!-- readme-capability:verify -->", "");
+    expect(() => checkReadmeLifecycleContract("README.md", withoutVerifyMarker)).toThrow("capability section verify");
+  });
+
+  test("requires both global and project-local Verify commands", () => {
+    const withoutGlobalVerify = localizedReadmes[0].replace(
+      "$HOME/.agents/skills/traceknot/bin/traceknot verify --request",
+      ".agents/skills/traceknot/bin/traceknot verify --request",
+    );
+    expect(() => checkReadmeLifecycleContract("README.md", withoutGlobalVerify)).toThrow("global verify");
+    const misplacedGlobalVerify = `${withoutGlobalVerify}\n\n\`\`\`sh\n$HOME/.agents/skills/traceknot/bin/traceknot verify --request request.json --manifest manifest.json\n\`\`\``;
+    expect(() => checkReadmeLifecycleContract("README.md", misplacedGlobalVerify)).toThrow("global verify");
+  });
+
+  test("requires global self-check and Board update commands", () => {
+    const projectOnly = localizedReadmes[0]
+      .replaceAll("$HOME/.agents/skills/traceknot/bin/traceknot self-check", ".agents/skills/traceknot/bin/traceknot self-check")
+      .replaceAll("$HOME/.agents/skills/traceknot/bin/traceknot board update", ".agents/skills/traceknot/bin/traceknot board update");
+    expect(() => checkReadmeLifecycleContract("README.md", projectOnly)).toThrow("global self-check");
+    expect(() => checkReadmeLifecycleContract("README.md", projectOnly)).toThrow("global Board update");
+  });
+
+  test("requires executable command lines rather than commented or wrapped text", () => {
+    const requirements = [
+      ["$HOME/.agents/skills/traceknot/bin/traceknot verify", "global verify"],
+      [".agents/skills/traceknot/bin/traceknot verify", "project-local verify"],
+      ["$HOME/.agents/skills/traceknot/bin/traceknot self-check", "global self-check"],
+      [".agents/skills/traceknot/bin/traceknot self-check", "project-local self-check"],
+      ["$HOME/.agents/skills/traceknot/bin/traceknot board update", "global Board update"],
+      [".agents/skills/traceknot/bin/traceknot board update", "project-local Board update"],
+    ] as const;
+    let commented = localizedReadmes[0];
+    for (const [command] of requirements) commented = commented.replace(`\n${command}`, `\n# ${command}`);
+    for (const [, label] of requirements) expect(() => checkReadmeLifecycleContract("README.md", commented)).toThrow(label);
+    const wrapped = localizedReadmes[0].replace(
+      "$HOME/.agents/skills/traceknot/bin/traceknot verify",
+      "echo $HOME/.agents/skills/traceknot/bin/traceknot verify",
+    );
+    expect(() => checkReadmeLifecycleContract("README.md", wrapped)).toThrow("global verify");
+  });
+
+  test("rejects hidden fenced commands even when prose repeats their text", () => {
+    const commandBlock = "```sh\n$HOME/.agents/skills/traceknot/bin/traceknot self-check\n.agents/skills/traceknot/bin/traceknot self-check\n$HOME/.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR\n.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR\n```";
+    const hidden = localizedReadmes[0].replace(commandBlock, `<div hidden>\n\n${commandBlock}\n\n</div>`);
+    expect(() => checkReadmeLifecycleContract("README.md", hidden)).toThrow("global self-check");
+  });
+  test("requires operational Verify arguments", () => {
+    const invalid = localizedReadmes[0].replace(
+      "$HOME/.agents/skills/traceknot/bin/traceknot verify --request request.json --manifest manifest.json --root .",
+      "$HOME/.agents/skills/traceknot/bin/traceknot verify --help",
+    );
+    expect(() => checkReadmeLifecycleContract("README.md", invalid)).toThrow("global verify");
+  });
+
+  test("requires mandatory Board update arguments", () => {
+    const invalid = localizedReadmes[0]
+      .replace("\n$HOME/.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR", "\n$HOME/.agents/skills/traceknot/bin/traceknot board update --help")
+      .replace("\n.agents/skills/traceknot/bin/traceknot board update --input UPDATE.json --state-dir DIR", "\n.agents/skills/traceknot/bin/traceknot board update");
+    expect(() => checkReadmeLifecycleContract("README.md", invalid)).toThrow("global Board update");
+    expect(() => checkReadmeLifecycleContract("README.md", invalid)).toThrow("project-local Board update");
+  });
+  test("rejects help-only self-check examples", () => {
+    const invalid = localizedReadmes[0]
+      .replace("\n$HOME/.agents/skills/traceknot/bin/traceknot self-check", "\n$HOME/.agents/skills/traceknot/bin/traceknot self-check --help")
+      .replace("\n.agents/skills/traceknot/bin/traceknot self-check", "\n.agents/skills/traceknot/bin/traceknot self-check --help");
+    expect(() => checkReadmeLifecycleContract("README.md", invalid)).toThrow("global self-check");
+  });
+
+  test("requires the project-local Verify path when the heading is localized", () => {
+    const localizedHeading = localizedReadmes[0]
+      .replace("## Verify CLI", "## 검증 명령")
+      .replace(
+        "# Project-local installation\n.agents/skills/traceknot/bin/traceknot verify",
+        "# Project-local installation\n$HOME/.agents/skills/traceknot/bin/traceknot verify",
+      );
+    expect(() => checkReadmeLifecycleContract("README-localized-verify", localizedHeading)).toThrow("project-local verify");
+  });
+
+  test("derives lifecycle bounds from parsed section markers rather than fenced examples", () => {
+    const decoy = "```md\n<!-- readme-section:install -->\n<!-- readme-section:documentation -->\n```";
+    expect(() => checkReadmeLifecycleContract("README-decoy", `${decoy}\n${localizedReadmes[0]}`)).not.toThrow();
+  });
+
+  test("enforces the optional non-owning launcher boundary", () => {
+    const requiredTier = localizedReadmes[0].replace("optional prefix launcher/updater", "required prefix runtime tier");
+    expect(() => checkReadmeLifecycleContract("README.md", requiredTier)).toThrow("launcher boundary");
+    const secondProduct = localizedReadmes[0].replace(
+      "does not define a separate Skill payload, runtime tier, Board renderer, schema, or verdict mode",
+      "defines a separate Skill payload, runtime tier, Board renderer, schema, and verdict mode",
+    );
+    expect(() => checkReadmeLifecycleContract("README.md", secondProduct)).toThrow("launcher boundary");
+  });
+
+  test("preserves hidden ancestors around lifecycle and capability sections", () => {
+    const hiddenInstall = localizedReadmes[0]
+      .replace("<!-- readme-section:install -->", "<div hidden>\n\n<!-- readme-section:install -->")
+      .replace("<!-- readme-section:documentation -->", "</div>\n\n<!-- readme-section:documentation -->");
+    expect(() => checkReadmeSections("README.md", hiddenInstall)).not.toThrow();
+    expect(() => checkReadmeLifecycleContract("README.md", hiddenInstall)).toThrow("canonical installation lifecycle is missing");
+
+    const hiddenVerify = localizedReadmes[0]
+      .replace("<!-- readme-capability:verify -->", "<div hidden>\n\n<!-- readme-capability:verify -->")
+      .replace("<!-- readme-section:install -->", "</div>\n\n<!-- readme-section:install -->");
+    expect(() => checkReadmeLifecycleContract("README.md", hiddenVerify)).toThrow("global verify");
+  });
+
+  test("enforces unsupported native platform guidance", () => {
+    const reversed = localizedReadmes[0].replace(
+      "Native Windows and musl-only Linux are not supported",
+      "Native Windows and musl-only Linux are supported",
+    );
+    expect(() => checkReadmeLifecycleContract("README.md", reversed)).toThrow("unsupported platform boundary");
+  });
+
+  test("does not accept platform semantics preserved only in fenced code", () => {
+    const boundary = "Native Windows and musl-only Linux are not supported";
+    const codeOnly = `${localizedReadmes[0].replace(boundary, "Native Windows and musl-only Linux are supported")}\n\n\`\`\`text\n${boundary}\n\`\`\``;
+    expect(() => checkReadmeLifecycleContract("README.md", codeOnly)).toThrow("unsupported platform boundary");
+  });
+
+  test("enforces the Bun minimum-version guidance", () => {
+    const reversed = localizedReadmes[0]
+      .replace("Bun 1.3.14 or later", "Bun 1.3.14 or earlier")
+      .replace("Bun 1.3.14 or later", "Bun 1.3.14 or earlier");
+    expect(() => checkReadmeLifecycleContract("README.md", reversed)).toThrow("Bun minimum version boundary");
+  });
+  test("enforces the Node.js minimum-version guidance", () => {
+    const reversed = localizedReadmes[0].replace("Node.js 22.20 or later", "Node.js 22.20 or earlier");
+    expect(() => checkReadmeLifecycleContract("README.md", reversed)).toThrow("Node.js minimum version boundary");
+  });
+
+  test("does not accept prerequisite semantics preserved only in fenced code", () => {
+    const bunBoundary = "Bun 1.3.14 or later";
+    const reversed = localizedReadmes[0]
+      .replace(bunBoundary, "Bun 1.3.14 or earlier")
+      .replace(bunBoundary, "Bun 1.3.14 or earlier")
+      .replace("<!-- readme-section:documentation -->", `\`\`\`text\n${bunBoundary}\n\`\`\`\n\n<!-- readme-section:documentation -->`);
+    expect(() => checkReadmeLifecycleContract("README.md", reversed)).toThrow("Bun minimum version boundary");
+  });
+
+
+  test("documents the curl path only as an optional non-owning launcher", () => {
+    const canonical = localizedReadmes[0];
+    expect(canonical).toContain("optional prefix launcher/updater");
+    expect(canonical).toContain("does not create, replace, retarget, update, or remove a Skills CLI-owned registration");
+    expect(canonical).toContain("The two can coexist");
+    expect(canonical).toContain("npx skills add`/`npx skills update");
   });
 });

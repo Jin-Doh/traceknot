@@ -80,6 +80,7 @@ describe("reusable governed GitHub Action", () => {
     expect(String(steps[2]?.run)).toContain("mktemp -d");
     expect(String(steps[2]?.run)).toContain("git -C \"$GITHUB_WORKSPACE\" cat-file blob");
     expect(String(steps[2]?.run)).toContain("report-path=");
+    expect(String(steps[2]?.run)).toContain('printf \'board-path=%s\\n\' "${state_path}/sessions"');
     expect(String(steps[3]?.run)).toContain("self-verify.ts");
     expect(String(steps[3]?.run)).toContain("--expected-head");
     const verifyEnv = object(steps[3]?.env, "verification environment");

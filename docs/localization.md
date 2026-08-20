@@ -22,7 +22,7 @@ Korean and Simplified Chinese should use natural prose while preserving those fa
 
 ## Synchronization contract
 
-Every README contains stable `readme-section` markers and `shared-command` markers. Only parsed Markdown HTML-comment nodes count as structural markers; marker-shaped examples in code do not. `scripts/check-readme-contract.ts` verifies that:
+Every README contains stable `readme-section` markers and shared command markers. Only parsed Markdown HTML-comment nodes count as structural markers; marker-shaped examples in code do not. `scripts/check-readme-contract.ts` verifies that:
 
 - all three files exist;
 - required sections are present exactly once;
@@ -30,9 +30,11 @@ Every README contains stable `readme-section` markers and `shared-command` marke
 - every README exposes rendered links with usable visible or accessible labels to all three languages; empty anchors and anchors in standard HTML `hidden` subtrees do not satisfy navigation parity;
 - translated documentation parity uses the same visible-anchor tree, so hidden anchors cannot preserve a removed reader-facing link;
 - critical authority-boundary literals remain present in text derived by `hast-util-to-text`, with fenced examples removed first;
-- the public Skill install literal remains in the parsed `skill-install` shared command block rather than arbitrary source text;
+- the canonical Skill install literal remains in the parsed `skill-install` shared command block rather than arbitrary source text;
 - installer, uninstaller, and updater literals remain in their marked parsed command blocks rather than comments or unrelated examples;
 - local Markdown and HTML links resolve to repository files.
+
+The synchronized public prose additionally requires canonical update guidance to name `npx skills update traceknot --global --yes`, describe the complete `skill/` payload including `skill/bin/traceknot`, identify Bun 1.3.14 or later as the generated CLI prerequisite, document `$HOME/.agents/skills/traceknot/bin/traceknot` for global installs and `.agents/skills/traceknot/bin/traceknot` for project installs, and describe the legacy curl entrypoint only as an optional launcher/bootstrap rather than a richer product tier or second Board contract.
 
 Inline-link validation delegates Markdown grammar to the maintained unified stack: `remark-parse` and `remark-gfm` produce the CommonMark/GFM syntax tree, while `remark-rehype` and `rehype-raw` parse rendered HTML nodes and their URL-bearing attributes. Traceknot traverses that tree to enforce only repository policy: shared and operational commands must be closed fenced-code nodes, local targets must exist without escaping the repository, translated documentation links must remain visibly present, and complete `srcset` and `ping` target lists use the same boundary checks. Code spans, nested containers, Setext headings, reference links, comments, and raw HTML are therefore classified by the external parsers rather than a repository-owned Markdown state machine.
 

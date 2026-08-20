@@ -6,6 +6,8 @@ const root = resolve(import.meta.dir, "..");
 const skill = readFileSync(resolve(root, "skill/SKILL.md"), "utf8");
 const boardReference = readFileSync(resolve(root, "skill/references/qa-board.md"), "utf8");
 const completionReport = readFileSync(resolve(root, "skill/references/completion-report.md"), "utf8");
+const boardDocs = readFileSync(resolve(root, "docs/qa-board.md"), "utf8");
+const readme = readFileSync(resolve(root, "README.md"), "utf8");
 
 const boardUpdateCommand = "traceknot board update";
 const requiredBoardFields = [
@@ -19,7 +21,6 @@ const requiredBoardFields = [
   "Board publisher: canonical-cli | host-integrated | none",
   "Board limitation: reason | none",
 ] as const;
-
 
 function expectCanonicalSkillPayload(content: string): void {
   expect(content).toContain("npx skills add Jin-Doh/traceknot --skill traceknot --global");
@@ -91,4 +92,33 @@ test("public documentation forbids split installation and Board modes", () => {
     expect(document).not.toMatch(/Skills-only|Skill-only|Portable Board|portable Skill|Portable Skill|full-toolkit/iu);
     expect(document).not.toMatch(/Portable Board (?:status|location|manifest|publisher|authority|limitation)/iu);
   }
+});
+
+test("public docs mirror the canonical Skill and Board contracts", () => {
+  expectCanonicalSkillPayload(readme);
+  expectCanonicalBoardInterface(boardDocs);
+  expect(boardDocs).toContain("The unavailable Board status does not change the QA verdict or evidence.");
+  for (const document of [boardDocs, readme]) {
+    expect(document).not.toMatch(/Skills-only|Skill-only|Portable Board|portable Skill|Portable Skill/iu);
+    expect(document).not.toMatch(/Portable Board (?:status|location|manifest|publisher|authority|limitation)/iu);
+  }
+  expect(boardDocs).not.toContain("full-toolkit");
+});
+
+test("public Board privacy contract matches boundary-aware runtime semantics", () => {
+  expect(skill).toContain("standalone value or boundary-delimited token");
+  expect(skill).toContain("incidental substring embedded inside a larger");
+  expect(boardReference).toContain("boundary-delimited identity token");
+  expect(boardReference).toContain("incidental byte substring inside a larger");
+  expect(boardDocs).toContain("identity token, not as a forbidden byte substring");
+  expect(boardDocs).toContain("incidental occurrence embedded inside a larger");
+  expect(skill).not.toContain("never stores the raw session ID");
+  expect(boardReference).not.toContain("The raw session ID MUST NOT appear in a path, manifest, page, or log.");
+  expect(boardDocs).not.toContain("The raw session ID is never stored in paths, manifests, HTML, or logs.");
+});
+
+test("public retention contract requires destructive reclaim preflight", () => {
+  for (const document of [skill, boardReference, boardDocs]) expect(document).toMatch(/preflight/iu);
+  expect(boardReference).toContain("before any selected revision is mutated");
+  expect(boardDocs).toContain("before any selected revision is mutated");
 });
