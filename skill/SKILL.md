@@ -135,6 +135,15 @@ npx skills update traceknot --global --yes
 npx skills add Jin-Doh/traceknot --skill traceknot --yes
 npx skills update traceknot --yes
 ```
+After installation, run:
+
+```sh
+$HOME/.agents/skills/traceknot/bin/traceknot self-check
+```
+
+For a project-local installation, run `.agents/skills/traceknot/bin/traceknot self-check` from the project root.
+
+The command MUST resolve from the same installation scope as the installed Skill; do not fall back to an unrelated global executable.
 
 Verify the installed payload before using it. Use the executable from the same installation scope; a project-local-only installation MUST NOT fall back to an unrelated global executable:
 
