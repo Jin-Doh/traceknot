@@ -625,7 +625,11 @@ async function inspectSessionBoards(stateDir: string, now: number): Promise<{ bo
       symlinks.push(`sessions/${session.name}`);
       continue;
     }
-    if (!session.isDirectory()) continue;
+    if (!session.isDirectory()) {
+      const entryStat = await safeStat(sessionRoot);
+      if (entryStat !== undefined) staging.push({ kind: "staging", path: sessionRoot, relativePath: `sessions/${session.name}`, bytes: entryStat.bytes, allocatedBytes: entryStat.allocatedBytes, mtimeMs: entryStat.mtimeMs, sessionKey: session.name, malformed: true });
+      continue;
+    }
     const currentSelector = join(sessionRoot, "current");
     const currentStat = await safeStat(currentSelector);
     let currentPath: string | undefined;
