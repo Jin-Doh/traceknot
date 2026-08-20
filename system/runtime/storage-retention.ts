@@ -603,12 +603,13 @@ async function inspectRuns(stateDir: string, pins: ReadonlySet<string>, pinsMalf
   }
   return { runs, boards, staging, symlinks, references };
 }
-async function inspectSessionBoards(stateDir: string, now: number): Promise<{ boards: BoardInfo[]; symlinks: string[] }> {
+async function inspectSessionBoards(stateDir: string, now: number): Promise<{ boards: BoardInfo[]; staging: StorageEntry[]; symlinks: string[] }> {
   const sessionsRoot = join(stateDir, "sessions");
   const root = await rootStatus(sessionsRoot);
-  if (root === "missing") return { boards: [], symlinks: [] };
+  if (root === "missing") return { boards: [], staging: [], symlinks: [] };
   if (root !== "directory") throw new Error(`sessions directory is not a non-symlink directory: ${sessionsRoot}`);
   const boards: BoardInfo[] = [];
+  const staging: StorageEntry[] = [];
   const symlinks: string[] = [];
   const sessions = await readdir(sessionsRoot, { withFileTypes: true });
   for (const session of sessions.sort((a, b) => a.name.localeCompare(b.name))) {
@@ -665,7 +666,11 @@ async function inspectSessionBoards(stateDir: string, now: number): Promise<{ bo
         symlinks.push(relativePath);
         continue;
       }
-      if (!entry.isDirectory()) continue;
+      if (!entry.isDirectory()) {
+        const entryStat = await safeStat(boardPath);
+        if (entryStat !== undefined) staging.push({ kind: "staging", path: boardPath, relativePath, bytes: entryStat.bytes, allocatedBytes: entryStat.allocatedBytes, mtimeMs: entryStat.mtimeMs, sessionKey: session.name, boardId: entry.name, malformed: true });
+        continue;
+      }
       const boardSize = await directorySize(boardPath);
       const selectedInspection = currentInspection?.path === `boards/${entry.name}` ? currentInspection : undefined;
       const manifest = selectedInspection?.manifest ?? await readJson(join(boardPath, "manifest.json"));
@@ -680,7 +685,7 @@ async function inspectSessionBoards(stateDir: string, now: number): Promise<{ bo
       symlinks.push(...boardSize.symlinks.map(item => `${relativePath}/${item}`));
     }
   }
-  return { boards, symlinks };
+  return { boards, staging, symlinks };
 }
 
 async function inspectObjects(artifactDir: string, now: number): Promise<{ objects: StorageEntry[]; collector: StorageEntry[]; staging: StorageEntry[]; symlinks: string[] }> {
@@ -767,14 +772,14 @@ export async function inspectStorage(input: StorageMaintenanceOptions): Promise<
   const now = nowMs(input.now);
   const pins = state === "directory" ? await loadPins(stateDir) : { pins: new Set<string>(), malformed: false };
   const runData = state === "directory" ? await inspectRuns(stateDir, pins.pins, pins.malformed, now) : { runs: [], boards: [], staging: [], symlinks: [], references: {} };
-  const sessionData = state === "directory" ? await inspectSessionBoards(stateDir, now) : { boards: [], symlinks: [] };
+  const sessionData = state === "directory" ? await inspectSessionBoards(stateDir, now) : { boards: [], staging: [], symlinks: [] };
   const objectData = artifact === "directory" ? await inspectObjects(artifactDir, now) : { objects: [], collector: [], staging: [], symlinks: [] };
   const symlinks = [...new Set([...runData.symlinks, ...sessionData.symlinks, ...objectData.symlinks])].sort();
   const runs = stableSort(runData.runs.map(toEntry));
   const boards = stableSort([...runData.boards, ...sessionData.boards].map(boardEntry));
   const objects = stableSort(objectData.objects);
   const collector = stableSort(objectData.collector);
-  const staging = stableSort([...runData.staging, ...objectData.staging]);
+  const staging = stableSort([...runData.staging, ...sessionData.staging, ...objectData.staging]);
   const allTimes = [...runs, ...boards, ...objects, ...collector, ...staging].map(item => item.logicalUpdatedAt ?? item.mtimeMs).filter(Number.isFinite);
   const logicalBytes = [...runs, ...boards, ...objects, ...collector, ...staging].reduce((sum, item) => sum + item.bytes, 0);
   const allocatedBytes = [...runs, ...boards, ...objects, ...collector, ...staging].reduce((sum, item) => sum + item.allocatedBytes, 0);

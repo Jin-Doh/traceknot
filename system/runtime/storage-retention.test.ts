@@ -454,6 +454,24 @@ describe("storage retention", () => {
     await expect(pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy })).resolves.toBeDefined();
   });
 
+  test("reports safe-name non-directory session Board entries without aborting inspection", async () => {
+    const { state, artifacts } = await fixture();
+    const sessionKey = `s-${"4".repeat(64)}`;
+    const boardsPath = join(state, "sessions", sessionKey, "boards");
+    const boardPath = join(boardsPath, "not-a-directory");
+    await mkdir(boardsPath, { recursive: true });
+    await writeFile(boardPath, "malformed session Board entry");
+    await utimes(boardPath, new Date(OLD), new Date(OLD));
+
+    const inventory = await inspectStorage({ stateDir: state, artifactDir: artifacts, now: NOW });
+    expect(inventory.staging).toEqual(expect.arrayContaining([expect.objectContaining({
+      relativePath: `sessions/${sessionKey}/boards/not-a-directory`,
+      malformed: true,
+    })]));
+    await expect(pruneStorage({ stateDir: state, artifactDir: artifacts, now: NOW, policy })).resolves.toBeDefined();
+    expect((await stat(boardPath)).isFile()).toBe(true);
+  });
+
   test("malformed Board manifests remain protected from automatic deletion", async () => {
     const { state, artifacts } = await fixture();
     await run(state, "active", { state: "EXECUTING", updatedAt: NOW });
