@@ -1077,8 +1077,13 @@ async function sessionReclaim(
   });
   const revisions: SessionRevision[] = [];
   for (const entry of entries) {
-    if (entry.isSymbolicLink() || !SAFE_BOARD_NAME.test(entry.name)) continue;
+    if (entry.isSymbolicLink()) continue;
     const path = join(boardsPath, entry.name);
+    if (entry.isDirectory() && entry.name.startsWith(".pending-")) {
+      revisions.push({ name: entry.name, path, bytes: await sessionDirectoryBytes(path), generatedAt: NaN, sourceRevision: -1, runId: undefined, sourceState: undefined, malformed: true });
+      continue;
+    }
+    if (!SAFE_BOARD_NAME.test(entry.name)) continue;
     if (!entry.isDirectory()) {
       const entryStat = await statPath(path).catch(() => undefined);
       revisions.push({ name: entry.name, path, bytes: entryStat?.size ?? 0, generatedAt: NaN, sourceRevision: -1, runId: undefined, sourceState: undefined, malformed: true });
@@ -1175,7 +1180,7 @@ export async function verifySessionBoardPublication(stateDir: string, publicatio
     if (current.entrypointSha256 !== sha256(stableBytes) || current.manifestSha256 !== sha256(stableManifestBytes)) throw new Error("Board stable file hashes do not match current pointer");
     if (JSON.stringify(current) !== JSON.stringify(publication.current)) throw new Error("Board current pointer changed before open");
     const revisionManifestBytes = await readSecureRegularFile(root.fd, secureRelativePath(root, join(publication.directory, "manifest.json")), 4 * 1024 * 1024);
-    const revisionManifest = JSON.parse(new TextDecoder().decode(revisionManifestBytes)) as QaBoardManifest;
+    const revisionManifest = parseQaBoardManifest(JSON.parse(new TextDecoder().decode(revisionManifestBytes)));
     if (JSON.stringify(revisionManifest) !== JSON.stringify(publication.manifest)) throw new Error("Board immutable manifest changed before open");
     if (revisionManifest.authoritative !== false
       || revisionManifest.sessionKey !== current.sessionKey
