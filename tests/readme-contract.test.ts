@@ -358,6 +358,11 @@ describe("README localization section contract", () => {
       expect(() => checkReadmeLifecycleContract(`README-hidden-${index}`, hiddenOnly)).toThrow("project-local");
     }
   });
+  test("derives lifecycle bounds from parsed section markers rather than fenced examples", () => {
+    const decoy = "```md\n<!-- readme-section:install -->\n<!-- readme-section:documentation -->\n```";
+    expect(() => checkReadmeLifecycleContract("README-decoy", `${decoy}\n${localizedReadmes[0]}`)).not.toThrow();
+  });
+
   test("documents the curl path only as an optional non-owning launcher", () => {
     const canonical = localizedReadmes[0];
     expect(canonical).toContain("optional prefix launcher/updater");

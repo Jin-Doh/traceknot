@@ -127,10 +127,11 @@ export function renderedMarkdownText(content: string): string {
   return toText(visibleHtmlTree(content, true));
 }
 function renderedInstallLifecycle(content: string): string {
-  const start = content.indexOf("<!-- readme-section:install -->");
-  const end = content.indexOf("<!-- readme-section:documentation -->");
-  if (start < 0 || end <= start) return "";
-  return toText(visibleHtmlTree(content.slice(start, end)));
+  const markers = collectSectionMarkerOffsets(content);
+  const starts = markers.get("install") ?? [];
+  const ends = markers.get("documentation") ?? [];
+  if (starts.length !== 1 || ends.length !== 1 || ends[0]! <= starts[0]!) return "";
+  return toText(visibleHtmlTree(content.slice(starts[0], ends[0])));
 }
 
 
@@ -150,15 +151,21 @@ function visibleAnchorTargets(content: string): string[] {
   return targets;
 }
 
-function collectSectionMarkers(content: string): Map<string, number> {
-  const markers = new Map<string, number>();
+function collectSectionMarkerOffsets(content: string): Map<string, number[]> {
+  const markers = new Map<string, number[]>();
   visit(markdownTree(content), "html", (node: Html) => {
     const match = node.value.match(/^\s*<!-- readme-section:([a-z0-9-]+) -->\s*$/u);
-    if (!match) return;
-    const name = match[1];
-    markers.set(name, (markers.get(name) ?? 0) + 1);
+    const offset = node.position?.start.offset;
+    if (!match || offset === undefined) return;
+    const offsets = markers.get(match[1]) ?? [];
+    offsets.push(offset);
+    markers.set(match[1], offsets);
   });
   return markers;
+}
+
+function collectSectionMarkers(content: string): Map<string, number> {
+  return new Map([...collectSectionMarkerOffsets(content)].map(([name, offsets]) => [name, offsets.length]));
 }
 
 function isClosedFencedCode(content: string, block: Code): boolean {
