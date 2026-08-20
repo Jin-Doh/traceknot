@@ -1076,8 +1076,13 @@ async function sessionReclaim(
   });
   const revisions: SessionRevision[] = [];
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.isSymbolicLink() || !SAFE_BOARD_NAME.test(entry.name)) continue;
+    if (entry.isSymbolicLink() || !SAFE_BOARD_NAME.test(entry.name)) continue;
     const path = join(boardsPath, entry.name);
+    if (!entry.isDirectory()) {
+      const entryStat = await statPath(path).catch(() => undefined);
+      revisions.push({ name: entry.name, path, bytes: entryStat?.size ?? 0, generatedAt: NaN, sourceRevision: -1, runId: undefined, sourceState: undefined, malformed: true });
+      continue;
+    }
     const manifestBytes = await readOptionalSecure(root, join(path, "manifest.json"), 4 * 1024 * 1024);
     let manifestValue: UnknownRecord | undefined;
     if (manifestBytes !== undefined) {
