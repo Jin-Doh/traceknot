@@ -1079,8 +1079,10 @@ async function sessionReclaim(
   for (const entry of entries) {
     if (entry.isSymbolicLink()) continue;
     const path = join(boardsPath, entry.name);
-    if (entry.isDirectory() && entry.name.startsWith(".pending-")) {
-      revisions.push({ name: entry.name, path, bytes: await sessionDirectoryBytes(path), generatedAt: NaN, sourceRevision: -1, runId: undefined, sourceState: undefined, malformed: true });
+    if (entry.name.startsWith(".pending-") || entry.name.startsWith(".staging-")) {
+      const entryStat = entry.isDirectory() ? undefined : await statPath(path).catch(() => undefined);
+      const bytes = entry.isDirectory() ? await sessionDirectoryBytes(path) : entryStat?.size ?? 0;
+      revisions.push({ name: entry.name, path, bytes, generatedAt: NaN, sourceRevision: -1, runId: undefined, sourceState: undefined, malformed: true });
       continue;
     }
     if (!SAFE_BOARD_NAME.test(entry.name)) continue;

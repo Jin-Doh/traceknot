@@ -259,6 +259,16 @@ function renderedCssContent(source: string): string {
     for (const item of match[1]!.matchAll(strings)) value += item[1] ?? item[2] ?? "";
     values.push(decodeCssEscapes(value));
   }
+  const attrDeclarations = /\bcontent\s*:\s*((?:attr\(\s*[-\w:]+\s*\)\s*)+)/giu;
+  const attrTokens = /attr\(\s*([-\w:]+)\s*\)/giu;
+  for (const match of source.matchAll(attrDeclarations)) {
+    let value = "";
+    for (const token of match[1]!.matchAll(attrTokens)) {
+      const attribute = new RegExp(`\\b${token[1]}\\s*=\\s*(["'])(.*?)\\1`, "giu");
+      for (const item of source.matchAll(attribute)) value += item[2] ?? "";
+    }
+    values.push(decodeCssEscapes(value));
+  }
   return values.join("");
 }
 
