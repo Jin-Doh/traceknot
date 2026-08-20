@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, readdir, realpath, rm, stat, symlink, truncate, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, readlink, realpath, rm, stat, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -93,6 +93,26 @@ describe("traceknot board CLI", () => {
       const files = await persistedFiles(join(fixtureValue.stateDir, "sessions"));
       expect(files.length).toBeGreaterThan(0);
       for (const file of files) expect(await readFile(file, "utf8")).not.toContain(sessionId);
+    } finally {
+      await fixtureValue.cleanup();
+    }
+  });
+
+  test("uses the selected locale for the stable entrypoint and keeps every localized page", async () => {
+    const fixtureValue = await fixture("board-korean");
+    try {
+      expect(await runBoardUpdate(
+        ["update", "--input", fixtureValue.inputPath, "--state-dir", fixtureValue.stateDir, "--board-locale", "ko", "--no-notify"],
+        () => undefined,
+        () => undefined,
+      )).toBe(BOARD_EXIT_CODES.OK);
+      const sessionKey = (await readdir(join(fixtureValue.stateDir, "sessions")))[0]!;
+      const sessionRoot = join(fixtureValue.stateDir, "sessions", sessionKey);
+      const currentTarget = await readlink(join(sessionRoot, "current"));
+      const revisionRoot = join(sessionRoot, currentTarget);
+      expect(await readFile(join(revisionRoot, "index.html"), "utf8")).toContain('<html lang="ko">');
+      expect(await readFile(join(revisionRoot, "index.en.html"), "utf8")).toContain('<html lang="en">');
+      expect(await readFile(join(revisionRoot, "index.zh-CN.html"), "utf8")).toContain('<html lang="zh-CN">');
     } finally {
       await fixtureValue.cleanup();
     }

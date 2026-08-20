@@ -38,6 +38,7 @@ import {
   type QaBoardView,
 
 } from "./qa-board";
+import { detectQaBoardLocale } from "./qa-board-locale";
 export type BoardArtifactReader = Readonly<{
   readArtifact: (digest: string) => Promise<Uint8Array>;
 }>;
@@ -366,7 +367,7 @@ export async function writeQaBoardBundle(input: BoardBundleInput): Promise<Board
       }
     }
     const view = availableScreenshots(input.view, copied);
-    const locale = input.locale ?? "en";
+    const locale = input.locale ?? detectQaBoardLocale();
     const showProjectSupport = shouldShowProjectSupport(root.fd);
     const renderOptions: QaBoardRenderOptions = { showProjectSupport };
     const html = new TextEncoder().encode(renderQaBoardHtml(view, locale, renderOptions));
@@ -1253,7 +1254,8 @@ export async function publishSessionBoardUpdate(input: Readonly<{
     const showProjectSupport = input.showProjectSupport ?? shouldShowProjectSupport(root.fd);
     const renderOptions: QaBoardRenderOptions = { showProjectSupport };
     const pageFiles: QaBoardManifestFile[] = [];
-    const html = sessionAtomicBytes(renderQaBoardHtml(view, input.locale ?? "en", renderOptions));
+    const locale = input.locale ?? detectQaBoardLocale();
+    const html = sessionAtomicBytes(renderQaBoardHtml(view, locale, renderOptions));
     await writeAtomic(directories.revisionFd, "index.html", html);
     pageFiles.push({ path: "index.html", role: "entrypoint", sha256: sha256(html), bytes: html.byteLength });
     for (const pageLocale of QA_BOARD_LOCALES) {

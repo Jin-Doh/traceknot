@@ -38,7 +38,8 @@ import { ArtifactNotFoundError, assertPrivateRootPath, assertSecureRoot, closeSe
 import { LocalShellCollector, type ShellArtifactDeclaration } from "../runtime/local-shell-collector";
 import { pruneStorage } from "../runtime/storage-retention";
 import { FileVerificationRepository } from "../runtime/file-repository";
-import { buildQaBoardView, resolveQaBoardLocale, type QaBoardLocale } from "../presentation/qa-board";
+import { buildQaBoardView, type QaBoardLocale } from "../presentation/qa-board";
+import { detectQaBoardLocale } from "../presentation/qa-board-locale";
 import { openBoard } from "../presentation/board-opener";
 import { markProjectSupportSeen, publishSessionBoardUpdate, verifySessionBoardPublication } from "../presentation/qa-board-store";
 import { notifyBoard } from "../presentation/user-notifier";
@@ -328,7 +329,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
   let format: "json" | "markdown" = "json";
   let reportOnly = false;
   let board = true;
-  let boardLocale = resolveQaBoardLocale(process.env.LC_ALL, process.env.LC_MESSAGES, process.env.LANG);
+  let boardLocale = detectQaBoardLocale();
   let noNotify = false;
   let openBoard = false;
   let sessionId: string | undefined;
@@ -354,7 +355,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
     else if (arg === "--board-locale") {
       const value = next();
       if (value !== "auto" && value !== "en" && value !== "ko" && value !== "zh-CN") fail("--board-locale must be auto, en, ko, or zh-CN");
-      boardLocale = value === "auto" ? resolveQaBoardLocale(process.env.LC_ALL, process.env.LC_MESSAGES, process.env.LANG) : value;
+      boardLocale = value === "auto" ? detectQaBoardLocale() : value;
     }
     else if (arg === "--no-notify") noNotify = true;
     else if (arg === "--notify") noNotify = false;

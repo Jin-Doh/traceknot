@@ -5,6 +5,8 @@ import { LocalArtifactStore } from "../runtime/local-artifact-store";
 import { openBoard } from "../presentation/board-opener";
 import { markProjectSupportSeen, parseSessionBoardUpdate, publishSessionBoardUpdate, verifySessionBoardPublication } from "../presentation/qa-board-store";
 import { notifyBoard } from "../presentation/user-notifier";
+import { detectQaBoardLocale } from "../presentation/qa-board-locale";
+import type { QaBoardLocale } from "../presentation/qa-board";
 
 export const BOARD_EXIT_CODES = Object.freeze({ OK: 0, USAGE: 64, INTERNAL: 70 });
 const MAX_INPUT_BYTES = 4 * 1024 * 1024;
@@ -21,6 +23,7 @@ type BoardOptions = Readonly<{
   artifactDir: string;
   openBoard: boolean;
   noNotify: boolean;
+  boardLocale: QaBoardLocale;
   help: boolean;
 }>;
 
@@ -32,6 +35,7 @@ function usage(): string {
     "  --input FILE          Session Board update JSON",
     "  --state-dir DIR      Durable Board state root",
     "  --artifact-dir DIR   Content-addressed artifact root (default: STATE_DIR/artifacts)",
+    "  --board-locale LANG  Board language: auto, en, ko, or zh-CN (default: auto)",
     "  --open-board         Open the stable Board landing page",
     "  --no-notify          Suppress desktop notification (enabled by default)",
     "  --help               Show this message",
@@ -49,6 +53,7 @@ function parseArgs(argv: readonly string[]): BoardOptions {
   let artifactDir: string | undefined;
   let open = false;
   let noNotify = false;
+  let boardLocale = detectQaBoardLocale();
   let help = false;
   for (let index = 1; index < argv.length; index += 1) {
     const arg = argv[index]!;
@@ -61,14 +66,19 @@ function parseArgs(argv: readonly string[]): BoardOptions {
     else if (arg === "--input") inputPath = next();
     else if (arg === "--state-dir") stateDir = next();
     else if (arg === "--artifact-dir") artifactDir = next();
+    else if (arg === "--board-locale") {
+      const value = next();
+      if (value !== "auto" && value !== "en" && value !== "ko" && value !== "zh-CN") fail("--board-locale must be auto, en, ko, or zh-CN");
+      boardLocale = value === "auto" ? detectQaBoardLocale() : value;
+    }
     else if (arg === "--open-board") open = true;
     else if (arg === "--no-notify") noNotify = true;
     else fail(`unknown board option: ${arg}`);
   }
-  if (help) return { inputPath: inputPath ?? "", stateDir: stateDir ?? "", artifactDir: artifactDir ?? "", openBoard: open, noNotify, help };
+  if (help) return { inputPath: inputPath ?? "", stateDir: stateDir ?? "", artifactDir: artifactDir ?? "", openBoard: open, noNotify, boardLocale, help };
   if (!inputPath || !stateDir) fail("--input and --state-dir are required");
   const absoluteState = resolve(stateDir);
-  return { inputPath: resolve(inputPath), stateDir: absoluteState, artifactDir: resolve(artifactDir ?? join(absoluteState, "artifacts")), openBoard: open, noNotify, help };
+  return { inputPath: resolve(inputPath), stateDir: absoluteState, artifactDir: resolve(artifactDir ?? join(absoluteState, "artifacts")), openBoard: open, noNotify, boardLocale, help };
 }
 
 async function readInput(path: string): Promise<unknown> {
@@ -120,7 +130,7 @@ export async function runBoardUpdate(
   try {
     const update = parseSessionBoardUpdate(await readInput(options.inputPath));
     artifactStore = new LocalArtifactStore(options.artifactDir);
-    const publication = await publishSessionBoardUpdate({ update, stateDir: options.stateDir, artifactReader: artifactStore });
+    const publication = await publishSessionBoardUpdate({ update, stateDir: options.stateDir, artifactReader: artifactStore, locale: options.boardLocale });
     await verifySessionBoardPublication(options.stateDir, publication);
     stderr(`Traceknot Board: ${publication.entrypointUri}\n`);
     if (!options.noNotify) {
