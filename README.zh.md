@@ -169,7 +169,7 @@ CLI 的 local collector 是由 harness 管理的 separate-verification-context p
 
 visual-composition obligation 必须提供绝对路径的 `visualCompositionOraclePath`，并声明每个 screenshot、design-token-resolution 和 approved-visual-reference artifact 的原始 `type`、`digest` 与 `path`。UI content-resilience obligation 必须提供 `uiResilienceOraclePath` 及适用的 approval artifact；不适用的 profile 也必须保存 approval。缺少独立证据、完整文本访问或认证 review receipt 时，结果为 `INCOMPLETE`，不能伪造为 `PASS`。
 
-独立 producer 可以通过绝对 `executionCompletionPath` 返回 `verification-execution-completion/v1` envelope。Traceknot 会绑定 request、plan、obligation、snapshot、idempotency key、output、artifact 和 oracle digest，并使用 root-owned `/etc/traceknot/trusted-producer.json` 中的 Ed25519 `trusted-producer-policy/v1` 验证签名；不可信或不完整的输入 fail-closed。
+独立 producer 可以通过绝对 `executionCompletionPath` 返回 `verification-execution-completion/v1` envelope。Traceknot 会绑定 request、plan、obligation、snapshot、idempotency key、output、artifact 和 oracle digest，并使用 root-owned、regular file 且没有 group 或 world write 权限的 `/etc/traceknot/trusted-producer.json` 中的 Ed25519 `trusted-producer-policy/v1` 验证签名；不可信或不完整的输入 fail-closed。
 
 默认输出为 JSON。使用 `--format markdown` 获取可读报告，使用 `--report-only --run-id ID` 读取已完成运行而不重新执行命令。退出码：`0` 表示 PASS 或 PASS_WITH_ACCEPTED_RISK，`1` 表示 FAIL，`2` 表示 BLOCKED，`3` 表示 INCOMPLETE，`64` 表示输入无效，`70` 表示内部错误。
 
