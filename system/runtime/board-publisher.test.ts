@@ -347,6 +347,19 @@ describe("canonical Board publisher", () => {
     }
   });
 
+  test("rejects executable HTML before privacy scanning", async () => {
+    const sessionId = "abcdefgh";
+    const fixture = await boardFixture({ sessionId });
+    try {
+      await replaceEntrypoint(fixture.entrypoint, "<!doctype html><script>document.body.textContent=String.fromCharCode(97,98,99,100,101,102,103,104)</script>");
+      const runner: CanonicalCliRunner = async () => ({ exitCode: 0, stdout: "", stderr: `Traceknot Board: ${fixture.entrypoint}\n` });
+      await expect(createCanonicalCliBoardPublisher({ executable: "/bin/traceknot", runner }).publish({ ...request, sessionId, stateDir: fixture.root }))
+        .rejects.toThrow("page contains active HTML");
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
   test("rejects an integrity-consistent Board page that exposes the raw session ID", async () => {
     const fixture = await boardFixture();
     try {

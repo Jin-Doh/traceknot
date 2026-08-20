@@ -235,6 +235,20 @@ function renderedPageText(source: string): string {
   return text.join("");
 }
 
+function containsActiveHtml(source: string): boolean {
+  let active = false;
+  const visitNode = (node: ParsedHtmlNode): void => {
+    if (node.nodeName === "script" || (node.attrs ?? []).some(attribute => /^on[a-z]+$/iu.test(attribute.name)
+      || ["href", "src", "action", "formaction"].includes(attribute.name) && /^\s*javascript:/iu.test(attribute.value))) {
+      active = true;
+      return;
+    }
+    for (const child of node.childNodes ?? []) visitNode(child);
+  };
+  visitNode(parse(source) as unknown as ParsedHtmlNode);
+  return active;
+}
+
 function closedKeys(value: Readonly<Record<string, unknown>>, required: readonly string[], optional: readonly string[] = []): boolean {
   const keys = Object.keys(value);
   return required.every(key => key in value) && keys.every(key => required.includes(key) || optional.includes(key));
@@ -330,6 +344,7 @@ export async function validatePublishedBoard(
       if (expected?.sessionId !== undefined && file.path.endsWith(".html")) {
         let text: string;
         try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { throw Error(`canonical Board publisher page is not UTF-8: ${file.path}`); }
+        if (containsActiveHtml(text)) throw Error(`canonical Board publisher page contains active HTML: ${file.path}`);
         const decodedSource = text.includes("&") ? decodeHTML(text) : text;
         const decodedCss = decodeCssEscapes(text);
         if (containsBoundaryIdentity(decodedSource, expected.sessionId)
