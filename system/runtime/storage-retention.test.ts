@@ -51,10 +51,11 @@ async function sessionBoard(
 ): Promise<void> {
   const path = join(state, "sessions", sessionKey, "boards", boardId);
   const html = `<html>${boardId}</html>`;
+  const pagePaths = ["index.html", "index.en.html", "index.ko.html", "index.zh-CN.html"] as const;
   await mkdir(path, { recursive: true });
   await mkdir(join(path, "evidence"));
-  await writeFile(join(path, "index.html"), html);
-  const manifestBytes = Buffer.from(JSON.stringify({
+  for (const pagePath of pagePaths) await writeFile(join(path, pagePath), html);
+  const manifestValue = {
     schemaVersion: "traceknot-qa-board/v1",
     sessionKey,
     runId: input.runId,
@@ -71,8 +72,9 @@ async function sessionBoard(
     verdict: "PASS",
     counts: { mandatory: 0, passed: 0, failed: 0, blocked: 0, incomplete: 0 },
     generatedBy: { invocationId: boardId.length > 128 ? boardId.slice(boardId.indexOf("-") + 1) : boardId, sessionHost: "omp", sessionRef: sessionKey },
-    files: [{ path: "index.html", role: "entrypoint", sha256: createHash("sha256").update(html).digest("hex"), bytes: Buffer.byteLength(html) }],
-  }));
+    files: pagePaths.map(pagePath => ({ path: pagePath, role: pagePath === "index.html" ? "entrypoint" : "localized-view", sha256: createHash("sha256").update(html).digest("hex"), bytes: Buffer.byteLength(html) })),
+  };
+  const manifestBytes = Buffer.from(JSON.stringify(manifestValue));
   await writeFile(join(path, "manifest.json"), manifestBytes);
   await writeFile(join(path, "current.json"), JSON.stringify({
     schemaVersion: "traceknot-session-board-current/v1",

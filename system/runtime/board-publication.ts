@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { decodeHTML } from "entities";
 import { parse } from "parse5";
 import { sessionReference, type QaBoardManifest } from "../presentation/qa-board";
+import { parseQaBoardCurrent, parseQaBoardManifest, validateManifestCurrentBinding, type QaBoardCurrent } from "../presentation/qa-board-validation";
 import { containsBoundaryIdentity, containsBoundaryIdentityDeep } from "../presentation/session-identity";
 import { isIsoUtcTimestamp } from "../presentation/timestamp";
 import { closeSecureRoot, openSecureRoot, readSecureRegularFile } from "./local-artifact-store";
@@ -217,11 +218,17 @@ function sameSet(actual: ReadonlySet<string>, expected: ReadonlySet<string>): bo
 }
 
 
-type ParsedHtmlNode = Readonly<{ nodeName: string; value?: string; childNodes?: readonly ParsedHtmlNode[] }>;
+type ParsedHtmlAttribute = Readonly<{ name: string; value: string }>;
+type ParsedHtmlNode = Readonly<{ nodeName: string; value?: string; attrs?: readonly ParsedHtmlAttribute[]; childNodes?: readonly ParsedHtmlNode[] }>;
 function renderedPageText(source: string): string {
   const text: string[] = [];
   const visitNode = (node: ParsedHtmlNode): void => {
     if (node.nodeName === "#text" && node.value !== undefined) text.push(node.value);
+    for (const attribute of node.attrs ?? []) {
+      if (!["href", "src", "action", "formaction", "poster", "cite", "data", "longdesc", "usemap", "ping", "srcset"].includes(attribute.name)) continue;
+      text.push(attribute.value);
+      try { text.push(decodeURIComponent(attribute.value)); } catch { /* Preserve raw URL when percent decoding is malformed. */ }
+    }
     for (const child of node.childNodes ?? []) visitNode(child);
   };
   visitNode(parse(source) as unknown as ParsedHtmlNode);
@@ -234,82 +241,12 @@ function closedKeys(value: Readonly<Record<string, unknown>>, required: readonly
 }
 
 function parsePublishedManifest(value: unknown): QaBoardManifest {
-  const manifest = object(value, "canonical Board manifest");
-  const required = ["schemaVersion", "runId", "requestId", "rootIdentity", "snapshotId", "sourceRevision", "sourceState", "sourceUpdatedAt", "generatedAt", "entrypoint", "authoritative", "assurance", "verdict", "counts", "generatedBy", "files"];
-  if (!closedKeys(manifest, required, ["sessionKey"])) throw Error("canonical Board publisher manifest keys are invalid");
-  if (manifest.schemaVersion !== "traceknot-qa-board/v1" || manifest.entrypoint !== "index.html" || manifest.authoritative !== false) throw Error("canonical Board publisher manifest contract is invalid");
-  for (const key of ["runId", "requestId", "rootIdentity", "snapshotId", "sourceUpdatedAt", "generatedAt"] as const) {
-    if (typeof manifest[key] !== "string" || manifest[key].length === 0) throw Error(`canonical Board publisher manifest ${key} is invalid`);
-  }
-  if (!isIsoUtcTimestamp(manifest.sourceUpdatedAt) || !isIsoUtcTimestamp(manifest.generatedAt)) throw Error("canonical Board publisher manifest timestamps are invalid");
-  if (!Number.isSafeInteger(manifest.sourceRevision) || Number(manifest.sourceRevision) < 0) throw Error("canonical Board publisher manifest sourceRevision is invalid");
-  if (!["CREATED", "BASIS_ESTABLISHED", "DISCOVERY_COMPLETED", "PLANNED", "EXECUTING", "EVIDENCE_EVALUATED", "VERDICT_RESOLVED", "TERMINAL"].includes(String(manifest.sourceState))) throw Error("canonical Board publisher manifest sourceState is invalid");
-  if (!["PASS", "PASS_WITH_ACCEPTED_RISK", "FAIL", "BLOCKED", "INCOMPLETE"].includes(String(manifest.verdict))) throw Error("canonical Board publisher manifest verdict is invalid");
-
-  const assurance = object(manifest.assurance, "canonical Board manifest assurance");
-  if (!closedKeys(assurance, ["context", "requiredIndependence", "releaseStatus"]) || !["local", "release"].includes(String(assurance.context)) || !["separate-verification-context", "independent-producer"].includes(String(assurance.requiredIndependence)) || !["not-evaluated", "satisfied", "insufficient"].includes(String(assurance.releaseStatus))) throw Error("canonical Board publisher manifest assurance is invalid");
-  const counts = object(manifest.counts, "canonical Board manifest counts");
-  if (!closedKeys(counts, ["mandatory", "passed", "failed", "blocked", "incomplete"]) || Object.values(counts).some(count => !Number.isSafeInteger(count) || Number(count) < 0)) throw Error("canonical Board publisher manifest counts are invalid");
-  const generatedBy = object(manifest.generatedBy, "canonical Board manifest generatedBy");
-  if (!closedKeys(generatedBy, ["invocationId", "sessionHost", "sessionRef"]) || Object.values(generatedBy).some(item => typeof item !== "string" || item.length === 0)) throw Error("canonical Board publisher manifest producer is invalid");
-  if (manifest.sessionKey !== undefined && (typeof manifest.sessionKey !== "string" || !/^s-[0-9a-f]{64}$/.test(manifest.sessionKey))) throw Error("canonical Board publisher manifest sessionKey is invalid");
-  if (!Array.isArray(manifest.files) || manifest.files.length === 0) throw Error("canonical Board publisher manifest files are invalid");
-
-  let entrypoints = 0;
-  for (const candidate of manifest.files) {
-    const file = object(candidate, "canonical Board manifest file");
-    if (!closedKeys(file, ["path", "role", "sha256", "bytes"], ["artifactDigest", "observationId"])) throw Error("canonical Board publisher manifest file keys are invalid");
-    if (typeof file.path !== "string" || !/^(?:index(?:\.(?:en|ko|zh-CN))?\.html|evidence\/[0-9a-f]{64}\.png)$/.test(file.path)) throw Error("canonical Board publisher manifest file path is invalid");
-    if (!["entrypoint", "localized-view", "screenshot-preview"].includes(String(file.role)) || typeof file.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(file.sha256) || !Number.isSafeInteger(file.bytes) || Number(file.bytes) < 0) throw Error("canonical Board publisher manifest file contract is invalid");
-    const expectedRole = file.path === "index.html" ? "entrypoint" : file.path.endsWith(".html") ? "localized-view" : "screenshot-preview";
-    if (file.role !== expectedRole) throw Error(`canonical Board publisher manifest role does not match path: ${file.path}`);
-    if (file.artifactDigest !== undefined && (typeof file.artifactDigest !== "string" || !/^[0-9a-f]{64}$/.test(file.artifactDigest))) throw Error("canonical Board publisher manifest artifact digest is invalid");
-    if (file.observationId !== undefined && (typeof file.observationId !== "string" || file.observationId.length === 0)) throw Error("canonical Board publisher manifest observation ID is invalid");
-    if (file.path === "index.html" && file.role === "entrypoint") entrypoints += 1;
-  }
-  if (entrypoints !== 1) throw Error("canonical Board publisher manifest must declare exactly one entrypoint");
-  const declaredPaths = new Set(manifest.files.map(file => (file as Readonly<{ path: string }>).path));
-  for (const requiredPath of ["index.html", "index.en.html", "index.ko.html", "index.zh-CN.html"]) {
-    if (!declaredPaths.has(requiredPath)) throw Error(`canonical Board publisher manifest is missing required page: ${requiredPath}`);
-  }
-  return manifest as unknown as QaBoardManifest;
+  return parseQaBoardManifest(value);
 }
 
-type PublishedCurrent = Readonly<{
-  schemaVersion: "traceknot-session-board-current/v1";
-  sessionKey: string;
-  sourceRevision: number;
-  invocationId: string;
-  revisionPath: string;
-  entrypoint: "index.html";
-  entrypointSha256: string;
-  manifestSha256: string;
-  sessionRef: string;
-  generatedAt: string;
-  authoritative: false;
-}>;
-
+type PublishedCurrent = QaBoardCurrent;
 function parsePublishedCurrent(value: unknown, sessionKey: string, selectorTarget: string): PublishedCurrent {
-  const current = object(value, "canonical Board current pointer");
-  const required = ["schemaVersion", "sessionKey", "sourceRevision", "invocationId", "revisionPath", "entrypoint", "entrypointSha256", "manifestSha256", "sessionRef", "generatedAt", "authoritative"] as const;
-  if (!closedKeys(current, required)) throw Error("canonical Board publisher current pointer keys are invalid");
-  if (current.schemaVersion !== "traceknot-session-board-current/v1" || current.sessionKey !== sessionKey || current.revisionPath !== selectorTarget || current.entrypoint !== "index.html" || current.authoritative !== false) {
-    throw Error("canonical Board publisher reported an invalid current pointer");
-  }
-  if (!Number.isSafeInteger(current.sourceRevision) || Number(current.sourceRevision) < 0) throw Error("canonical Board publisher current pointer sourceRevision is invalid");
-  if (typeof current.invocationId !== "string" || !/^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(current.invocationId)) throw Error("canonical Board publisher current pointer invocationId is invalid");
-  if (typeof current.entrypointSha256 !== "string" || !/^[0-9a-f]{64}$/.test(current.entrypointSha256) || typeof current.manifestSha256 !== "string" || !/^[0-9a-f]{64}$/.test(current.manifestSha256)) {
-    throw Error("canonical Board publisher current pointer digest is invalid");
-  }
-  if (typeof current.sessionRef !== "string" || current.sessionRef.length === 0) throw Error("canonical Board publisher current pointer sessionRef is invalid");
-  if (typeof current.generatedAt !== "string" || !/^\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2\d))T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?Z$/.test(current.generatedAt) || !Number.isFinite(Date.parse(current.generatedAt))) {
-    throw Error("canonical Board publisher current pointer generatedAt is invalid");
-  }
-  const [year, month, day] = current.generatedAt.slice(0, 10).split("-").map(Number) as [number, number, number];
-  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]!;
-  if (day > daysInMonth) throw Error("canonical Board publisher current pointer generatedAt is invalid");
-  return current as unknown as PublishedCurrent;
+  return parseQaBoardCurrent(value, sessionKey, selectorTarget);
 }
 
 export async function validatePublishedBoard(
@@ -370,12 +307,7 @@ export async function validatePublishedBoard(
     try { manifestValue = JSON.parse(new TextDecoder().decode(immutableManifestBytes)) as unknown; } catch { throw Error("canonical Board publisher reported malformed immutable manifest"); }
     if (expected?.sessionId !== undefined && containsBoundaryIdentityDeep(manifestValue, expected.sessionId)) throw Error("canonical Board publisher manifest exposes the raw session ID");
     const manifest = parsePublishedManifest(manifestValue);
-    if (manifest.authoritative !== false
-      || manifest.sessionKey !== sessionKey
-      || manifest.sourceRevision !== current.sourceRevision
-      || manifest.generatedBy.invocationId !== current.invocationId
-      || manifest.generatedBy.sessionRef !== current.sessionRef
-      || manifest.generatedAt !== current.generatedAt) throw Error("canonical Board publisher immutable manifest identity does not match current pointer");
+    validateManifestCurrentBinding(manifest, current);
     const declaredPaths = manifest.files.map(file => file.path);
     if (new Set(declaredPaths).size !== declaredPaths.length) throw Error("canonical Board publisher manifest contains duplicate file declarations");
     const expectedFiles = new Set(["manifest.json", "current.json", ...declaredPaths]);

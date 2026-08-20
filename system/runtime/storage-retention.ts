@@ -5,6 +5,7 @@ import { join, resolve, sep } from "node:path";
 import { ARTIFACT_CANONICAL_LOCK_FILE, ArtifactNotFoundError, assertPrivateRootPath, assertSecureRoot, closeSecureDescriptor, closeSecureRoot, openOrCreateSecureDirectoryPath, openSecureDirectory, openSecureRoot, readSecureRegularFile, secureFlock, secureFsync, secureOpenAt, secureRenameAt, secureRmdirAt, secureUnlinkAt, STORAGE_MAINTENANCE_LOCK_FILE, type SecureRootDescriptor } from "./local-artifact-store";
 import { assertCanonicalRun } from "./verification-run";
 import { isIsoUtcTimestamp } from "../presentation/timestamp";
+import { QA_BOARD_PAGE_PATHS, parseQaBoardCurrent, parseQaBoardManifest, validateManifestCurrentBinding } from "../presentation/qa-board-validation";
 
 const DIGEST = /^[0-9a-f]{64}$/;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -281,7 +282,8 @@ async function validBoardContents(boardPath: string, manifest: unknown, sessionB
   if (!validBoardManifest(manifest) || !Array.isArray(manifest.files)) return false;
   const declared = manifest.files as readonly JsonRecord[];
   const declaredPaths = declared.map(file => String(file.path));
-  if (new Set(declaredPaths).size !== declaredPaths.length || !declaredPaths.includes("index.html")) return false;
+  const expectedPages = manifest.sessionKey === undefined ? ["index.html"] : QA_BOARD_PAGE_PATHS;
+  if (!expectedPages.every(path => declaredPaths.includes(path))) return false;
   const expectedDirs = new Set<string>(manifest.sessionKey === undefined ? [] : ["evidence"]);
   for (const path of declaredPaths) {
     const components = path.split("/");
@@ -1025,7 +1027,6 @@ async function removeLeasedEphemeralRoot(root: SecureRootDescriptor, relativePat
     if (directoryFd !== undefined) closeSecureDescriptor(directoryFd);
   }
 }
-
 
 async function removeRelative(root: SecureRootDescriptor, relativePath: string): Promise<boolean> {
   const components = relativePath.split("/");

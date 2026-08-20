@@ -41,6 +41,7 @@ import {
 import { detectQaBoardLocale } from "./qa-board-locale";
 import { containsBoundaryIdentityDeep } from "./session-identity";
 import { isIsoUtcTimestamp } from "./timestamp";
+import { parseQaBoardCurrent, parseQaBoardManifest, validateManifestCurrentBinding } from "./qa-board-validation";
 export type BoardArtifactReader = Readonly<{
   readArtifact: (digest: string) => Promise<Uint8Array>;
 }>;
@@ -1027,9 +1028,13 @@ async function existingSessionRevisionMatches(
 
 async function retainedSessionRevisionIsValid(root: SecureRootDescriptor, revisionPath: string, manifestValue: UnknownRecord): Promise<boolean> {
   try {
-    const manifest = manifestValue as unknown as QaBoardManifest;
     const manifestBytes = await readSecureRegularFile(root.fd, secureRelativePath(root, join(revisionPath, "manifest.json")), 4 * 1024 * 1024);
     const currentBytes = await readSecureRegularFile(root.fd, secureRelativePath(root, join(revisionPath, "current.json")), 1024 * 1024);
+    const manifest = parseQaBoardManifest(manifestValue);
+    const currentValue = JSON.parse(new TextDecoder().decode(currentBytes)) as unknown;
+    const boardId = revisionPath.split("/").at(-1)!;
+    const current = parseQaBoardCurrent(currentValue, String(manifest.sessionKey), `boards/${boardId}`);
+    validateManifestCurrentBinding(manifest, current);
     return await existingSessionRevisionMatches(root, revisionPath, manifest, manifestBytes, currentBytes);
   } catch {
     return false;
