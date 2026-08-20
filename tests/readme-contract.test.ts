@@ -481,6 +481,15 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLifecycleContract("README.md", reversed)).toThrow("Node.js minimum version boundary");
   });
 
+  test("does not accept prerequisite semantics preserved only in fenced code", () => {
+    const bunBoundary = "Bun 1.3.14 or later";
+    const reversed = localizedReadmes[0]
+      .replace(bunBoundary, "Bun 1.3.14 or earlier")
+      .replace(bunBoundary, "Bun 1.3.14 or earlier")
+      .replace("<!-- readme-section:documentation -->", `\`\`\`text\n${bunBoundary}\n\`\`\`\n\n<!-- readme-section:documentation -->`);
+    expect(() => checkReadmeLifecycleContract("README.md", reversed)).toThrow("Bun minimum version boundary");
+  });
+
 
   test("documents the curl path only as an optional non-owning launcher", () => {
     const canonical = localizedReadmes[0];

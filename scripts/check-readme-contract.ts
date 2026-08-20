@@ -162,8 +162,8 @@ function visibleHtmlTree(content: string, removePre = false): HastRoot {
   return tree;
 }
 
-function renderedHtmlRange(content: string, start: number, end: number): string {
-  const tree = visibleHtmlTree(content);
+function renderedHtmlRange(content: string, start: number, end: number, removePre = false): string {
+  const tree = visibleHtmlTree(content, removePre);
   const overlaps = (node: Content): boolean => {
     const nodeStart = node.position?.start.offset;
     const nodeEnd = node.position?.end.offset;
@@ -185,7 +185,7 @@ function renderedInstallLifecycle(content: string): string {
   const starts = markers.get("install") ?? [];
   const ends = markers.get("documentation") ?? [];
   if (starts.length !== 1 || ends.length !== 1 || ends[0]! <= starts[0]!) return "";
-  return renderedHtmlRange(content, starts[0], ends[0]);
+  return renderedHtmlRange(content, starts[0], ends[0], true);
 }
 
 
@@ -304,7 +304,7 @@ function renderedCapabilitySection(content: string, name: string): string | unde
   const starts = collectCapabilityMarkerOffsets(content, name);
   const ends = collectSectionMarkerOffsets(content).get("install") ?? [];
   if (starts.length !== 1 || ends.length !== 1 || ends[0]! <= starts[0]!) return undefined;
-  return renderedHtmlRange(content, starts[0], ends[0]);
+  return renderedHtmlRange(content, starts[0], ends[0], true);
 }
 
 function hasCapabilitySection(content: string, name: string): boolean {
@@ -527,7 +527,7 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
   const whyOffset = sectionOffsets.get("why")?.[0];
   const installOffset = sectionOffsets.get("install")?.[0];
   const documentationOffset = sectionOffsets.get("documentation")?.[0];
-  const visibleQuickStart = quickStartOffset !== undefined && whyOffset !== undefined ? renderedHtmlRange(content, quickStartOffset, whyOffset) : "";
+  const visibleQuickStart = quickStartOffset !== undefined && whyOffset !== undefined ? renderedHtmlRange(content, quickStartOffset, whyOffset, true) : "";
   const lifecycleCommandLines = fencedCommandLines(content, installOffset, documentationOffset);
   const verifyCommandLines = fencedCommandLines(content, collectCapabilityMarkerOffsets(content, "verify")[0], installOffset);
   const documentLiterals = new Set(["macOS", "Linux", "libc.so.6", "musl", "Windows"]);
