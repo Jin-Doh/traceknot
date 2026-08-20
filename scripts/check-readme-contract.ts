@@ -316,7 +316,7 @@ function hasCapabilitySection(content: string, name: string): boolean {
     visit(visibleHtmlTree(content, true), "element", (node: Element) => {
       const start = node.position?.start.offset;
       const end = node.position?.end.offset;
-      if (node.tagName === "h2" && start !== undefined && end !== undefined && start >= marker && end <= install) hasHeading = true;
+      if (node.tagName === "h2" && toText(node).trim().length > 0 && start !== undefined && end !== undefined && start >= marker && end <= install) hasHeading = true;
     });
   }
   return rendered !== undefined && (name !== "verify" || hasHeading);
