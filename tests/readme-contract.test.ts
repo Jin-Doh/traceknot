@@ -431,6 +431,11 @@ describe("README localization section contract", () => {
     expect(() => checkReadmeLifecycleContract("README.md", reversed)).toThrow("unsupported platform boundary");
   });
 
+  test("enforces the Bun minimum-version guidance", () => {
+    const reversed = localizedReadmes[0].replaceAll("Bun 1.3.14 or later", "Bun 1.3.14 or earlier");
+    expect(() => checkReadmeLifecycleContract("README.md", reversed)).toThrow("Bun minimum version boundary");
+  });
+
   test("documents the curl path only as an optional non-owning launcher", () => {
     const canonical = localizedReadmes[0];
     expect(canonical).toContain("optional prefix launcher/updater");

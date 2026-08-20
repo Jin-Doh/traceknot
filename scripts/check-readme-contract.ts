@@ -84,6 +84,11 @@ const REQUIRED_PLATFORM_BOUNDARIES: Readonly<Record<string, string>> = {
   "README.ko.md": "Native Windows와 musl-only Linux는 local artifact store와 command collector가 지원하지 않으며",
   "README.zh.md": "Local artifact store 与 command collector 不支持原生 Windows 或 musl-only Linux",
 };
+const REQUIRED_BUN_MINIMUM_BOUNDARIES: Readonly<Record<string, string>> = {
+  "README.md": "Bun 1.3.14 or later",
+  "README.ko.md": "Bun 1.3.14 이상",
+  "README.zh.md": "Bun 1.3.14 或更高版本",
+};
 const REQUIRED_PROJECT_LOCAL_COMMANDS: ReadonlyArray<readonly [string, RegExp]> = [
   ["project-local verify", /(?:^|\s)\.agents\/skills\/traceknot\/bin\/traceknot verify/u],
   ["project-local self-check", /(?:^|\s)\.agents\/skills\/traceknot\/bin\/traceknot self-check/u],
@@ -499,6 +504,9 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
   const missingPlatformBoundary = REQUIRED_PLATFORM_BOUNDARIES[path] !== undefined && !visibleDocument.includes(REQUIRED_PLATFORM_BOUNDARIES[path])
     ? ["unsupported platform boundary"]
     : [];
+  const missingBunMinimum = REQUIRED_BUN_MINIMUM_BOUNDARIES[path] !== undefined && !visibleDocument.includes(REQUIRED_BUN_MINIMUM_BOUNDARIES[path])
+    ? ["Bun minimum version boundary"]
+    : [];
   const missingLauncherBoundaries = (REQUIRED_LAUNCHER_BOUNDARIES[path] ?? [])
     .filter(literal => !visibleLifecycle.includes(literal))
     .map(literal => `launcher boundary ${literal}`);
@@ -506,7 +514,7 @@ export function checkReadmeLifecycleContract(path: string, content: string): voi
     .filter(([label]) => label !== "project-local verify" || visibleVerify !== undefined)
     .filter(([label, pattern]) => !pattern.test(label === "project-local verify" ? visibleVerify ?? "" : visibleLifecycle))
     .map(([label]) => label);
-  const missingContracts = [...missing, ...missingCapabilities, ...missingGlobalVerify, ...missingGlobalLifecycleCommands, ...missingLauncherBoundaries, ...missingPlatformBoundary, ...missingProjectCommands];
+  const missingContracts = [...missing, ...missingCapabilities, ...missingGlobalVerify, ...missingGlobalLifecycleCommands, ...missingLauncherBoundaries, ...missingPlatformBoundary, ...missingBunMinimum, ...missingProjectCommands];
   if (missingContracts.length > 0) throw new Error(`${path}: canonical installation lifecycle is missing: ${missingContracts.join(", ")}`);
 }
 
