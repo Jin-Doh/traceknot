@@ -151,6 +151,8 @@ FAIL → BLOCKED → INCOMPLETE → PASS_WITH_ACCEPTED_RISK → PASS
 
 정식 Skill bundle과 호스트 중립 코어는 지금 사용할 수 있습니다. 하네스 완료를 확정할 권한은 별도 통합 과제로 남아 있습니다.
 
+<!-- readme-capability:verify -->
+
 ## Verify CLI
 
 Verify CLI는 검증된 명시적 명령 manifest를 로컬 collector로 실행하고 VerificationRun checkpoint를 원자적으로 저장합니다. 설치 범위와 같은 실행 파일을 사용해야 하며, 프로젝트 로컬 설치가 관련 없는 전역 실행 파일로 fallback하면 안 됩니다. 실행 상태와 content-addressed artifact는 기본적으로 저장소 밖의 사용자 cache에 저장되므로 검증 중인 Git snapshot을 바꾸지 않습니다.

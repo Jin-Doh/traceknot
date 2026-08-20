@@ -151,6 +151,8 @@ Use Traceknot for implementation verification, bug-fix confirmation, release che
 
 The canonical Skill bundle and host-neutral core are usable now. Authoritative harness completion remains a separate integration project.
 
+<!-- readme-capability:verify -->
+
 ## Verify CLI
 
 The Verify CLI executes a validated explicit-command manifest through the local collector and persists each VerificationRun checkpoint atomically. Use the executable from the same installation scope; a project-local-only installation must not fall back to an unrelated global executable. Run state and content-addressed artifacts default to an external user cache, so their writes do not change the Git snapshot under verification:
