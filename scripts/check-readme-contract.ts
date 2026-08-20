@@ -311,8 +311,15 @@ function hasCapabilitySection(content: string, name: string): boolean {
   const rendered = renderedCapabilitySection(content, name);
   const marker = collectCapabilityMarkerOffsets(content, name)[0];
   const install = collectSectionMarkerOffsets(content).get("install")?.[0];
-  const section = marker !== undefined && install !== undefined ? content.slice(marker, install) : "";
-  return rendered !== undefined && (name !== "verify" || /^##[ \t]+[^\n]+/mu.test(section));
+  let hasHeading = false;
+  if (marker !== undefined && install !== undefined) {
+    visit(visibleHtmlTree(content, true), "element", (node: Element) => {
+      const start = node.position?.start.offset;
+      const end = node.position?.end.offset;
+      if (node.tagName === "h2" && start !== undefined && end !== undefined && start >= marker && end <= install) hasHeading = true;
+    });
+  }
+  return rendered !== undefined && (name !== "verify" || hasHeading);
 }
 
 
