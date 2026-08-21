@@ -920,7 +920,6 @@ if [ ! -f "$ACTIVE_STATE" ] && [ "$ADOPTED_AT" -eq 0 ]; then
     ADOPTED_LOCK_SHA256=$LOCK_ENTRY_SHA256
     ADOPTION_CREATED=1
 fi
-write_config "$AUTOMATIC" "$TRUSTED_NOW" "$ADOPTED_AT" "$ADOPTED_LOCK_SHA256"
 
 jq -r '
   .[]
@@ -1068,10 +1067,12 @@ while IFS="$(printf '\t')" read -r RELEASE_TAG RELEASE_PUBLISHED MANIFEST_URL; d
 done < "$TMP_ROOT/candidates.tsv"
 
 if [ "$CANDIDATE_FOUND" -eq 0 ]; then
+    write_config "$AUTOMATIC" "$TRUSTED_NOW" "$ADOPTED_AT" "$ADOPTED_LOCK_SHA256"
     printf '%s\n' 'No immutable stable release with an update manifest is available.'
     exit 0
 fi
 if [ "$POST_ADOPTION_CANDIDATE" -eq 0 ] && [ ! -f "$ACTIVE_STATE" ]; then
+    write_config "$AUTOMATIC" "$TRUSTED_NOW" "$ADOPTED_AT" "$ADOPTED_LOCK_SHA256"
     if [ "$ADOPTION_CREATED" -eq 1 ]; then
         printf 'Recorded unmanaged installation baseline at %s; pre-existing releases will not be applied automatically.\n' "$ADOPTED_AT"
     else
@@ -1080,10 +1081,12 @@ if [ "$POST_ADOPTION_CANDIDATE" -eq 0 ] && [ ! -f "$ACTIVE_STATE" ]; then
     exit 0
 fi
 if [ "$ELIGIBLE" -eq 0 ] && [ "$CURRENT_MATCH" -eq 1 ]; then
+    write_config "$AUTOMATIC" "$TRUSTED_NOW" "$ADOPTED_AT" "$ADOPTED_LOCK_SHA256"
     printf '%s\n' 'The newest eligible Traceknot release is already installed.'
     exit 0
 fi
 if [ "$ELIGIBLE" -eq 0 ]; then
+    write_config "$AUTOMATIC" "$TRUSTED_NOW" "$ADOPTED_AT" "$ADOPTED_LOCK_SHA256"
     printf '%s\n' 'No release has exceeded the seven-day observation requirement.'
     exit 0
 fi
@@ -1095,6 +1098,7 @@ ARTIFACT_NAME=$SELECTED_ARTIFACT_NAME
 ARTIFACT_SIZE=$SELECTED_ARTIFACT_SIZE
 ARTIFACT_SHA=$SELECTED_ARTIFACT_SHA
 ARTIFACT_URL=$SELECTED_ARTIFACT_URL
+write_config "$AUTOMATIC" "$TRUSTED_NOW" "$ADOPTED_AT" "$ADOPTED_LOCK_SHA256"
 printf 'Eligible update: %s (%s)\n' "$RELEASE_TAG" "$ARTIFACT_SHA"
 [ "$COMMAND" = apply ] || exit 0
 [ "$DRY_RUN" -eq 0 ] || { printf 'Would apply %s through Skills CLI to %s\n' "$RELEASE_TAG" "$REGISTRATION"; exit 0; }

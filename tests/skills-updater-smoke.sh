@@ -651,6 +651,8 @@ write_initial_lock "$BAD_DATE_PROJECT/skills-lock.json"
 "$BAD_DATE_SKILL/bin/traceknot-skills-update" status --project "$BAD_DATE_PROJECT" >/dev/null
 BAD_DATE_STATE=$BAD_DATE_PROJECT/.agents/.traceknot-update
 seed_adoption "$BAD_DATE_STATE" "$BAD_DATE_PROJECT/skills-lock.json" 0 "$((FAKE_NOW - 1814400))"
+sed 's/^lastCheck=0$/lastCheck=123/' "$BAD_DATE_STATE/config" > "$BAD_DATE_STATE/config.tmp"
+mv "$BAD_DATE_STATE/config.tmp" "$BAD_DATE_STATE/config"
 cp "$FIXTURE/manifest-lower.json" "$TMP_DIR/manifest-lower.saved"
 jq '.publishedAt = "2026-02-31T00:00:00Z"' "$FIXTURE/manifest-lower.json" \
     > "$FIXTURE/manifest-lower.json.tmp"
@@ -659,6 +661,7 @@ if "$BAD_DATE_SKILL/bin/traceknot-skills-update" check --project "$BAD_DATE_PROJ
     printf '%s\n' 'impossible manifest date was accepted' >&2
     exit 1
 fi
+test "$(sed -n 's/^lastCheck=//p' "$BAD_DATE_STATE/config")" = 123
 mv "$TMP_DIR/manifest-lower.saved" "$FIXTURE/manifest-lower.json"
 cp "$FIXTURE/releases.json" "$TMP_DIR/releases.saved"
 jq '.[0].published_at = "2026-02-31T00:00:00Z"' "$FIXTURE/releases.json" \
