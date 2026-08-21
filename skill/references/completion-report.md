@@ -40,13 +40,13 @@ Board limitation: reason | none
 
 ## Maintenance advisory
 
-After the final QA verdict, harness completion status, and Board status are fixed, invoke the update-notice helper once from the same installed Skill scope when that executable is present:
+After the final QA verdict, harness completion status, and Board status are fixed, invoke the update-notice helper once from the same installed Skill scope when that script is present:
 
 ```sh
 # Global installation
-$HOME/.agents/skills/traceknot/bin/traceknot-update-notice
+sh "$HOME/.agents/skills/traceknot/bin/traceknot-update-notice"
 # Project-local installation, from the project root
-.agents/skills/traceknot/bin/traceknot-update-notice
+sh .agents/skills/traceknot/bin/traceknot-update-notice
 ```
 
 This invocation is maintenance advice outside the governed verification run. The helper exits silently unless the user explicitly enabled the sibling automatic updater and its last trusted check is at least one day old. It may then ask the updater to perform a bounded eligibility check and writes a recommendation only to standard error when a newer release satisfies the seven-day policy. A missing helper, disabled updater, recent check, timeout, dependency failure, network failure, or malformed result is silent and MUST NOT change evidence, coverage, Board status, harness completion, or the QA verdict.
