@@ -23,6 +23,7 @@ case "$CHECK_TIMEOUT" in ''|*[!0-9]*) exit 0 ;; esac
 if [ -n "${CI:-}" ] && [ "$MODE" != force ]; then
     exit 0
 fi
+command -v pgrep >/dev/null 2>&1 || exit 0
 
 BIN_DIR=$(CDPATH='' cd -P "$(dirname "$0")" 2>/dev/null && pwd) || exit 0
 UPDATER=$BIN_DIR/traceknot-skills-update
@@ -43,17 +44,26 @@ if [ "$MODE" != force ] && [ "$LAST_CHECK_LOCAL" -gt 0 ]; then
         exit 0
     fi
 fi
+DEADLINE_EPOCH=$((NOW + CHECK_TIMEOUT))
 
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-update-notice.XXXXXX" 2>/dev/null) || exit 0
 CHECK_OUTPUT=$TMP_ROOT/check.out
 WATCH_DONE=$TMP_ROOT/watch.done
+signal_process_tree() {
+    signal_name=$1
+    process_pid=$2
+    for child_pid in $(pgrep -P "$process_pid" 2>/dev/null || true); do
+        signal_process_tree "$signal_name" "$child_pid"
+    done
+    kill -s "$signal_name" "$process_pid" 2>/dev/null || true
+}
 cleanup() {
     if [ -n "$WATCH_PID" ]; then
-        kill "$WATCH_PID" 2>/dev/null || true
+        signal_process_tree TERM "$WATCH_PID"
         wait "$WATCH_PID" 2>/dev/null || true
     fi
     if [ -n "$CHECK_PID" ]; then
-        kill "$CHECK_PID" 2>/dev/null || true
+        signal_process_tree TERM "$CHECK_PID"
         wait "$CHECK_PID" 2>/dev/null || true
     fi
     [ -z "$TMP_ROOT" ] || rm -rf "$TMP_ROOT"
@@ -61,14 +71,19 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 0' HUP INT TERM
 
-TRACEKNOT_UPDATE_NOTICE=0 TRACEKNOT_UPDATE_NETWORK_TIMEOUT="$CHECK_TIMEOUT" TRACEKNOT_UPDATE_SKIP_SYNC=1 TRACEKNOT_UPDATE_MAINTENANCE=1 "$UPDATER" check >"$CHECK_OUTPUT" 2>/dev/null &
+TRACEKNOT_UPDATE_NOTICE=0 \
+TRACEKNOT_UPDATE_DEADLINE_EPOCH="$DEADLINE_EPOCH" \
+TRACEKNOT_UPDATE_SKIP_SYNC=1 \
+TRACEKNOT_UPDATE_MAINTENANCE=1 \
+    "$UPDATER" check >"$CHECK_OUTPUT" 2>/dev/null &
 CHECK_PID=$!
 (
-    WATCH_DEADLINE=$(( $(date -u '+%s') + CHECK_TIMEOUT ))
     while [ ! -e "$WATCH_DONE" ]; do
-        WATCH_NOW=$(date -u '+%s')
-        if [ "$WATCH_NOW" -ge "$WATCH_DEADLINE" ]; then
-            kill -TERM "$CHECK_PID" 2>/dev/null || true
+        WATCH_NOW=$(date -u '+%s' 2>/dev/null) || exit 0
+        if [ "$WATCH_NOW" -ge "$DEADLINE_EPOCH" ]; then
+            signal_process_tree TERM "$CHECK_PID"
+            sleep 1
+            signal_process_tree KILL "$CHECK_PID"
             exit 0
         fi
         sleep 1
@@ -84,7 +99,7 @@ else
 fi
 CHECK_PID=
 : > "$WATCH_DONE"
-kill "$WATCH_PID" 2>/dev/null || true
+signal_process_tree TERM "$WATCH_PID"
 wait "$WATCH_PID" 2>/dev/null || true
 WATCH_PID=
 [ "$CHECK_STATUS" -eq 0 ] || exit 0
