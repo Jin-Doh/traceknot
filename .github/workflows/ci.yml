@@ -18,6 +18,47 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  apply-restack:
+    name: apply-restack
+    if: github.event_name == 'pull_request' && github.head_ref == 'feat/runtime-update-advisory'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out advisory branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feat/runtime-update-advisory
+          fetch-depth: 0
+      - name: Restack on current parent and apply review fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin fix/skills-cli-auto-update
+          git merge --no-commit --no-ff -X ours origin/fix/skills-cli-auto-update
+          python3 .github/review-fixes/apply-pr69-restack.py
+          sh -n bin/traceknot-skills-update skill/bin/traceknot-skills-update \
+            bin/traceknot-update-notice skill/bin/traceknot-update-notice \
+            tests/skills-updater-smoke.sh tests/update-notice-smoke.sh
+          cmp -s bin/traceknot-skills-update skill/bin/traceknot-skills-update
+          cmp -s bin/traceknot-update-notice skill/bin/traceknot-update-notice
+          sh tests/skills-updater-smoke.sh
+          sh tests/update-notice-smoke.sh
+          git diff --check
+      - name: Commit restacked branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git checkout origin/fix/skills-cli-auto-update -- .github/workflows/ci.yml
+          git rm -f -- .github/review-fixes/apply-pr69-restack.py .github/workflows/restack-pr69-current-review.yml
+          git add -- .github/workflows/ci.yml bin/traceknot-skills-update \
+            skill/bin/traceknot-skills-update tests/skills-updater-smoke.sh
+          git commit -m "fix: restack advisory on hardened updater"
+          git push origin HEAD:feat/runtime-update-advisory
+
   correctness:
     name: correctness
     runs-on: ubuntu-24.04
