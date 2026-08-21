@@ -38,6 +38,21 @@ Board limitation: reason | none
 
 `Board status: generated` requires an observed stable entrypoint and manifest read back from the canonical session store. Publication uses `traceknot-session-board-update/v1`; the input `view` is presentation data and never canonical evidence. Preserve exact observed paths and URIs; never guess a location or store a raw session ID. `unavailable` is required when session identity, durable persistence, or another required prerequisite is absent. A Board publication failure MUST NOT change the QA verdict or evidence. There is no second Board field set or separate renderer status.
 
+## Maintenance advisory
+
+After the final QA verdict, harness completion status, and Board status are fixed, invoke the update-notice helper once from the same installed Skill scope when that executable is present:
+
+```sh
+# Global installation
+$HOME/.agents/skills/traceknot/bin/traceknot-update-notice
+# Project-local installation, from the project root
+.agents/skills/traceknot/bin/traceknot-update-notice
+```
+
+This invocation is maintenance advice outside the governed verification run. The helper exits silently unless the user explicitly enabled the sibling automatic updater and its last trusted check is at least one day old. It may then ask the updater to perform a bounded eligibility check and writes a recommendation only to standard error when a newer release satisfies the seven-day policy. A missing helper, disabled updater, recent check, timeout, dependency failure, network failure, or malformed result is silent and MUST NOT change evidence, coverage, Board status, harness completion, or the QA verdict.
+
+Skip this maintenance invocation when the requested hardened profile forbids outbound traffic or the host cannot keep the maintenance check outside governed Skill execution. Never substitute `traceknot-skills-update apply` automatically. When the helper prints a recommendation, relay it separately after the completion report; do not place it in the required QA sections or represent it as verification evidence. `TRACEKNOT_UPDATE_NOTICE=0` disables the advisory explicitly.
+
 For a significant UI change, include a separate **Visual-composition coverage** subsection in the conditions, evidence, and coverage portions of the report. It MUST state:
 
 - whether composition-level obligations were in scope for each affected surface and the basis for that decision;
