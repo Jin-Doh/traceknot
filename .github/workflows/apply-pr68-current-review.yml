@@ -6,12 +6,14 @@ on:
       - fix/skills-cli-auto-update
     paths:
       - .github/review-fixes/apply-pr68-current.py
+      - .github/review-fixes/fix-pr68-transform.py
       - .github/workflows/apply-pr68-current-review.yml
   pull_request:
     branches:
       - main
     paths:
       - .github/review-fixes/apply-pr68-current.py
+      - .github/review-fixes/fix-pr68-transform.py
       - .github/workflows/apply-pr68-current-review.yml
 
 permissions:
@@ -28,7 +30,9 @@ jobs:
           ref: fix/skills-cli-auto-update
           fetch-depth: 0
       - name: Apply asserted transformations
-        run: python3 .github/review-fixes/apply-pr68-current.py
+        run: |
+          python3 .github/review-fixes/fix-pr68-transform.py
+          python3 .github/review-fixes/apply-pr68-current.py
       - name: Run focused validation
         run: |
           sh -n bin/traceknot-skills-update skill/bin/traceknot-skills-update bin/traceknot-update tests/skills-updater-smoke.sh
@@ -39,7 +43,7 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git rm -- .github/review-fixes/apply-pr68-current.py .github/workflows/apply-pr68-current-review.yml
+          git rm -- .github/review-fixes/apply-pr68-current.py .github/review-fixes/fix-pr68-transform.py .github/workflows/apply-pr68-current-review.yml
           git add -- bin/traceknot-skills-update skill/bin/traceknot-skills-update bin/traceknot-update tests/skills-updater-smoke.sh docs/automatic-updates.md
           git commit -m "fix: close updater concurrency and verification gaps"
           git push origin HEAD:fix/skills-cli-auto-update
