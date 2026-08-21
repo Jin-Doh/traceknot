@@ -1,5 +1,5 @@
 #!/bin/sh
-# Update-notice helper: opt-in, rate limit, recommendation, failure, and timeout scenarios.
+# Update-notice helper: default notice, opt-out, rate limit, failure, and timeout scenarios.
 
 set -eu
 
@@ -14,7 +14,6 @@ MODE_FILE=$TMP_ROOT/mode
 CALL_LOG=$TMP_ROOT/calls
 mkdir -p "$BIN_DIR"
 cp "$NOTICE_SOURCE" "$BIN_DIR/traceknot-update-notice"
-chmod +x "$BIN_DIR/traceknot-update-notice"
 : > "$CALL_LOG"
 
 cat > "$BIN_DIR/traceknot-skills-update" <<'EOF_UPDATER'
@@ -56,31 +55,40 @@ EOF_STATUS
 }
 
 run_notice() {
+    notice_mode=$1
     CI= \
     STATUS_FILE=$STATUS_FILE MODE_FILE=$MODE_FILE CALL_LOG=$CALL_LOG \
+    TRACEKNOT_UPDATE_NOTICE=$notice_mode \
     TRACEKNOT_UPDATE_NOTICE_INTERVAL=86400 \
     TRACEKNOT_UPDATE_NOTICE_TIMEOUT=1 \
-    "$BIN_DIR/traceknot-update-notice" 2>&1
+    sh "$BIN_DIR/traceknot-update-notice" 2>&1
 }
 
 NOW=$(date -u '+%s')
 
-# Explicitly disabled updater: no network check and no notice.
+# Explicit notice opt-out performs no eligibility check.
 write_status 0 0 global ''
 printf '%s\n' eligible > "$MODE_FILE"
-output=$(run_notice)
+output=$(run_notice 0)
 [ -z "$output" ]
 [ ! -s "$CALL_LOG" ]
 
+# Automatic updates may remain disabled while the default advisory still reaches the user.
+output=$(run_notice auto)
+printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/null
+printf '%s\n' "$output" | grep -F "'${BIN_DIR}/traceknot-skills-update' apply --global" >/dev/null
+[ "$(wc -l < "$CALL_LOG" | tr -d ' ')" -eq 1 ]
+
 # A recent trusted check suppresses another network attempt.
-write_status 1 "$NOW" global ''
-output=$(run_notice)
+: > "$CALL_LOG"
+write_status 0 "$NOW" global ''
+output=$(run_notice auto)
 [ -z "$output" ]
 [ ! -s "$CALL_LOG" ]
 
 # A stale global installation receives one advisory and an exact scoped command.
-write_status 1 "$((NOW - 90000))" global ''
-output=$(run_notice)
+write_status 0 "$((NOW - 90000))" global ''
+output=$(run_notice auto)
 printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/null
 printf '%s\n' "$output" | grep -F "'${BIN_DIR}/traceknot-skills-update' apply --global" >/dev/null
 printf '%s\n' "$output" | grep -F 'does not affect the current QA verdict' >/dev/null
@@ -89,7 +97,7 @@ printf '%s\n' "$output" | grep -F 'does not affect the current QA verdict' >/dev
 # No eligible candidate remains silent.
 : > "$CALL_LOG"
 printf '%s\n' none > "$MODE_FILE"
-output=$(TRACEKNOT_UPDATE_NOTICE=force run_notice)
+output=$(run_notice force)
 [ -z "$output" ]
 [ "$(wc -l < "$CALL_LOG" | tr -d ' ')" -eq 1 ]
 
@@ -97,25 +105,25 @@ output=$(TRACEKNOT_UPDATE_NOTICE=force run_notice)
 : > "$CALL_LOG"
 PROJECT_ROOT="$TMP_ROOT/project with space"
 mkdir -p "$PROJECT_ROOT"
-write_status 1 0 project "$PROJECT_ROOT"
+write_status 0 0 project "$PROJECT_ROOT"
 printf '%s\n' eligible > "$MODE_FILE"
-output=$(TRACEKNOT_UPDATE_NOTICE=force run_notice)
+output=$(run_notice force)
 printf '%s\n' "$output" | grep -F "apply --project '$PROJECT_ROOT'" >/dev/null
 
 # Updater failure and timeout are non-blocking and silent.
 : > "$CALL_LOG"
 printf '%s\n' fail > "$MODE_FILE"
-output=$(TRACEKNOT_UPDATE_NOTICE=force run_notice)
+output=$(run_notice force)
 [ -z "$output" ]
 printf '%s\n' sleep > "$MODE_FILE"
-output=$(TRACEKNOT_UPDATE_NOTICE=force run_notice)
+output=$(run_notice force)
 [ -z "$output" ]
 
 # CI suppresses the advisory unless explicitly forced.
 : > "$CALL_LOG"
 printf '%s\n' eligible > "$MODE_FILE"
 output=$(CI=1 STATUS_FILE=$STATUS_FILE MODE_FILE=$MODE_FILE CALL_LOG=$CALL_LOG \
-    "$BIN_DIR/traceknot-update-notice" 2>&1)
+    TRACEKNOT_UPDATE_NOTICE=auto sh "$BIN_DIR/traceknot-update-notice" 2>&1)
 [ -z "$output" ]
 [ ! -s "$CALL_LOG" ]
 
