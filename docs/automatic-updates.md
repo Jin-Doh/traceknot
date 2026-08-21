@@ -104,12 +104,12 @@ Project state is kept under `.agents` while the Skills CLI continues to own `ski
 <project>/skills-lock.json
 ```
 
-The updater rejects a scope that does not match the executable's installed Skill root. A global updater cannot update an arbitrary project installation, and a project-local updater cannot update another project. It also requires the Skills CLI lock entry to identify `Jin-Doh/traceknot`, the GitHub source type, and `skill/SKILL.md`.
+The updater rejects a scope that does not match the executable's installed Skill root. A global updater cannot update an arbitrary project installation, and a project-local updater cannot update another project. It requires the Skills CLI lock entry to identify the `Jin-Doh/traceknot` repository case-insensitively, the GitHub source type, and `skill/SKILL.md`. An unmanaged lock may omit `ref` or retain a branch or tag because those are normal Skills CLI installation forms. After the first verified application, the managed lock must bind the exact 40-character source commit.
 For project scope, `.agents` and `.agents/skills` must be real directories beneath the canonical project root; symlinked ancestors are rejected so project state and registration cannot escape the requested root.
 
 The update lock records both the updater PID and its process-start identity. A live PID with a different identity is treated as a stale lock; a legacy live lock without an identity is rejected rather than guessed.
 
-The first trusted check of an unmanaged installation records an adoption baseline consisting of GitHub server time and the canonical SHA-256 digest of the current Traceknot lock entry. A release published at or before that baseline is never selected automatically. This prevents a default-branch installation that is newer than the latest seven-day-old release from being downgraded during the first managed update. Before the first managed application, any lock-entry change invalidates the baseline. After a managed application, the complete lock-entry digest and exact source commit are stored in `active.json`; either changing externally blocks further managed updates rather than overwriting the user's choice.
+The first trusted check of an unmanaged installation records an adoption baseline consisting of GitHub server time and the canonical SHA-256 digest of the current Traceknot lock entry. A release published at or before that baseline is never selected by an unattended invocation. This prevents a default-branch installation that is newer than the latest seven-day-old release from being downgraded automatically. A user may explicitly run `apply` to adopt the highest eligible verified release even when it predates the baseline; only a successful explicit application creates `active.json` and enables later unattended application. Before that first managed application, any lock-entry change invalidates the baseline. After it, the complete lock-entry digest and exact source commit are stored in `active.json`; either changing externally blocks further managed updates rather than overwriting the user's choice.
 If the process is interrupted after Skills CLI changes the canonical registration but before `active.json` is committed, `pending.json` records the verified transition. The next invocation reconciles the matching lock and runtime, commits `active.json`, and clears the pending record; an unchanged pre-update lock is discarded only after the installed registration matches the retained previous payload snapshot.
 The durable pending record retains both the verified candidate payload and the previous registration payload until reconciliation. A payload mismatch is a hard failure and never promotes `active.json`.
 
@@ -140,7 +140,7 @@ Candidates must satisfy all of these conditions:
 9. the archive contains no absolute path, traversal path, symlink, or special filesystem entry;
 10. the archive includes both `skill/bin/traceknot` and `skill/bin/traceknot-skills-update` as executable files.
 
-When multiple releases are eligible, the highest semantic version is selected. Automatic downgrade is rejected both before and after the first managed application: pre-adoption releases are excluded for unmanaged installations, and lower semantic versions are excluded after `active.json` exists. Reusing an installed semantic version with a different artifact digest is treated as a security failure.
+When multiple releases are eligible, the highest semantic version is selected. Unattended downgrade is rejected both before and after the first managed application: pre-adoption releases are excluded until the user explicitly adopts a verified release, and lower semantic versions are excluded after `active.json` exists. Reusing an installed semantic version with a different artifact digest is treated as a security failure.
 
 ## Application sequence for Skills CLI installations
 
@@ -148,7 +148,7 @@ When multiple releases are eligible, the highest semantic version is selected. A
 
 1. reconcile any durable `pending.json` transition from a prior interrupted application;
 2. establish or validate the unmanaged adoption baseline and lock-entry digest;
-3. resolve the highest eligible release published after that baseline;
+3. resolve the highest eligible release published after that baseline, or the highest eligible release overall for an explicit first `apply`;
 4. download and verify its deterministic archive;
 5. verify GitHub artifact provenance;
 6. safely extract the archive into temporary storage;
@@ -173,7 +173,7 @@ The temporary preflight substantially reduces the chance that a clone, discovery
 # traceknot-skills-auto-update:project:<project-root>
 ```
 
-`disable` removes only the matching marked entry and persists `automatic=0`. Existing unrelated cron entries are retained. Scheduled output is redirected because failures are fail-closed and do not modify the active release record.
+`disable` removes only the matching marked entry and persists `automatic=0`. Existing unrelated cron entries are retained. Scheduled output is redirected because failures are fail-closed and do not modify the active release record. Every `--auto` invocation receives a 900-second absolute operation deadline by default. Release requests use the remaining budget for connection and transfer timeouts, and provenance, Skills CLI, and durability subprocesses are terminated when the same deadline expires. `TRACEKNOT_UPDATE_OPERATION_TIMEOUT` may set another positive duration for controlled environments, while `TRACEKNOT_UPDATE_DEADLINE_EPOCH` lets a parent process impose an earlier absolute UTC deadline shared across sequential requests and subprocesses.
 
 The initial implementation supports cron on macOS and glibc-based Linux. Native Windows remains outside the supported runtime boundary.
 
@@ -194,7 +194,7 @@ gh tar diff npx sync sha256sum-or-shasum
 Automatic scheduling also requires:
 
 ```text
-crontab
+crontab pgrep
 ```
 
 `gh attestation verify` must be available. Authentication may be supplied through `GH_TOKEN`; tokens are read from the environment and are never written to updater state.
@@ -232,6 +232,6 @@ Use `apply --dry-run` to show the selected release without invoking Skills CLI:
 "$HOME/.agents/skills/traceknot/bin/traceknot-skills-update" apply --global --dry-run
 ```
 
-Use `status` to inspect scope, schedule policy, last trusted check, adoption time, and the last release successfully applied by this updater. `version=unmanaged` means the current registration has only an adoption baseline or was installed outside the bridge's active-state history; it does not mean the Skill is invalid. The first trusted `check` or `apply` records that baseline and deliberately does not apply releases that already existed at the time.
+Use `status` to inspect scope, schedule policy, operation timeout, last trusted check, adoption time, and the last release successfully applied by this updater. `version=unmanaged` means the current registration has only an adoption baseline or was installed outside the bridge's active-state history; it does not mean the Skill is invalid. The first trusted `check` records the baseline without applying pre-existing releases. An explicit first `apply` is the consent boundary that may adopt the highest eligible verified release and create managed state; scheduled invocations remain observation-only until then.
 
 A source intentionally pinned for reproducibility should leave automatic updates disabled. Explicit manual installation of another ref remains a Skills CLI operation and is not overridden until this updater is enabled or `apply` is invoked.

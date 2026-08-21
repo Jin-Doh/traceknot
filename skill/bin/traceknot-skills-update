@@ -10,6 +10,7 @@ SIGNER_WORKFLOW=Jin-Doh/traceknot/.github/workflows/release.yml
 SKILLS_CLI_VERSION=1.5.22
 MIN_AGE=604800
 CHECK_INTERVAL=86400
+AUTO_OPERATION_TIMEOUT=900
 
 COMMAND=check
 SCOPE=
@@ -24,6 +25,11 @@ LOCK_OWNER_ID=
 PENDING_STATE=
 PENDING_PAYLOAD_TMP=
 PENDING_PREVIOUS_PAYLOAD_TMP=
+OPERATION_TIMEOUT=${TRACEKNOT_UPDATE_OPERATION_TIMEOUT:-}
+REQUESTED_DEADLINE=${TRACEKNOT_UPDATE_DEADLINE_EPOCH:-0}
+OPERATION_DEADLINE=0
+AUTO_WAITING_FOR_ADOPTION=0
+MANUAL_ADOPTION=0
 fail() {
     printf '%s: %s\n' "$PROGRAM" "$*" >&2
     exit 2
@@ -92,6 +98,70 @@ shell_quote() {
     printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
 }
 
+remaining_operation_seconds() {
+    if [ "$OPERATION_TIMEOUT" -eq 0 ]; then
+        printf '%s\n' 0
+        return 0
+    fi
+    deadline_now=$(date -u '+%s') || return 1
+    deadline_remaining=$((OPERATION_DEADLINE - deadline_now))
+    [ "$deadline_remaining" -gt 0 ] || return 1
+    printf '%s\n' "$deadline_remaining"
+}
+
+signal_process_tree() {
+    signal_name=$1
+    process_pid=$2
+    if command -v pgrep >/dev/null 2>&1; then
+        for child_pid in $(pgrep -P "$process_pid" 2>/dev/null || true); do
+            signal_process_tree "$signal_name" "$child_pid"
+        done
+    fi
+    kill -s "$signal_name" "$process_pid" 2>/dev/null || true
+}
+
+run_with_deadline() {
+    if [ "$OPERATION_TIMEOUT" -eq 0 ]; then
+        "$@"
+        return
+    fi
+    remaining=$(remaining_operation_seconds) || return 124
+    "$@" &
+    bounded_pid=$!
+    (
+        while kill -0 "$bounded_pid" 2>/dev/null; do
+            bounded_now=$(date -u '+%s') || exit 0
+            if [ "$bounded_now" -ge "$OPERATION_DEADLINE" ]; then
+                signal_process_tree TERM "$bounded_pid"
+                sleep 2
+                signal_process_tree KILL "$bounded_pid"
+                exit 0
+            fi
+            sleep 1
+        done
+    ) >/dev/null 2>&1 &
+    bounded_watchdog=$!
+    bounded_status=0
+    if wait "$bounded_pid"; then
+        :
+    else
+        bounded_status=$?
+    fi
+    kill "$bounded_watchdog" 2>/dev/null || true
+    wait "$bounded_watchdog" 2>/dev/null || true
+    if [ "$bounded_status" -ne 0 ]; then
+        bounded_now=$(date -u '+%s' 2>/dev/null || printf '%s' "$OPERATION_DEADLINE")
+        if [ "$bounded_now" -ge "$OPERATION_DEADLINE" ]; then
+            return 124
+        fi
+    fi
+    return "$bounded_status"
+}
+
+durable_sync() {
+    run_with_deadline sync || fail 'filesystem sync exceeded the operation deadline'
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         check|apply|enable|disable|status)
@@ -133,6 +203,30 @@ while [ "$#" -gt 0 ]; do
         *) fail "unknown argument: $1" ;;
     esac
 done
+
+if [ -z "$OPERATION_TIMEOUT" ]; then
+    if [ "$AUTO_INVOCATION" -eq 1 ]; then
+        OPERATION_TIMEOUT=$AUTO_OPERATION_TIMEOUT
+    else
+        OPERATION_TIMEOUT=0
+    fi
+fi
+case "$OPERATION_TIMEOUT" in ''|*[!0-9]*) fail 'invalid operation timeout' ;; esac
+case "$REQUESTED_DEADLINE" in ''|*[!0-9]*) fail 'invalid absolute operation deadline' ;; esac
+operation_now=$(date -u '+%s') || fail 'cannot establish the operation deadline'
+if [ "$OPERATION_TIMEOUT" -gt 0 ]; then
+    OPERATION_DEADLINE=$((operation_now + OPERATION_TIMEOUT))
+fi
+if [ "$REQUESTED_DEADLINE" -gt 0 ]; then
+    [ "$REQUESTED_DEADLINE" -gt "$operation_now" ] || fail 'absolute operation deadline has already elapsed'
+    if [ "$OPERATION_DEADLINE" -eq 0 ] || [ "$REQUESTED_DEADLINE" -lt "$OPERATION_DEADLINE" ]; then
+        OPERATION_DEADLINE=$REQUESTED_DEADLINE
+    fi
+    OPERATION_TIMEOUT=$((OPERATION_DEADLINE - operation_now))
+fi
+if [ "$OPERATION_TIMEOUT" -gt 0 ]; then
+    command -v pgrep >/dev/null 2>&1 || fail 'pgrep is required for bounded update execution'
+fi
 
 [ -n "${HOME:-}" ] || fail 'HOME is required'
 case "$HOME" in /*) ;; *) fail 'HOME must be absolute' ;; esac
@@ -505,9 +599,9 @@ install_schedule() {
         if [ -n "${XDG_STATE_HOME:-}" ]; then
             raw_command="$raw_command XDG_STATE_HOME=$(shell_quote "$XDG_STATE_HOME")"
         fi
-        raw_command="$raw_command $(shell_quote "$updater") --global --auto"
+        raw_command="$raw_command TRACEKNOT_UPDATE_OPERATION_TIMEOUT=$AUTO_OPERATION_TIMEOUT $(shell_quote "$updater") --global --auto"
     else
-        raw_command="cd $(shell_quote "$PROJECT_ROOT") && HOME=$(shell_quote "$HOME") PATH=$(shell_quote "${PATH:-/usr/bin:/bin}") $(shell_quote "$updater") --project $(shell_quote "$PROJECT_ROOT") --auto"
+        raw_command="cd $(shell_quote "$PROJECT_ROOT") && HOME=$(shell_quote "$HOME") PATH=$(shell_quote "${PATH:-/usr/bin:/bin}") TRACEKNOT_UPDATE_OPERATION_TIMEOUT=$AUTO_OPERATION_TIMEOUT $(shell_quote "$updater") --project $(shell_quote "$PROJECT_ROOT") --auto"
     fi
     raw_entry="23 3 * * * $raw_command >/dev/null 2>&1 # traceknot-skills-auto-update:$UPDATE_ID"
     entry=$(cron_escape "$raw_entry")
@@ -542,14 +636,14 @@ validate_pending_state() {
         fail 'unsafe pending update state'
     jq -e --arg scope "$SCOPE" --arg registration "$REGISTRATION" '
       type == "object"
-      and (keys | sort == ["appliedAt","artifactSha256","previousLockEntrySha256","previousSourceCommit","registration","releaseTag","schemaVersion","scope","sourceCommit","version"])
+      and (keys | sort == ["appliedAt","artifactSha256","previousLockEntrySha256","previousSourceRef","registration","releaseTag","schemaVersion","scope","sourceCommit","version"])
       and .schemaVersion == "traceknot-skills-pending-update/v1"
       and .scope == $scope
       and .registration == $registration
       and (.version | test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"))
       and .releaseTag == ("v" + .version)
       and (.sourceCommit | test("^[0-9a-f]{40}$"))
-      and (.previousSourceCommit | test("^[0-9a-f]{40}$"))
+      and (.previousSourceRef | type == "string")
       and (.artifactSha256 | test("^[0-9a-f]{64}$"))
       and (.previousLockEntrySha256 | test("^[0-9a-f]{64}$"))
       and (.appliedAt | type == "number" and floor == . and . >= 0)
@@ -559,7 +653,7 @@ validate_pending_state() {
     PENDING_RELEASE_TAG=$(jq -r .releaseTag "$PENDING_STATE")
     PENDING_SOURCE_COMMIT=$(jq -r .sourceCommit "$PENDING_STATE")
     PENDING_ARTIFACT_SHA=$(jq -r .artifactSha256 "$PENDING_STATE")
-    PENDING_PREVIOUS_SOURCE_COMMIT=$(jq -r .previousSourceCommit "$PENDING_STATE")
+    PENDING_PREVIOUS_SOURCE_REF=$(jq -r .previousSourceRef "$PENDING_STATE")
     PENDING_PREVIOUS_LOCK_ENTRY_SHA256=$(jq -r .previousLockEntrySha256 "$PENDING_STATE")
 }
 reclaim_orphan_pending_payload() {
@@ -571,7 +665,7 @@ reclaim_orphan_pending_payload() {
             fail "unsafe orphan pending payload: $orphan_payload"
         rm -rf "$orphan_payload"
     done
-    sync
+    durable_sync
 }
 reject_registration_symlinks() {
     registration_root=$1
@@ -602,7 +696,7 @@ write_active_state() {
         '{schemaVersion:$schemaVersion,version:$version,releaseTag:$releaseTag,sourceCommit:$sourceCommit,artifactSha256:$artifactSha256,lockEntrySha256:$lockEntrySha256,appliedAt:$appliedAt,scope:$scope,registration:$registration}' \
         > "$active_tmp"
     mv "$active_tmp" "$ACTIVE_STATE"
-    sync
+    durable_sync
 }
 
 write_pending_state() {
@@ -611,7 +705,7 @@ write_pending_state() {
     pending_release_tag=$3
     pending_source_commit=$4
     pending_artifact_sha=$5
-    pending_previous_source_commit=$6
+    pending_previous_source_ref=$6
     pending_previous_lock_entry_sha=$7
     pending_tmp=$PENDING_STATE.tmp.$$
     create_exclusive_file "$pending_tmp"
@@ -621,15 +715,15 @@ write_pending_state() {
         --arg releaseTag "$pending_release_tag" \
         --arg sourceCommit "$pending_source_commit" \
         --arg artifactSha256 "$pending_artifact_sha" \
-        --arg previousSourceCommit "$pending_previous_source_commit" \
+        --arg previousSourceRef "$pending_previous_source_ref" \
         --arg previousLockEntrySha256 "$pending_previous_lock_entry_sha" \
         --arg scope "$SCOPE" \
         --arg registration "$REGISTRATION" \
         --argjson appliedAt "$pending_applied_at" \
-        '{schemaVersion:$schemaVersion,version:$version,releaseTag:$releaseTag,sourceCommit:$sourceCommit,artifactSha256:$artifactSha256,previousSourceCommit:$previousSourceCommit,previousLockEntrySha256:$previousLockEntrySha256,appliedAt:$appliedAt,scope:$scope,registration:$registration}' \
+        '{schemaVersion:$schemaVersion,version:$version,releaseTag:$releaseTag,sourceCommit:$sourceCommit,artifactSha256:$artifactSha256,previousSourceRef:$previousSourceRef,previousLockEntrySha256:$previousLockEntrySha256,appliedAt:$appliedAt,scope:$scope,registration:$registration}' \
         > "$pending_tmp"
     mv "$pending_tmp" "$PENDING_STATE"
-    sync
+    durable_sync
 }
 
 reconcile_pending_state() {
@@ -665,8 +759,8 @@ reconcile_pending_state() {
         fi
         rm -f "$PENDING_STATE"
         rm -rf "$PENDING_PAYLOAD_DIR" "$PENDING_PREVIOUS_PAYLOAD_DIR"
-        sync
-    elif [ "$LOCK_REF" = "$PENDING_PREVIOUS_SOURCE_COMMIT" ] &&
+        durable_sync
+    elif [ "$LOCK_REF" = "$PENDING_PREVIOUS_SOURCE_REF" ] &&
          [ "$LOCK_ENTRY_SHA256" = "$PENDING_PREVIOUS_LOCK_ENTRY_SHA256" ]; then
         command -v diff >/dev/null 2>&1 || fail 'diff is required to discard a pending update'
         [ -d "$PENDING_PREVIOUS_PAYLOAD_DIR" ] &&
@@ -681,7 +775,7 @@ reconcile_pending_state() {
         fi
         rm -f "$PENDING_STATE"
         rm -rf "$PENDING_PAYLOAD_DIR" "$PENDING_PREVIOUS_PAYLOAD_DIR"
-        sync
+        durable_sync
     else
         fail 'pending update state does not match the installed Skills lock'
     fi
@@ -692,19 +786,22 @@ validate_skills_lock() {
     [ -f "$LOCK_FILE" ] && [ ! -L "$LOCK_FILE" ] ||
         fail "Skills CLI lock file is missing or unsafe: $LOCK_FILE"
     jq -e '
-      .skills.traceknot.source == "Jin-Doh/traceknot"
+      (.skills.traceknot.source | ascii_downcase) == "jin-doh/traceknot"
       and .skills.traceknot.sourceType == "github"
       and .skills.traceknot.skillPath == "skill/SKILL.md"
     ' "$LOCK_FILE" >/dev/null ||
         fail 'installed Traceknot registration is not owned by the expected Skills CLI source'
-    LOCK_REF=$(jq -r '.skills.traceknot.ref // empty' "$LOCK_FILE")
+    LOCK_REF=$(jq -r '.skills.traceknot.ref // ""' "$LOCK_FILE")
+    LOCK_REF_IS_COMMIT=0
     case "$LOCK_REF" in
-        ''|*[!0-9a-f]*) fail 'Skills CLI lock ref must be a 40-character commit' ;;
+        ''|*[!0-9a-f]*) ;;
+        *) [ "${#LOCK_REF}" -eq 40 ] && LOCK_REF_IS_COMMIT=1 ;;
     esac
-    [ "${#LOCK_REF}" -eq 40 ] || fail 'Skills CLI lock ref must be a 40-character commit'
     LOCK_ENTRY_SHA256=$(jq -cS '.skills.traceknot' "$LOCK_FILE" | sha256_stdin)
     [ "${#LOCK_ENTRY_SHA256}" -eq 64 ] || fail 'cannot hash the Skills CLI lock entry'
     if [ -f "$ACTIVE_STATE" ]; then
+        [ "$LOCK_REF_IS_COMMIT" -eq 1 ] ||
+            fail 'managed Skills CLI lock ref must be the recorded 40-character commit'
         ACTIVE_SOURCE_COMMIT=$(jq -r .sourceCommit "$ACTIVE_STATE")
         ACTIVE_LOCK_ENTRY_SHA256=$(jq -r .lockEntrySha256 "$ACTIVE_STATE")
         if [ "$LOCK_REF" != "$ACTIVE_SOURCE_COMMIT" ]; then
@@ -736,9 +833,17 @@ if [ "$COMMAND" != disable ]; then
     reconcile_pending_state
 fi
 
+if [ "$AUTO_INVOCATION" -eq 1 ] && [ ! -f "$ACTIVE_STATE" ]; then
+    AUTO_WAITING_FOR_ADOPTION=1
+    COMMAND=check
+fi
+if [ "$COMMAND" = apply ] && [ "$AUTO_INVOCATION" -eq 0 ] && [ ! -f "$ACTIVE_STATE" ]; then
+    MANUAL_ADOPTION=1
+fi
+
 if [ "$COMMAND" = enable ]; then
     [ "$DRY_RUN" -eq 0 ] || { printf 'Would enable daily automatic updates for %s\n' "$REGISTRATION"; exit 0; }
-    for dependency in crontab curl jq gh tar diff npx sync; do
+    for dependency in crontab curl jq gh tar diff npx sync pgrep; do
         command -v "$dependency" >/dev/null 2>&1 ||
             fail "$dependency is required to enable automatic updates"
     done
@@ -764,8 +869,8 @@ if [ "$COMMAND" = disable ]; then
 fi
 
 if [ "$COMMAND" = status ]; then
-    printf 'scope=%s\nprojectRoot=%s\nregistration=%s\nautomatic=%s\nlastCheck=%s\nadoptedAt=%s\n' \
-        "$SCOPE" "$PROJECT_ROOT" "$REGISTRATION" "$AUTOMATIC" "$LAST_CHECK" "$ADOPTED_AT"
+    printf 'scope=%s\nprojectRoot=%s\nregistration=%s\nautomatic=%s\nlastCheck=%s\nadoptedAt=%s\noperationTimeout=%s\n' \
+        "$SCOPE" "$PROJECT_ROOT" "$REGISTRATION" "$AUTOMATIC" "$LAST_CHECK" "$ADOPTED_AT" "$OPERATION_TIMEOUT"
     if [ -f "$ACTIVE_STATE" ]; then
         jq -r '"version=\(.version)\ntag=\(.releaseTag)\nsourceCommit=\(.sourceCommit)\nsha256=\(.artifactSha256)"' "$ACTIVE_STATE"
     else
@@ -800,17 +905,27 @@ curl_authorization=
 if [ -n "${GH_TOKEN:-}" ]; then
     curl_authorization="Authorization: Bearer $GH_TOKEN"
 fi
+curl_with_deadline() {
+    if [ "$OPERATION_TIMEOUT" -eq 0 ]; then
+        curl "$@"
+        return
+    fi
+    curl_remaining=$(remaining_operation_seconds) || return 124
+    curl_connect_timeout=$curl_remaining
+    [ "$curl_connect_timeout" -le 10 ] || curl_connect_timeout=10
+    run_with_deadline curl --connect-timeout "$curl_connect_timeout" --max-time "$curl_remaining" "$@"
+}
 
 fetch_release_page() {
     fetch_url=$1
     fetch_headers=$2
     fetch_output=$3
     if [ -n "$curl_authorization" ]; then
-        curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location \
+        curl_with_deadline --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location \
             -H 'Accept: application/vnd.github+json' -H "$curl_authorization" \
             -D "$fetch_headers" -o "$fetch_output" "$fetch_url"
     else
-        curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location \
+        curl_with_deadline --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location \
             -H 'Accept: application/vnd.github+json' \
             -D "$fetch_headers" -o "$fetch_output" "$fetch_url"
     fi
@@ -821,11 +936,11 @@ fetch_asset() {
     asset_output=$2
     validate_asset_api_url "$asset_url"
     if [ -n "$curl_authorization" ]; then
-        curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location \
+        curl_with_deadline --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location \
             -H 'Accept: application/octet-stream' -H "$curl_authorization" \
             -o "$asset_output" "$asset_url"
     else
-        curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location \
+        curl_with_deadline --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location \
             -H 'Accept: application/octet-stream' -o "$asset_output" "$asset_url"
     fi
 }
@@ -972,9 +1087,10 @@ while IFS="$(printf '\t')" read -r RELEASE_TAG RELEASE_PUBLISHED MANIFEST_URL; d
             record_unmanaged_lock_match
         fi
     fi
-    if [ "$PRE_ADOPTION_CANDIDATE" -eq 1 ]; then
+    if [ "$PRE_ADOPTION_CANDIDATE" -eq 1 ] && [ "$MANUAL_ADOPTION" -eq 0 ]; then
         continue
     fi
+    POST_ADOPTION_CANDIDATE=1
 
     MANIFEST_SHA=$(sha256_file "$MANIFEST")
     if [ -e "$OBSERVATIONS" ] || [ -L "$OBSERVATIONS" ]; then
@@ -1062,7 +1178,17 @@ if [ "$CANDIDATE_FOUND" -eq 0 ]; then
     printf '%s\n' 'No immutable stable release with an update manifest is available.'
     exit 0
 fi
-if [ "$POST_ADOPTION_CANDIDATE" -eq 0 ] && [ ! -f "$ACTIVE_STATE" ]; then
+if [ "$POST_ADOPTION_CANDIDATE" -eq 0 ] && [ ! -f "$ACTIVE_STATE" ] && [ "$MANUAL_ADOPTION" -eq 0 ]; then
+    if [ "$AUTO_WAITING_FOR_ADOPTION" -eq 1 ]; then
+        if [ "$SCOPE" = global ]; then
+            adoption_scope=--global
+        else
+            adoption_scope="--project $(shell_quote "$PROJECT_ROOT")"
+        fi
+        printf 'Automatic application is waiting for one-time manual adoption: %s apply %s
+' "$PROGRAM" "$adoption_scope"
+        exit 0
+    fi
     if [ "$ADOPTION_CREATED" -eq 1 ]; then
         printf 'Recorded unmanaged installation baseline at %s; pre-existing releases will not be applied automatically.\n' "$ADOPTED_AT"
     else
@@ -1087,6 +1213,15 @@ ARTIFACT_SIZE=$SELECTED_ARTIFACT_SIZE
 ARTIFACT_SHA=$SELECTED_ARTIFACT_SHA
 ARTIFACT_URL=$SELECTED_ARTIFACT_URL
 printf 'Eligible update: %s (%s)\n' "$RELEASE_TAG" "$ARTIFACT_SHA"
+if [ "$AUTO_WAITING_FOR_ADOPTION" -eq 1 ]; then
+    if [ "$SCOPE" = global ]; then
+        adoption_scope=--global
+    else
+        adoption_scope="--project $(shell_quote "$PROJECT_ROOT")"
+    fi
+    printf 'Automatic application is waiting for one-time manual adoption: %s apply %s\n' "$PROGRAM" "$adoption_scope"
+    exit 0
+fi
 [ "$COMMAND" = apply ] || exit 0
 [ "$DRY_RUN" -eq 0 ] || { printf 'Would apply %s through Skills CLI to %s\n' "$RELEASE_TAG" "$REGISTRATION"; exit 0; }
 
@@ -1101,7 +1236,7 @@ fetch_asset "$ARTIFACT_URL" "$ARCHIVE"
 [ "$(sha256_file "$ARCHIVE")" = "$ARTIFACT_SHA" ] ||
     fail 'artifact digest does not match manifest'
 
-gh attestation verify "$ARCHIVE" \
+run_with_deadline gh attestation verify "$ARCHIVE" \
     --repo "$REPOSITORY" \
     --signer-workflow "$SIGNER_WORKFLOW" \
     --source-ref "refs/tags/$RELEASE_TAG" \
@@ -1135,7 +1270,7 @@ if [ "$SCOPE" = global ]; then
     PREFLIGHT_STATE=$PREFLIGHT_ROOT/state
     mkdir -p "$PREFLIGHT_HOME" "$PREFLIGHT_STATE"
     if ! HOME=$PREFLIGHT_HOME XDG_STATE_HOME=$PREFLIGHT_STATE \
-        npx --yes "skills@$SKILLS_CLI_VERSION" add "$SOURCE_INPUT" \
+        run_with_deadline npx --yes "skills@$SKILLS_CLI_VERSION" add "$SOURCE_INPUT" \
             --skill traceknot --agent universal --global --yes >"$PREFLIGHT_LOG" 2>&1; then
         cat "$PREFLIGHT_LOG" >&2
         fail 'Skills CLI preflight installation failed'
@@ -1149,7 +1284,7 @@ else
     if ! (
         cd "$PREFLIGHT_PROJECT"
         HOME=$PREFLIGHT_HOME XDG_STATE_HOME=$PREFLIGHT_STATE \
-            npx --yes "skills@$SKILLS_CLI_VERSION" add "$SOURCE_INPUT" \
+            run_with_deadline npx --yes "skills@$SKILLS_CLI_VERSION" add "$SOURCE_INPUT" \
                 --skill traceknot --agent universal --yes
     ) >"$PREFLIGHT_LOG" 2>&1; then
         cat "$PREFLIGHT_LOG" >&2
@@ -1181,7 +1316,7 @@ if ! diff -r "$REGISTRATION" "$PENDING_PREVIOUS_PAYLOAD_TMP" >/dev/null 2>&1; th
 fi
 mv "$PENDING_PREVIOUS_PAYLOAD_TMP" "$PENDING_PREVIOUS_PAYLOAD_DIR"
 PENDING_PREVIOUS_PAYLOAD_TMP=
-sync
+durable_sync
 PENDING_PAYLOAD_TMP=$STATE_DIR/pending-payload.tmp.$$
 mkdir "$PENDING_PAYLOAD_TMP"
 cp -R "$VERIFIED_RELEASE/skill/." "$PENDING_PAYLOAD_TMP/"
@@ -1190,13 +1325,13 @@ if ! diff -r "$VERIFIED_RELEASE/skill" "$PENDING_PAYLOAD_TMP" >/dev/null 2>&1; t
 fi
 mv "$PENDING_PAYLOAD_TMP" "$PENDING_PAYLOAD_DIR"
 PENDING_PAYLOAD_TMP=
-sync
+durable_sync
 CURRENT_LOCK_REF=$(jq -r '.skills.traceknot.ref // empty' "$LOCK_FILE")
 write_pending_state "$TRUSTED_NOW" "$VERSION" "$RELEASE_TAG" "$SOURCE_COMMIT" \
     "$ARTIFACT_SHA" "$CURRENT_LOCK_REF" "$LOCK_ENTRY_SHA256"
 APPLY_LOG=$TMP_ROOT/apply.log
 if [ "$SCOPE" = global ]; then
-    if ! npx --yes "skills@$SKILLS_CLI_VERSION" add "$SOURCE_INPUT" \
+    if ! run_with_deadline npx --yes "skills@$SKILLS_CLI_VERSION" add "$SOURCE_INPUT" \
         --skill traceknot --agent universal --global --yes >"$APPLY_LOG" 2>&1; then
         cat "$APPLY_LOG" >&2
         fail 'Skills CLI update failed'
@@ -1204,7 +1339,7 @@ if [ "$SCOPE" = global ]; then
 else
     if ! (
         cd "$PROJECT_ROOT"
-        HOME=$HOME npx --yes "skills@$SKILLS_CLI_VERSION" add "$SOURCE_INPUT" \
+        HOME=$HOME run_with_deadline npx --yes "skills@$SKILLS_CLI_VERSION" add "$SOURCE_INPUT" \
             --skill traceknot --agent universal --yes
     ) >"$APPLY_LOG" 2>&1; then
         cat "$APPLY_LOG" >&2
@@ -1224,7 +1359,7 @@ if ! diff -r "$VERIFIED_RELEASE/skill" "$REGISTRATION" >/dev/null 2>&1; then
 fi
 [ -f "$LOCK_FILE" ] && [ ! -L "$LOCK_FILE" ] || fail 'Skills CLI lock file is missing or unsafe'
 jq -e --arg commit "$SOURCE_COMMIT" '
-  .skills.traceknot.source == "Jin-Doh/traceknot"
+  (.skills.traceknot.source | ascii_downcase) == "jin-doh/traceknot"
   and .skills.traceknot.sourceType == "github"
   and .skills.traceknot.ref == $commit
   and .skills.traceknot.skillPath == "skill/SKILL.md"
@@ -1236,5 +1371,5 @@ write_active_state "$TRUSTED_NOW" "$VERSION" "$RELEASE_TAG" "$SOURCE_COMMIT" \
     "$ARTIFACT_SHA" "$INSTALLED_LOCK_ENTRY_SHA256"
 rm -f "$PENDING_STATE"
 rm -rf "$PENDING_PAYLOAD_DIR" "$PENDING_PREVIOUS_PAYLOAD_DIR"
-sync
+durable_sync
 printf 'Updated Traceknot to %s through Skills CLI at %s\n' "$RELEASE_TAG" "$REGISTRATION"

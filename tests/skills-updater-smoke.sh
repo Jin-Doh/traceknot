@@ -114,11 +114,14 @@ while [ "$#" -gt 0 ]; do
         -D) headers=$2; shift 2 ;;
         -o) output=$2; shift 2 ;;
         -H) shift 2 ;;
-        --proto|--proto-redir) shift 2 ;;
+        --proto|--proto-redir|--connect-timeout|--max-time) shift 2 ;;
         --tlsv1.2|--fail|--silent|--show-error|--location) shift ;;
         *) url=$1; shift ;;
     esac
 done
+if [ -n "${FAKE_CURL_SLEEP:-}" ]; then
+    sleep "$FAKE_CURL_SLEEP"
+fi
 if [ -n "$headers" ]; then
     printf 'HTTP/2 200\r\ndate: %s\r\n\r\n' "$FAKE_HTTP_DATE" > "$headers"
 fi
@@ -233,6 +236,17 @@ write_initial_lock() {
     mkdir -p "$(dirname "$lock")"
     jq -n '{version:1,skills:{traceknot:{source:"Jin-Doh/traceknot",sourceType:"github",ref:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",skillPath:"skill/SKILL.md",computedHash:"initial"}}}' > "$lock"
 }
+write_unmanaged_lock() {
+    lock=$1
+    source=$2
+    ref=${3-}
+    mkdir -p "$(dirname "$lock")"
+    if [ -n "$ref" ]; then
+        jq -n --arg source "$source" --arg ref "$ref" '{version:1,skills:{traceknot:{source:$source,sourceType:"github",ref:$ref,skillPath:"skill/SKILL.md",computedHash:"initial"}}}' > "$lock"
+    else
+        jq -n --arg source "$source" '{version:1,skills:{traceknot:{source:$source,sourceType:"github",skillPath:"skill/SKILL.md",computedHash:"initial"}}}' > "$lock"
+    fi
+}
 
 manifest_sha() {
     if command -v sha256sum >/dev/null 2>&1; then
@@ -297,6 +311,17 @@ if [ -f "$ROOT/package.json" ]; then
     test "$EXPECTED_SKILLS_CLI_VERSION" = "$(jq -r '.devDependencies.skills' "$ROOT/package.json")"
 fi
 
+# Canonical Skills locks may omit ref, retain a symbolic ref, and preserve source casing.
+for lock_ref in '' main; do
+    COMPAT_PROJECT="$TMP_DIR/compat-${lock_ref:-none}"
+    mkdir -p "$COMPAT_PROJECT"
+    COMPAT_SKILL=$COMPAT_PROJECT/.agents/skills/traceknot
+    install_initial_skill "$COMPAT_SKILL"
+    write_unmanaged_lock "$COMPAT_PROJECT/skills-lock.json" 'jin-doh/traceknot' "$lock_ref"
+    "$COMPAT_SKILL/bin/traceknot-skills-update" status --project "$COMPAT_PROJECT" >/dev/null
+    "$COMPAT_SKILL/bin/traceknot-skills-update" check --project "$COMPAT_PROJECT" >/dev/null
+done
+
 # A fresh unmanaged registration adopts its current lock as a no-downgrade baseline.
 BASELINE_PROJECT="$TMP_DIR/baseline project"
 BASELINE_SKILL=$BASELINE_PROJECT/.agents/skills/traceknot
@@ -347,6 +372,44 @@ if "$BASELINE_SKILL/bin/traceknot-skills-update" check --project "$BASELINE_PROJ
 fi
 mv "$TMP_DIR/baseline-lock.saved" "$BASELINE_PROJECT/skills-lock.json"
 
+# Unmanaged scheduled execution may observe, but only explicit apply may adopt a pre-baseline release.
+ADOPTION_PROJECT="$TMP_DIR/manual adoption project"
+mkdir -p "$ADOPTION_PROJECT"
+ADOPTION_SKILL=$ADOPTION_PROJECT/.agents/skills/traceknot
+install_initial_skill "$ADOPTION_SKILL"
+write_unmanaged_lock "$ADOPTION_PROJECT/skills-lock.json" 'jin-doh/traceknot'
+ADOPTION_STATE=$ADOPTION_PROJECT/.agents/.traceknot-update
+seed_adoption "$ADOPTION_STATE" "$ADOPTION_PROJECT/skills-lock.json" 1 "$FAKE_NOW"
+printf '%s\t%s\t%s\t%s\n' "$(manifest_sha)" "$((FAKE_NOW - 604801))" "$TAG" "$ARTIFACT_SHA" > "$ADOPTION_STATE/observations.tsv"
+before_adoption=$(cat "$NPX_COUNT")
+auto_adoption_output=$("$ADOPTION_SKILL/bin/traceknot-skills-update" --project "$ADOPTION_PROJECT" --auto)
+printf '%s\n' "$auto_adoption_output" | grep -F 'waiting for one-time manual adoption' >/dev/null
+test "$(cat "$NPX_COUNT")" -eq "$before_adoption"
+"$ADOPTION_SKILL/bin/traceknot-skills-update" apply --project "$ADOPTION_PROJECT" >/dev/null
+test "$(cat "$NPX_COUNT")" -eq $((before_adoption + 2))
+jq -e '.version == "1.2.3"' "$ADOPTION_STATE/active.json" >/dev/null
+# Isolate the existing global lifecycle assertions from this focused adoption scenario.
+printf '%s
+' 0 > "$NPX_COUNT"
+: > "$NPX_LOG"
+
+# The scheduled path has a finite end-to-end operation deadline.
+TIMEOUT_PROJECT="$TMP_DIR/timeout project"
+mkdir -p "$TIMEOUT_PROJECT"
+TIMEOUT_SKILL=$TIMEOUT_PROJECT/.agents/skills/traceknot
+install_initial_skill "$TIMEOUT_SKILL"
+write_unmanaged_lock "$TIMEOUT_PROJECT/skills-lock.json" 'jin-doh/traceknot' main
+TIMEOUT_STATE=$TIMEOUT_PROJECT/.agents/.traceknot-update
+seed_adoption "$TIMEOUT_STATE" "$TIMEOUT_PROJECT/skills-lock.json" 1 "$((FAKE_NOW - 1814400))"
+START_TIMEOUT=$(date -u '+%s')
+if FAKE_CURL_SLEEP=10 TRACEKNOT_UPDATE_OPERATION_TIMEOUT=2     "$TIMEOUT_SKILL/bin/traceknot-skills-update" --project "$TIMEOUT_PROJECT" --auto >/dev/null 2>&1; then
+    printf '%s\n' 'bounded automatic check unexpectedly succeeded' >&2
+    exit 1
+fi
+END_TIMEOUT=$(date -u '+%s')
+[ "$((END_TIMEOUT - START_TIMEOUT))" -lt 6 ]
+test ! -e "$TIMEOUT_STATE/update.lock"
+
 # Global registration: opt-in scheduling, strict seven-day boundary, exact-commit apply.
 GLOBAL_SKILL=$HOME/.agents/skills/traceknot
 install_initial_skill "$GLOBAL_SKILL"
@@ -354,6 +417,7 @@ write_initial_lock "$HOME/.agents/.skill-lock.json"
 "$GLOBAL_SKILL/bin/traceknot-skills-update" enable --global >/dev/null
 grep -F "# traceknot-skills-auto-update:global:$GLOBAL_SKILL" "$CRONTAB_FILE" >/dev/null
 grep -F -- "--global --auto" "$CRONTAB_FILE" >/dev/null
+grep -F 'TRACEKNOT_UPDATE_OPERATION_TIMEOUT=900' "$CRONTAB_FILE" >/dev/null
 GLOBAL_STATE=$HOME/.local/state/traceknot/skills-update-global
 seed_adoption "$GLOBAL_STATE" "$HOME/.agents/.skill-lock.json" 1 "$((FAKE_NOW - 1814400))"
 
