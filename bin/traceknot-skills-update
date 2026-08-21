@@ -31,6 +31,10 @@ fail() {
 }
 NETWORK_TIMEOUT=${TRACEKNOT_UPDATE_NETWORK_TIMEOUT:-0}
 case "$NETWORK_TIMEOUT" in ''|*[!0-9]*) fail 'invalid network timeout' ;; esac
+SKIP_SYNC=${TRACEKNOT_UPDATE_SKIP_SYNC:-0}
+case "$SKIP_SYNC" in 0|1) ;; *) fail 'invalid sync policy' ;; esac
+MAINTENANCE_MODE=${TRACEKNOT_UPDATE_MAINTENANCE:-0}
+case "$MAINTENANCE_MODE" in 0|1) ;; *) fail 'invalid maintenance mode' ;; esac
 
 usage() {
     cat <<EOF_USAGE
@@ -469,7 +473,9 @@ write_check_state() {
     printf '%s\n' "$CHECK_COMPLETED_LOCAL" > "$LAST_CHECK_LOCAL_TMP"
     mv "$LAST_CHECK_LOCAL_TMP" "$LAST_CHECK_LOCAL"
     LAST_CHECK_LOCAL_TMP=
-    sync
+    if [ "$SKIP_SYNC" -eq 0 ]; then
+        sync
+    fi
 }
 
 cron_escape() {
@@ -748,11 +754,20 @@ if [ "$COMMAND" != disable ]; then
         fail 'sha256sum or shasum is required'
     validate_active_state
     validate_pending_state
-    if [ ! -e "$PENDING_STATE" ] && [ ! -L "$PENDING_STATE" ]; then
-        reclaim_orphan_pending_payload
+    if [ "$MAINTENANCE_MODE" -eq 1 ] && [ "$COMMAND" = check ]; then
+        if [ -e "$PENDING_STATE" ] || [ -L "$PENDING_STATE" ] ||
+           [ -e "$PENDING_PAYLOAD_DIR" ] || [ -L "$PENDING_PAYLOAD_DIR" ] ||
+           [ -e "$PENDING_PREVIOUS_PAYLOAD_DIR" ] || [ -L "$PENDING_PREVIOUS_PAYLOAD_DIR" ]; then
+            exit 0
+        fi
     fi
     validate_skills_lock
-    reconcile_pending_state
+    if [ "$MAINTENANCE_MODE" -eq 0 ]; then
+        if [ ! -e "$PENDING_STATE" ] && [ ! -L "$PENDING_STATE" ]; then
+            reclaim_orphan_pending_payload
+        fi
+        reconcile_pending_state
+    fi
 fi
 
 if [ "$COMMAND" = enable ]; then

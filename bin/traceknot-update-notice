@@ -28,7 +28,7 @@ BIN_DIR=$(CDPATH='' cd -P "$(dirname "$0")" 2>/dev/null && pwd) || exit 0
 UPDATER=$BIN_DIR/traceknot-skills-update
 [ -x "$UPDATER" ] || exit 0
 
-STATUS_OUTPUT=$("$UPDATER" status 2>/dev/null) || exit 0
+STATUS_OUTPUT=$(TRACEKNOT_UPDATE_MAINTENANCE=1 "$UPDATER" status 2>/dev/null) || exit 0
 status_field() {
     printf '%s\n' "$STATUS_OUTPUT" | sed -n "s/^$1=//p" | tail -n 1
 }
@@ -61,7 +61,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 0' HUP INT TERM
 
-TRACEKNOT_UPDATE_NOTICE=0 TRACEKNOT_UPDATE_NETWORK_TIMEOUT="$CHECK_TIMEOUT" "$UPDATER" check >"$CHECK_OUTPUT" 2>/dev/null &
+TRACEKNOT_UPDATE_NOTICE=0 TRACEKNOT_UPDATE_NETWORK_TIMEOUT="$CHECK_TIMEOUT" TRACEKNOT_UPDATE_SKIP_SYNC=1 TRACEKNOT_UPDATE_MAINTENANCE=1 "$UPDATER" check >"$CHECK_OUTPUT" 2>/dev/null &
 CHECK_PID=$!
 (
     WATCH_DEADLINE=$(( $(date -u '+%s') + CHECK_TIMEOUT ))
