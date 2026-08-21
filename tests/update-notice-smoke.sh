@@ -6,16 +6,15 @@ NOTICE_SOURCE=$ROOT/bin/traceknot-update-notice
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-update-notice-smoke.XXXXXX")
 trap 'rm -rf "$TMP_ROOT"' EXIT HUP INT TERM
 
-BIN_DIR=$TMP_ROOT/skill/bin
-STATUS_FILE=$TMP_ROOT/status
+HOME=$TMP_ROOT/home
+XDG_STATE_HOME=$TMP_ROOT/state
+BIN_DIR=$HOME/.agents/skills/traceknot/bin
+FIXTURE_STATUS_FILE=$TMP_ROOT/status
 MODE_FILE=$TMP_ROOT/mode
 CALL_LOG=$TMP_ROOT/calls
 STATUS_DEADLINE_FILE=$TMP_ROOT/status-deadline
 STATUS_CHILD_PID_FILE=$TMP_ROOT/status-child.pid
-mkdir -p "$BIN_DIR"
-HOME=$TMP_ROOT/home
-XDG_STATE_HOME=$TMP_ROOT/state
-mkdir -p "$HOME" "$XDG_STATE_HOME/traceknot/skills-update-global"
+mkdir -p "$BIN_DIR" "$XDG_STATE_HOME/traceknot/skills-update-global"
 BIN_DIR=$(CDPATH='' cd -P "$BIN_DIR" && pwd)
 cp "$NOTICE_SOURCE" "$BIN_DIR/traceknot-update-notice"
 : > "$CALL_LOG"
@@ -38,7 +37,7 @@ case "${1:-}" in
             printf '%s\n' "$status_child" > "$STATUS_CHILD_PID_FILE"
             wait "$status_child"
         fi
-        cat "$STATUS_FILE"
+        cat "$FIXTURE_STATUS_FILE"
         ;;
     check)
         printf 'check|maintenance=%s|deadline=%s\n' \
@@ -46,6 +45,10 @@ case "${1:-}" in
             "${TRACEKNOT_UPDATE_DEADLINE_EPOCH:-}" >> "$CALL_LOG"
         case "$(cat "$MODE_FILE")" in
             eligible) printf '%s\n' 'Eligible update: v9.9.9 (0123456789abcdef)' ;;
+            eligible-slow)
+                sleep 2
+                printf '%s\n' 'Eligible update: v9.9.9 (0123456789abcdef)'
+                ;;
             none) printf '%s\n' 'No release has exceeded the seven-day observation requirement.' ;;
             malformed) printf '%s\n' 'Eligible update: latest (untrusted)' ;;
             fail) exit 2 ;;
@@ -71,7 +74,7 @@ write_status() {
     last_check=$2
     scope=$3
     project_root=$4
-    cat > "$STATUS_FILE" <<EOF_STATUS
+    cat > "$FIXTURE_STATUS_FILE" <<EOF_STATUS
 scope=$scope
 projectRoot=$project_root
 registration=$BIN_DIR
@@ -88,7 +91,7 @@ run_notice() {
     notice_mode=$1
     notice_timeout=${2:-3}
     HOME=$HOME XDG_STATE_HOME=$XDG_STATE_HOME \
-    STATUS_FILE=$STATUS_FILE MODE_FILE=$MODE_FILE CALL_LOG=$CALL_LOG \
+    FIXTURE_STATUS_FILE=$FIXTURE_STATUS_FILE MODE_FILE=$MODE_FILE CALL_LOG=$CALL_LOG \
     STATUS_DEADLINE_FILE=$STATUS_DEADLINE_FILE STATUS_CHILD_PID_FILE=$STATUS_CHILD_PID_FILE \
     FAKE_STATUS_CHILD_IGNORE_TERM=${FAKE_STATUS_CHILD_IGNORE_TERM:-0} \
     FAKE_STATUS_SLEEP=${FAKE_STATUS_SLEEP:-30} \
@@ -123,8 +126,8 @@ output=$(run_notice auto)
 [ -z "$output" ]
 [ ! -s "$CALL_LOG" ]
 
-sed "s/^lastCheckLocal=.*/lastCheckLocal=$((NOW + 43200))/" "$STATUS_FILE" > "$STATUS_FILE.tmp"
-mv "$STATUS_FILE.tmp" "$STATUS_FILE"
+sed "s/^lastCheckLocal=.*/lastCheckLocal=$((NOW + 43200))/" "$FIXTURE_STATUS_FILE" > "$FIXTURE_STATUS_FILE.tmp"
+mv "$FIXTURE_STATUS_FILE.tmp" "$FIXTURE_STATUS_FILE"
 output=$(run_notice auto)
 printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/null
 
@@ -177,9 +180,29 @@ if [ -f "$STATUS_CHILD_PID_FILE" ] && kill -0 "$(cat "$STATUS_CHILD_PID_FILE")" 
     exit 1
 fi
 
+# Concurrent QA completions share one advisory lock. The second invocation
+# must not perform another eligibility request or print a duplicate notice.
+: > "$CALL_LOG"
+write_status 0 0 global ''
+printf '%s\n' eligible-slow > "$MODE_FILE"
+CONCURRENT_ONE=$TMP_ROOT/concurrent-one.out
+CONCURRENT_TWO=$TMP_ROOT/concurrent-two.out
+run_notice auto 10 > "$CONCURRENT_ONE" &
+concurrent_one_pid=$!
+sleep 1
+run_notice auto 10 > "$CONCURRENT_TWO" &
+concurrent_two_pid=$!
+wait "$concurrent_one_pid"
+wait "$concurrent_two_pid"
+notice_count=$(cat "$CONCURRENT_ONE" "$CONCURRENT_TWO" | grep -c 'Traceknot update available: v9.9.9' || true)
+[ "$notice_count" -eq 1 ]
+check_count=$(grep -c '^check|' "$CALL_LOG" || true)
+[ "$check_count" -eq 1 ]
+
 : > "$CALL_LOG"
 printf '%s\n' eligible > "$MODE_FILE"
-output=$(CI=1 STATUS_FILE=$STATUS_FILE MODE_FILE=$MODE_FILE CALL_LOG=$CALL_LOG \
+output=$(CI=1 FIXTURE_STATUS_FILE=$FIXTURE_STATUS_FILE MODE_FILE=$MODE_FILE CALL_LOG=$CALL_LOG \
+    HOME=$HOME XDG_STATE_HOME=$XDG_STATE_HOME \
     TRACEKNOT_UPDATE_NOTICE=auto sh "$BIN_DIR/traceknot-update-notice" 2>&1)
 [ -z "$output" ]
 [ ! -s "$CALL_LOG" ]
