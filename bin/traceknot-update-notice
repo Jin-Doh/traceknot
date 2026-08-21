@@ -102,7 +102,7 @@ esac
 {
     printf '\nTraceknot update available: %s\n' "$RELEASE"
     printf '%s\n' 'A newer release is eligible under the seven-day update policy.'
-    printf '%s\n' 'Recommended verified update:'
+    printf '%s\n' 'Recommended verification-and-update command:'
     printf '  %s\n' "$UPDATE_COMMAND"
     printf '%s\n' 'This maintenance advisory does not affect the current QA verdict.'
 } >&2
