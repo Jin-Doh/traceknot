@@ -1,5 +1,5 @@
 #!/bin/sh
-# Advisory update check for explicitly enabled Skills CLI installations.
+# Advisory update check for Skills CLI installations.
 
 set -u
 
@@ -32,8 +32,6 @@ status_field() {
     printf '%s\n' "$STATUS_OUTPUT" | sed -n "s/^$1=//p" | tail -n 1
 }
 
-AUTOMATIC=$(status_field automatic)
-[ "$AUTOMATIC" = 1 ] || [ "$MODE" = force ] || exit 0
 LAST_CHECK=$(status_field lastCheck)
 case "$LAST_CHECK" in ''|*[!0-9]*) LAST_CHECK=0 ;; esac
 NOW=$(date -u '+%s' 2>/dev/null) || exit 0
