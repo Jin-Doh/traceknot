@@ -28,6 +28,8 @@ fail() {
     printf '%s: %s\n' "$PROGRAM" "$*" >&2
     exit 2
 }
+NETWORK_TIMEOUT=${TRACEKNOT_UPDATE_NETWORK_TIMEOUT:-0}
+case "$NETWORK_TIMEOUT" in ''|*[!0-9]*) fail 'invalid network timeout' ;; esac
 
 usage() {
     cat <<EOF_USAGE
@@ -800,17 +802,24 @@ curl_authorization=
 if [ -n "${GH_TOKEN:-}" ]; then
     curl_authorization="Authorization: Bearer $GH_TOKEN"
 fi
+curl_with_timeout() {
+    if [ "$NETWORK_TIMEOUT" -gt 0 ]; then
+        curl --max-time "$NETWORK_TIMEOUT" "$@"
+    else
+        curl "$@"
+    fi
+}
 
 fetch_release_page() {
     fetch_url=$1
     fetch_headers=$2
     fetch_output=$3
     if [ -n "$curl_authorization" ]; then
-        curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location \
+        curl_with_timeout --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location \
             -H 'Accept: application/vnd.github+json' -H "$curl_authorization" \
             -D "$fetch_headers" -o "$fetch_output" "$fetch_url"
     else
-        curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location \
+        curl_with_timeout --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location \
             -H 'Accept: application/vnd.github+json' \
             -D "$fetch_headers" -o "$fetch_output" "$fetch_url"
     fi
@@ -821,11 +830,11 @@ fetch_asset() {
     asset_output=$2
     validate_asset_api_url "$asset_url"
     if [ -n "$curl_authorization" ]; then
-        curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location \
+        curl_with_timeout --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location \
             -H 'Accept: application/octet-stream' -H "$curl_authorization" \
             -o "$asset_output" "$asset_url"
     else
-        curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location \
+        curl_with_timeout --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location \
             -H 'Accept: application/octet-stream' -o "$asset_output" "$asset_url"
     fi
 }

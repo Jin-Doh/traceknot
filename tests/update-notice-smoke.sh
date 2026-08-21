@@ -13,12 +13,14 @@ STATUS_FILE=$TMP_ROOT/status
 MODE_FILE=$TMP_ROOT/mode
 CALL_LOG=$TMP_ROOT/calls
 mkdir -p "$BIN_DIR"
+BIN_DIR=$(CDPATH='' cd -P "$BIN_DIR" && pwd)
 cp "$NOTICE_SOURCE" "$BIN_DIR/traceknot-update-notice"
 : > "$CALL_LOG"
 
 cat > "$BIN_DIR/traceknot-skills-update" <<'EOF_UPDATER'
 #!/bin/sh
 set -eu
+trap 'exit 1' HUP INT TERM
 case "${1:-}" in
     status)
         cat "$STATUS_FILE"
@@ -30,7 +32,7 @@ case "${1:-}" in
             none) printf '%s\n' 'No release has exceeded the seven-day observation requirement.' ;;
             malformed) printf '%s\n' 'Eligible update: latest (untrusted)' ;;
             fail) exit 2 ;;
-            sleep) sleep 3 ;;
+            sleep) sleep "${TRACEKNOT_UPDATE_NETWORK_TIMEOUT:-3}" ;;
             *) exit 2 ;;
         esac
         ;;
@@ -61,7 +63,7 @@ run_notice() {
     STATUS_FILE=$STATUS_FILE MODE_FILE=$MODE_FILE CALL_LOG=$CALL_LOG \
     TRACEKNOT_UPDATE_NOTICE=$notice_mode \
     TRACEKNOT_UPDATE_NOTICE_INTERVAL=86400 \
-    TRACEKNOT_UPDATE_NOTICE_TIMEOUT=1 \
+    TRACEKNOT_UPDATE_NOTICE_TIMEOUT=2 \
     sh "$BIN_DIR/traceknot-update-notice" 2>&1
 }
 
@@ -124,9 +126,11 @@ eval "set -- $command_line"
 : > "$CALL_LOG"
 printf '%s\n' fail > "$MODE_FILE"
 output=$(run_notice force)
-[ -z "$output" ]
 printf '%s\n' sleep > "$MODE_FILE"
+START=$(date -u '+%s')
 output=$(run_notice force)
+END=$(date -u '+%s')
+[ "$((END - START))" -lt 4 ]
 [ -z "$output" ]
 
 # CI suppresses the advisory unless explicitly forced.
