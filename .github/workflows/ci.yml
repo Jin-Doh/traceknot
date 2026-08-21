@@ -43,7 +43,7 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git fetch origin fix/skills-cli-auto-update
-          git merge --no-commit --no-ff -X ours origin/fix/skills-cli-auto-update
+          git merge --no-commit --no-ff origin/fix/skills-cli-auto-update
           grep -F 'collect_process_tree() {' bin/traceknot-skills-update >/dev/null
           grep -F 'starting_state_unchanged() {' bin/traceknot-skills-update >/dev/null
           grep -F 'changed immediately before update mutation' bin/traceknot-skills-update >/dev/null
