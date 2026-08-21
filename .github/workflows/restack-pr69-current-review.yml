@@ -1,5 +1,6 @@
 name: Restack PR 69 on current PR 68
 
+# Triggered after PR #68 reached its exact reviewed head.
 on:
   push:
     branches:
