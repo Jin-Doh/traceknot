@@ -198,6 +198,10 @@ fi
 if [ "${FAKE_TAMPER_APPLY:-0}" -eq 1 ] && [ "$HOME" = "$REAL_HOME" ]; then
     printf '%s\n' '# tampered canonical payload' >> "$target/SKILL.md"
 fi
+if [ "${FAKE_INTERRUPT_BEFORE_LOCK:-0}" -eq 1 ] && [ "$HOME" = "$REAL_HOME" ]; then
+    kill -TERM "$PPID"
+    exit 143
+fi
 mkdir -p "$(dirname "$lock")"
 if [ "$is_global" -eq 1 ]; then
     jq -n --arg commit "$EXPECTED_SOURCE_COMMIT" '{version:3,skills:{traceknot:{source:"Jin-Doh/traceknot",sourceType:"github",sourceUrl:"https://github.com/Jin-Doh/traceknot.git",ref:$commit,skillPath:"skill/SKILL.md",skillFolderHash:"fixture",installedAt:"2026-08-21T00:00:00.000Z",updatedAt:"2026-08-21T00:00:00.000Z"}}}' > "$lock"
@@ -562,6 +566,34 @@ if "$PAYLOAD_SKILL/bin/traceknot-skills-update" check --project "$PAYLOAD_PROJEC
 fi
 jq -e '.version == "1.0.0"' "$PAYLOAD_STATE/active.json" >/dev/null
 test -f "$PAYLOAD_STATE/pending.json"
+# Registration replacement before the lock write must preserve the failed transaction.
+PRELOCK_PROJECT="$TMP_DIR/pre-lock project"
+mkdir -p "$PRELOCK_PROJECT"
+PRELOCK_PROJECT=$(CDPATH='' cd -P "$PRELOCK_PROJECT" && pwd)
+PRELOCK_SKILL=$PRELOCK_PROJECT/.agents/skills/traceknot
+install_initial_skill "$PRELOCK_SKILL"
+write_initial_lock "$PRELOCK_PROJECT/skills-lock.json"
+"$PRELOCK_SKILL/bin/traceknot-skills-update" status --project "$PRELOCK_PROJECT" >/dev/null
+PRELOCK_STATE=$PRELOCK_PROJECT/.agents/.traceknot-update
+seed_adoption "$PRELOCK_STATE" "$PRELOCK_PROJECT/skills-lock.json" 0 "$((FAKE_NOW - 1814400))"
+printf '%s\t%s\t%s\t%s\n' "$MANIFEST_SHA" "$((FAKE_NOW - 604801))" "$TAG" "$ARTIFACT_SHA" > "$PRELOCK_STATE/observations.tsv"
+before_prelock=$(cat "$NPX_COUNT")
+FAKE_INTERRUPT_BEFORE_LOCK=1
+export FAKE_INTERRUPT_BEFORE_LOCK
+if "$PRELOCK_SKILL/bin/traceknot-skills-update" apply --project "$PRELOCK_PROJECT" >/dev/null 2>&1; then
+    printf '%s\n' 'pre-lock interruption unexpectedly succeeded' >&2
+    exit 1
+fi
+unset FAKE_INTERRUPT_BEFORE_LOCK
+test "$(cat "$NPX_COUNT")" -eq $((before_prelock + 2))
+test -f "$PRELOCK_STATE/pending.json"
+test -d "$PRELOCK_STATE/pending-previous-payload"
+if "$PRELOCK_SKILL/bin/traceknot-skills-update" check --project "$PRELOCK_PROJECT" >/dev/null 2>&1; then
+    printf '%s\n' 'partially replaced registration was discarded as safe' >&2
+    exit 1
+fi
+test -f "$PRELOCK_STATE/pending.json"
+test -d "$PRELOCK_STATE/pending-payload"
 SYMLINK_PROJECT="$TMP_DIR/symlink project"
 SYMLINK_OUTSIDE="$TMP_DIR/symlink outside"
 mkdir -p "$SYMLINK_PROJECT" "$SYMLINK_OUTSIDE/.agents/skills/traceknot"

@@ -23,6 +23,7 @@ LOCK_CLAIM=
 LOCK_OWNER_ID=
 PENDING_STATE=
 PENDING_PAYLOAD_TMP=
+PENDING_PREVIOUS_PAYLOAD_TMP=
 fail() {
     printf '%s: %s\n' "$PROGRAM" "$*" >&2
     exit 2
@@ -228,6 +229,7 @@ LOCK_DIR=$STATE_DIR/update.lock
 RECOVERY_LOCK=$STATE_DIR/update.lock-recovery
 PENDING_STATE=$STATE_DIR/pending.json
 PENDING_PAYLOAD_DIR=$STATE_DIR/pending-payload
+PENDING_PREVIOUS_PAYLOAD_DIR=$STATE_DIR/pending-previous-payload
 
 cleanup() {
     if [ -n "$LOCK_CLAIM" ] && [ -f "$LOCK_CLAIM" ] &&
@@ -245,6 +247,9 @@ cleanup() {
     fi
     if [ -n "$PENDING_PAYLOAD_TMP" ]; then
         rm -rf "$PENDING_PAYLOAD_TMP"
+    fi
+    if [ -n "$PENDING_PREVIOUS_PAYLOAD_TMP" ]; then
+        rm -rf "$PENDING_PREVIOUS_PAYLOAD_TMP"
     fi
     if [ -n "$TMP_ROOT" ]; then
         rm -rf "$TMP_ROOT"
@@ -558,12 +563,14 @@ validate_pending_state() {
     PENDING_PREVIOUS_LOCK_ENTRY_SHA256=$(jq -r .previousLockEntrySha256 "$PENDING_STATE")
 }
 reclaim_orphan_pending_payload() {
-    if [ ! -e "$PENDING_PAYLOAD_DIR" ] && [ ! -L "$PENDING_PAYLOAD_DIR" ]; then
-        return 0
-    fi
-    [ -d "$PENDING_PAYLOAD_DIR" ] && [ ! -L "$PENDING_PAYLOAD_DIR" ] ||
-        fail 'unsafe orphan pending payload'
-    rm -rf "$PENDING_PAYLOAD_DIR"
+    for orphan_payload in "$PENDING_PAYLOAD_DIR" "$PENDING_PREVIOUS_PAYLOAD_DIR"; do
+        if [ ! -e "$orphan_payload" ] && [ ! -L "$orphan_payload" ]; then
+            continue
+        fi
+        [ -d "$orphan_payload" ] && [ ! -L "$orphan_payload" ] ||
+            fail "unsafe orphan pending payload: $orphan_payload"
+        rm -rf "$orphan_payload"
+    done
     sync
 }
 
@@ -650,12 +657,22 @@ reconcile_pending_state() {
                 "$PENDING_ARTIFACT_SHA" "$LOCK_ENTRY_SHA256"
         fi
         rm -f "$PENDING_STATE"
-        rm -rf "$PENDING_PAYLOAD_DIR"
+        rm -rf "$PENDING_PAYLOAD_DIR" "$PENDING_PREVIOUS_PAYLOAD_DIR"
         sync
     elif [ "$LOCK_REF" = "$PENDING_PREVIOUS_SOURCE_COMMIT" ] &&
          [ "$LOCK_ENTRY_SHA256" = "$PENDING_PREVIOUS_LOCK_ENTRY_SHA256" ]; then
+        command -v diff >/dev/null 2>&1 || fail 'diff is required to discard a pending update'
+        [ -d "$PENDING_PREVIOUS_PAYLOAD_DIR" ] &&
+            [ ! -L "$PENDING_PREVIOUS_PAYLOAD_DIR" ] ||
+            fail 'previous pending payload snapshot is missing or unsafe'
+        if find "$PENDING_PREVIOUS_PAYLOAD_DIR" -type l -print | grep . >/dev/null; then
+            fail 'previous pending payload snapshot contains a symbolic link'
+        fi
+        if ! diff -r "$PENDING_PREVIOUS_PAYLOAD_DIR" "$REGISTRATION" >/dev/null 2>&1; then
+            fail 'installed registration differs from the previous payload; preserving pending update'
+        fi
         rm -f "$PENDING_STATE"
-        rm -rf "$PENDING_PAYLOAD_DIR"
+        rm -rf "$PENDING_PAYLOAD_DIR" "$PENDING_PREVIOUS_PAYLOAD_DIR"
         sync
     else
         fail 'pending update state does not match the installed Skills lock'
@@ -1141,9 +1158,21 @@ if ! diff -r "$VERIFIED_RELEASE/skill" "$PREFLIGHT_SKILL" >/dev/null 2>&1; then
     fail 'Skills CLI preflight payload differs from the verified release artifact'
 fi
 
-if [ -e "$PENDING_PAYLOAD_DIR" ] || [ -L "$PENDING_PAYLOAD_DIR" ]; then
-    fail 'pending update payload path already exists'
+if [ -e "$PENDING_PREVIOUS_PAYLOAD_DIR" ] || [ -L "$PENDING_PREVIOUS_PAYLOAD_DIR" ]; then
+    fail 'previous pending payload path already exists'
 fi
+if find "$REGISTRATION" -type l -print | grep . >/dev/null; then
+    fail 'installed registration contains a symbolic link'
+fi
+PENDING_PREVIOUS_PAYLOAD_TMP=$STATE_DIR/pending-previous-payload.tmp.$$
+mkdir "$PENDING_PREVIOUS_PAYLOAD_TMP"
+cp -R "$REGISTRATION/." "$PENDING_PREVIOUS_PAYLOAD_TMP/"
+if ! diff -r "$REGISTRATION" "$PENDING_PREVIOUS_PAYLOAD_TMP" >/dev/null 2>&1; then
+    fail 'cannot persist the previous registration payload'
+fi
+mv "$PENDING_PREVIOUS_PAYLOAD_TMP" "$PENDING_PREVIOUS_PAYLOAD_DIR"
+PENDING_PREVIOUS_PAYLOAD_TMP=
+sync
 PENDING_PAYLOAD_TMP=$STATE_DIR/pending-payload.tmp.$$
 mkdir "$PENDING_PAYLOAD_TMP"
 cp -R "$VERIFIED_RELEASE/skill/." "$PENDING_PAYLOAD_TMP/"
@@ -1196,6 +1225,6 @@ INSTALLED_LOCK_ENTRY_SHA256=$(jq -cS '.skills.traceknot' "$LOCK_FILE" | sha256_s
 write_active_state "$TRUSTED_NOW" "$VERSION" "$RELEASE_TAG" "$SOURCE_COMMIT" \
     "$ARTIFACT_SHA" "$INSTALLED_LOCK_ENTRY_SHA256"
 rm -f "$PENDING_STATE"
-rm -rf "$PENDING_PAYLOAD_DIR"
+rm -rf "$PENDING_PAYLOAD_DIR" "$PENDING_PREVIOUS_PAYLOAD_DIR"
 sync
 printf 'Updated Traceknot to %s through Skills CLI at %s\n' "$RELEASE_TAG" "$REGISTRATION"
