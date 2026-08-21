@@ -573,6 +573,12 @@ reclaim_orphan_pending_payload() {
     done
     sync
 }
+reject_registration_symlinks() {
+    registration_root=$1
+    if find "$registration_root" -type l -print | grep . >/dev/null; then
+        fail "registration contains a symbolic link: $registration_root"
+    fi
+}
 
 write_active_state() {
     active_applied_at=$1
@@ -631,6 +637,7 @@ reconcile_pending_state() {
     if [ "$LOCK_REF" = "$PENDING_SOURCE_COMMIT" ]; then
         [ -d "$REGISTRATION" ] && [ ! -L "$REGISTRATION" ] ||
             fail 'pending update did not leave a canonical registration'
+        reject_registration_symlinks "$REGISTRATION"
         [ -x "$REGISTRATION/bin/traceknot" ] ||
             fail 'pending update did not leave the Traceknot runtime'
         "$REGISTRATION/bin/traceknot" self-check >/dev/null 2>&1 ||
@@ -665,6 +672,7 @@ reconcile_pending_state() {
         [ -d "$PENDING_PREVIOUS_PAYLOAD_DIR" ] &&
             [ ! -L "$PENDING_PREVIOUS_PAYLOAD_DIR" ] ||
             fail 'previous pending payload snapshot is missing or unsafe'
+        reject_registration_symlinks "$REGISTRATION"
         if find "$PENDING_PREVIOUS_PAYLOAD_DIR" -type l -print | grep . >/dev/null; then
             fail 'previous pending payload snapshot contains a symbolic link'
         fi
@@ -1154,6 +1162,7 @@ fi
 if ! "$PREFLIGHT_SKILL/bin/traceknot" self-check >/dev/null 2>&1; then
     fail 'preflight runtime self-check failed'
 fi
+reject_registration_symlinks "$PREFLIGHT_SKILL"
 if ! diff -r "$VERIFIED_RELEASE/skill" "$PREFLIGHT_SKILL" >/dev/null 2>&1; then
     fail 'Skills CLI preflight payload differs from the verified release artifact'
 fi
@@ -1204,6 +1213,7 @@ else
 fi
 
 [ -d "$REGISTRATION" ] && [ ! -L "$REGISTRATION" ] || fail 'Skills CLI removed the canonical registration'
+reject_registration_symlinks "$REGISTRATION"
 [ -x "$REGISTRATION/bin/traceknot" ] || fail 'updated Traceknot runtime is missing'
 [ -x "$REGISTRATION/bin/traceknot-skills-update" ] || fail 'updated Skills updater is missing'
 if ! "$REGISTRATION/bin/traceknot" self-check >/dev/null 2>&1; then

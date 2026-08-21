@@ -198,6 +198,10 @@ fi
 if [ "${FAKE_TAMPER_APPLY:-0}" -eq 1 ] && [ "$HOME" = "$REAL_HOME" ]; then
     printf '%s\n' '# tampered canonical payload' >> "$target/SKILL.md"
 fi
+if [ "${FAKE_SYMLINK_APPLY:-0}" -eq 1 ] && [ "$HOME" = "$REAL_HOME" ]; then
+    rm -f "$target/SKILL.md"
+    ln -s "$FAKE_SYMLINK_TARGET" "$target/SKILL.md"
+fi
 if [ "${FAKE_INTERRUPT_BEFORE_LOCK:-0}" -eq 1 ] && [ "$HOME" = "$REAL_HOME" ]; then
     kill -TERM "$PPID"
     exit 143
@@ -566,7 +570,29 @@ if "$PAYLOAD_SKILL/bin/traceknot-skills-update" check --project "$PAYLOAD_PROJEC
 fi
 jq -e '.version == "1.0.0"' "$PAYLOAD_STATE/active.json" >/dev/null
 test -f "$PAYLOAD_STATE/pending.json"
-# Registration replacement before the lock write must preserve the failed transaction.
+# Nested registration symlinks must fail before active-state promotion.
+SYMLINK_PAYLOAD_PROJECT="$TMP_DIR/symlink payload project"
+mkdir -p "$SYMLINK_PAYLOAD_PROJECT"
+SYMLINK_PAYLOAD_PROJECT=$(CDPATH='' cd -P "$SYMLINK_PAYLOAD_PROJECT" && pwd)
+SYMLINK_PAYLOAD_SKILL=$SYMLINK_PAYLOAD_PROJECT/.agents/skills/traceknot
+install_initial_skill "$SYMLINK_PAYLOAD_SKILL"
+write_initial_lock "$SYMLINK_PAYLOAD_PROJECT/skills-lock.json"
+"$SYMLINK_PAYLOAD_SKILL/bin/traceknot-skills-update" status --project "$SYMLINK_PAYLOAD_PROJECT" >/dev/null
+SYMLINK_PAYLOAD_STATE=$SYMLINK_PAYLOAD_PROJECT/.agents/.traceknot-update
+seed_adoption "$SYMLINK_PAYLOAD_STATE" "$SYMLINK_PAYLOAD_PROJECT/skills-lock.json" 0 "$((FAKE_NOW - 1814400))"
+SYMLINK_TARGET=$TMP_DIR/external-skill.md
+cp "$SOURCE_SKILL/SKILL.md" "$SYMLINK_TARGET"
+printf '%s\t%s\t%s\t%s\n' "$MANIFEST_SHA" "$((FAKE_NOW - 604801))" "$TAG" "$ARTIFACT_SHA" \
+    > "$SYMLINK_PAYLOAD_STATE/observations.tsv"
+FAKE_SYMLINK_APPLY=1
+export FAKE_SYMLINK_APPLY FAKE_SYMLINK_TARGET="$SYMLINK_TARGET"
+if "$SYMLINK_PAYLOAD_SKILL/bin/traceknot-skills-update" apply --project "$SYMLINK_PAYLOAD_PROJECT" >/dev/null 2>&1; then
+    printf '%s\n' 'symlinked canonical payload unexpectedly applied' >&2
+    exit 1
+fi
+unset FAKE_SYMLINK_APPLY FAKE_SYMLINK_TARGET
+test -f "$SYMLINK_PAYLOAD_STATE/pending.json"
+test ! -f "$SYMLINK_PAYLOAD_STATE/active.json"
 PRELOCK_PROJECT="$TMP_DIR/pre-lock project"
 mkdir -p "$PRELOCK_PROJECT"
 PRELOCK_PROJECT=$(CDPATH='' cd -P "$PRELOCK_PROJECT" && pwd)
