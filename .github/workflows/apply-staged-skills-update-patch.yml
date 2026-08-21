@@ -24,11 +24,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ "$(git log -1 --format=%s)" != 'chore: rerun verified updater patch' ]; then
+          if [ "$(git log -1 --format=%s)" != 'chore: apply verified updater patch' ]; then
             echo 'No staged updater patch requested for this head.'
             exit 0
           fi
-          cat .traceknot-latest.patch.gz.b64.part-* | base64 --decode | gzip -d > /tmp/traceknot-latest.patch
+
+          cat \
+            .traceknot-latest.patch.gz.b64.part-00 \
+            .traceknot-latest.patch.gz.b64.part-01a \
+            .traceknot-latest.patch.gz.b64.part-01b \
+            .traceknot-latest.patch.gz.b64.part-01c \
+            .traceknot-latest.patch.gz.b64.part-01d \
+            .traceknot-latest.patch.gz.b64.part-02 \
+            > /tmp/traceknot-latest.patch.gz.b64
+          test "$(sha256sum /tmp/traceknot-latest.patch.gz.b64 | cut -d ' ' -f 1)" = 99784ecb65a3ae0b9101c2c5f843314a5b4b1e8628829be0e17c2ce87d4a099d
+          base64 --decode /tmp/traceknot-latest.patch.gz.b64 > /tmp/traceknot-latest.patch.gz
+          test "$(sha256sum /tmp/traceknot-latest.patch.gz | cut -d ' ' -f 1)" = 41da27a6c17c651a558e4539800ae8845d652887393756281ea0424ad00911eb
+          gzip -d -c /tmp/traceknot-latest.patch.gz > /tmp/traceknot-latest.patch
+          test "$(sha256sum /tmp/traceknot-latest.patch | cut -d ' ' -f 1)" = f40835c0dff71d83bd3da37fcb2222a7ae601a85c5cd8062b09dd67c520256cd
+
           test "$(git hash-object bin/traceknot-skills-update)" = 7e51b800bd0bf2911b2699c6bff9aa04fdd6fb2a
           test "$(git hash-object docs/automatic-updates.md)" = 9d035a06c82ca9f6036e49ade14af40bf7f006fd
           test "$(git hash-object tests/skills-updater-smoke.sh)" = 327f0d40c20ff5febd755360cbc2011a2913b633
@@ -36,10 +50,22 @@ jobs:
           git apply /tmp/traceknot-latest.patch
           cp bin/traceknot-skills-update skill/bin/traceknot-skills-update
           chmod +x bin/traceknot-skills-update skill/bin/traceknot-skills-update tests/skills-updater-smoke.sh
+
           sh -n bin/traceknot-skills-update skill/bin/traceknot-skills-update tests/skills-updater-smoke.sh scripts/ci scripts/package-release.sh
           cmp -s bin/traceknot-skills-update skill/bin/traceknot-skills-update
           sh tests/skills-updater-smoke.sh
           git diff --check
+
+          git rm -f --ignore-unmatch \
+            .github/workflows/apply-staged-skills-update-patch.yml \
+            .traceknot-latest.patch.gz \
+            .traceknot-latest.patch.gz.b64.part-00 \
+            .traceknot-latest.patch.gz.b64.part-01 \
+            .traceknot-latest.patch.gz.b64.part-01a \
+            .traceknot-latest.patch.gz.b64.part-01b \
+            .traceknot-latest.patch.gz.b64.part-01c \
+            .traceknot-latest.patch.gz.b64.part-01d \
+            .traceknot-latest.patch.gz.b64.part-02
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add bin/traceknot-skills-update skill/bin/traceknot-skills-update docs/automatic-updates.md tests/skills-updater-smoke.sh
