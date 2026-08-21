@@ -1,5 +1,6 @@
 name: Apply PR 69 atomic check state review
 
+# Trigger after the workflow exists on the advisory branch.
 on:
   push:
     branches:
