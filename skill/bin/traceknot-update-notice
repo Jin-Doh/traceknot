@@ -9,6 +9,7 @@ CHECK_TIMEOUT=${TRACEKNOT_UPDATE_NOTICE_TIMEOUT:-5}
 TMP_ROOT=
 CHECK_PID=
 WATCH_PID=
+WATCH_DONE=
 
 case "$MODE" in
     0|false|off|disabled) exit 0 ;;
@@ -42,6 +43,7 @@ fi
 
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-update-notice.XXXXXX" 2>/dev/null) || exit 0
 CHECK_OUTPUT=$TMP_ROOT/check.out
+WATCH_DONE=$TMP_ROOT/watch.done
 cleanup() {
     if [ -n "$WATCH_PID" ]; then
         kill "$WATCH_PID" 2>/dev/null || true
@@ -59,8 +61,15 @@ trap 'exit 0' HUP INT TERM
 TRACEKNOT_UPDATE_NOTICE=0 TRACEKNOT_UPDATE_NETWORK_TIMEOUT="$CHECK_TIMEOUT" "$UPDATER" check >"$CHECK_OUTPUT" 2>/dev/null &
 CHECK_PID=$!
 (
-    sleep "$CHECK_TIMEOUT"
-    kill -TERM "$CHECK_PID" 2>/dev/null || true
+    WATCH_DEADLINE=$(( $(date -u '+%s') + CHECK_TIMEOUT ))
+    while [ ! -e "$WATCH_DONE" ]; do
+        WATCH_NOW=$(date -u '+%s')
+        if [ "$WATCH_NOW" -ge "$WATCH_DEADLINE" ]; then
+            kill -TERM "$CHECK_PID" 2>/dev/null || true
+            exit 0
+        fi
+        sleep 1
+    done
 ) &
 WATCH_PID=$!
 
@@ -71,6 +80,7 @@ else
     CHECK_STATUS=$?
 fi
 CHECK_PID=
+: > "$WATCH_DONE"
 kill "$WATCH_PID" 2>/dev/null || true
 wait "$WATCH_PID" 2>/dev/null || true
 WATCH_PID=

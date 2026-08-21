@@ -59,11 +59,12 @@ EOF_STATUS
 
 run_notice() {
     notice_mode=$1
+    notice_timeout=${2:-2}
     CI= \
     STATUS_FILE=$STATUS_FILE MODE_FILE=$MODE_FILE CALL_LOG=$CALL_LOG \
     TRACEKNOT_UPDATE_NOTICE=$notice_mode \
     TRACEKNOT_UPDATE_NOTICE_INTERVAL=86400 \
-    TRACEKNOT_UPDATE_NOTICE_TIMEOUT=2 \
+    TRACEKNOT_UPDATE_NOTICE_TIMEOUT=$notice_timeout \
     sh "$BIN_DIR/traceknot-update-notice" 2>&1
 }
 
@@ -77,7 +78,10 @@ output=$(run_notice 0)
 [ ! -s "$CALL_LOG" ]
 
 # Automatic updates may remain disabled while the default advisory still reaches the user.
-output=$(run_notice auto)
+START=$(date -u '+%s')
+output=$(run_notice auto 5)
+END=$(date -u '+%s')
+[ "$((END - START))" -lt 3 ]
 printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/null
 printf '%s\n' "$output" | grep -F 'Recommended verification-and-update command:' >/dev/null
 printf '%s\n' "$output" | grep -F "'${BIN_DIR}/traceknot-skills-update' apply --global" >/dev/null
