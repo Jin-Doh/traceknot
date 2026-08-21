@@ -10,6 +10,8 @@ TMP_ROOT=
 RUN_PID=
 WATCH_PID=
 RUN_SEQ=0
+NOTICE_LOCK=
+NOTICE_LOCK_MODE=
 
 case "$MODE" in
     0|false|off|disabled) exit 0 ;;
@@ -28,6 +30,39 @@ command -v pgrep >/dev/null 2>&1 || exit 0
 BIN_DIR=$(CDPATH='' cd -P "$(dirname "$0")" 2>/dev/null && pwd) || exit 0
 UPDATER=$BIN_DIR/traceknot-skills-update
 [ -x "$UPDATER" ] || exit 0
+
+GLOBAL_BIN=$(CDPATH='' cd -P "$HOME/.agents/skills/traceknot/bin" 2>/dev/null && pwd) || GLOBAL_BIN=
+if [ -n "$GLOBAL_BIN" ] && [ "$BIN_DIR" = "$GLOBAL_BIN" ]; then
+    NOTICE_STATE_ROOT=${XDG_STATE_HOME:-"$HOME/.local/state"}/traceknot
+else
+    case "$BIN_DIR" in
+        */.agents/skills/traceknot/bin)
+            NOTICE_PROJECT_ROOT=${BIN_DIR%/.agents/skills/traceknot/bin}
+            NOTICE_STATE_ROOT=$NOTICE_PROJECT_ROOT/.agents/.traceknot-update
+            ;;
+        *) exit 0 ;;
+    esac
+fi
+mkdir -p "$NOTICE_STATE_ROOT" 2>/dev/null || exit 0
+NOTICE_LOCK=$NOTICE_STATE_ROOT/update-notice.lock
+if [ -L "$NOTICE_LOCK" ]; then
+    exit 0
+fi
+if command -v flock >/dev/null 2>&1; then
+    if [ -e "$NOTICE_LOCK" ] && [ ! -f "$NOTICE_LOCK" ]; then
+        exit 0
+    fi
+    exec 8>>"$NOTICE_LOCK" || exit 0
+    flock -n 8 || exit 0
+    NOTICE_LOCK_MODE=flock
+elif command -v shlock >/dev/null 2>&1; then
+    shlock -f "$NOTICE_LOCK" -p "$$" >/dev/null 2>&1 || exit 0
+    NOTICE_LOCK_MODE=shlock
+else
+    # Without an OS-backed lock the once-per-interval contract cannot be
+    # guaranteed across concurrent QA completions, so skip the advisory.
+    exit 0
+fi
 
 START_NOW=$(date -u '+%s' 2>/dev/null) || exit 0
 DEADLINE_EPOCH=$((START_NOW + CHECK_TIMEOUT))
@@ -71,6 +106,9 @@ cleanup() {
     if [ -n "$WATCH_PID" ]; then
         kill -TERM "$WATCH_PID" 2>/dev/null || true
         wait "$WATCH_PID" 2>/dev/null || true
+    fi
+    if [ "$NOTICE_LOCK_MODE" = shlock ] && [ -n "$NOTICE_LOCK" ]; then
+        rm -f "$NOTICE_LOCK"
     fi
     [ -z "$TMP_ROOT" ] || rm -rf "$TMP_ROOT"
 }
@@ -132,9 +170,13 @@ run_bounded_updater() {
     return "$run_status"
 }
 
-STATUS_FILE=$TMP_ROOT/status.out
-run_bounded_updater "$STATUS_FILE" status || exit 0
-STATUS_OUTPUT=$(cat "$STATUS_FILE")
+# The advisory lock deliberately covers both the rate-limit decision and the
+# subsequent eligibility check. Concurrent QA completions therefore cannot
+# both observe the same expired lastCheckLocal value and perform duplicate
+# network checks.
+NOTICE_STATUS_RESULT=$TMP_ROOT/status.out
+run_bounded_updater "$NOTICE_STATUS_RESULT" status || exit 0
+STATUS_OUTPUT=$(cat "$NOTICE_STATUS_RESULT")
 status_field() {
     printf '%s\n' "$STATUS_OUTPUT" | sed -n "s/^$1=//p" | tail -n 1
 }
@@ -150,9 +192,9 @@ if [ "$MODE" != force ] && [ "$LAST_CHECK_LOCAL" -gt 0 ]; then
     fi
 fi
 
-CHECK_OUTPUT=$TMP_ROOT/check.out
-run_bounded_updater "$CHECK_OUTPUT" check || exit 0
-NOTICE_LINE=$(sed -n '/^Eligible update: /p' "$CHECK_OUTPUT" | tail -n 1)
+NOTICE_CHECK_RESULT=$TMP_ROOT/check.out
+run_bounded_updater "$NOTICE_CHECK_RESULT" check || exit 0
+NOTICE_LINE=$(sed -n '/^Eligible update: /p' "$NOTICE_CHECK_RESULT" | tail -n 1)
 [ -n "$NOTICE_LINE" ] || exit 0
 RELEASE=${NOTICE_LINE#Eligible update: }
 RELEASE=${RELEASE%% *}
