@@ -1,0 +1,52 @@
+name: Restack PR 69 on current PR 68
+
+on:
+  push:
+    branches:
+      - feat/runtime-update-advisory
+    paths:
+      - .github/review-fixes/apply-pr69-restack.py
+      - .github/workflows/restack-pr69-current-review.yml
+  pull_request:
+    branches:
+      - fix/skills-cli-auto-update
+    paths:
+      - .github/review-fixes/apply-pr69-restack.py
+      - .github/workflows/restack-pr69-current-review.yml
+
+permissions:
+  contents: write
+
+jobs:
+  restack:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out advisory branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: feat/runtime-update-advisory
+          fetch-depth: 0
+      - name: Merge current parent branch
+        run: |
+          git fetch origin fix/skills-cli-auto-update
+          git merge --no-commit --no-ff -X ours origin/fix/skills-cli-auto-update
+      - name: Reapply current review hardening
+        run: python3 .github/review-fixes/apply-pr69-restack.py
+      - name: Validate stacked result
+        run: |
+          sh -n bin/traceknot-skills-update skill/bin/traceknot-skills-update bin/traceknot-update-notice skill/bin/traceknot-update-notice tests/skills-updater-smoke.sh tests/update-notice-smoke.sh
+          cmp -s bin/traceknot-skills-update skill/bin/traceknot-skills-update
+          cmp -s bin/traceknot-update-notice skill/bin/traceknot-update-notice
+          sh tests/skills-updater-smoke.sh
+          sh tests/update-notice-smoke.sh
+          bun run ci
+          git diff --check
+      - name: Commit stacked patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm -f -- .github/review-fixes/apply-pr69-restack.py .github/workflows/restack-pr69-current-review.yml
+          git add -- bin/traceknot-skills-update skill/bin/traceknot-skills-update tests/skills-updater-smoke.sh
+          git commit -m "fix: restack advisory on hardened updater"
+          git push origin HEAD:feat/runtime-update-advisory
