@@ -195,6 +195,9 @@ cp -R "$FAKE_SOURCE_SKILL" "$target"
 if [ "${FAKE_TAMPER_PREFLIGHT:-0}" -eq 1 ] && [ "$HOME" != "$REAL_HOME" ]; then
     printf '%s\n' '# tampered preflight payload' >> "$target/SKILL.md"
 fi
+if [ "${FAKE_TAMPER_APPLY:-0}" -eq 1 ] && [ "$HOME" = "$REAL_HOME" ]; then
+    printf '%s\n' '# tampered canonical payload' >> "$target/SKILL.md"
+fi
 mkdir -p "$(dirname "$lock")"
 if [ "$is_global" -eq 1 ]; then
     jq -n --arg commit "$EXPECTED_SOURCE_COMMIT" '{version:3,skills:{traceknot:{source:"Jin-Doh/traceknot",sourceType:"github",sourceUrl:"https://github.com/Jin-Doh/traceknot.git",ref:$commit,skillPath:"skill/SKILL.md",skillFolderHash:"fixture",installedAt:"2026-08-21T00:00:00.000Z",updatedAt:"2026-08-21T00:00:00.000Z"}}}' > "$lock"
@@ -493,7 +496,62 @@ test "$(cat "$NPX_COUNT")" -eq "$before_reconcile"
 test -f "$INTERRUPT_STATE/active.json"
 jq -e --arg commit "$SOURCE_COMMIT" '.sourceCommit == $commit' "$INTERRUPT_STATE/active.json" >/dev/null
 test ! -e "$INTERRUPT_STATE/pending.json"
-# Impossible calendar dates must fail closed for both manifest and release metadata.
+
+# A rejected canonical payload must never be promoted by pending reconciliation.
+PAYLOAD_PROJECT="$TMP_DIR/tampered canonical project"
+mkdir -p "$PAYLOAD_PROJECT"
+PAYLOAD_PROJECT=$(CDPATH='' cd -P "$PAYLOAD_PROJECT" && pwd)
+PAYLOAD_SKILL=$PAYLOAD_PROJECT/.agents/skills/traceknot
+install_initial_skill "$PAYLOAD_SKILL"
+write_initial_lock "$PAYLOAD_PROJECT/skills-lock.json"
+"$PAYLOAD_SKILL/bin/traceknot-skills-update" status --project "$PAYLOAD_PROJECT" >/dev/null
+PAYLOAD_STATE=$PAYLOAD_PROJECT/.agents/.traceknot-update
+seed_adoption "$PAYLOAD_STATE" "$PAYLOAD_PROJECT/skills-lock.json" 0 "$((FAKE_NOW - 1814400))"
+PAYLOAD_LOCK_SHA=$(lock_entry_sha "$PAYLOAD_PROJECT/skills-lock.json")
+jq -n --arg scope project --arg registration "$PAYLOAD_SKILL" \
+    --arg lockSha "$PAYLOAD_LOCK_SHA" --argjson appliedAt "$((FAKE_NOW - 1814400))" \
+    '{schemaVersion:"traceknot-skills-active-release/v1",version:"1.0.0",releaseTag:"v1.0.0",sourceCommit:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",artifactSha256:"0000000000000000000000000000000000000000000000000000000000000000",lockEntrySha256:$lockSha,appliedAt:$appliedAt,scope:$scope,registration:$registration}' \
+    > "$PAYLOAD_STATE/active.json"
+printf '%s\t%s\t%s\t%s\n' "$MANIFEST_SHA" "$((FAKE_NOW - 604801))" "$TAG" "$ARTIFACT_SHA" > "$PAYLOAD_STATE/observations.tsv"
+before_payload=$(cat "$NPX_COUNT")
+FAKE_TAMPER_APPLY=1
+export FAKE_TAMPER_APPLY
+if "$PAYLOAD_SKILL/bin/traceknot-skills-update" apply --project "$PAYLOAD_PROJECT" >/dev/null 2>&1; then
+    printf '%s\n' 'tampered canonical payload unexpectedly applied' >&2
+    exit 1
+fi
+unset FAKE_TAMPER_APPLY
+test "$(cat "$NPX_COUNT")" -eq $((before_payload + 2))
+test -f "$PAYLOAD_STATE/pending.json"
+test -d "$PAYLOAD_STATE/pending-payload"
+if "$PAYLOAD_SKILL/bin/traceknot-skills-update" check --project "$PAYLOAD_PROJECT" >/dev/null 2>&1; then
+    printf '%s\n' 'rejected canonical payload was promoted' >&2
+    exit 1
+fi
+jq -e '.version == "1.0.0"' "$PAYLOAD_STATE/active.json" >/dev/null
+test -f "$PAYLOAD_STATE/pending.json"
+SYMLINK_PROJECT="$TMP_DIR/symlink project"
+SYMLINK_OUTSIDE="$TMP_DIR/symlink outside"
+mkdir -p "$SYMLINK_PROJECT" "$SYMLINK_OUTSIDE/.agents/skills/traceknot"
+SYMLINK_OUTSIDE=$(CDPATH='' cd -P "$SYMLINK_OUTSIDE" && pwd)
+install_initial_skill "$SYMLINK_OUTSIDE/.agents/skills/traceknot"
+ln -s "$SYMLINK_OUTSIDE/.agents" "$SYMLINK_PROJECT/.agents"
+if "$SYMLINK_OUTSIDE/.agents/skills/traceknot/bin/traceknot-skills-update" \
+    status --project "$SYMLINK_PROJECT" >/dev/null 2>&1; then
+    printf '%s\n' 'symlinked project Agent root was accepted' >&2
+    exit 1
+fi
+SYMLINK_PROJECT_SKILLS="$TMP_DIR/symlink skills project"
+SYMLINK_OUTSIDE_SKILLS="$TMP_DIR/symlink skills outside"
+mkdir -p "$SYMLINK_PROJECT_SKILLS/.agents" "$SYMLINK_OUTSIDE_SKILLS/skills/traceknot"
+SYMLINK_OUTSIDE_SKILLS=$(CDPATH='' cd -P "$SYMLINK_OUTSIDE_SKILLS" && pwd)
+install_initial_skill "$SYMLINK_OUTSIDE_SKILLS/skills/traceknot"
+ln -s "$SYMLINK_OUTSIDE_SKILLS/skills" "$SYMLINK_PROJECT_SKILLS/.agents/skills"
+if "$SYMLINK_OUTSIDE_SKILLS/skills/traceknot/bin/traceknot-skills-update" \
+    status --project "$SYMLINK_PROJECT_SKILLS" >/dev/null 2>&1; then
+    printf '%s\n' 'symlinked project Skills root was accepted' >&2
+    exit 1
+fi
 BAD_DATE_PROJECT="$TMP_DIR/bad date project"
 mkdir -p "$BAD_DATE_PROJECT"
 BAD_DATE_PROJECT=$(CDPATH='' cd -P "$BAD_DATE_PROJECT" && pwd)

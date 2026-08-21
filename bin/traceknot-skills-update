@@ -22,6 +22,7 @@ RECOVERY_LOCK_HELD=0
 LOCK_CLAIM=
 LOCK_OWNER_ID=
 PENDING_STATE=
+PENDING_PAYLOAD_TMP=
 fail() {
     printf '%s: %s\n' "$PROGRAM" "$*" >&2
     exit 2
@@ -174,6 +175,14 @@ else
     [ -d "$PROJECT_ROOT" ] || fail "project directory does not exist: $PROJECT_ROOT"
     [ ! -L "$PROJECT_ROOT" ] || fail "refusing symlink project root: $PROJECT_ROOT"
     PROJECT_ROOT=$(canonical_path "$PROJECT_ROOT") || fail 'cannot resolve project root'
+    PROJECT_AGENTS_ROOT=$(canonical_path "$PROJECT_ROOT/.agents") ||
+        fail 'cannot resolve project Agent state root'
+    [ "$PROJECT_AGENTS_ROOT" = "$PROJECT_ROOT/.agents" ] ||
+        fail 'refusing symlink project Agent state root'
+    PROJECT_SKILLS_ROOT=$(canonical_path "$PROJECT_ROOT/.agents/skills") ||
+        fail 'cannot resolve project Skills root'
+    [ "$PROJECT_SKILLS_ROOT" = "$PROJECT_ROOT/.agents/skills" ] ||
+        fail 'refusing symlink project Skills root'
     [ "$PROJECT_ROOT" != / ] || fail 'refusing filesystem root as a project'
     REGISTRATION=$PROJECT_ROOT/.agents/skills/traceknot
     STATE_DIR=$PROJECT_ROOT/.agents/.traceknot-update
@@ -184,6 +193,10 @@ fi
 [ -d "$REGISTRATION" ] || fail "Traceknot is not installed at $REGISTRATION"
 [ ! -L "$REGISTRATION" ] || fail "refusing symlink Skill registration: $REGISTRATION"
 REGISTRATION=$(canonical_path "$REGISTRATION") || fail 'cannot resolve Skill registration'
+if [ "$SCOPE" = project ] &&
+   [ "$REGISTRATION" != "$PROJECT_ROOT/.agents/skills/traceknot" ]; then
+    fail 'project Skill registration escapes the project root'
+fi
 [ "$SCRIPT_SKILL_ROOT" = "$REGISTRATION" ] ||
     fail "updater scope does not match its installed Skill: $SCRIPT_SKILL_ROOT"
 [ -f "$REGISTRATION/SKILL.md" ] && [ ! -L "$REGISTRATION/SKILL.md" ] ||
@@ -214,6 +227,7 @@ ACTIVE_STATE=$STATE_DIR/active.json
 LOCK_DIR=$STATE_DIR/update.lock
 RECOVERY_LOCK=$STATE_DIR/update.lock-recovery
 PENDING_STATE=$STATE_DIR/pending.json
+PENDING_PAYLOAD_DIR=$STATE_DIR/pending-payload
 
 cleanup() {
     if [ -n "$LOCK_CLAIM" ] && [ -f "$LOCK_CLAIM" ] &&
@@ -228,6 +242,9 @@ cleanup() {
     fi
     if [ "$RECOVERY_LOCK_HELD" -ne 0 ]; then
         rm -rf "$RECOVERY_LOCK"
+    fi
+    if [ -n "$PENDING_PAYLOAD_TMP" ]; then
+        rm -rf "$PENDING_PAYLOAD_TMP"
     fi
     if [ -n "$TMP_ROOT" ]; then
         rm -rf "$TMP_ROOT"
@@ -602,6 +619,15 @@ reconcile_pending_state() {
             fail 'pending update did not leave the Traceknot runtime'
         "$REGISTRATION/bin/traceknot" self-check >/dev/null 2>&1 ||
             fail 'pending update left an invalid Traceknot runtime'
+        command -v diff >/dev/null 2>&1 || fail 'diff is required to reconcile a pending update'
+        [ -d "$PENDING_PAYLOAD_DIR" ] && [ ! -L "$PENDING_PAYLOAD_DIR" ] ||
+            fail 'pending update payload is missing or unsafe'
+        if find "$PENDING_PAYLOAD_DIR" -type l -print | grep . >/dev/null; then
+            fail 'pending update payload contains a symbolic link'
+        fi
+        if ! diff -r "$PENDING_PAYLOAD_DIR" "$REGISTRATION" >/dev/null 2>&1; then
+            fail 'pending update payload differs from the installed registration'
+        fi
         if [ -f "$ACTIVE_STATE" ] &&
            jq -e --arg version "$PENDING_VERSION" \
                --arg sourceCommit "$PENDING_SOURCE_COMMIT" \
@@ -615,10 +641,12 @@ reconcile_pending_state() {
                 "$PENDING_ARTIFACT_SHA" "$LOCK_ENTRY_SHA256"
         fi
         rm -f "$PENDING_STATE"
+        rm -rf "$PENDING_PAYLOAD_DIR"
         sync
     elif [ "$LOCK_REF" = "$PENDING_PREVIOUS_SOURCE_COMMIT" ] &&
          [ "$LOCK_ENTRY_SHA256" = "$PENDING_PREVIOUS_LOCK_ENTRY_SHA256" ]; then
         rm -f "$PENDING_STATE"
+        rm -rf "$PENDING_PAYLOAD_DIR"
         sync
     else
         fail 'pending update state does not match the installed Skills lock'
@@ -1096,6 +1124,18 @@ if ! diff -r "$VERIFIED_RELEASE/skill" "$PREFLIGHT_SKILL" >/dev/null 2>&1; then
     fail 'Skills CLI preflight payload differs from the verified release artifact'
 fi
 
+if [ -e "$PENDING_PAYLOAD_DIR" ] || [ -L "$PENDING_PAYLOAD_DIR" ]; then
+    fail 'pending update payload path already exists'
+fi
+PENDING_PAYLOAD_TMP=$STATE_DIR/pending-payload.tmp.$$
+mkdir "$PENDING_PAYLOAD_TMP"
+cp -R "$VERIFIED_RELEASE/skill/." "$PENDING_PAYLOAD_TMP/"
+if ! diff -r "$VERIFIED_RELEASE/skill" "$PENDING_PAYLOAD_TMP" >/dev/null 2>&1; then
+    fail 'cannot persist the verified pending update payload'
+fi
+mv "$PENDING_PAYLOAD_TMP" "$PENDING_PAYLOAD_DIR"
+PENDING_PAYLOAD_TMP=
+sync
 CURRENT_LOCK_REF=$(jq -r '.skills.traceknot.ref // empty' "$LOCK_FILE")
 write_pending_state "$TRUSTED_NOW" "$VERSION" "$RELEASE_TAG" "$SOURCE_COMMIT" \
     "$ARTIFACT_SHA" "$CURRENT_LOCK_REF" "$LOCK_ENTRY_SHA256"
@@ -1139,5 +1179,6 @@ INSTALLED_LOCK_ENTRY_SHA256=$(jq -cS '.skills.traceknot' "$LOCK_FILE" | sha256_s
 write_active_state "$TRUSTED_NOW" "$VERSION" "$RELEASE_TAG" "$SOURCE_COMMIT" \
     "$ARTIFACT_SHA" "$INSTALLED_LOCK_ENTRY_SHA256"
 rm -f "$PENDING_STATE"
+rm -rf "$PENDING_PAYLOAD_DIR"
 sync
 printf 'Updated Traceknot to %s through Skills CLI at %s\n' "$RELEASE_TAG" "$REGISTRATION"

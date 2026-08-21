@@ -62,6 +62,7 @@ ${XDG_STATE_HOME:-$HOME/.local/state}/traceknot/skills-update-global/
   observations.tsv
   active.json
   pending.json
+  pending-payload/
 ```
 
 The Skills CLI lock remains in its normal location:
@@ -96,16 +97,19 @@ Project state is kept under `.agents` while the Skills CLI continues to own `ski
   observations.tsv
   active.json
   pending.json
+  pending-payload/
 
 <project>/skills-lock.json
 ```
 
 The updater rejects a scope that does not match the executable's installed Skill root. A global updater cannot update an arbitrary project installation, and a project-local updater cannot update another project. It also requires the Skills CLI lock entry to identify `Jin-Doh/traceknot`, the GitHub source type, and `skill/SKILL.md`.
+For project scope, `.agents` and `.agents/skills` must be real directories beneath the canonical project root; symlinked ancestors are rejected so project state and registration cannot escape the requested root.
 
 The update lock records both the updater PID and its process-start identity. A live PID with a different identity is treated as a stale lock; a legacy live lock without an identity is rejected rather than guessed.
 
 The first trusted check of an unmanaged installation records an adoption baseline consisting of GitHub server time and the canonical SHA-256 digest of the current Traceknot lock entry. A release published at or before that baseline is never selected automatically. This prevents a default-branch installation that is newer than the latest seven-day-old release from being downgraded during the first managed update. Before the first managed application, any lock-entry change invalidates the baseline. After a managed application, the complete lock-entry digest and exact source commit are stored in `active.json`; either changing externally blocks further managed updates rather than overwriting the user's choice.
 If the process is interrupted after Skills CLI changes the canonical registration but before `active.json` is committed, `pending.json` records the verified transition. The next invocation reconciles the matching lock and runtime, commits `active.json`, and clears the pending record; an unchanged pre-update lock simply discards the abandoned transaction.
+The durable pending record also retains the verified payload until reconciliation. A payload mismatch is a hard failure and never promotes `active.json`.
 
 ## Eligibility policy
 
