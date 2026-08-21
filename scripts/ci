@@ -44,12 +44,13 @@ sh -n install.sh uninstall.sh bin/traceknot-update bin/traceknot-skills-update \
     scripts/verify-published-release.sh tests/portable-installer-smoke.sh \
     tests/release-verifier-smoke.sh tests/skills-cli-smoke.sh \
     tests/skills-updater-smoke.sh tests/update-notice-smoke.sh \
-    tests/updater-smoke.sh scripts/ci
+    tests/update-notice-shlock-smoke.sh tests/updater-smoke.sh scripts/ci
 cmp -s bin/traceknot-update-notice skill/bin/traceknot-update-notice
 sh tests/portable-installer-smoke.sh
 sh tests/skills-cli-smoke.sh
 sh tests/skills-updater-smoke.sh
 sh tests/update-notice-smoke.sh
+sh tests/update-notice-shlock-smoke.sh
 sh tests/updater-smoke.sh
 sh tests/release-verifier-smoke.sh
 
