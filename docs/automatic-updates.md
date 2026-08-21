@@ -31,6 +31,20 @@ Jin-Doh/traceknot#<verified-source-commit>
 
 Before changing the real registration, the updater installs the same commit into an isolated temporary scope, runs `traceknot self-check`, and compares the complete installed Skill payload with the verified release artifact. The real installation proceeds only when those bytes agree.
 
+For explicit manual lifecycle control, keep the update command and post-update validation bound to the installation scope:
+
+```sh
+# Global installation
+npx skills update traceknot --global --yes
+$HOME/.agents/skills/traceknot/bin/traceknot self-check
+
+# Project-local installation, from the project root
+npx skills update traceknot --yes
+.agents/skills/traceknot/bin/traceknot self-check
+```
+
+Never substitute an unrelated global executable for a project-local command.
+
 ### Global installation
 
 Use the executable from the global Skill registration:
@@ -198,6 +212,8 @@ fi
 ```
 
 That backend stages immutable release directories, atomically moves its `current` activation pointer, retains one rollback target, and manages only prefix-owned files. It never creates, replaces, retargets, updates, or removes a Skills CLI-owned registration.
+
+For the prefix backend, the required activation ordering remains: persist the prepared transaction and staged payload; persist the rollback target; atomically replace `current`; run the structural and installed-runtime self-checks; persist active state; then mark committed.
 
 ## Operational guidance
 
