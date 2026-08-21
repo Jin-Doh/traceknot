@@ -28,6 +28,7 @@ case "${1:-}" in
         case "$(cat "$MODE_FILE")" in
             eligible) printf '%s\n' 'Eligible update: v9.9.9 (0123456789abcdef)' ;;
             none) printf '%s\n' 'No release has exceeded the seven-day observation requirement.' ;;
+            malformed) printf '%s\n' 'Eligible update: latest (untrusted)' ;;
             fail) exit 2 ;;
             sleep) sleep 3 ;;
             *) exit 2 ;;
@@ -76,6 +77,7 @@ output=$(run_notice 0)
 # Automatic updates may remain disabled while the default advisory still reaches the user.
 output=$(run_notice auto)
 printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/null
+printf '%s\n' "$output" | grep -F 'Recommended verification-and-update command:' >/dev/null
 printf '%s\n' "$output" | grep -F "'${BIN_DIR}/traceknot-skills-update' apply --global" >/dev/null
 [ "$(wc -l < "$CALL_LOG" | tr -d ' ')" -eq 1 ]
 
@@ -94,21 +96,29 @@ printf '%s\n' "$output" | grep -F "'${BIN_DIR}/traceknot-skills-update' apply --
 printf '%s\n' "$output" | grep -F 'does not affect the current QA verdict' >/dev/null
 [ "$(wc -l < "$CALL_LOG" | tr -d ' ')" -eq 1 ]
 
-# No eligible candidate remains silent.
+# No eligible or well-formed candidate remains silent.
 : > "$CALL_LOG"
 printf '%s\n' none > "$MODE_FILE"
 output=$(run_notice force)
 [ -z "$output" ]
-[ "$(wc -l < "$CALL_LOG" | tr -d ' ')" -eq 1 ]
+printf '%s\n' malformed > "$MODE_FILE"
+output=$(run_notice force)
+[ -z "$output" ]
+[ "$(wc -l < "$CALL_LOG" | tr -d ' ')" -eq 2 ]
 
-# Project scope preserves paths containing spaces.
+# Project scope safely preserves spaces and single quotes.
 : > "$CALL_LOG"
-PROJECT_ROOT="$TMP_ROOT/project with space"
+PROJECT_ROOT="$TMP_ROOT/project with ' quote"
 mkdir -p "$PROJECT_ROOT"
 write_status 0 0 project "$PROJECT_ROOT"
 printf '%s\n' eligible > "$MODE_FILE"
 output=$(run_notice force)
-printf '%s\n' "$output" | grep -F "apply --project '$PROJECT_ROOT'" >/dev/null
+command_line=$(printf '%s\n' "$output" | sed -n 's/^  //p' | tail -n 1)
+eval "set -- $command_line"
+[ "$1" = "$BIN_DIR/traceknot-skills-update" ]
+[ "$2" = apply ]
+[ "$3" = --project ]
+[ "$4" = "$PROJECT_ROOT" ]
 
 # Updater failure and timeout are non-blocking and silent.
 : > "$CALL_LOG"
