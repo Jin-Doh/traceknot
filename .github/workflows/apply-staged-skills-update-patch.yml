@@ -24,11 +24,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ "$(git log -1 --format=%s)" != 'chore: run verified updater patch' ]; then
+          if [ "$(git log -1 --format=%s)" != 'chore: rerun verified updater patch' ]; then
             echo 'No staged updater patch requested for this head.'
             exit 0
           fi
-          gzip -d -c .traceknot-latest.patch.gz > /tmp/traceknot-latest.patch
+          cat .traceknot-latest.patch.gz.b64.part-* | base64 --decode | gzip -d > /tmp/traceknot-latest.patch
           test "$(git hash-object bin/traceknot-skills-update)" = 7e51b800bd0bf2911b2699c6bff9aa04fdd6fb2a
           test "$(git hash-object docs/automatic-updates.md)" = 9d035a06c82ca9f6036e49ade14af40bf7f006fd
           test "$(git hash-object tests/skills-updater-smoke.sh)" = 327f0d40c20ff5febd755360cbc2011a2913b633
