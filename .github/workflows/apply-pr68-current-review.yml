@@ -38,9 +38,13 @@ jobs:
           python3 .github/review-fixes/patch-pr68-tests.py
       - name: Run focused validation
         run: |
+          echo '==> shell syntax'
           sh -n bin/traceknot-skills-update skill/bin/traceknot-skills-update bin/traceknot-update tests/skills-updater-smoke.sh
+          echo '==> mirror parity'
           cmp -s bin/traceknot-skills-update skill/bin/traceknot-skills-update
-          sh tests/skills-updater-smoke.sh
+          echo '==> updater smoke trace'
+          sh -x tests/skills-updater-smoke.sh
+          echo '==> whitespace'
           git diff --check
       - name: Commit patched branch
         run: |
