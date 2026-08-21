@@ -45,3 +45,27 @@ for function_name in ('patch_tests', 'patch_docs'):
     text = text.replace(old, new, 1)
 
 path.write_text(text)
+
+tests_path = Path('.github/review-fixes/patch-pr68-tests.py')
+tests = tests_path.read_text()
+old = '''    unset FAKE_POISON_PREFLIGHT FAKE_POISON_APPLY FAKE_RUNTIME_MARKER
+    test ! -e \"$RUNTIME_MARKER\"
+done
+
+''' + "'''" + '''
+text = text.replace(marker, block + marker, 1)
+'''
+new = '''    unset FAKE_POISON_PREFLIGHT FAKE_POISON_APPLY FAKE_RUNTIME_MARKER
+    test ! -e \"$RUNTIME_MARKER\"
+done
+
+# Keep the existing smoke assertions independent from the focused regression prelude.
+printf '%s\\n' 0 > \"$NPX_COUNT\"
+: > \"$NPX_LOG\"
+
+''' + "'''" + '''
+text = text.replace(marker, block + marker, 1)
+'''
+if tests.count(old) != 1:
+    raise SystemExit(f'expected one regression block tail, found {tests.count(old)}')
+tests_path.write_text(tests.replace(old, new, 1))
