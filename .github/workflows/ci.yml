@@ -53,7 +53,7 @@ jobs:
           cmp -s bin/traceknot-skills-update skill/bin/traceknot-skills-update
           cmp -s bin/traceknot-update-notice skill/bin/traceknot-update-notice
           sh tests/skills-updater-smoke.sh
-          sh tests/update-notice-smoke.sh
+          sh -x tests/update-notice-smoke.sh
           sh scripts/ci
           git diff --check
       - name: Commit clean stacked branch
