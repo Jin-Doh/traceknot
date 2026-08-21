@@ -70,7 +70,7 @@ CHECK_PID=$!
         fi
         sleep 1
     done
-) &
+) >/dev/null 2>&1 &
 WATCH_PID=$!
 
 CHECK_STATUS=0
