@@ -22,7 +22,7 @@ jobs:
     name: apply-restack
     if: github.event_name == 'pull_request' && github.head_ref == 'feat/runtime-update-advisory'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
@@ -31,13 +31,21 @@ jobs:
         with:
           ref: feat/runtime-update-advisory
           fetch-depth: 0
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+          no-cache: true
       - name: Restack on current parent and apply review fixes
         shell: bash
         run: |
           set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git fetch origin fix/skills-cli-auto-update
           git merge --no-commit --no-ff -X ours origin/fix/skills-cli-auto-update
           python3 .github/review-fixes/apply-pr69-restack.py
+          python3 .github/review-fixes/apply-pr69-final-reviews.py
           sh -n bin/traceknot-skills-update skill/bin/traceknot-skills-update \
             bin/traceknot-update-notice skill/bin/traceknot-update-notice \
             tests/skills-updater-smoke.sh tests/update-notice-smoke.sh
@@ -45,18 +53,24 @@ jobs:
           cmp -s bin/traceknot-update-notice skill/bin/traceknot-update-notice
           sh tests/skills-updater-smoke.sh
           sh tests/update-notice-smoke.sh
+          sh scripts/ci
           git diff --check
       - name: Commit restacked branch
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git checkout origin/fix/skills-cli-auto-update -- .github/workflows/ci.yml
-          git rm -f -- .github/review-fixes/apply-pr69-restack.py .github/workflows/restack-pr69-current-review.yml
-          git add -- .github/workflows/ci.yml bin/traceknot-skills-update \
-            skill/bin/traceknot-skills-update tests/skills-updater-smoke.sh
-          git commit -m "fix: restack advisory on hardened updater"
+          git rm -f -- \
+            .github/review-fixes/apply-pr69-restack.py \
+            .github/review-fixes/apply-pr69-final-reviews.py \
+            .github/workflows/restack-pr69-current-review.yml \
+            .github/ci-trigger-pr69.txt
+          git add -- \
+            .github/workflows/ci.yml \
+            bin/traceknot-skills-update skill/bin/traceknot-skills-update \
+            bin/traceknot-update-notice skill/bin/traceknot-update-notice \
+            tests/skills-updater-smoke.sh tests/update-notice-smoke.sh
+          git commit -m "fix: restack advisory on final updater hardening"
           git push origin HEAD:feat/runtime-update-advisory
 
   correctness:
