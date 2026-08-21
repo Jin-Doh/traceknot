@@ -10,6 +10,8 @@ BIN_DIR=$TMP_ROOT/skill/bin
 STATUS_FILE=$TMP_ROOT/status
 MODE_FILE=$TMP_ROOT/mode
 CALL_LOG=$TMP_ROOT/calls
+STATUS_DEADLINE_FILE=$TMP_ROOT/status-deadline
+STATUS_CHILD_PID_FILE=$TMP_ROOT/status-child.pid
 mkdir -p "$BIN_DIR"
 HOME=$TMP_ROOT/home
 XDG_STATE_HOME=$TMP_ROOT/state
@@ -21,9 +23,21 @@ cp "$NOTICE_SOURCE" "$BIN_DIR/traceknot-update-notice"
 cat > "$BIN_DIR/traceknot-skills-update" <<'EOF_UPDATER'
 #!/bin/sh
 set -eu
-trap 'exit 1' HUP INT TERM
+trap 'exit 143' HUP INT TERM
 case "${1:-}" in
     status)
+        if [ -n "${STATUS_DEADLINE_FILE:-}" ]; then
+            printf '%s\n' "${TRACEKNOT_UPDATE_DEADLINE_EPOCH:-}" > "$STATUS_DEADLINE_FILE"
+        fi
+        if [ "${FAKE_STATUS_CHILD_IGNORE_TERM:-0}" -eq 1 ]; then
+            (
+                trap '' TERM
+                sleep "${FAKE_STATUS_SLEEP:-30}"
+            ) &
+            status_child=$!
+            printf '%s\n' "$status_child" > "$STATUS_CHILD_PID_FILE"
+            wait "$status_child"
+        fi
         cat "$STATUS_FILE"
         ;;
     check)
@@ -75,6 +89,9 @@ run_notice() {
     notice_timeout=${2:-3}
     HOME=$HOME XDG_STATE_HOME=$XDG_STATE_HOME \
     STATUS_FILE=$STATUS_FILE MODE_FILE=$MODE_FILE CALL_LOG=$CALL_LOG \
+    STATUS_DEADLINE_FILE=$STATUS_DEADLINE_FILE STATUS_CHILD_PID_FILE=$STATUS_CHILD_PID_FILE \
+    FAKE_STATUS_CHILD_IGNORE_TERM=${FAKE_STATUS_CHILD_IGNORE_TERM:-0} \
+    FAKE_STATUS_SLEEP=${FAKE_STATUS_SLEEP:-30} \
     CI= \
     TRACEKNOT_UPDATE_NOTICE=$notice_mode \
     TRACEKNOT_UPDATE_NOTICE_INTERVAL=86400 \
@@ -94,9 +111,11 @@ printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/nul
 printf '%s\n' "$output" | grep -F 'Recommended verification-and-update command:' >/dev/null
 printf '%s\n' "$output" | grep -F "'${BIN_DIR}/traceknot-skills-update' apply --global" >/dev/null
 grep -F 'maintenance=1' "$CALL_LOG" >/dev/null
-deadline=$(sed -n 's/.*deadline=//p' "$CALL_LOG" | tail -n 1)
-case "$deadline" in ''|*[!0-9]*) exit 1 ;; esac
-[ "$deadline" -gt "$NOW" ]
+status_deadline=$(cat "$STATUS_DEADLINE_FILE")
+check_deadline=$(sed -n 's/.*deadline=//p' "$CALL_LOG" | tail -n 1)
+case "$status_deadline$check_deadline" in *[!0-9]*) exit 1 ;; esac
+[ "$status_deadline" = "$check_deadline" ]
+[ "$check_deadline" -gt "$NOW" ]
 
 : > "$CALL_LOG"
 write_status 0 "$NOW" global ''
@@ -139,8 +158,24 @@ output=$(run_notice force 3)
 END=$(date -u '+%s')
 [ -z "$output" ]
 [ "$((END - START))" -lt 6 ]
-deadline=$(sed -n 's/.*deadline=//p' "$CALL_LOG" | tail -n 1)
-[ "$deadline" -le $((START + 4)) ]
+status_deadline=$(cat "$STATUS_DEADLINE_FILE")
+check_deadline=$(sed -n 's/.*deadline=//p' "$CALL_LOG" | tail -n 1)
+[ "$status_deadline" = "$check_deadline" ]
+[ "$check_deadline" -le $((START + 4)) ]
+
+: > "$CALL_LOG"
+rm -f "$STATUS_CHILD_PID_FILE"
+START=$(date -u '+%s')
+FAKE_STATUS_CHILD_IGNORE_TERM=1 FAKE_STATUS_SLEEP=30 output=$(run_notice force 3)
+END=$(date -u '+%s')
+[ -z "$output" ]
+[ "$((END - START))" -lt 6 ]
+[ ! -s "$CALL_LOG" ]
+if [ -f "$STATUS_CHILD_PID_FILE" ] && kill -0 "$(cat "$STATUS_CHILD_PID_FILE")" 2>/dev/null; then
+    kill -KILL "$(cat "$STATUS_CHILD_PID_FILE")" 2>/dev/null || true
+    printf '%s\n' 'status descendant survived advisory deadline' >&2
+    exit 1
+fi
 
 : > "$CALL_LOG"
 printf '%s\n' eligible > "$MODE_FILE"
