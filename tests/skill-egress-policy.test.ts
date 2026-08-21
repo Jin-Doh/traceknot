@@ -12,6 +12,8 @@ function writeValidSkillTree(root: string): void {
     writeFileSync(join(root, "skill", "bin", executable), "#!/bin/sh\n");
     chmodSync(join(root, "skill", "bin", executable), 0o755);
   }
+  writeFileSync(join(root, "skill", "bin", "traceknot-update-notice"), "#!/bin/sh\n");
+  chmodSync(join(root, "skill", "bin", "traceknot-update-notice"), 0o644);
 }
 
 test("normalizes Windows repository paths to POSIX policy paths", () => {
@@ -73,6 +75,26 @@ describe("Skill egress artifact policy", () => {
     }
   });
 
+  test("requires the non-executable maintenance advisory", () => {
+    const root = mkdtempSync(join(tmpdir(), "traceknot-skill-egress-"));
+    try {
+      writeValidSkillTree(root);
+      const notice = join(root, "skill", "bin", "traceknot-update-notice");
+      chmodSync(notice, 0o755);
+      expect(inspectSkillTree(root)).toContainEqual(expect.objectContaining({
+        code: "EXECUTABLE_FILE",
+        path: "skill/bin/traceknot-update-notice",
+      }));
+      rmSync(notice);
+      expect(inspectSkillTree(root)).toContainEqual(expect.objectContaining({
+        code: "MISSING_GENERATED_ASSET",
+        path: "skill/bin/traceknot-update-notice",
+      }));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("requires every generated public contract and capability record", () => {
     const root = mkdtempSync(join(tmpdir(), "traceknot-skill-egress-"));
     try {
@@ -131,12 +153,8 @@ describe("Skill egress artifact policy", () => {
   test("fails when the Skill entrypoint is missing", () => {
     const root = mkdtempSync(join(tmpdir(), "traceknot-skill-egress-"));
     try {
-      mkdirSync(join(root, "skill", "bin"), { recursive: true });
-      mkdirSync(join(root, "skill", "references"), { recursive: true });
-      for (const executable of ["traceknot", "traceknot-skills-update"]) {
-        writeFileSync(join(root, "skill", "bin", executable), "#!/bin/sh\n");
-        chmodSync(join(root, "skill", "bin", executable), 0o755);
-      }
+      writeValidSkillTree(root);
+      rmSync(join(root, "skill", "SKILL.md"));
       expect(inspectSkillTree(root)).toContainEqual(expect.objectContaining({
         code: "MISSING_SKILL",
         path: "skill/SKILL.md",

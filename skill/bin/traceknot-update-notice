@@ -1,0 +1,233 @@
+#!/bin/sh
+# Best-effort post-verdict update advisory for Skills CLI installations.
+
+set -u
+
+MODE=${TRACEKNOT_UPDATE_NOTICE:-auto}
+CHECK_INTERVAL=${TRACEKNOT_UPDATE_NOTICE_INTERVAL:-86400}
+CHECK_TIMEOUT=${TRACEKNOT_UPDATE_NOTICE_TIMEOUT:-60}
+TMP_OUTPUT=
+CLAIM_TMP=
+OWN_CLAIM=
+
+case "$MODE" in
+    0|false|off|disabled) exit 0 ;;
+    ''|auto|force) ;;
+    *) exit 0 ;;
+esac
+case "$CHECK_INTERVAL" in ''|*[!0-9]*) exit 0 ;; esac
+case "$CHECK_TIMEOUT" in ''|*[!0-9]*) exit 0 ;; esac
+[ "$CHECK_TIMEOUT" -gt 0 ] || exit 0
+
+if [ -n "${CI:-}" ] && [ "$MODE" != force ]; then
+    exit 0
+fi
+[ -n "${HOME:-}" ] || exit 0
+case "$HOME" in /*) ;; *) exit 0 ;; esac
+
+BIN_DIR=$(CDPATH='' cd -P "$(dirname "$0")" 2>/dev/null && pwd) || exit 0
+UPDATER=$BIN_DIR/traceknot-skills-update
+[ -x "$UPDATER" ] || exit 0
+
+GLOBAL_BIN=$(CDPATH='' cd -P "$HOME/.agents/skills/traceknot/bin" 2>/dev/null && pwd) || GLOBAL_BIN=
+if [ -n "$GLOBAL_BIN" ] && [ "$BIN_DIR" = "$GLOBAL_BIN" ]; then
+    SCOPE=global
+    PROJECT_ROOT=
+    STATE_HOME=${XDG_STATE_HOME:-"$HOME/.local/state"}
+    case "$STATE_HOME" in /*) ;; *) exit 0 ;; esac
+    NOTICE_STATE=$STATE_HOME/traceknot/update-notice-global
+    UPDATER_STATE=$STATE_HOME/traceknot/skills-update-global
+else
+    case "$BIN_DIR" in
+        */.agents/skills/traceknot/bin)
+            SCOPE=project
+            PROJECT_ROOT=${BIN_DIR%/.agents/skills/traceknot/bin}
+            [ -n "$PROJECT_ROOT" ] || PROJECT_ROOT=/
+            [ "$PROJECT_ROOT" != / ] || exit 0
+            NOTICE_STATE=$PROJECT_ROOT/.agents/.traceknot-update-notice
+            UPDATER_STATE=$PROJECT_ROOT/.agents/.traceknot-update
+            ;;
+        *) exit 0 ;;
+    esac
+fi
+
+mkdir -p "$(dirname "$NOTICE_STATE")" 2>/dev/null || exit 0
+if [ -e "$NOTICE_STATE" ] || [ -L "$NOTICE_STATE" ]; then
+    [ -d "$NOTICE_STATE" ] && [ ! -L "$NOTICE_STATE" ] || exit 0
+else
+    mkdir "$NOTICE_STATE" 2>/dev/null || exit 0
+fi
+
+# Automatic-update users do not need a routine recommendation, and skipping
+# before the updater invocation prevents advisory scans from contending with the
+# daily apply job. Explicit force remains available for a manual diagnostic.
+if [ "$MODE" != force ]; then
+    UPDATER_CONFIG=$UPDATER_STATE/config
+    if [ -e "$UPDATER_CONFIG" ] || [ -L "$UPDATER_CONFIG" ]; then
+        [ -f "$UPDATER_CONFIG" ] && [ ! -L "$UPDATER_CONFIG" ] || exit 0
+        [ "$(grep -c '^automatic=' "$UPDATER_CONFIG" 2>/dev/null || true)" -eq 1 ] || exit 0
+        AUTOMATIC_VALUE=$(sed -n 's/^automatic=//p' "$UPDATER_CONFIG")
+        case "$AUTOMATIC_VALUE" in
+            0) ;;
+            1) exit 0 ;;
+            *) exit 0 ;;
+        esac
+    fi
+fi
+
+process_identity() {
+    identity_pid=$1
+    if [ -r "/proc/$identity_pid/stat" ]; then
+        awk '{ print $22 }' "/proc/$identity_pid/stat" 2>/dev/null
+        return
+    fi
+    command -v ps >/dev/null 2>&1 || return 1
+    ps -p "$identity_pid" -o lstart= 2>/dev/null |
+        sed 's/^[[:space:]]*//; s/[[:space:]][[:space:]]*/ /g; s/[[:space:]]*$//'
+}
+
+NOW=$(date -u '+%s' 2>/dev/null) || exit 0
+LOCK_OWNER_ID=$(process_identity "$$" 2>/dev/null) || exit 0
+[ -n "$LOCK_OWNER_ID" ] || exit 0
+CLAIM_DIR=$NOTICE_STATE/check-claims
+LAST_SUCCESS=$NOTICE_STATE/last-success
+
+if [ -e "$CLAIM_DIR" ] || [ -L "$CLAIM_DIR" ]; then
+    [ -d "$CLAIM_DIR" ] && [ ! -L "$CLAIM_DIR" ] || exit 0
+else
+    mkdir "$CLAIM_DIR" 2>/dev/null || exit 0
+fi
+
+cleanup() {
+    [ -z "$TMP_OUTPUT" ] || rm -f "$TMP_OUTPUT"
+    if [ -n "$OWN_CLAIM" ] && [ -f "$OWN_CLAIM" ] && [ ! -L "$OWN_CLAIM" ] &&
+       [ "$(sed -n '1p' "$OWN_CLAIM" 2>/dev/null || true)" = "$$" ] &&
+       [ "$(sed -n '2p' "$OWN_CLAIM" 2>/dev/null || true)" = "$LOCK_OWNER_ID" ]; then
+        rm -f "$OWN_CLAIM"
+    fi
+    [ -z "$CLAIM_TMP" ] || rm -f "$CLAIM_TMP"
+}
+trap cleanup EXIT
+trap 'exit 0' HUP INT TERM
+
+# Publish a complete, uniquely named claim. There is no shared lock pathname to
+# replace: stale cleanup touches only immutable per-invocation claim names.
+CLAIM_TMP=$(mktemp "$CLAIM_DIR/.claim.XXXXXX" 2>/dev/null) || exit 0
+[ -f "$CLAIM_TMP" ] && [ ! -L "$CLAIM_TMP" ] || exit 0
+printf '%s\n%s\n' "$$" "$LOCK_OWNER_ID" > "$CLAIM_TMP" || exit 0
+OWN_CLAIM=$CLAIM_TMP.active
+if [ -e "$OWN_CLAIM" ] || [ -L "$OWN_CLAIM" ]; then
+    exit 0
+fi
+mv "$CLAIM_TMP" "$OWN_CLAIM" 2>/dev/null || exit 0
+CLAIM_TMP=
+
+OTHER_LIVE=0
+for claim_path in "$CLAIM_DIR"/.claim.*.active; do
+    if [ ! -e "$claim_path" ] && [ ! -L "$claim_path" ]; then
+        continue
+    fi
+    [ -f "$claim_path" ] && [ ! -L "$claim_path" ] || exit 0
+    [ "$claim_path" = "$OWN_CLAIM" ] && continue
+    claim_pid=$(sed -n '1p' "$claim_path" 2>/dev/null || true)
+    claim_identity=$(sed -n '2p' "$claim_path" 2>/dev/null || true)
+    case "$claim_pid" in
+        ''|*[!0-9]*) claim_pid=0 ;;
+    esac
+    if [ "$claim_pid" -gt 0 ] && kill -0 "$claim_pid" 2>/dev/null; then
+        current_identity=$(process_identity "$claim_pid" 2>/dev/null || true)
+        # Unknown identity is fail-closed. A successfully observed mismatch is
+        # a recycled PID and therefore a stale claim.
+        if [ -z "$claim_identity" ] || [ -z "$current_identity" ] ||
+           [ "$current_identity" = "$claim_identity" ]; then
+            OTHER_LIVE=1
+            continue
+        fi
+    fi
+    # Claim names are unique and never reused, so deleting this stale pathname
+    # cannot remove a newly published owner's claim.
+    rm -f "$claim_path" 2>/dev/null || exit 0
+done
+[ "$OTHER_LIVE" -eq 0 ] || exit 0
+
+if [ "$MODE" != force ] && [ -e "$LAST_SUCCESS" ]; then
+    [ -f "$LAST_SUCCESS" ] && [ ! -L "$LAST_SUCCESS" ] || exit 0
+    LAST_SUCCESS_VALUE=$(cat "$LAST_SUCCESS" 2>/dev/null || true)
+    case "$LAST_SUCCESS_VALUE" in ''|*[!0-9]*) LAST_SUCCESS_VALUE=0 ;; esac
+    if [ "$LAST_SUCCESS_VALUE" -le "$NOW" ] &&
+       [ $((NOW - LAST_SUCCESS_VALUE)) -lt "$CHECK_INTERVAL" ]; then
+        exit 0
+    fi
+fi
+
+# Do not turn an informational advisory into transaction recovery. A normal
+# updater invocation owns reconciliation when any durable pending artifact exists.
+for recovery_path in \
+    "$UPDATER_STATE/pending.json" \
+    "$UPDATER_STATE/pending-payload" \
+    "$UPDATER_STATE/pending-previous-payload"
+do
+    if [ -e "$recovery_path" ] || [ -L "$recovery_path" ]; then
+        exit 0
+    fi
+done
+
+TMP_OUTPUT=$NOTICE_STATE/check-output.$$
+if [ -e "$TMP_OUTPUT" ] || [ -L "$TMP_OUTPUT" ]; then
+    exit 0
+fi
+(set -C; : > "$TMP_OUTPUT") 2>/dev/null || exit 0
+DEADLINE_EPOCH=$((NOW + CHECK_TIMEOUT))
+if [ "$SCOPE" = global ]; then
+    TRACEKNOT_UPDATE_NOTICE=0 \
+    TRACEKNOT_UPDATE_READ_ONLY_CHECK=1 \
+    TRACEKNOT_UPDATE_DEADLINE_EPOCH="$DEADLINE_EPOCH" \
+        "$UPDATER" check --global >"$TMP_OUTPUT" 2>/dev/null || exit 0
+else
+    TRACEKNOT_UPDATE_NOTICE=0 \
+    TRACEKNOT_UPDATE_READ_ONLY_CHECK=1 \
+    TRACEKNOT_UPDATE_DEADLINE_EPOCH="$DEADLINE_EPOCH" \
+        "$UPDATER" check --project "$PROJECT_ROOT" >"$TMP_OUTPUT" 2>/dev/null || exit 0
+fi
+
+NOTICE_LINE=$(sed -n '/^Eligible update: /p' "$TMP_OUTPUT" | tail -n 1)
+RELEASE=
+if [ -n "$NOTICE_LINE" ]; then
+    RELEASE=${NOTICE_LINE#Eligible update: }
+    RELEASE=${RELEASE%% *}
+    # A malformed eligibility claim is not a successfully classified check and
+    # must not suppress a later retry through the local success interval.
+    printf '%s\n' "$RELEASE" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' || exit 0
+fi
+
+COMPLETED_AT=$(date -u '+%s' 2>/dev/null) || exit 0
+SUCCESS_TMP=$NOTICE_STATE/.last-success.$$
+if [ -e "$SUCCESS_TMP" ] || [ -L "$SUCCESS_TMP" ]; then
+    exit 0
+fi
+(set -C; printf '%s\n' "$COMPLETED_AT" > "$SUCCESS_TMP") 2>/dev/null || exit 0
+mv "$SUCCESS_TMP" "$LAST_SUCCESS" 2>/dev/null || {
+    rm -f "$SUCCESS_TMP"
+    exit 0
+}
+
+[ -n "$RELEASE" ] || exit 0
+
+shell_quote() {
+    printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+if [ "$SCOPE" = global ]; then
+    UPDATE_COMMAND="$(shell_quote "$UPDATER") apply --global"
+else
+    UPDATE_COMMAND="$(shell_quote "$UPDATER") apply --project $(shell_quote "$PROJECT_ROOT")"
+fi
+
+{
+    printf '\nTraceknot update available: %s\n' "$RELEASE"
+    printf '%s\n' 'A newer release is eligible under the seven-day update policy.'
+    printf '%s\n' 'Recommended verification-and-update command:'
+    printf '  %s\n' "$UPDATE_COMMAND"
+    printf '%s\n' 'The apply command performs artifact and provenance verification.'
+    printf '%s\n' 'This maintenance advisory does not affect the current QA verdict.'
+} >&2

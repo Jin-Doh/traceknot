@@ -24,6 +24,7 @@ const ALLOWED_MARKDOWN = /^skill\/(?:SKILL\.md|references\/[a-z0-9][a-z0-9._-]*\
 const ALLOWED_SCHEMA = /^skill\/contracts\/[a-z0-9][a-z0-9._-]*\.schema\.json$/u;
 const ALLOWED_ADAPTER = /^skill\/adapters\/[a-z0-9][a-z0-9._-]*\/capability\.json$/u;
 const RUNTIME_PATHS = new Set(["skill/bin/traceknot", "skill/bin/traceknot-skills-update"]);
+const MAINTENANCE_PATHS = new Set(["skill/bin/traceknot-update-notice"]);
 const REFERENCE_LINK = /references\/([a-z0-9][a-z0-9._-]*\.md)/gu;
 const LOCAL_REFERENCE_LINK = /\]\((?:\.\/)?([a-z0-9][a-z0-9._-]*\.md)(?:#[^)]+)?\)/gu;
 const RESERVED_BASENAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/iu;
@@ -37,7 +38,7 @@ function repositoryPath(root: string, path: string): string {
 }
 
 function declaredArtifactFiles(projectRoot: string): ReadonlySet<string> {
-  const declared = new Set<string>(["skill/SKILL.md", ...RUNTIME_PATHS]);
+  const declared = new Set<string>(["skill/SKILL.md", ...RUNTIME_PATHS, ...MAINTENANCE_PATHS]);
   const pending = ["skill/SKILL.md"];
   const scanned = new Set<string>();
   while (pending.length > 0) {
@@ -145,15 +146,16 @@ export function inspectSkillTree(root: string): readonly SkillEgressViolation[] 
     }
     if (stat.isDirectory()) {
       if (!declaredDirectories.has(path)) {
-        violations.push({ code: "UNEXPECTED_DIRECTORY", path, message: "Skill directories must contain only declared runtime, contract, adapter, or reference assets" });
+        violations.push({ code: "UNEXPECTED_DIRECTORY", path, message: "Skill directories must contain only declared runtime, maintenance, contract, adapter, or reference assets" });
       }
       for (const entry of readdirSync(absolutePath).sort()) visit(resolve(absolutePath, entry));
       return;
     }
     const runtime = RUNTIME_PATHS.has(path);
-    const allowedFileType = ALLOWED_MARKDOWN.test(path) || ALLOWED_SCHEMA.test(path) || ALLOWED_ADAPTER.test(path) || runtime;
+    const maintenance = MAINTENANCE_PATHS.has(path);
+    const allowedFileType = ALLOWED_MARKDOWN.test(path) || ALLOWED_SCHEMA.test(path) || ALLOWED_ADAPTER.test(path) || runtime || maintenance;
     if (!allowedFileType || !declaredFiles.has(path)) {
-      violations.push({ code: "UNEXPECTED_FILE", path, message: "Skill artifacts must be declared references or generated runtime assets" });
+      violations.push({ code: "UNEXPECTED_FILE", path, message: "Skill artifacts must be declared references or generated runtime, maintenance, contract, or adapter assets" });
     }
     const executable = (stat.mode & 0o111) !== 0;
     if (runtime && !executable) {
