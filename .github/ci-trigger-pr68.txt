@@ -1,1 +1,0 @@
-Trigger exact-head validation after automated review patch.
