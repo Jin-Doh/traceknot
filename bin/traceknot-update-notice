@@ -7,8 +7,8 @@ MODE=${TRACEKNOT_UPDATE_NOTICE:-auto}
 CHECK_INTERVAL=${TRACEKNOT_UPDATE_NOTICE_INTERVAL:-86400}
 CHECK_TIMEOUT=${TRACEKNOT_UPDATE_NOTICE_TIMEOUT:-60}
 TMP_OUTPUT=
-CLAIM_TMP=
-OWN_CLAIM=
+LOCK_MODE=
+LOCK_FILE=
 
 case "$MODE" in
     0|false|off|disabled) exit 0 ;;
@@ -75,80 +75,40 @@ if [ "$MODE" != force ]; then
     fi
 fi
 
-process_identity() {
-    identity_pid=$1
-    if [ -r "/proc/$identity_pid/stat" ]; then
-        awk '{ print $22 }' "/proc/$identity_pid/stat" 2>/dev/null
-        return
-    fi
-    command -v ps >/dev/null 2>&1 || return 1
-    ps -p "$identity_pid" -o lstart= 2>/dev/null |
-        sed 's/^[[:space:]]*//; s/[[:space:]][[:space:]]*/ /g; s/[[:space:]]*$//'
-}
-
-NOW=$(date -u '+%s' 2>/dev/null) || exit 0
-LOCK_OWNER_ID=$(process_identity "$$" 2>/dev/null) || exit 0
-[ -n "$LOCK_OWNER_ID" ] || exit 0
-CLAIM_DIR=$NOTICE_STATE/check-claims
+LOCK_FILE=$NOTICE_STATE/check.lock
 LAST_SUCCESS=$NOTICE_STATE/last-success
-
-if [ -e "$CLAIM_DIR" ] || [ -L "$CLAIM_DIR" ]; then
-    [ -d "$CLAIM_DIR" ] && [ ! -L "$CLAIM_DIR" ] || exit 0
-else
-    mkdir "$CLAIM_DIR" 2>/dev/null || exit 0
-fi
 
 cleanup() {
     [ -z "$TMP_OUTPUT" ] || rm -f "$TMP_OUTPUT"
-    if [ -n "$OWN_CLAIM" ] && [ -f "$OWN_CLAIM" ] && [ ! -L "$OWN_CLAIM" ] &&
-       [ "$(sed -n '1p' "$OWN_CLAIM" 2>/dev/null || true)" = "$$" ] &&
-       [ "$(sed -n '2p' "$OWN_CLAIM" 2>/dev/null || true)" = "$LOCK_OWNER_ID" ]; then
-        rm -f "$OWN_CLAIM"
+    if [ "$LOCK_MODE" = shlock ] &&
+       [ -f "$LOCK_FILE" ] && [ ! -L "$LOCK_FILE" ] &&
+       [ "$(sed -n '1p' "$LOCK_FILE" 2>/dev/null || true)" = "$$" ]; then
+        rm -f "$LOCK_FILE"
     fi
-    [ -z "$CLAIM_TMP" ] || rm -f "$CLAIM_TMP"
 }
 trap cleanup EXIT
 trap 'exit 0' HUP INT TERM
 
-# Publish a complete, uniquely named claim. There is no shared lock pathname to
-# replace: stale cleanup touches only immutable per-invocation claim names.
-CLAIM_TMP=$(mktemp "$CLAIM_DIR/.claim.XXXXXX" 2>/dev/null) || exit 0
-[ -f "$CLAIM_TMP" ] && [ ! -L "$CLAIM_TMP" ] || exit 0
-printf '%s\n%s\n' "$$" "$LOCK_OWNER_ID" > "$CLAIM_TMP" || exit 0
-OWN_CLAIM=$CLAIM_TMP.active
-if [ -e "$OWN_CLAIM" ] || [ -L "$OWN_CLAIM" ]; then
+# Use process-owned locking instead of implementing stale-owner replacement in
+# shell. flock releases ownership with the file descriptor; shlock provides the
+# portable macOS fallback and reclaims dead owners.
+if [ -e "$LOCK_FILE" ] || [ -L "$LOCK_FILE" ]; then
+    [ -f "$LOCK_FILE" ] && [ ! -L "$LOCK_FILE" ] || exit 0
+fi
+if command -v flock >/dev/null 2>&1; then
+    exec 9>>"$LOCK_FILE" || exit 0
+    flock -n 9 || exit 0
+    LOCK_MODE=flock
+elif command -v shlock >/dev/null 2>&1; then
+    shlock -f "$LOCK_FILE" -p "$$" >/dev/null 2>&1 || exit 0
+    LOCK_MODE=shlock
+else
+    # The advisory is best effort. Without a process-owned lock, skip rather
+    # than risk duplicate network checks or cross-process cleanup races.
     exit 0
 fi
-mv "$CLAIM_TMP" "$OWN_CLAIM" 2>/dev/null || exit 0
-CLAIM_TMP=
 
-OTHER_LIVE=0
-for claim_path in "$CLAIM_DIR"/.claim.*.active; do
-    if [ ! -e "$claim_path" ] && [ ! -L "$claim_path" ]; then
-        continue
-    fi
-    [ -f "$claim_path" ] && [ ! -L "$claim_path" ] || exit 0
-    [ "$claim_path" = "$OWN_CLAIM" ] && continue
-    claim_pid=$(sed -n '1p' "$claim_path" 2>/dev/null || true)
-    claim_identity=$(sed -n '2p' "$claim_path" 2>/dev/null || true)
-    case "$claim_pid" in
-        ''|*[!0-9]*) claim_pid=0 ;;
-    esac
-    if [ "$claim_pid" -gt 0 ] && kill -0 "$claim_pid" 2>/dev/null; then
-        current_identity=$(process_identity "$claim_pid" 2>/dev/null || true)
-        # Unknown identity is fail-closed. A successfully observed mismatch is
-        # a recycled PID and therefore a stale claim.
-        if [ -z "$claim_identity" ] || [ -z "$current_identity" ] ||
-           [ "$current_identity" = "$claim_identity" ]; then
-            OTHER_LIVE=1
-            continue
-        fi
-    fi
-    # Claim names are unique and never reused, so deleting this stale pathname
-    # cannot remove a newly published owner's claim.
-    rm -f "$claim_path" 2>/dev/null || exit 0
-done
-[ "$OTHER_LIVE" -eq 0 ] || exit 0
+NOW=$(date -u '+%s' 2>/dev/null) || exit 0
 
 if [ "$MODE" != force ] && [ -e "$LAST_SUCCESS" ]; then
     [ -f "$LAST_SUCCESS" ] && [ ! -L "$LAST_SUCCESS" ] || exit 0
@@ -160,8 +120,9 @@ if [ "$MODE" != force ] && [ -e "$LAST_SUCCESS" ]; then
     fi
 fi
 
-# Do not turn an informational advisory into transaction recovery. A normal
-# updater invocation owns reconciliation when any durable pending artifact exists.
+# Avoid an unnecessary updater process when recovery is already visible. The
+# updater's read-only mode repeats this test after acquiring its own lock, which
+# closes the race with a concurrently created pending transaction.
 for recovery_path in \
     "$UPDATER_STATE/pending.json" \
     "$UPDATER_STATE/pending-payload" \
