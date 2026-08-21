@@ -2,6 +2,7 @@
 # Update-notice helper: default notice, opt-out, rate limit, failure, and timeout scenarios.
 
 set -eu
+set -x
 
 ROOT=$(CDPATH='' cd -P "$(dirname "$0")/.." && pwd)
 NOTICE_SOURCE=$ROOT/bin/traceknot-update-notice
