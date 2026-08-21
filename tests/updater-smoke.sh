@@ -637,6 +637,32 @@ fi
 test -d "$OUTSIDE"
 rm -f "$PREFIX/.traceknot-update/transaction" "$PREFIX/releases/link"
 
+# Impossible calendar dates must fail closed for the prefix updater too.
+cp "$FIXTURE/manifest.json" "$TMP_DIR/manifest.saved"
+jq '.publishedAt = "2026-02-31T00:00:00Z"' "$FIXTURE/manifest.json" \
+    > "$FIXTURE/manifest.json.tmp"
+mv "$FIXTURE/manifest.json.tmp" "$FIXTURE/manifest.json"
+if "$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'prefix updater accepted an impossible manifest date' >&2
+    exit 1
+fi
+mv "$TMP_DIR/manifest.saved" "$FIXTURE/manifest.json"
+cp "$FIXTURE/releases.json" "$TMP_DIR/releases.saved"
+jq '.[0].published_at = "2026-02-31T00:00:00Z"' "$FIXTURE/releases.json" \
+    > "$FIXTURE/releases.json.tmp"
+mv "$FIXTURE/releases.json.tmp" "$FIXTURE/releases.json"
+if "$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'prefix updater accepted an impossible release date' >&2
+    exit 1
+fi
+mv "$TMP_DIR/releases.saved" "$FIXTURE/releases.json"
+FAKE_HTTP_DATE='Mon, 31 Feb 2026 00:00:00 GMT'
+export FAKE_HTTP_DATE
+if "$PREFIX/bin/traceknot-update" check --prefix "$PREFIX" >/dev/null 2>&1; then
+    printf '%s\n' 'prefix updater accepted an impossible GitHub server date' >&2
+    exit 1
+fi
+
 sh "$ROOT/uninstall.sh" --prefix "$PREFIX" >/dev/null
 test ! -e "$PREFIX/current"
 test ! -e "$PREFIX/releases"

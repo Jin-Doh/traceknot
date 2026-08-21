@@ -24,6 +24,10 @@ TAG=v$VERSION
 SOURCE_COMMIT=0123456789abcdef0123456789abcdef01234567
 FAKE_NOW=$(date -u '+%s')
 ARCHIVE_NAME=traceknot-v$VERSION.tar.gz
+LOWER_VERSION=1.1.9
+LOWER_TAG=v$LOWER_VERSION
+LOWER_SOURCE_COMMIT=abcdefabcdefabcdefabcdefabcdefabcdefabcd
+LOWER_ARCHIVE_NAME=traceknot-v$LOWER_VERSION.tar.gz
 
 cat > "$SOURCE_SKILL/SKILL.md" <<'EOF_SKILL'
 ---
@@ -62,8 +66,29 @@ jq -n \
     --argjson size "$ARTIFACT_SIZE" \
     '{schemaVersion:"traceknot-update-manifest/v1",version:$version,releaseTag:$tag,sourceRepository:"Jin-Doh/traceknot",sourceCommit:$commit,publishedAt:$published,artifact:{name:$name,size:$size,sha256:$sha}}' \
     > "$FIXTURE/manifest.json"
+jq -n \
+    --arg version "$LOWER_VERSION" \
+    --arg tag "$LOWER_TAG" \
+    --arg commit "$LOWER_SOURCE_COMMIT" \
+    --arg published "$PUBLISHED_AT" \
+    --arg name "$LOWER_ARCHIVE_NAME" \
+    --arg sha "$ARTIFACT_SHA" \
+    --argjson size "$ARTIFACT_SIZE" \
+    '{schemaVersion:"traceknot-update-manifest/v1",version:$version,releaseTag:$tag,sourceRepository:"Jin-Doh/traceknot",sourceCommit:$commit,publishedAt:$published,artifact:{name:$name,size:$size,sha256:$sha}}' \
+    > "$FIXTURE/manifest-lower.json"
 cat > "$FIXTURE/releases.json" <<EOF_RELEASES
 [
+  {
+    "tag_name": "$LOWER_TAG",
+    "published_at": "$PUBLISHED_AT",
+    "draft": false,
+    "prerelease": false,
+    "immutable": true,
+    "assets": [
+      {"name": "traceknot-update-manifest.json", "url": "https://api.github.com/repos/Jin-Doh/traceknot/releases/assets/manifest-lower"},
+      {"name": "$LOWER_ARCHIVE_NAME", "url": "https://api.github.com/repos/Jin-Doh/traceknot/releases/assets/artifact-lower"}
+    ]
+  },
   {
     "tag_name": "$TAG",
     "published_at": "$PUBLISHED_AT",
@@ -99,6 +124,8 @@ if [ -n "$headers" ]; then
 fi
 case "$url" in
     */releases\?*) cp "$FAKE_FIXTURE/releases.json" "$output" ;;
+    */assets/manifest-lower) cp "$FAKE_FIXTURE/manifest-lower.json" "$output" ;;
+    */assets/artifact-lower) cp "$FAKE_FIXTURE/$FAKE_ARCHIVE_NAME" "$output" ;;
     */assets/manifest) cp "$FAKE_FIXTURE/manifest.json" "$output" ;;
     */assets/artifact) cp "$FAKE_FIXTURE/$FAKE_ARCHIVE_NAME" "$output" ;;
     *) printf 'unexpected URL: %s\n' "$url" >&2; exit 2 ;;
@@ -174,6 +201,10 @@ if [ "$is_global" -eq 1 ]; then
 else
     jq -n --arg commit "$EXPECTED_SOURCE_COMMIT" '{version:1,skills:{traceknot:{source:"Jin-Doh/traceknot",sourceType:"github",ref:$commit,skillPath:"skill/SKILL.md",computedHash:"fixture"}}}' > "$lock"
 fi
+if [ "${FAKE_INTERRUPT_AFTER_INSTALL:-0}" -eq 1 ] && [ "$HOME" = "$REAL_HOME" ]; then
+    kill -TERM "$PPID"
+    exit 143
+fi
 EOF_NPX
 chmod +x "$FAKE_BIN/npx"
 
@@ -216,12 +247,19 @@ seed_adoption() {
     adopted_at=$4
     mkdir -p "$state"
     adopted_sha=$(lock_entry_sha "$lock")
+    if [ "$state" = "$HOME"/.local/state/traceknot/skills-update-global ]; then
+        seed_scope=global
+        seed_project_root=
+    else
+        seed_scope=project
+        seed_project_root=${state%/.agents/.traceknot-update}
+    fi
     cat > "$state/config" <<EOF_CONFIG
 traceknot-skills-update-config/v1
 automatic=$automatic
 lastCheck=0
-scope=$(case "$state" in "$HOME"/.local/state/*) printf '%s' global ;; *) printf '%s' project ;; esac)
-projectRoot=$(case "$state" in "$HOME"/.local/state/*) printf '%s' '' ;; *) printf '%s' "${state%/.agents/.traceknot-update}" ;; esac)
+scope=$seed_scope
+projectRoot=$seed_project_root
 adoptedAt=$adopted_at
 adoptedLockSha256=$adopted_sha
 EOF_CONFIG
@@ -263,6 +301,12 @@ test "$(cat "$NPX_COUNT")" -eq 0
 second_baseline_output=$("$BASELINE_SKILL/bin/traceknot-skills-update" check --project "$BASELINE_PROJECT")
 printf '%s\n' "$second_baseline_output" | grep -F 'No release published after the unmanaged installation baseline' >/dev/null
 test "$(cat "$NPX_COUNT")" -eq 0
+sleep 30 &
+STALE_PID=$!
+printf '%s\n%s\n' "$STALE_PID" stale-process-identity > "$BASELINE_STATE/update.lock"
+"$BASELINE_SKILL/bin/traceknot-skills-update" status --project "$BASELINE_PROJECT" >/dev/null
+kill "$STALE_PID" 2>/dev/null || true
+test ! -e "$BASELINE_STATE/update.lock"
 cp "$BASELINE_PROJECT/skills-lock.json" "$TMP_DIR/baseline-lock.saved"
 jq '.skills.traceknot.computedHash = "external-change"' "$BASELINE_PROJECT/skills-lock.json" > "$BASELINE_PROJECT/skills-lock.json.tmp"
 mv "$BASELINE_PROJECT/skills-lock.json.tmp" "$BASELINE_PROJECT/skills-lock.json"
@@ -290,6 +334,42 @@ boundary_output=$("$GLOBAL_SKILL/bin/traceknot-skills-update" check --global)
 printf '%s\n' "$boundary_output" | grep -F 'No release has exceeded' >/dev/null
 
 FAKE_NOW=$((FAKE_NOW + 1))
+
+# An unmanaged lock matching a newer release must not select an older eligible release.
+DOWNGRADE_PROJECT="$TMP_DIR/downgrade project"
+mkdir -p "$DOWNGRADE_PROJECT"
+DOWNGRADE_PROJECT=$(CDPATH='' cd -P "$DOWNGRADE_PROJECT" && pwd)
+DOWNGRADE_SKILL=$DOWNGRADE_PROJECT/.agents/skills/traceknot
+install_initial_skill "$DOWNGRADE_SKILL"
+write_initial_lock "$DOWNGRADE_PROJECT/skills-lock.json"
+jq --arg commit "$SOURCE_COMMIT" '.skills.traceknot.ref = $commit' \
+    "$DOWNGRADE_PROJECT/skills-lock.json" > "$DOWNGRADE_PROJECT/skills-lock.json.tmp"
+mv "$DOWNGRADE_PROJECT/skills-lock.json.tmp" "$DOWNGRADE_PROJECT/skills-lock.json"
+"$DOWNGRADE_SKILL/bin/traceknot-skills-update" status --project "$DOWNGRADE_PROJECT" >/dev/null
+DOWNGRADE_STATE=$DOWNGRADE_PROJECT/.agents/.traceknot-update
+seed_adoption "$DOWNGRADE_STATE" "$DOWNGRADE_PROJECT/skills-lock.json" 0 "$((FAKE_NOW - 1814400))"
+DOWNGRADE_HIGH_SHA=$(manifest_sha)
+DOWNGRADE_LOW_SHA=$(sha256sum "$FIXTURE/manifest-lower.json" | cut -d ' ' -f 1)
+{
+    printf '%s\t%s\t%s\t%s\n' "$DOWNGRADE_LOW_SHA" "$((FAKE_NOW - 1209600))" "$LOWER_TAG" "$ARTIFACT_SHA"
+    printf '%s\t%s\t%s\t%s\n' "$DOWNGRADE_HIGH_SHA" "$FAKE_NOW" "$TAG" "$ARTIFACT_SHA"
+} > "$DOWNGRADE_STATE/observations.tsv"
+downgrade_output=$("$DOWNGRADE_SKILL/bin/traceknot-skills-update" check --project "$DOWNGRADE_PROJECT")
+printf '%s\n' "$downgrade_output" | grep -F 'already installed' >/dev/null
+if printf '%s\n' "$downgrade_output" | grep -F 'Eligible update:' >/dev/null; then
+    printf '%s\n' 'unmanaged matching release allowed a downgrade' >&2
+    exit 1
+fi
+{
+    printf '%s\t%s\t%s\t%s\n' "$DOWNGRADE_LOW_SHA" "$((FAKE_NOW - 1209600))" "$LOWER_TAG" "$ARTIFACT_SHA"
+    printf '%s\t%s\t%s\t%s\n' "$DOWNGRADE_HIGH_SHA" "$((FAKE_NOW - 1209600))" "$TAG" "$ARTIFACT_SHA"
+} > "$DOWNGRADE_STATE/observations.tsv"
+downgrade_output=$("$DOWNGRADE_SKILL/bin/traceknot-skills-update" check --project "$DOWNGRADE_PROJECT")
+printf '%s\n' "$downgrade_output" | grep -F 'already installed' >/dev/null
+if printf '%s\n' "$downgrade_output" | grep -F 'Eligible update:' >/dev/null; then
+    printf '%s\n' 'unmanaged matching eligible release allowed a downgrade' >&2
+    exit 1
+fi
 set_http_time
 eligible_output=$("$GLOBAL_SKILL/bin/traceknot-skills-update" check --global)
 printf '%s\n' "$eligible_output" | grep -F "Eligible update: $TAG" >/dev/null
@@ -318,8 +398,9 @@ mv "$TMP_DIR/global-lock.saved" "$GLOBAL_LOCK"
 
 # Project registration uses project-owned state and lock while preserving the same policy.
 PROJECT="$TMP_DIR/project with space"
-PROJECT_SKILL=$PROJECT/.agents/skills/traceknot
 mkdir -p "$PROJECT"
+PROJECT=$(CDPATH='' cd -P "$PROJECT" && pwd)
+PROJECT_SKILL=$PROJECT/.agents/skills/traceknot
 install_initial_skill "$PROJECT_SKILL"
 write_initial_lock "$PROJECT/skills-lock.json"
 "$PROJECT_SKILL/bin/traceknot-skills-update" enable --project "$PROJECT" >/dev/null
@@ -336,8 +417,9 @@ jq -e --arg root "$PROJECT_SKILL" '.scope == "project" and .registration == $roo
 
 # A preflight mismatch fails before the canonical Skills registration is changed.
 TAMPER_PROJECT="$TMP_DIR/tamper project"
-TAMPER_SKILL=$TAMPER_PROJECT/.agents/skills/traceknot
 mkdir -p "$TAMPER_PROJECT"
+TAMPER_PROJECT=$(CDPATH='' cd -P "$TAMPER_PROJECT" && pwd)
+TAMPER_SKILL=$TAMPER_PROJECT/.agents/skills/traceknot
 install_initial_skill "$TAMPER_SKILL"
 write_initial_lock "$TAMPER_PROJECT/skills-lock.json"
 "$TAMPER_SKILL/bin/traceknot-skills-update" status --project "$TAMPER_PROJECT" >/dev/null
@@ -356,6 +438,79 @@ unset FAKE_TAMPER_PREFLIGHT
 test "$(cat "$NPX_COUNT")" -eq $((before_tamper + 1))
 grep -F 'initial Traceknot fixture' "$TAMPER_SKILL/SKILL.md" >/dev/null
 jq -e '.skills.traceknot.ref == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"' "$TAMPER_PROJECT/skills-lock.json" >/dev/null
+
+
+# A process interruption after Skills CLI mutation is reconciled on the next run.
+INTERRUPT_PROJECT="$TMP_DIR/interrupted project"
+mkdir -p "$INTERRUPT_PROJECT"
+INTERRUPT_PROJECT=$(CDPATH='' cd -P "$INTERRUPT_PROJECT" && pwd)
+INTERRUPT_SKILL=$INTERRUPT_PROJECT/.agents/skills/traceknot
+install_initial_skill "$INTERRUPT_SKILL"
+write_initial_lock "$INTERRUPT_PROJECT/skills-lock.json"
+"$INTERRUPT_SKILL/bin/traceknot-skills-update" status --project "$INTERRUPT_PROJECT" >/dev/null
+INTERRUPT_STATE=$INTERRUPT_PROJECT/.agents/.traceknot-update
+seed_adoption "$INTERRUPT_STATE" "$INTERRUPT_PROJECT/skills-lock.json" 0 "$((FAKE_NOW - 1814400))"
+INTERRUPT_LOCK_SHA=$(lock_entry_sha "$INTERRUPT_PROJECT/skills-lock.json")
+jq -n --arg scope project --arg registration "$INTERRUPT_SKILL" \
+    --arg lockSha "$INTERRUPT_LOCK_SHA" --argjson appliedAt "$((FAKE_NOW - 1814400))" \
+    '{schemaVersion:"traceknot-skills-active-release/v1",version:"1.0.0",releaseTag:"v1.0.0",sourceCommit:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",artifactSha256:"0000000000000000000000000000000000000000000000000000000000000000",lockEntrySha256:$lockSha,appliedAt:$appliedAt,scope:$scope,registration:$registration}' \
+    > "$INTERRUPT_STATE/active.json"
+printf '%s\t%s\t%s\t%s\n' "$MANIFEST_SHA" "$((FAKE_NOW - 604801))" "$TAG" "$ARTIFACT_SHA" > "$INTERRUPT_STATE/observations.tsv"
+before_interrupt=$(cat "$NPX_COUNT")
+FAKE_INTERRUPT_AFTER_INSTALL=1
+export FAKE_INTERRUPT_AFTER_INSTALL
+if "$INTERRUPT_SKILL/bin/traceknot-skills-update" apply --project "$INTERRUPT_PROJECT" >/dev/null 2>&1; then
+    printf '%s\n' 'interrupted Skills CLI update unexpectedly succeeded' >&2
+    exit 1
+fi
+unset FAKE_INTERRUPT_AFTER_INSTALL
+test "$(cat "$NPX_COUNT")" -eq $((before_interrupt + 2))
+test -f "$INTERRUPT_STATE/pending.json"
+test -f "$INTERRUPT_STATE/active.json"
+jq -e '.version == "1.0.0"' "$INTERRUPT_STATE/active.json" >/dev/null
+jq -e --arg commit "$SOURCE_COMMIT" '.skills.traceknot.ref == $commit' \
+    "$INTERRUPT_PROJECT/skills-lock.json" >/dev/null
+before_reconcile=$(cat "$NPX_COUNT")
+"$INTERRUPT_SKILL/bin/traceknot-skills-update" check --project "$INTERRUPT_PROJECT" >/dev/null
+test "$(cat "$NPX_COUNT")" -eq "$before_reconcile"
+test -f "$INTERRUPT_STATE/active.json"
+jq -e --arg commit "$SOURCE_COMMIT" '.sourceCommit == $commit' "$INTERRUPT_STATE/active.json" >/dev/null
+test ! -e "$INTERRUPT_STATE/pending.json"
+# Impossible calendar dates must fail closed for both manifest and release metadata.
+BAD_DATE_PROJECT="$TMP_DIR/bad date project"
+mkdir -p "$BAD_DATE_PROJECT"
+BAD_DATE_PROJECT=$(CDPATH='' cd -P "$BAD_DATE_PROJECT" && pwd)
+BAD_DATE_SKILL=$BAD_DATE_PROJECT/.agents/skills/traceknot
+install_initial_skill "$BAD_DATE_SKILL"
+write_initial_lock "$BAD_DATE_PROJECT/skills-lock.json"
+"$BAD_DATE_SKILL/bin/traceknot-skills-update" status --project "$BAD_DATE_PROJECT" >/dev/null
+BAD_DATE_STATE=$BAD_DATE_PROJECT/.agents/.traceknot-update
+seed_adoption "$BAD_DATE_STATE" "$BAD_DATE_PROJECT/skills-lock.json" 0 "$((FAKE_NOW - 1814400))"
+cp "$FIXTURE/manifest-lower.json" "$TMP_DIR/manifest-lower.saved"
+jq '.publishedAt = "2026-02-31T00:00:00Z"' "$FIXTURE/manifest-lower.json" \
+    > "$FIXTURE/manifest-lower.json.tmp"
+mv "$FIXTURE/manifest-lower.json.tmp" "$FIXTURE/manifest-lower.json"
+if "$BAD_DATE_SKILL/bin/traceknot-skills-update" check --project "$BAD_DATE_PROJECT" >/dev/null 2>&1; then
+    printf '%s\n' 'impossible manifest date was accepted' >&2
+    exit 1
+fi
+mv "$TMP_DIR/manifest-lower.saved" "$FIXTURE/manifest-lower.json"
+cp "$FIXTURE/releases.json" "$TMP_DIR/releases.saved"
+jq '.[0].published_at = "2026-02-31T00:00:00Z"' "$FIXTURE/releases.json" \
+    > "$FIXTURE/releases.json.tmp"
+mv "$FIXTURE/releases.json.tmp" "$FIXTURE/releases.json"
+if "$BAD_DATE_SKILL/bin/traceknot-skills-update" check --project "$BAD_DATE_PROJECT" >/dev/null 2>&1; then
+    printf '%s\n' 'impossible release date was accepted' >&2
+    exit 1
+fi
+mv "$TMP_DIR/releases.saved" "$FIXTURE/releases.json"
+FAKE_HTTP_DATE='Mon, 31 Feb 2026 00:00:00 GMT'
+export FAKE_HTTP_DATE
+if "$BAD_DATE_SKILL/bin/traceknot-skills-update" check --project "$BAD_DATE_PROJECT" >/dev/null 2>&1; then
+    printf '%s\n' 'impossible GitHub server date was accepted' >&2
+    exit 1
+fi
+set_http_time
 
 # Disable removes only this updater's schedules and persists opt-out.
 "$GLOBAL_SKILL/bin/traceknot-skills-update" disable --global >/dev/null

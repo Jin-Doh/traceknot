@@ -61,6 +61,7 @@ ${XDG_STATE_HOME:-$HOME/.local/state}/traceknot/skills-update-global/
   config
   observations.tsv
   active.json
+  pending.json
 ```
 
 The Skills CLI lock remains in its normal location:
@@ -94,13 +95,17 @@ Project state is kept under `.agents` while the Skills CLI continues to own `ski
   config
   observations.tsv
   active.json
+  pending.json
 
 <project>/skills-lock.json
 ```
 
 The updater rejects a scope that does not match the executable's installed Skill root. A global updater cannot update an arbitrary project installation, and a project-local updater cannot update another project. It also requires the Skills CLI lock entry to identify `Jin-Doh/traceknot`, the GitHub source type, and `skill/SKILL.md`.
 
+The update lock records both the updater PID and its process-start identity. A live PID with a different identity is treated as a stale lock; a legacy live lock without an identity is rejected rather than guessed.
+
 The first trusted check of an unmanaged installation records an adoption baseline consisting of GitHub server time and the canonical SHA-256 digest of the current Traceknot lock entry. A release published at or before that baseline is never selected automatically. This prevents a default-branch installation that is newer than the latest seven-day-old release from being downgraded during the first managed update. Before the first managed application, any lock-entry change invalidates the baseline. After a managed application, the complete lock-entry digest and exact source commit are stored in `active.json`; either changing externally blocks further managed updates rather than overwriting the user's choice.
+If the process is interrupted after Skills CLI changes the canonical registration but before `active.json` is committed, `pending.json` records the verified transition. The next invocation reconciles the matching lock and runtime, commits `active.json`, and clears the pending record; an unchanged pre-update lock simply discards the abandoned transaction.
 
 ## Eligibility policy
 
@@ -135,19 +140,21 @@ When multiple releases are eligible, the highest semantic version is selected. A
 
 `apply` performs these stages:
 
-1. establish or validate the unmanaged adoption baseline and lock-entry digest;
-2. resolve the highest eligible release published after that baseline;
-3. download and verify its deterministic archive;
-4. verify GitHub artifact provenance;
-5. safely extract the archive into temporary storage;
-6. invoke `skills@1.5.22` with `--agent universal` in an isolated temporary global or project scope using the exact source commit;
-7. run the temporary runtime self-check;
-8. compare the complete temporary Skill with the verified `skill/` payload;
-9. invoke the same pinned Skills CLI against the real scope;
-10. run the installed runtime self-check;
-11. compare the real registration with the verified payload;
-12. verify that the Skills CLI lock binds `Jin-Doh/traceknot`, `skill/SKILL.md`, and the exact source commit;
-13. persist the active release, artifact digest, and canonical lock-entry digest.
+1. reconcile any durable `pending.json` transition from a prior interrupted application;
+2. establish or validate the unmanaged adoption baseline and lock-entry digest;
+3. resolve the highest eligible release published after that baseline;
+4. download and verify its deterministic archive;
+5. verify GitHub artifact provenance;
+6. safely extract the archive into temporary storage;
+7. invoke `skills@1.5.22` with `--agent universal` in an isolated temporary global or project scope using the exact source commit;
+8. run the temporary runtime self-check;
+9. compare the complete temporary Skill with the verified `skill/` payload;
+10. persist `pending.json` before invoking the same pinned Skills CLI against the real scope;
+11. invoke the same pinned Skills CLI against the real scope;
+12. run the installed runtime self-check;
+13. compare the real registration with the verified payload;
+14. verify that the Skills CLI lock binds `Jin-Doh/traceknot`, `skill/SKILL.md`, and the exact source commit;
+15. persist the active release, artifact digest, and canonical lock-entry digest, then clear `pending.json`.
 
 The temporary preflight substantially reduces the chance that a clone, discovery, packaging, runtime, or payload mismatch damages the active installation. The final filesystem replacement is still performed by the upstream Skills CLI and therefore inherits its replacement semantics. Traceknot does not claim atomic rollback for this backend. Automatic application is consequently opt-in rather than silently enabled by installation.
 
