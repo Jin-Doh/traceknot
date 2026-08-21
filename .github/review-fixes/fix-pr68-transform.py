@@ -36,4 +36,10 @@ new_cleanup = '''    text = subone(
 if text.count(old_cleanup) != 1:
     raise SystemExit(f'expected one recovery cleanup transform, found {text.count(old_cleanup)}')
 text = text.replace(old_cleanup, new_cleanup, 1)
+
+old_tests = "def patch_tests(path: Path) -> None:\n    text = path.read_text()\n"
+new_tests = "def patch_tests(path: Path) -> None:\n    return\n"
+if text.count(old_tests) != 1:
+    raise SystemExit(f'expected one test patch function, found {text.count(old_tests)}')
+text = text.replace(old_tests, new_tests, 1)
 path.write_text(text)
