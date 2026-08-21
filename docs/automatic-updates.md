@@ -180,6 +180,7 @@ crontab
 
 The optional curl installer retains its existing prefix-owned updater:
 
+<!-- operational-command:updater -->
 ```sh
 TRACEKNOT_PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/traceknot"
 if [ -x "$TRACEKNOT_PREFIX/current/bin/traceknot-update" ]; then
