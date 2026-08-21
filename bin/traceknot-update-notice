@@ -132,9 +132,9 @@ run_bounded_updater() {
     return "$run_status"
 }
 
-STATUS_FILE=$TMP_ROOT/status.out
-run_bounded_updater "$STATUS_FILE" status || exit 0
-STATUS_OUTPUT=$(cat "$STATUS_FILE")
+NOTICE_STATUS_RESULT=$TMP_ROOT/status.out
+run_bounded_updater "$NOTICE_STATUS_RESULT" status || exit 0
+STATUS_OUTPUT=$(cat "$NOTICE_STATUS_RESULT")
 status_field() {
     printf '%s\n' "$STATUS_OUTPUT" | sed -n "s/^$1=//p" | tail -n 1
 }
@@ -150,9 +150,9 @@ if [ "$MODE" != force ] && [ "$LAST_CHECK_LOCAL" -gt 0 ]; then
     fi
 fi
 
-CHECK_OUTPUT=$TMP_ROOT/check.out
-run_bounded_updater "$CHECK_OUTPUT" check || exit 0
-NOTICE_LINE=$(sed -n '/^Eligible update: /p' "$CHECK_OUTPUT" | tail -n 1)
+NOTICE_CHECK_RESULT=$TMP_ROOT/check.out
+run_bounded_updater "$NOTICE_CHECK_RESULT" check || exit 0
+NOTICE_LINE=$(sed -n '/^Eligible update: /p' "$NOTICE_CHECK_RESULT" | tail -n 1)
 [ -n "$NOTICE_LINE" ] || exit 0
 RELEASE=${NOTICE_LINE#Eligible update: }
 RELEASE=${RELEASE%% *}
