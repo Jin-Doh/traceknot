@@ -13,6 +13,9 @@ STATUS_FILE=$TMP_ROOT/status
 MODE_FILE=$TMP_ROOT/mode
 CALL_LOG=$TMP_ROOT/calls
 mkdir -p "$BIN_DIR"
+HOME=$TMP_ROOT/home
+XDG_STATE_HOME=$TMP_ROOT/state
+mkdir -p "$HOME" "$XDG_STATE_HOME/traceknot/skills-update-global"
 BIN_DIR=$(CDPATH='' cd -P "$BIN_DIR" && pwd)
 cp "$NOTICE_SOURCE" "$BIN_DIR/traceknot-update-notice"
 : > "$CALL_LOG"
@@ -52,6 +55,7 @@ projectRoot=$project_root
 registration=$BIN_DIR
 automatic=$automatic
 lastCheck=$last_check
+lastCheckLocal=$last_check
 adoptedAt=0
 version=unmanaged
 EOF_STATUS
@@ -60,8 +64,9 @@ EOF_STATUS
 run_notice() {
     notice_mode=$1
     notice_timeout=${2:-2}
-    CI= \
+    HOME=$HOME XDG_STATE_HOME=$XDG_STATE_HOME \
     STATUS_FILE=$STATUS_FILE MODE_FILE=$MODE_FILE CALL_LOG=$CALL_LOG \
+    CI= \
     TRACEKNOT_UPDATE_NOTICE=$notice_mode \
     TRACEKNOT_UPDATE_NOTICE_INTERVAL=86400 \
     TRACEKNOT_UPDATE_NOTICE_TIMEOUT=$notice_timeout \

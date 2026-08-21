@@ -24,6 +24,7 @@ LOCK_OWNER_ID=
 PENDING_STATE=
 PENDING_PAYLOAD_TMP=
 PENDING_PREVIOUS_PAYLOAD_TMP=
+LAST_CHECK_LOCAL_TMP=
 fail() {
     printf '%s: %s\n' "$PROGRAM" "$*" >&2
     exit 2
@@ -232,6 +233,7 @@ RECOVERY_LOCK=$STATE_DIR/update.lock-recovery
 PENDING_STATE=$STATE_DIR/pending.json
 PENDING_PAYLOAD_DIR=$STATE_DIR/pending-payload
 PENDING_PREVIOUS_PAYLOAD_DIR=$STATE_DIR/pending-previous-payload
+LAST_CHECK_LOCAL=$STATE_DIR/lastCheckLocal
 
 cleanup() {
     if [ -n "$LOCK_CLAIM" ] && [ -f "$LOCK_CLAIM" ] &&
@@ -252,6 +254,9 @@ cleanup() {
     fi
     if [ -n "$PENDING_PREVIOUS_PAYLOAD_TMP" ]; then
         rm -rf "$PENDING_PREVIOUS_PAYLOAD_TMP"
+    fi
+    if [ -n "$LAST_CHECK_LOCAL_TMP" ]; then
+        rm -f "$LAST_CHECK_LOCAL_TMP"
     fi
     if [ -n "$TMP_ROOT" ]; then
         rm -rf "$TMP_ROOT"
@@ -453,6 +458,18 @@ write_config() {
         "adoptedAt=$adopted_at_value" \
         "adoptedLockSha256=$adopted_lock_value" > "$config_tmp"
     mv "$config_tmp" "$CONFIG"
+}
+
+write_check_state() {
+    write_config "$AUTOMATIC" "$TRUSTED_NOW" "$ADOPTED_AT" "$ADOPTED_LOCK_SHA256"
+    LAST_CHECK_LOCAL_TMP=$LAST_CHECK_LOCAL.tmp.$$
+    create_exclusive_file "$LAST_CHECK_LOCAL_TMP"
+    CHECK_COMPLETED_LOCAL=$(date -u '+%s') ||
+        fail 'cannot read local completion time'
+    printf '%s\n' "$CHECK_COMPLETED_LOCAL" > "$LAST_CHECK_LOCAL_TMP"
+    mv "$LAST_CHECK_LOCAL_TMP" "$LAST_CHECK_LOCAL"
+    LAST_CHECK_LOCAL_TMP=
+    sync
 }
 
 cron_escape() {
@@ -765,9 +782,17 @@ if [ "$COMMAND" = disable ]; then
     exit 0
 fi
 
+if [ -e "$LAST_CHECK_LOCAL" ] || [ -L "$LAST_CHECK_LOCAL" ]; then
+    [ -f "$LAST_CHECK_LOCAL" ] && [ ! -L "$LAST_CHECK_LOCAL" ] ||
+        fail 'unsafe local check timestamp'
+    LAST_CHECK_LOCAL_VALUE=$(cat "$LAST_CHECK_LOCAL")
+    case "$LAST_CHECK_LOCAL_VALUE" in ''|*[!0-9]*) fail 'invalid local check timestamp' ;; esac
+else
+    LAST_CHECK_LOCAL_VALUE=
+fi
 if [ "$COMMAND" = status ]; then
-    printf 'scope=%s\nprojectRoot=%s\nregistration=%s\nautomatic=%s\nlastCheck=%s\nadoptedAt=%s\n' \
-        "$SCOPE" "$PROJECT_ROOT" "$REGISTRATION" "$AUTOMATIC" "$LAST_CHECK" "$ADOPTED_AT"
+    printf 'scope=%s\nprojectRoot=%s\nregistration=%s\nautomatic=%s\nlastCheck=%s\nlastCheckLocal=%s\nadoptedAt=%s\n' \
+        "$SCOPE" "$PROJECT_ROOT" "$REGISTRATION" "$AUTOMATIC" "$LAST_CHECK" "$LAST_CHECK_LOCAL_VALUE" "$ADOPTED_AT"
     if [ -f "$ACTIVE_STATE" ]; then
         jq -r '"version=\(.version)\ntag=\(.releaseTag)\nsourceCommit=\(.sourceCommit)\nsha256=\(.artifactSha256)"' "$ACTIVE_STATE"
     else
@@ -1067,12 +1092,12 @@ while IFS="$(printf '\t')" read -r RELEASE_TAG RELEASE_PUBLISHED MANIFEST_URL; d
 done < "$TMP_ROOT/candidates.tsv"
 
 if [ "$CANDIDATE_FOUND" -eq 0 ]; then
-    write_config "$AUTOMATIC" "$TRUSTED_NOW" "$ADOPTED_AT" "$ADOPTED_LOCK_SHA256"
+    write_check_state
     printf '%s\n' 'No immutable stable release with an update manifest is available.'
     exit 0
 fi
 if [ "$POST_ADOPTION_CANDIDATE" -eq 0 ] && [ ! -f "$ACTIVE_STATE" ]; then
-    write_config "$AUTOMATIC" "$TRUSTED_NOW" "$ADOPTED_AT" "$ADOPTED_LOCK_SHA256"
+    write_check_state
     if [ "$ADOPTION_CREATED" -eq 1 ]; then
         printf 'Recorded unmanaged installation baseline at %s; pre-existing releases will not be applied automatically.\n' "$ADOPTED_AT"
     else
@@ -1081,12 +1106,12 @@ if [ "$POST_ADOPTION_CANDIDATE" -eq 0 ] && [ ! -f "$ACTIVE_STATE" ]; then
     exit 0
 fi
 if [ "$ELIGIBLE" -eq 0 ] && [ "$CURRENT_MATCH" -eq 1 ]; then
-    write_config "$AUTOMATIC" "$TRUSTED_NOW" "$ADOPTED_AT" "$ADOPTED_LOCK_SHA256"
+    write_check_state
     printf '%s\n' 'The newest eligible Traceknot release is already installed.'
     exit 0
 fi
 if [ "$ELIGIBLE" -eq 0 ]; then
-    write_config "$AUTOMATIC" "$TRUSTED_NOW" "$ADOPTED_AT" "$ADOPTED_LOCK_SHA256"
+    write_check_state
     printf '%s\n' 'No release has exceeded the seven-day observation requirement.'
     exit 0
 fi
@@ -1098,7 +1123,7 @@ ARTIFACT_NAME=$SELECTED_ARTIFACT_NAME
 ARTIFACT_SIZE=$SELECTED_ARTIFACT_SIZE
 ARTIFACT_SHA=$SELECTED_ARTIFACT_SHA
 ARTIFACT_URL=$SELECTED_ARTIFACT_URL
-write_config "$AUTOMATIC" "$TRUSTED_NOW" "$ADOPTED_AT" "$ADOPTED_LOCK_SHA256"
+write_check_state
 printf 'Eligible update: %s (%s)\n' "$RELEASE_TAG" "$ARTIFACT_SHA"
 [ "$COMMAND" = apply ] || exit 0
 [ "$DRY_RUN" -eq 0 ] || { printf 'Would apply %s through Skills CLI to %s\n' "$RELEASE_TAG" "$REGISTRATION"; exit 0; }

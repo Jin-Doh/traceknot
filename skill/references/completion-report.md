@@ -49,7 +49,7 @@ sh "$HOME/.agents/skills/traceknot/bin/traceknot-update-notice"
 sh .agents/skills/traceknot/bin/traceknot-update-notice
 ```
 
-This invocation is maintenance advice outside the governed verification run. By default the helper reuses the sibling updater's trusted `lastCheck` state and skips another eligibility check for 24 hours after a successful trusted check. It writes a recommendation only to standard error when a newer release satisfies the seven-day policy. A missing helper, recent check, timeout, dependency failure, network failure, or malformed result is silent and MUST NOT change evidence, coverage, Board status, harness completion, or the QA verdict.
+This invocation is maintenance advice outside the governed verification run. By default the helper reuses the sibling updater's local `lastCheckLocal` completion timestamp and skips another eligibility check for 24 hours in the same local clock domain; the updater's trusted `lastCheck` remains the eligibility source. It writes a recommendation only to standard error when a newer release satisfies the seven-day policy. A missing helper, recent check, timeout, dependency failure, network failure, or malformed result is silent and MUST NOT change evidence, coverage, Board status, harness completion, or the QA verdict.
 
 Skip this maintenance invocation when the requested hardened profile forbids outbound traffic or the host cannot keep the maintenance check outside governed Skill execution. Never substitute `traceknot-skills-update apply` automatically. When the helper prints a recommendation, relay it separately after the completion report; do not place it in the required QA sections or represent it as verification evidence. `TRACEKNOT_UPDATE_NOTICE=0` disables the advisory explicitly.
 

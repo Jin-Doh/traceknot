@@ -33,12 +33,12 @@ status_field() {
     printf '%s\n' "$STATUS_OUTPUT" | sed -n "s/^$1=//p" | tail -n 1
 }
 
-LAST_CHECK=$(status_field lastCheck)
-case "$LAST_CHECK" in ''|*[!0-9]*) LAST_CHECK=0 ;; esac
+LAST_CHECK_LOCAL=$(status_field lastCheckLocal)
+case "$LAST_CHECK_LOCAL" in ''|*[!0-9]*) LAST_CHECK_LOCAL=0 ;; esac
 NOW=$(date -u '+%s' 2>/dev/null) || exit 0
-if [ "$MODE" != force ] && [ "$LAST_CHECK" -gt 0 ]; then
-    [ "$NOW" -gt "$LAST_CHECK" ] || exit 0
-    [ $((NOW - LAST_CHECK)) -ge "$CHECK_INTERVAL" ] || exit 0
+if [ "$MODE" != force ] && [ "$LAST_CHECK_LOCAL" -gt 0 ]; then
+    [ "$NOW" -gt "$LAST_CHECK_LOCAL" ] || exit 0
+    [ $((NOW - LAST_CHECK_LOCAL)) -ge "$CHECK_INTERVAL" ] || exit 0
 fi
 
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-update-notice.XXXXXX" 2>/dev/null) || exit 0
