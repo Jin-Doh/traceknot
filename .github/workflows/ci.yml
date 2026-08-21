@@ -40,6 +40,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/review-fixes/atomic-check-state.py')
+          text = path.read_text()
+          old = '    text = one(text, "LAST_CHECK_LOCAL_TMP=\\n", "", f"{path}: top temp")\n'
+          new = '    text = text.replace("LAST_CHECK_LOCAL_TMP=\\n", "", 1)\n'
+          if old not in text:
+              raise SystemExit('atomic helper top-temp patch target missing')
+          path.write_text(text.replace(old, new, 1))
+          PY
           python3 .github/review-fixes/atomic-check-state.py
           sh -n bin/traceknot-skills-update skill/bin/traceknot-skills-update tests/skills-updater-smoke.sh
           cmp -s bin/traceknot-skills-update skill/bin/traceknot-skills-update
