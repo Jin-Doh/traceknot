@@ -122,59 +122,24 @@ output=$(run_global force)
 printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/null
 rm -f "$UPDATER_STATE/config" "$XDG_STATE_HOME/traceknot/update-notice-global/last-success"
 
-# Per-invocation claims avoid shared-path stale replacement races.
+# The OS-backed advisory lock is reusable after its owner exits and rejects
+# unsafe lock path types.
 NOTICE_STATE=$XDG_STATE_HOME/traceknot/update-notice-global
-CLAIM_DIR=$NOTICE_STATE/check-claims
-mkdir -p "$CLAIM_DIR"
-rm -f "$NOTICE_STATE/last-success" "$CLAIM_DIR"/.claim.*.active
-
-# A stale dead claim is reclaimed.
-printf '%s\n%s\n' 999999 dead-owner > "$CLAIM_DIR/.claim.stale.active"
+LOCK_FILE=$NOTICE_STATE/check.lock
+rm -f "$NOTICE_STATE/last-success" "$LOCK_FILE"
+: > "$LOCK_FILE"
 output=$(run_global force)
 printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/null
-test ! -e "$CLAIM_DIR/.claim.stale.active"
-
-# A live exact owner is preserved; a recycled PID with a mismatched identity is
-# reclaimed without touching another invocation's unique claim.
-process_identity() {
-    identity_pid=$1
-    if [ -r "/proc/$identity_pid/stat" ]; then
-        awk '{ print $22 }' "/proc/$identity_pid/stat"
-    else
-        ps -p "$identity_pid" -o lstart= |
-            sed 's/^[[:space:]]*//; s/[[:space:]][[:space:]]*/ /g; s/[[:space:]]*$//'
-    fi
-}
-sleep 30 &
-live_claim_pid=$!
-live_claim_identity=$(process_identity "$live_claim_pid")
-printf '%s\n%s\n' "$live_claim_pid" "$live_claim_identity" > "$CLAIM_DIR/.claim.live.active"
-before_live=$(wc -l < "$CALL_LOG" | tr -d ' ')
-output=$(run_global force)
-[ -z "$output" ]
-[ "$(wc -l < "$CALL_LOG" | tr -d ' ')" -eq "$before_live" ]
-test -f "$CLAIM_DIR/.claim.live.active"
-printf '%s\n%s\n' "$live_claim_pid" recycled-owner > "$CLAIM_DIR/.claim.live.active"
-output=$(run_global force)
-printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/null
-test ! -e "$CLAIM_DIR/.claim.live.active"
-kill "$live_claim_pid" 2>/dev/null || true
-
-# An unsafe claim directory is fail-closed and never reaches the updater.
-rm -rf "$CLAIM_DIR"
-mkdir "$TMP_ROOT/outside-claims"
-ln -s "$TMP_ROOT/outside-claims" "$CLAIM_DIR"
+rm -f "$NOTICE_STATE/last-success" "$LOCK_FILE"
+mkdir "$LOCK_FILE"
 before_unsafe=$(wc -l < "$CALL_LOG" | tr -d ' ')
 output=$(run_global force)
 [ -z "$output" ]
 [ "$(wc -l < "$CALL_LOG" | tr -d ' ')" -eq "$before_unsafe" ]
-rm -f "$CLAIM_DIR"
-mkdir "$CLAIM_DIR"
+rmdir "$LOCK_FILE"
 
-# Two simultaneous invocations that both publish claims cannot both proceed:
-# either one sees the other and exits, or both conservatively exit. A follow-up
-# invocation remains immediately eligible because no duplicate success is set.
-rm -f "$NOTICE_STATE/last-success" "$CLAIM_DIR"/.claim.*.active
+# Concurrent completions serialize the rate-limit decision and network check.
+rm -f "$NOTICE_STATE/last-success" "$LOCK_FILE"
 : > "$CALL_LOG"
 printf '%s\n' slow > "$FIXTURE_MODE"
 HOME=$HOME XDG_STATE_HOME=$XDG_STATE_HOME NOTICE_TEST_MODE=$FIXTURE_MODE NOTICE_TEST_CALL_LOG=$CALL_LOG \
@@ -187,16 +152,9 @@ HOME=$HOME XDG_STATE_HOME=$XDG_STATE_HOME NOTICE_TEST_MODE=$FIXTURE_MODE NOTICE_
 pid2=$!
 wait "$pid1"
 wait "$pid2"
-call_count=$(wc -l < "$CALL_LOG" | tr -d ' ')
-[ "$call_count" -le 1 ]
+[ "$(wc -l < "$CALL_LOG" | tr -d ' ')" -eq 1 ]
 notice_count=$(cat "$TMP_ROOT/concurrent-1" "$TMP_ROOT/concurrent-2" | grep -c 'Traceknot update available:' || true)
-[ "$notice_count" -le 1 ]
-if [ "$call_count" -eq 0 ]; then
-    output=$(run_global auto)
-    printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/null
-fi
-remaining=$(find "$CLAIM_DIR" -name '.claim.*.active' -type f | wc -l | tr -d ' ')
-[ "$remaining" -eq 0 ]
+[ "$notice_count" -eq 1 ]
 
 # Project-local scope is inferred from the installed helper path and quoted safely.
 PROJECT_ROOT="$TMP_ROOT/project with ' quote"
