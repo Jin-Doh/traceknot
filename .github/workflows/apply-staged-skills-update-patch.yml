@@ -1,0 +1,45 @@
+name: Apply staged Skills updater patch
+
+on:
+  push:
+    branches:
+      - fix/skills-cli-auto-update
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'chore: stage verified updater patch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply and validate patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          gzip -d -c .traceknot-latest.patch.gz > /tmp/traceknot-latest.patch
+          test "$(git hash-object bin/traceknot-skills-update)" = 7e51b800bd0bf2911b2699c6bff9aa04fdd6fb2a
+          test "$(git hash-object docs/automatic-updates.md)" = 9d035a06c82ca9f6036e49ade14af40bf7f006fd
+          test "$(git hash-object tests/skills-updater-smoke.sh)" = 327f0d40c20ff5febd755360cbc2011a2913b633
+          git apply --check /tmp/traceknot-latest.patch
+          git apply /tmp/traceknot-latest.patch
+          cp bin/traceknot-skills-update skill/bin/traceknot-skills-update
+          chmod +x bin/traceknot-skills-update skill/bin/traceknot-skills-update tests/skills-updater-smoke.sh
+          sh -n bin/traceknot-skills-update skill/bin/traceknot-skills-update tests/skills-updater-smoke.sh scripts/ci scripts/package-release.sh
+          cmp -s bin/traceknot-skills-update skill/bin/traceknot-skills-update
+          sh tests/skills-updater-smoke.sh
+          git diff --check
+
+      - name: Commit generated fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add bin/traceknot-skills-update skill/bin/traceknot-skills-update docs/automatic-updates.md tests/skills-updater-smoke.sh
+          git commit -m "fix: prevent first-update downgrades" -m "Record an unmanaged-install adoption baseline, bind managed state to the Skills lock entry, target the universal canonical registration, and preserve the existing documentation contract."
+          git push origin HEAD:${GITHUB_REF_NAME}
