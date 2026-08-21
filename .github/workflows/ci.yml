@@ -36,7 +36,7 @@ jobs:
         with:
           bun-version: 1.3.14
           no-cache: true
-      - name: Restack on current parent and apply review fixes
+      - name: Restack on final PR 68 head
         shell: bash
         run: |
           set -euo pipefail
@@ -44,8 +44,9 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git fetch origin fix/skills-cli-auto-update
           git merge --no-commit --no-ff -X ours origin/fix/skills-cli-auto-update
-          python3 .github/review-fixes/apply-pr69-restack.py
-          python3 .github/review-fixes/apply-pr69-final-reviews.py
+          grep -F 'collect_process_tree() {' bin/traceknot-skills-update >/dev/null
+          grep -F 'starting_state_unchanged() {' bin/traceknot-skills-update >/dev/null
+          grep -F 'changed immediately before update mutation' bin/traceknot-skills-update >/dev/null
           sh -n bin/traceknot-skills-update skill/bin/traceknot-skills-update \
             bin/traceknot-update-notice skill/bin/traceknot-update-notice \
             tests/skills-updater-smoke.sh tests/update-notice-smoke.sh
@@ -55,7 +56,7 @@ jobs:
           sh tests/update-notice-smoke.sh
           sh scripts/ci
           git diff --check
-      - name: Commit restacked branch
+      - name: Commit clean stacked branch
         shell: bash
         run: |
           set -euo pipefail
