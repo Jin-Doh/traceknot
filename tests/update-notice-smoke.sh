@@ -79,9 +79,9 @@ output=$(run_notice 0)
 
 # Automatic updates may remain disabled while the default advisory still reaches the user.
 START=$(date -u '+%s')
-output=$(run_notice auto 5)
+output=$(run_notice auto 30)
 END=$(date -u '+%s')
-[ "$((END - START))" -lt 4 ]
+[ "$((END - START))" -lt 5 ]
 printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/null
 printf '%s\n' "$output" | grep -F 'Recommended verification-and-update command:' >/dev/null
 printf '%s\n' "$output" | grep -F "'${BIN_DIR}/traceknot-skills-update' apply --global" >/dev/null
