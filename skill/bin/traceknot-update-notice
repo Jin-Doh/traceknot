@@ -7,9 +7,9 @@ MODE=${TRACEKNOT_UPDATE_NOTICE:-auto}
 CHECK_INTERVAL=${TRACEKNOT_UPDATE_NOTICE_INTERVAL:-86400}
 CHECK_TIMEOUT=${TRACEKNOT_UPDATE_NOTICE_TIMEOUT:-5}
 TMP_ROOT=
-CHECK_PID=
+RUN_PID=
 WATCH_PID=
-WATCH_DONE=
+RUN_SEQ=0
 
 case "$MODE" in
     0|false|off|disabled) exit 0 ;;
@@ -29,7 +29,112 @@ BIN_DIR=$(CDPATH='' cd -P "$(dirname "$0")" 2>/dev/null && pwd) || exit 0
 UPDATER=$BIN_DIR/traceknot-skills-update
 [ -x "$UPDATER" ] || exit 0
 
-STATUS_OUTPUT=$(TRACEKNOT_UPDATE_MAINTENANCE=1 "$UPDATER" status 2>/dev/null) || exit 0
+START_NOW=$(date -u '+%s' 2>/dev/null) || exit 0
+DEADLINE_EPOCH=$((START_NOW + CHECK_TIMEOUT))
+TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-update-notice.XXXXXX" 2>/dev/null) || exit 0
+
+collect_process_tree() {
+    process_pid=$1
+    for child_pid in $(pgrep -P "$process_pid" 2>/dev/null || true); do
+        collect_process_tree "$child_pid"
+    done
+    printf '%s\n' "$process_pid"
+}
+
+signal_process_list() {
+    signal_name=$1
+    shift
+    for process_pid in "$@"; do
+        kill -s "$signal_name" "$process_pid" 2>/dev/null || true
+    done
+}
+
+process_list_alive() {
+    for process_pid in "$@"; do
+        if kill -0 "$process_pid" 2>/dev/null; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+cleanup() {
+    if [ -n "$RUN_PID" ]; then
+        cleanup_processes=$(collect_process_tree "$RUN_PID" 2>/dev/null || true)
+        if [ -n "$cleanup_processes" ]; then
+            # shellcheck disable=SC2086
+            signal_process_list TERM $cleanup_processes
+            # shellcheck disable=SC2086
+            signal_process_list KILL $cleanup_processes
+        fi
+    fi
+    if [ -n "$WATCH_PID" ]; then
+        kill -TERM "$WATCH_PID" 2>/dev/null || true
+        wait "$WATCH_PID" 2>/dev/null || true
+    fi
+    [ -z "$TMP_ROOT" ] || rm -rf "$TMP_ROOT"
+}
+trap cleanup EXIT
+trap 'exit 0' HUP INT TERM
+
+run_bounded_updater() {
+    run_output=$1
+    shift
+    run_now=$(date -u '+%s' 2>/dev/null) || return 124
+    [ "$run_now" -lt "$DEADLINE_EPOCH" ] || return 124
+    RUN_SEQ=$((RUN_SEQ + 1))
+    run_done=$TMP_ROOT/run-$RUN_SEQ.done
+    run_timed_out=$TMP_ROOT/run-$RUN_SEQ.timed-out
+
+    TRACEKNOT_UPDATE_NOTICE=0 \
+    TRACEKNOT_UPDATE_DEADLINE_EPOCH="$DEADLINE_EPOCH" \
+    TRACEKNOT_UPDATE_SKIP_SYNC=1 \
+    TRACEKNOT_UPDATE_MAINTENANCE=1 \
+        "$UPDATER" "$@" >"$run_output" 2>/dev/null &
+    RUN_PID=$!
+    (
+        while [ ! -e "$run_done" ]; do
+            watch_now=$(date -u '+%s' 2>/dev/null) || exit 0
+            if [ "$watch_now" -ge "$DEADLINE_EPOCH" ]; then
+                : > "$run_timed_out"
+                watch_processes=$(collect_process_tree "$RUN_PID")
+                # shellcheck disable=SC2086
+                signal_process_list TERM $watch_processes
+                watch_grace=$((watch_now + 1))
+                # Retain the process set before TERM so reparented descendants
+                # cannot escape merely because the updater parent exits first.
+                # shellcheck disable=SC2086
+                while process_list_alive $watch_processes; do
+                    watch_now=$(date -u '+%s' 2>/dev/null || printf '%s' "$watch_grace")
+                    [ "$watch_now" -lt "$watch_grace" ] || break
+                    sleep 1
+                done
+                # shellcheck disable=SC2086
+                signal_process_list KILL $watch_processes
+                exit 0
+            fi
+            sleep 1
+        done
+    ) >/dev/null 2>&1 &
+    WATCH_PID=$!
+
+    run_status=0
+    if wait "$RUN_PID" 2>/dev/null; then
+        :
+    else
+        run_status=$?
+    fi
+    RUN_PID=
+    : > "$run_done"
+    wait "$WATCH_PID" 2>/dev/null || true
+    WATCH_PID=
+    [ ! -e "$run_timed_out" ] || return 124
+    return "$run_status"
+}
+
+STATUS_FILE=$TMP_ROOT/status.out
+run_bounded_updater "$STATUS_FILE" status || exit 0
+STATUS_OUTPUT=$(cat "$STATUS_FILE")
 status_field() {
     printf '%s\n' "$STATUS_OUTPUT" | sed -n "s/^$1=//p" | tail -n 1
 }
@@ -44,66 +149,9 @@ if [ "$MODE" != force ] && [ "$LAST_CHECK_LOCAL" -gt 0 ]; then
         exit 0
     fi
 fi
-DEADLINE_EPOCH=$((NOW + CHECK_TIMEOUT))
 
-TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-update-notice.XXXXXX" 2>/dev/null) || exit 0
 CHECK_OUTPUT=$TMP_ROOT/check.out
-WATCH_DONE=$TMP_ROOT/watch.done
-signal_process_tree() {
-    signal_name=$1
-    process_pid=$2
-    for child_pid in $(pgrep -P "$process_pid" 2>/dev/null || true); do
-        signal_process_tree "$signal_name" "$child_pid"
-    done
-    kill -s "$signal_name" "$process_pid" 2>/dev/null || true
-}
-cleanup() {
-    if [ -n "$WATCH_PID" ]; then
-        signal_process_tree TERM "$WATCH_PID"
-        wait "$WATCH_PID" 2>/dev/null || true
-    fi
-    if [ -n "$CHECK_PID" ]; then
-        signal_process_tree TERM "$CHECK_PID"
-        wait "$CHECK_PID" 2>/dev/null || true
-    fi
-    [ -z "$TMP_ROOT" ] || rm -rf "$TMP_ROOT"
-}
-trap cleanup EXIT
-trap 'exit 0' HUP INT TERM
-
-TRACEKNOT_UPDATE_NOTICE=0 \
-TRACEKNOT_UPDATE_DEADLINE_EPOCH="$DEADLINE_EPOCH" \
-TRACEKNOT_UPDATE_SKIP_SYNC=1 \
-TRACEKNOT_UPDATE_MAINTENANCE=1 \
-    "$UPDATER" check >"$CHECK_OUTPUT" 2>/dev/null &
-CHECK_PID=$!
-(
-    while [ ! -e "$WATCH_DONE" ]; do
-        WATCH_NOW=$(date -u '+%s' 2>/dev/null) || exit 0
-        if [ "$WATCH_NOW" -ge "$DEADLINE_EPOCH" ]; then
-            signal_process_tree TERM "$CHECK_PID"
-            sleep 1
-            signal_process_tree KILL "$CHECK_PID"
-            exit 0
-        fi
-        sleep 1
-    done
-) >/dev/null 2>&1 &
-WATCH_PID=$!
-
-CHECK_STATUS=0
-if wait "$CHECK_PID" 2>/dev/null; then
-    :
-else
-    CHECK_STATUS=$?
-fi
-CHECK_PID=
-: > "$WATCH_DONE"
-signal_process_tree TERM "$WATCH_PID"
-wait "$WATCH_PID" 2>/dev/null || true
-WATCH_PID=
-[ "$CHECK_STATUS" -eq 0 ] || exit 0
-
+run_bounded_updater "$CHECK_OUTPUT" check || exit 0
 NOTICE_LINE=$(sed -n '/^Eligible update: /p' "$CHECK_OUTPUT" | tail -n 1)
 [ -n "$NOTICE_LINE" ] || exit 0
 RELEASE=${NOTICE_LINE#Eligible update: }
