@@ -98,6 +98,15 @@ write_status 0 "$NOW" global ''
 output=$(run_notice auto)
 [ -z "$output" ]
 [ ! -s "$CALL_LOG" ]
+# A future local companion from clock rollback is invalidated by retrying.
+write_status 0 "$NOW" global ''
+sed "s/^lastCheckLocal=.*/lastCheckLocal=$((NOW + 43200))/" "$STATUS_FILE" > "$STATUS_FILE.tmp"
+mv "$STATUS_FILE.tmp" "$STATUS_FILE"
+: > "$CALL_LOG"
+output=$(run_notice auto)
+printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/null
+[ "$(wc -l < "$CALL_LOG" | tr -d ' ')" -eq 1 ]
+: > "$CALL_LOG"
 
 # A stale global installation receives one advisory and an exact scoped command.
 write_status 0 "$((NOW - 90000))" global ''
