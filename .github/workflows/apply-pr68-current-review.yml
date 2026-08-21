@@ -7,6 +7,12 @@ on:
     paths:
       - .github/review-fixes/apply-pr68-current.py
       - .github/workflows/apply-pr68-current-review.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/review-fixes/apply-pr68-current.py
+      - .github/workflows/apply-pr68-current-review.yml
 
 permissions:
   contents: write
