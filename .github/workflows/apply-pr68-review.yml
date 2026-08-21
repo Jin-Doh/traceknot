@@ -7,12 +7,18 @@ on:
     paths:
       - .github/apply-pr68-review.py.gz
       - .github/workflows/apply-pr68-review.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/apply-pr68-review.py.gz
+      - .github/workflows/apply-pr68-review.yml
 
 permissions:
   contents: write
 
 concurrency:
-  group: apply-pr68-review
+  group: apply-pr68-review-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
