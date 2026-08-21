@@ -18,6 +18,7 @@ LOCK_HELD=0
 RECOVERY_LOCK_HELD=0
 LOCK_CLAIM=
 LOCK_OWNER_ID=
+RECOVERY_CLAIM=
 STAGING_CLEANUP=
 LEGACY_STAGING_CLEANUP=
 
@@ -57,6 +58,10 @@ cleanup() {
         rm -f "$LOCK_CLAIM"
     fi
     LOCK_CLAIM=
+    if [ -n "$RECOVERY_CLAIM" ]; then
+        rm -f "$RECOVERY_CLAIM"
+    fi
+    RECOVERY_CLAIM=
     [ -z "$STAGING_CLEANUP" ] || rm -rf "$STAGING_CLEANUP"
     [ -z "$LEGACY_STAGING_CLEANUP" ] || rm -rf "$LEGACY_STAGING_CLEANUP"
     if [ "$LOCK_HELD" -eq 1 ]; then
@@ -224,25 +229,54 @@ acquire_recovery_guard() {
         fail "unsafe stale-lock recovery path: $RECOVERY_LOCK"
     elif [ -d "$RECOVERY_LOCK" ]; then
         recovery_owner_file=$RECOVERY_LOCK/owner
-        [ -f "$recovery_owner_file" ] && [ ! -L "$recovery_owner_file" ] ||
-            fail "invalid stale-lock recovery ownership: $RECOVERY_LOCK"
-        recovery_pid=$(sed -n '1p' "$recovery_owner_file" 2>/dev/null || true)
-        recovery_identity=$(sed -n '2p' "$recovery_owner_file" 2>/dev/null || true)
-        case "$recovery_pid" in
-            ''|*[!0-9]*) fail "invalid stale-lock recovery PID: $RECOVERY_LOCK" ;;
-        esac
-        if kill -0 "$recovery_pid" 2>/dev/null; then
-            [ -n "$recovery_identity" ] || fail 'live stale-lock recovery has no process-start identity'
-            current_identity=$(process_identity "$recovery_pid" || true)
-            [ -n "$current_identity" ] || fail 'cannot verify stale-lock recovery identity'
-            [ "$current_identity" = "$recovery_identity" ] &&
-                fail "stale-lock recovery is already in progress: $RECOVERY_LOCK"
+        if [ ! -e "$recovery_owner_file" ]; then
+            [ -z "$(ls -A "$RECOVERY_LOCK" 2>/dev/null)" ] ||
+                fail "invalid stale-lock recovery ownership: $RECOVERY_LOCK"
+            rm -rf "$RECOVERY_LOCK"
+        else
+            [ -f "$recovery_owner_file" ] && [ ! -L "$recovery_owner_file" ] ||
+                fail "invalid stale-lock recovery ownership: $RECOVERY_LOCK"
+            recovery_pid=$(sed -n '1p' "$recovery_owner_file" 2>/dev/null || true)
+            recovery_identity=$(sed -n '2p' "$recovery_owner_file" 2>/dev/null || true)
+            case "$recovery_pid" in
+                ''|*[!0-9]*)
+                    [ ! -s "$recovery_owner_file" ] || fail "invalid stale-lock recovery PID: $RECOVERY_LOCK"
+                    rm -rf "$RECOVERY_LOCK"
+                    ;;
+                *)
+                    if kill -0 "$recovery_pid" 2>/dev/null; then
+                        [ -n "$recovery_identity" ] || fail 'live stale-lock recovery has no process-start identity'
+                        current_identity=$(process_identity "$recovery_pid" || true)
+                        [ -n "$current_identity" ] || fail 'cannot verify stale-lock recovery identity'
+                        [ "$current_identity" = "$recovery_identity" ] &&
+                            fail "stale-lock recovery is already in progress: $RECOVERY_LOCK"
+                    fi
+                    rm -rf "$RECOVERY_LOCK"
+                    ;;
+            esac
         fi
-        rm -rf "$RECOVERY_LOCK"
+    elif [ -f "$RECOVERY_LOCK" ]; then
+        [ ! -L "$RECOVERY_LOCK" ] || fail "unsafe stale-lock recovery path: $RECOVERY_LOCK"
+        recovery_pid=$(sed -n '1p' "$RECOVERY_LOCK" 2>/dev/null || true)
+        recovery_identity=$(sed -n '2p' "$RECOVERY_LOCK" 2>/dev/null || true)
+        case "$recovery_pid" in
+            ''|*[!0-9]*)
+                command -v flock >/dev/null 2>&1 ||
+                    fail "invalid stale-lock recovery ownership: $RECOVERY_LOCK"
+                ;;
+            *)
+                if kill -0 "$recovery_pid" 2>/dev/null; then
+                    [ -n "$recovery_identity" ] || fail 'live stale-lock recovery has no process-start identity'
+                    current_identity=$(process_identity "$recovery_pid" || true)
+                    [ -n "$current_identity" ] || fail 'cannot verify stale-lock recovery identity'
+                    [ "$current_identity" = "$recovery_identity" ] &&
+                        fail "stale-lock recovery is already in progress: $RECOVERY_LOCK"
+                fi
+                rm -f "$RECOVERY_LOCK"
+                ;;
+        esac
     elif [ -e "$RECOVERY_LOCK" ]; then
-        command -v flock >/dev/null 2>&1 ||
-            fail "unsafe stale-lock recovery path: $RECOVERY_LOCK"
-        [ -f "$RECOVERY_LOCK" ] || fail "unsafe stale-lock recovery path: $RECOVERY_LOCK"
+        fail "unsafe stale-lock recovery path: $RECOVERY_LOCK"
     fi
     if command -v flock >/dev/null 2>&1; then
         if [ ! -e "$RECOVERY_LOCK" ]; then
@@ -255,11 +289,24 @@ acquire_recovery_guard() {
         flock -n 9 || fail "stale-lock recovery is already in progress: $RECOVERY_LOCK"
         RECOVERY_LOCK_HELD=2
     else
-        mkdir "$RECOVERY_LOCK" 2>/dev/null ||
+        RECOVERY_CLAIM=$RECOVERY_LOCK.claim.$$
+        if ! (set -C; printf '%s
+%s
+' "$$" "$LOCK_OWNER_ID" > "$RECOVERY_CLAIM") 2>/dev/null; then
+            fail "cannot create stale-lock recovery claim: $RECOVERY_CLAIM"
+        fi
+        [ -f "$RECOVERY_CLAIM" ] && [ ! -L "$RECOVERY_CLAIM" ] ||
+            fail "unsafe stale-lock recovery claim: $RECOVERY_CLAIM"
+        if [ ! -e "$RECOVERY_LOCK" ] && [ ! -L "$RECOVERY_LOCK" ] &&
+           ln "$RECOVERY_CLAIM" "$RECOVERY_LOCK" 2>/dev/null; then
+            rm -f "$RECOVERY_CLAIM"
+            RECOVERY_CLAIM=
+            RECOVERY_LOCK_HELD=3
+        else
+            rm -f "$RECOVERY_CLAIM"
+            RECOVERY_CLAIM=
             fail "stale-lock recovery is already in progress: $RECOVERY_LOCK"
-        recovery_owner_file=$RECOVERY_LOCK/owner
-        printf '%s\n%s\n' "$$" "$LOCK_OWNER_ID" > "$recovery_owner_file"
-        RECOVERY_LOCK_HELD=3
+        fi
     fi
 }
 
