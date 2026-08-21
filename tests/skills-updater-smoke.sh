@@ -327,6 +327,9 @@ printf '%s\n%s\n' "$FLOCK_STALE_PID" stale-process-identity > "$BASELINE_STATE/u
 PATH=$FLOCK_BIN:$PATH "$BASELINE_SKILL/bin/traceknot-skills-update" status --project "$BASELINE_PROJECT" >/dev/null
 kill "$FLOCK_STALE_PID" 2>/dev/null || true
 test ! -e "$BASELINE_STATE/update.lock-recovery"
+mkdir "$BASELINE_STATE/pending-payload"
+"$BASELINE_SKILL/bin/traceknot-skills-update" status --project "$BASELINE_PROJECT" >/dev/null
+test ! -e "$BASELINE_STATE/pending-payload"
 cp "$BASELINE_PROJECT/skills-lock.json" "$TMP_DIR/baseline-lock.saved"
 jq '.skills.traceknot.computedHash = "external-change"' "$BASELINE_PROJECT/skills-lock.json" > "$BASELINE_PROJECT/skills-lock.json.tmp"
 mv "$BASELINE_PROJECT/skills-lock.json.tmp" "$BASELINE_PROJECT/skills-lock.json"
@@ -390,6 +393,35 @@ if printf '%s\n' "$downgrade_output" | grep -F 'Eligible update:' >/dev/null; th
     printf '%s\n' 'unmanaged matching eligible release allowed a downgrade' >&2
     exit 1
 fi
+PRE_ADOPTION_PROJECT="$TMP_DIR/pre-adoption project"
+mkdir -p "$PRE_ADOPTION_PROJECT"
+PRE_ADOPTION_PROJECT=$(CDPATH='' cd -P "$PRE_ADOPTION_PROJECT" && pwd)
+PRE_ADOPTION_SKILL=$PRE_ADOPTION_PROJECT/.agents/skills/traceknot
+install_initial_skill "$PRE_ADOPTION_SKILL"
+write_initial_lock "$PRE_ADOPTION_PROJECT/skills-lock.json"
+jq --arg commit "$SOURCE_COMMIT" '.skills.traceknot.ref = $commit' \
+    "$PRE_ADOPTION_PROJECT/skills-lock.json" > "$PRE_ADOPTION_PROJECT/skills-lock.json.tmp"
+mv "$PRE_ADOPTION_PROJECT/skills-lock.json.tmp" "$PRE_ADOPTION_PROJECT/skills-lock.json"
+"$PRE_ADOPTION_SKILL/bin/traceknot-skills-update" status --project "$PRE_ADOPTION_PROJECT" >/dev/null
+PRE_ADOPTION_STATE=$PRE_ADOPTION_PROJECT/.agents/.traceknot-update
+PRE_ADOPTION_AT=$((FAKE_NOW - 1209600))
+seed_adoption "$PRE_ADOPTION_STATE" "$PRE_ADOPTION_PROJECT/skills-lock.json" 0 "$PRE_ADOPTION_AT"
+PRE_ADOPTION_LOW_SHA=$(sha256sum "$FIXTURE/manifest-lower.json" | cut -d ' ' -f 1)
+cp "$FIXTURE/releases.json" "$TMP_DIR/pre-adoption-releases.saved"
+PRE_ADOPTION_RELEASE_AT=$(jq -nr --argjson epoch "$((FAKE_NOW - 1))" '$epoch | todateiso8601')
+jq --arg published "$PRE_ADOPTION_RELEASE_AT" '.[0].published_at = $published' \
+    "$FIXTURE/releases.json" > "$FIXTURE/releases.json.tmp"
+mv "$FIXTURE/releases.json.tmp" "$FIXTURE/releases.json"
+printf '%s\t%s\t%s\t%s\n' "$PRE_ADOPTION_LOW_SHA" "$PRE_ADOPTION_AT" "$LOWER_TAG" "$ARTIFACT_SHA" \
+    > "$PRE_ADOPTION_STATE/observations.tsv"
+set_http_time
+pre_adoption_output=$("$PRE_ADOPTION_SKILL/bin/traceknot-skills-update" check --project "$PRE_ADOPTION_PROJECT")
+printf '%s\n' "$pre_adoption_output" | grep -F 'already installed' >/dev/null
+if printf '%s\n' "$pre_adoption_output" | grep -F 'Eligible update:' >/dev/null; then
+    printf '%s\n' 'pre-adoption matching release allowed a downgrade' >&2
+    exit 1
+fi
+mv "$TMP_DIR/pre-adoption-releases.saved" "$FIXTURE/releases.json"
 set_http_time
 eligible_output=$("$GLOBAL_SKILL/bin/traceknot-skills-update" check --global)
 printf '%s\n' "$eligible_output" | grep -F "Eligible update: $TAG" >/dev/null

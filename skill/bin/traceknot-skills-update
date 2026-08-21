@@ -557,6 +557,15 @@ validate_pending_state() {
     PENDING_PREVIOUS_SOURCE_COMMIT=$(jq -r .previousSourceCommit "$PENDING_STATE")
     PENDING_PREVIOUS_LOCK_ENTRY_SHA256=$(jq -r .previousLockEntrySha256 "$PENDING_STATE")
 }
+reclaim_orphan_pending_payload() {
+    if [ ! -e "$PENDING_PAYLOAD_DIR" ] && [ ! -L "$PENDING_PAYLOAD_DIR" ]; then
+        return 0
+    fi
+    [ -d "$PENDING_PAYLOAD_DIR" ] && [ ! -L "$PENDING_PAYLOAD_DIR" ] ||
+        fail 'unsafe orphan pending payload'
+    rm -rf "$PENDING_PAYLOAD_DIR"
+    sync
+}
 
 write_active_state() {
     active_applied_at=$1
@@ -695,6 +704,9 @@ if [ "$COMMAND" != disable ]; then
         fail 'sha256sum or shasum is required'
     validate_active_state
     validate_pending_state
+    if [ ! -e "$PENDING_STATE" ] && [ ! -L "$PENDING_STATE" ]; then
+        reclaim_orphan_pending_payload
+    fi
     validate_skills_lock
     reconcile_pending_state
 fi
@@ -897,10 +909,12 @@ while IFS="$(printf '\t')" read -r RELEASE_TAG RELEASE_PUBLISHED MANIFEST_URL; d
     CANDIDATE_FOUND=1
     RELEASE_EPOCH=$(parse_calendar_epoch "$RELEASE_PUBLISHED") ||
         fail 'release publication time is invalid'
+    PRE_ADOPTION_CANDIDATE=0
     if [ ! -f "$ACTIVE_STATE" ] && [ "$RELEASE_EPOCH" -le "$ADOPTED_AT" ]; then
-        continue
+        PRE_ADOPTION_CANDIDATE=1
+    else
+        POST_ADOPTION_CANDIDATE=1
     fi
-    POST_ADOPTION_CANDIDATE=1
     MANIFEST=$TMP_ROOT/manifest.json
     fetch_asset "$MANIFEST_URL" "$MANIFEST"
     jq -e '
@@ -932,6 +946,9 @@ while IFS="$(printf '\t')" read -r RELEASE_TAG RELEASE_PUBLISHED MANIFEST_URL; d
         if [ "$LOCK_REF" = "$SOURCE_COMMIT" ]; then
             record_unmanaged_lock_match
         fi
+    fi
+    if [ "$PRE_ADOPTION_CANDIDATE" -eq 1 ]; then
+        continue
     fi
 
     MANIFEST_SHA=$(sha256_file "$MANIFEST")
