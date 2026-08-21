@@ -144,7 +144,7 @@ printf '%s\t%s\t%s\n' "$count" "$PWD" "$*" >> "$NPX_LOG"
 [ "$3" = add ]
 [ "$4" = "Jin-Doh/traceknot#$EXPECTED_SOURCE_COMMIT" ]
 case " $* " in *" --skill traceknot "*) ;; *) exit 2 ;; esac
-case " $* " in *" --agent codex "*) ;; *) exit 2 ;; esac
+case " $* " in *" --agent universal "*) ;; *) exit 2 ;; esac
 case " $* " in *" --yes "*) ;; *) exit 2 ;; esac
 
 is_global=0
@@ -200,6 +200,33 @@ manifest_sha() {
     fi
 }
 
+lock_entry_sha() {
+    lock=$1
+    if command -v sha256sum >/dev/null 2>&1; then
+        jq -cS '.skills.traceknot' "$lock" | sha256sum | cut -d ' ' -f 1
+    else
+        jq -cS '.skills.traceknot' "$lock" | shasum -a 256 | cut -d ' ' -f 1
+    fi
+}
+
+seed_adoption() {
+    state=$1
+    lock=$2
+    automatic=$3
+    adopted_at=$4
+    mkdir -p "$state"
+    adopted_sha=$(lock_entry_sha "$lock")
+    cat > "$state/config" <<EOF_CONFIG
+traceknot-skills-update-config/v1
+automatic=$automatic
+lastCheck=0
+scope=$(case "$state" in "$HOME"/.local/state/*) printf '%s' global ;; *) printf '%s' project ;; esac)
+projectRoot=$(case "$state" in "$HOME"/.local/state/*) printf '%s' '' ;; *) printf '%s' "${state%/.agents/.traceknot-update}" ;; esac)
+adoptedAt=$adopted_at
+adoptedLockSha256=$adopted_sha
+EOF_CONFIG
+}
+
 set_http_time() {
     FAKE_HTTP_DATE=$(jq -nr --argjson epoch "$FAKE_NOW" '$epoch | strftime("%a, %d %b %Y %H:%M:%S GMT")')
     export FAKE_HTTP_DATE
@@ -221,6 +248,30 @@ if [ -f "$ROOT/package.json" ]; then
     test "$EXPECTED_SKILLS_CLI_VERSION" = "$(jq -r '.devDependencies.skills' "$ROOT/package.json")"
 fi
 
+# A fresh unmanaged registration adopts its current lock as a no-downgrade baseline.
+BASELINE_PROJECT="$TMP_DIR/baseline project"
+BASELINE_SKILL=$BASELINE_PROJECT/.agents/skills/traceknot
+mkdir -p "$BASELINE_PROJECT"
+install_initial_skill "$BASELINE_SKILL"
+write_initial_lock "$BASELINE_PROJECT/skills-lock.json"
+baseline_output=$("$BASELINE_SKILL/bin/traceknot-skills-update" check --project "$BASELINE_PROJECT")
+printf '%s\n' "$baseline_output" | grep -F 'Recorded unmanaged installation baseline' >/dev/null
+BASELINE_STATE=$BASELINE_PROJECT/.agents/.traceknot-update
+test "$(sed -n 's/^adoptedAt=//p' "$BASELINE_STATE/config")" = "$FAKE_NOW"
+test "$(sed -n 's/^adoptedLockSha256=//p' "$BASELINE_STATE/config")" = "$(lock_entry_sha "$BASELINE_PROJECT/skills-lock.json")"
+test "$(cat "$NPX_COUNT")" -eq 0
+second_baseline_output=$("$BASELINE_SKILL/bin/traceknot-skills-update" check --project "$BASELINE_PROJECT")
+printf '%s\n' "$second_baseline_output" | grep -F 'No release published after the unmanaged installation baseline' >/dev/null
+test "$(cat "$NPX_COUNT")" -eq 0
+cp "$BASELINE_PROJECT/skills-lock.json" "$TMP_DIR/baseline-lock.saved"
+jq '.skills.traceknot.computedHash = "external-change"' "$BASELINE_PROJECT/skills-lock.json" > "$BASELINE_PROJECT/skills-lock.json.tmp"
+mv "$BASELINE_PROJECT/skills-lock.json.tmp" "$BASELINE_PROJECT/skills-lock.json"
+if "$BASELINE_SKILL/bin/traceknot-skills-update" check --project "$BASELINE_PROJECT" >/dev/null 2>&1; then
+    printf '%s\n' 'changed unmanaged baseline lock was not rejected' >&2
+    exit 1
+fi
+mv "$TMP_DIR/baseline-lock.saved" "$BASELINE_PROJECT/skills-lock.json"
+
 # Global registration: opt-in scheduling, strict seven-day boundary, exact-commit apply.
 GLOBAL_SKILL=$HOME/.agents/skills/traceknot
 install_initial_skill "$GLOBAL_SKILL"
@@ -228,10 +279,11 @@ write_initial_lock "$HOME/.agents/.skill-lock.json"
 "$GLOBAL_SKILL/bin/traceknot-skills-update" enable --global >/dev/null
 grep -F "# traceknot-skills-auto-update:global:$GLOBAL_SKILL" "$CRONTAB_FILE" >/dev/null
 grep -F -- "--global --auto" "$CRONTAB_FILE" >/dev/null
+GLOBAL_STATE=$HOME/.local/state/traceknot/skills-update-global
+seed_adoption "$GLOBAL_STATE" "$HOME/.agents/.skill-lock.json" 1 "$((FAKE_NOW - 1814400))"
 
 first_output=$("$GLOBAL_SKILL/bin/traceknot-skills-update" check --global)
 printf '%s\n' "$first_output" | grep -F 'No release has exceeded' >/dev/null
-GLOBAL_STATE=$HOME/.local/state/traceknot/skills-update-global
 MANIFEST_SHA=$(manifest_sha)
 printf '%s\t%s\t%s\t%s\n' "$MANIFEST_SHA" "$((FAKE_NOW - 604800))" "$TAG" "$ARTIFACT_SHA" > "$GLOBAL_STATE/observations.tsv"
 boundary_output=$("$GLOBAL_SKILL/bin/traceknot-skills-update" check --global)
@@ -246,7 +298,7 @@ test "$(cat "$NPX_COUNT")" -eq 2
 test "$(grep -c "Jin-Doh/traceknot#$SOURCE_COMMIT" "$NPX_LOG")" -eq 2
 grep -F 'Traceknot fixture' "$GLOBAL_SKILL/SKILL.md" >/dev/null
 jq -e --arg commit "$SOURCE_COMMIT" '.skills.traceknot.ref == $commit' "$HOME/.agents/.skill-lock.json" >/dev/null
-jq -e --arg commit "$SOURCE_COMMIT" '.sourceCommit == $commit and .scope == "global"' "$GLOBAL_STATE/active.json" >/dev/null
+jq -e --arg commit "$SOURCE_COMMIT" '.sourceCommit == $commit and .scope == "global" and (.lockEntrySha256 | test("^[0-9a-f]{64}$"))' "$GLOBAL_STATE/active.json" >/dev/null
 "$GLOBAL_SKILL/bin/traceknot-skills-update" status --global | grep -F "sourceCommit=$SOURCE_COMMIT" >/dev/null
 before_auto=$(cat "$NPX_COUNT")
 "$GLOBAL_SKILL/bin/traceknot-skills-update" --global --auto >/dev/null
@@ -273,8 +325,9 @@ write_initial_lock "$PROJECT/skills-lock.json"
 "$PROJECT_SKILL/bin/traceknot-skills-update" enable --project "$PROJECT" >/dev/null
 grep -F "# traceknot-skills-auto-update:project:$PROJECT" "$CRONTAB_FILE" >/dev/null
 grep -F -- "--project '$PROJECT' --auto" "$CRONTAB_FILE" >/dev/null
-"$PROJECT_SKILL/bin/traceknot-skills-update" check --project "$PROJECT" >/dev/null
 PROJECT_STATE=$PROJECT/.agents/.traceknot-update
+seed_adoption "$PROJECT_STATE" "$PROJECT/skills-lock.json" 1 "$((FAKE_NOW - 1814400))"
+"$PROJECT_SKILL/bin/traceknot-skills-update" check --project "$PROJECT" >/dev/null
 printf '%s\t%s\t%s\t%s\n' "$MANIFEST_SHA" "$((FAKE_NOW - 604801))" "$TAG" "$ARTIFACT_SHA" > "$PROJECT_STATE/observations.tsv"
 "$PROJECT_SKILL/bin/traceknot-skills-update" apply --project "$PROJECT" >/dev/null
 test "$(cat "$NPX_COUNT")" -eq 4
@@ -287,8 +340,10 @@ TAMPER_SKILL=$TAMPER_PROJECT/.agents/skills/traceknot
 mkdir -p "$TAMPER_PROJECT"
 install_initial_skill "$TAMPER_SKILL"
 write_initial_lock "$TAMPER_PROJECT/skills-lock.json"
-"$TAMPER_SKILL/bin/traceknot-skills-update" check --project "$TAMPER_PROJECT" >/dev/null
+"$TAMPER_SKILL/bin/traceknot-skills-update" status --project "$TAMPER_PROJECT" >/dev/null
 TAMPER_STATE=$TAMPER_PROJECT/.agents/.traceknot-update
+seed_adoption "$TAMPER_STATE" "$TAMPER_PROJECT/skills-lock.json" 0 "$((FAKE_NOW - 1814400))"
+"$TAMPER_SKILL/bin/traceknot-skills-update" check --project "$TAMPER_PROJECT" >/dev/null
 printf '%s\t%s\t%s\t%s\n' "$MANIFEST_SHA" "$((FAKE_NOW - 604801))" "$TAG" "$ARTIFACT_SHA" > "$TAMPER_STATE/observations.tsv"
 before_tamper=$(cat "$NPX_COUNT")
 FAKE_TAMPER_PREFLIGHT=1

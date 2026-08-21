@@ -4,7 +4,7 @@ Traceknot has two update backends because its two installation paths have differ
 
 | Installation | Owner | Update backend |
 |---|---|---|
-| `npx skills add Jin-Doh/traceknot --skill traceknot` | Skills CLI | bundled `traceknot update` bridge |
+| `npx skills add Jin-Doh/traceknot --skill traceknot` | Skills CLI | bundled `traceknot-skills-update` bridge |
 | optional `curl .../install.sh | sh` prefix launcher | Traceknot prefix installer | `traceknot-update --prefix ...` |
 
 Both backends use the same release policy: a candidate must be a stable immutable GitHub Release, carry the canonical update manifest, remain observed for strictly more than seven complete days, and pass digest and GitHub artifact-attestation verification before application. The backends do not write each other's paths.
@@ -21,7 +21,7 @@ The Skills CLI installation is the canonical distribution path. The installed Sk
   ...
 ```
 
-`traceknot-skills-update` is the sibling updater distributed with the canonical Skill runtime. The updater never copies files directly into the canonical registration during normal application. It asks a pinned Skills CLI version to install the exact release source commit through the universal Codex target, which updates the canonical `.agents/skills/traceknot` directory without fanning out writes to every detected agent path.
+`traceknot-skills-update` is the sibling updater distributed with the canonical Skill runtime. The updater never copies files directly into the canonical registration during normal application. It asks a pinned Skills CLI version to install the exact release source commit through the host-neutral `universal` target, which updates the canonical `.agents/skills/traceknot` directory without fanning out writes to detected agent-specific paths.
 
 A plain unattended `npx skills update traceknot` is intentionally not used. That command follows the installation's recorded source and ref; an installation that tracks the default branch could resolve a revision newer than the release that completed Traceknot's seven-day verification window. Instead, the bridge resolves the eligible release, verifies its artifact, then delegates this exact source identity:
 
@@ -31,19 +31,12 @@ Jin-Doh/traceknot#<verified-source-commit>
 
 Before changing the real registration, the updater installs the same commit into an isolated temporary scope, runs `traceknot self-check`, and compares the complete installed Skill payload with the verified release artifact. The real installation proceeds only when those bytes agree.
 
-For explicit manual lifecycle control, keep the update command and post-update validation bound to the installation scope:
+The ordinary manual lifecycle remains available. Run `npx skills update traceknot --global --yes` for a global registration, or run `npx skills update traceknot --yes` from the project root for a project-local registration. Never substitute an unrelated global executable for a project-local registration. After either form of update, use the executable from the same scope:
 
 ```sh
-# Global installation
-npx skills update traceknot --global --yes
 $HOME/.agents/skills/traceknot/bin/traceknot self-check
-
-# Project-local installation, from the project root
-npx skills update traceknot --yes
 .agents/skills/traceknot/bin/traceknot self-check
 ```
-
-Never substitute an unrelated global executable for a project-local command.
 
 ### Global installation
 
@@ -105,11 +98,13 @@ Project state is kept under `.agents` while the Skills CLI continues to own `ski
 <project>/skills-lock.json
 ```
 
-The updater rejects a scope that does not match the executable's installed Skill root. A global updater cannot update an arbitrary project installation, and a project-local updater cannot update another project. It also requires the Skills CLI lock entry to identify `Jin-Doh/traceknot`, the GitHub source type, and `skill/SKILL.md`. After the first managed application, a lock ref that no longer matches the recorded source commit is treated as an external/manual change and blocks further managed updates rather than overwriting that choice.
+The updater rejects a scope that does not match the executable's installed Skill root. A global updater cannot update an arbitrary project installation, and a project-local updater cannot update another project. It also requires the Skills CLI lock entry to identify `Jin-Doh/traceknot`, the GitHub source type, and `skill/SKILL.md`.
+
+The first trusted check of an unmanaged installation records an adoption baseline consisting of GitHub server time and the canonical SHA-256 digest of the current Traceknot lock entry. A release published at or before that baseline is never selected automatically. This prevents a default-branch installation that is newer than the latest seven-day-old release from being downgraded during the first managed update. Before the first managed application, any lock-entry change invalidates the baseline. After a managed application, the complete lock-entry digest and exact source commit are stored in `active.json`; either changing externally blocks further managed updates rather than overwriting the user's choice.
 
 ## Eligibility policy
 
-For each immutable stable release, the updater records the manifest digest and the authenticated GitHub server time when that exact manifest was first observed.
+For each immutable stable release published after the unmanaged adoption baseline, the updater records the manifest digest and the authenticated GitHub server time when that exact manifest was first observed. Once a managed release is active, normal semantic-version comparison replaces the adoption-time filter.
 
 A release becomes eligible only when:
 
@@ -134,24 +129,25 @@ Candidates must satisfy all of these conditions:
 9. the archive contains no absolute path, traversal path, symlink, or special filesystem entry;
 10. the archive includes both `skill/bin/traceknot` and `skill/bin/traceknot-skills-update` as executable files.
 
-When multiple releases are eligible, the highest semantic version is selected. Automatic downgrade is rejected. Reusing an installed semantic version with a different artifact digest is treated as a security failure.
+When multiple releases are eligible, the highest semantic version is selected. Automatic downgrade is rejected both before and after the first managed application: pre-adoption releases are excluded for unmanaged installations, and lower semantic versions are excluded after `active.json` exists. Reusing an installed semantic version with a different artifact digest is treated as a security failure.
 
 ## Application sequence for Skills CLI installations
 
 `apply` performs these stages:
 
-1. resolve the highest eligible release;
-2. download and verify its deterministic archive;
-3. verify GitHub artifact provenance;
-4. safely extract the archive into temporary storage;
-5. invoke `skills@1.5.22` in an isolated temporary global or project scope with the exact source commit;
-6. run the temporary runtime self-check;
-7. compare the complete temporary Skill with the verified `skill/` payload;
-8. invoke the same pinned Skills CLI against the real scope;
-9. run the installed runtime self-check;
-10. compare the real registration with the verified payload;
-11. verify that the Skills CLI lock binds `Jin-Doh/traceknot`, `skill/SKILL.md`, and the exact source commit;
-12. persist the active release record.
+1. establish or validate the unmanaged adoption baseline and lock-entry digest;
+2. resolve the highest eligible release published after that baseline;
+3. download and verify its deterministic archive;
+4. verify GitHub artifact provenance;
+5. safely extract the archive into temporary storage;
+6. invoke `skills@1.5.22` with `--agent universal` in an isolated temporary global or project scope using the exact source commit;
+7. run the temporary runtime self-check;
+8. compare the complete temporary Skill with the verified `skill/` payload;
+9. invoke the same pinned Skills CLI against the real scope;
+10. run the installed runtime self-check;
+11. compare the real registration with the verified payload;
+12. verify that the Skills CLI lock binds `Jin-Doh/traceknot`, `skill/SKILL.md`, and the exact source commit;
+13. persist the active release, artifact digest, and canonical lock-entry digest.
 
 The temporary preflight substantially reduces the chance that a clone, discovery, packaging, runtime, or payload mismatch damages the active installation. The final filesystem replacement is still performed by the upstream Skills CLI and therefore inherits its replacement semantics. Traceknot does not claim atomic rollback for this backend. Automatic application is consequently opt-in rather than silently enabled by installation.
 
@@ -211,9 +207,7 @@ fi
 "$TRACEKNOT_UPDATE" rollback --prefix "$TRACEKNOT_PREFIX"
 ```
 
-That backend stages immutable release directories, atomically moves its `current` activation pointer, retains one rollback target, and manages only prefix-owned files. It never creates, replaces, retargets, updates, or removes a Skills CLI-owned registration.
-
-For the prefix backend, the required activation ordering remains: persist the prepared transaction and staged payload; persist the rollback target; atomically replace `current`; run the structural and installed-runtime self-checks; persist active state; then mark committed.
+That backend stages immutable release directories, atomically moves its `current` activation pointer, retains one rollback target, and manages only prefix-owned files. Its transaction order remains: persist the staged payload and rollback target; switch `current`; run the structural and installed-runtime self-checks; persist active state; then mark committed. It never creates, replaces, retargets, updates, or removes a Skills CLI-owned registration.
 
 ## Operational guidance
 
@@ -225,6 +219,6 @@ Use `apply --dry-run` to show the selected release without invoking Skills CLI:
 "$HOME/.agents/skills/traceknot/bin/traceknot-skills-update" apply --global --dry-run
 ```
 
-Use `status` to inspect scope, schedule policy, last trusted check, and the last release successfully applied by this updater. `version=unmanaged` means the current registration predates the Skills update bridge or was installed outside its active-state history; it does not mean the Skill is invalid.
+Use `status` to inspect scope, schedule policy, last trusted check, adoption time, and the last release successfully applied by this updater. `version=unmanaged` means the current registration has only an adoption baseline or was installed outside the bridge's active-state history; it does not mean the Skill is invalid. The first trusted `check` or `apply` records that baseline and deliberately does not apply releases that already existed at the time.
 
 A source intentionally pinned for reproducibility should leave automatic updates disabled. Explicit manual installation of another ref remains a Skills CLI operation and is not overridden until this updater is enabled or `apply` is invoked.
