@@ -8,9 +8,12 @@ function writeValidSkillTree(root: string): void {
   mkdirSync(join(root, "skill", "bin"), { recursive: true });
   mkdirSync(join(root, "skill", "references"), { recursive: true });
   writeFileSync(join(root, "skill", "SKILL.md"), "# Skill\n");
-  writeFileSync(join(root, "skill", "bin", "traceknot"), "#!/usr/bin/env bun\n");
-  chmodSync(join(root, "skill", "bin", "traceknot"), 0o755);
+  for (const executable of ["traceknot", "traceknot-skills-update"]) {
+    writeFileSync(join(root, "skill", "bin", executable), "#!/bin/sh\n");
+    chmodSync(join(root, "skill", "bin", executable), 0o755);
+  }
 }
+
 test("normalizes Windows repository paths to POSIX policy paths", () => {
   expect(normalizeRepositoryPath("skill\\references\\windows.md", "\\")).toBe("skill/references/windows.md");
 });
@@ -20,7 +23,7 @@ describe("Skill egress artifact policy", () => {
     expect(inspectSkillTree(process.cwd())).toEqual([]);
   });
 
-  test("allows only the generated executable runtime", () => {
+  test("allows only the generated executable runtimes", () => {
     const root = mkdtempSync(join(tmpdir(), "traceknot-skill-egress-"));
     try {
       writeValidSkillTree(root);
@@ -38,17 +41,35 @@ describe("Skill egress artifact policy", () => {
     }
   });
 
-  test("rejects a non-executable generated runtime", () => {
-    const root = mkdtempSync(join(tmpdir(), "traceknot-skill-egress-"));
-    try {
-      writeValidSkillTree(root);
-      chmodSync(join(root, "skill", "bin", "traceknot"), 0o644);
-      expect(inspectSkillTree(root)).toContainEqual(expect.objectContaining({
-        code: "NON_EXECUTABLE_RUNTIME",
-        path: "skill/bin/traceknot",
-      }));
-    } finally {
-      rmSync(root, { recursive: true, force: true });
+  test("rejects a non-executable generated runtime or updater", () => {
+    for (const executable of ["traceknot", "traceknot-skills-update"]) {
+      const root = mkdtempSync(join(tmpdir(), "traceknot-skill-egress-"));
+      try {
+        writeValidSkillTree(root);
+        chmodSync(join(root, "skill", "bin", executable), 0o644);
+        expect(inspectSkillTree(root)).toContainEqual(expect.objectContaining({
+          code: "NON_EXECUTABLE_RUNTIME",
+          path: `skill/bin/${executable}`,
+        }));
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
+  });
+
+  test("requires both generated executables", () => {
+    for (const executable of ["traceknot", "traceknot-skills-update"]) {
+      const root = mkdtempSync(join(tmpdir(), "traceknot-skill-egress-"));
+      try {
+        writeValidSkillTree(root);
+        rmSync(join(root, "skill", "bin", executable));
+        expect(inspectSkillTree(root)).toContainEqual(expect.objectContaining({
+          code: "MISSING_RUNTIME",
+          path: `skill/bin/${executable}`,
+        }));
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
     }
   });
 
@@ -110,7 +131,12 @@ describe("Skill egress artifact policy", () => {
   test("fails when the Skill entrypoint is missing", () => {
     const root = mkdtempSync(join(tmpdir(), "traceknot-skill-egress-"));
     try {
+      mkdirSync(join(root, "skill", "bin"), { recursive: true });
       mkdirSync(join(root, "skill", "references"), { recursive: true });
+      for (const executable of ["traceknot", "traceknot-skills-update"]) {
+        writeFileSync(join(root, "skill", "bin", executable), "#!/bin/sh\n");
+        chmodSync(join(root, "skill", "bin", executable), 0o755);
+      }
       expect(inspectSkillTree(root)).toContainEqual(expect.objectContaining({
         code: "MISSING_SKILL",
         path: "skill/SKILL.md",

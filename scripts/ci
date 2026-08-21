@@ -38,12 +38,14 @@ printf '%s\n' '==> dependency audit'
 bun audit
 
 printf '%s\n' '==> shell syntax and installer lifecycle'
-sh -n install.sh uninstall.sh bin/traceknot-update scripts/package-release.sh \
+sh -n install.sh uninstall.sh bin/traceknot-update bin/traceknot-skills-update \
+    skill/bin/traceknot-skills-update scripts/package-release.sh \
     scripts/verify-published-release.sh tests/portable-installer-smoke.sh \
     tests/release-verifier-smoke.sh tests/skills-cli-smoke.sh \
-    tests/updater-smoke.sh scripts/ci
+    tests/skills-updater-smoke.sh tests/updater-smoke.sh scripts/ci
 sh tests/portable-installer-smoke.sh
 sh tests/skills-cli-smoke.sh
+sh tests/skills-updater-smoke.sh
 sh tests/updater-smoke.sh
 sh tests/release-verifier-smoke.sh
 
