@@ -22,6 +22,7 @@ LOCK_HELD=0
 RECOVERY_LOCK_HELD=0
 LOCK_CLAIM=
 LOCK_OWNER_ID=
+RECOVERY_CLAIM=
 PENDING_STATE=
 PENDING_PAYLOAD_TMP=
 PENDING_PREVIOUS_PAYLOAD_TMP=
@@ -126,15 +127,26 @@ run_with_deadline() {
         return
     fi
     remaining=$(remaining_operation_seconds) || return 124
+    bounded_state=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-bounded.XXXXXX") || return 70
+    bounded_done=$bounded_state/done
+    bounded_timed_out=$bounded_state/timed-out
     "$@" &
     bounded_pid=$!
     (
-        while kill -0 "$bounded_pid" 2>/dev/null; do
+        while [ ! -e "$bounded_done" ]; do
             bounded_now=$(date -u '+%s') || exit 0
             if [ "$bounded_now" -ge "$OPERATION_DEADLINE" ]; then
+                : > "$bounded_timed_out"
                 signal_process_tree TERM "$bounded_pid"
-                sleep 2
-                signal_process_tree KILL "$bounded_pid"
+                bounded_grace_deadline=$((bounded_now + 2))
+                while kill -0 "$bounded_pid" 2>/dev/null; do
+                    bounded_now=$(date -u '+%s') || break
+                    [ "$bounded_now" -lt "$bounded_grace_deadline" ] || break
+                    sleep 1
+                done
+                if kill -0 "$bounded_pid" 2>/dev/null; then
+                    signal_process_tree KILL "$bounded_pid"
+                fi
                 exit 0
             fi
             sleep 1
@@ -147,14 +159,12 @@ run_with_deadline() {
     else
         bounded_status=$?
     fi
-    kill "$bounded_watchdog" 2>/dev/null || true
+    : > "$bounded_done"
     wait "$bounded_watchdog" 2>/dev/null || true
-    if [ "$bounded_status" -ne 0 ]; then
-        bounded_now=$(date -u '+%s' 2>/dev/null || printf '%s' "$OPERATION_DEADLINE")
-        if [ "$bounded_now" -ge "$OPERATION_DEADLINE" ]; then
-            return 124
-        fi
+    if [ -e "$bounded_timed_out" ]; then
+        bounded_status=124
     fi
+    rm -rf "$bounded_state"
     return "$bounded_status"
 }
 
@@ -333,6 +343,10 @@ cleanup() {
         rm -f "$LOCK_CLAIM"
     fi
     LOCK_CLAIM=
+    if [ -n "$RECOVERY_CLAIM" ]; then
+        rm -f "$RECOVERY_CLAIM"
+    fi
+    RECOVERY_CLAIM=
     if [ "$LOCK_HELD" -eq 1 ]; then
         rm -f "$LOCK_DIR"
     fi
@@ -408,25 +422,54 @@ acquire_recovery_guard() {
         fail "unsafe stale-lock recovery path: $RECOVERY_LOCK"
     elif [ -d "$RECOVERY_LOCK" ]; then
         recovery_owner_file=$RECOVERY_LOCK/owner
-        [ -f "$recovery_owner_file" ] && [ ! -L "$recovery_owner_file" ] ||
-            fail "invalid stale-lock recovery ownership: $RECOVERY_LOCK"
-        recovery_pid=$(sed -n '1p' "$recovery_owner_file" 2>/dev/null || true)
-        recovery_identity=$(sed -n '2p' "$recovery_owner_file" 2>/dev/null || true)
-        case "$recovery_pid" in
-            ''|*[!0-9]*) fail "invalid stale-lock recovery PID: $RECOVERY_LOCK" ;;
-        esac
-        if kill -0 "$recovery_pid" 2>/dev/null; then
-            [ -n "$recovery_identity" ] || fail 'live stale-lock recovery has no process-start identity'
-            current_identity=$(process_identity "$recovery_pid" || true)
-            [ -n "$current_identity" ] || fail 'cannot verify stale-lock recovery identity'
-            [ "$current_identity" = "$recovery_identity" ] &&
-                fail "stale-lock recovery is already in progress: $RECOVERY_LOCK"
+        if [ ! -e "$recovery_owner_file" ]; then
+            [ -z "$(ls -A "$RECOVERY_LOCK" 2>/dev/null)" ] ||
+                fail "invalid stale-lock recovery ownership: $RECOVERY_LOCK"
+            rm -rf "$RECOVERY_LOCK"
+        else
+            [ -f "$recovery_owner_file" ] && [ ! -L "$recovery_owner_file" ] ||
+                fail "invalid stale-lock recovery ownership: $RECOVERY_LOCK"
+            recovery_pid=$(sed -n '1p' "$recovery_owner_file" 2>/dev/null || true)
+            recovery_identity=$(sed -n '2p' "$recovery_owner_file" 2>/dev/null || true)
+            case "$recovery_pid" in
+                ''|*[!0-9]*)
+                    [ ! -s "$recovery_owner_file" ] || fail "invalid stale-lock recovery PID: $RECOVERY_LOCK"
+                    rm -rf "$RECOVERY_LOCK"
+                    ;;
+                *)
+                    if kill -0 "$recovery_pid" 2>/dev/null; then
+                        [ -n "$recovery_identity" ] || fail 'live stale-lock recovery has no process-start identity'
+                        current_identity=$(process_identity "$recovery_pid" || true)
+                        [ -n "$current_identity" ] || fail 'cannot verify stale-lock recovery identity'
+                        [ "$current_identity" = "$recovery_identity" ] &&
+                            fail "stale-lock recovery is already in progress: $RECOVERY_LOCK"
+                    fi
+                    rm -rf "$RECOVERY_LOCK"
+                    ;;
+            esac
         fi
-        rm -rf "$RECOVERY_LOCK"
+    elif [ -f "$RECOVERY_LOCK" ]; then
+        [ ! -L "$RECOVERY_LOCK" ] || fail "unsafe stale-lock recovery path: $RECOVERY_LOCK"
+        recovery_pid=$(sed -n '1p' "$RECOVERY_LOCK" 2>/dev/null || true)
+        recovery_identity=$(sed -n '2p' "$RECOVERY_LOCK" 2>/dev/null || true)
+        case "$recovery_pid" in
+            ''|*[!0-9]*)
+                command -v flock >/dev/null 2>&1 ||
+                    fail "invalid stale-lock recovery ownership: $RECOVERY_LOCK"
+                ;;
+            *)
+                if kill -0 "$recovery_pid" 2>/dev/null; then
+                    [ -n "$recovery_identity" ] || fail 'live stale-lock recovery has no process-start identity'
+                    current_identity=$(process_identity "$recovery_pid" || true)
+                    [ -n "$current_identity" ] || fail 'cannot verify stale-lock recovery identity'
+                    [ "$current_identity" = "$recovery_identity" ] &&
+                        fail "stale-lock recovery is already in progress: $RECOVERY_LOCK"
+                fi
+                rm -f "$RECOVERY_LOCK"
+                ;;
+        esac
     elif [ -e "$RECOVERY_LOCK" ]; then
-        command -v flock >/dev/null 2>&1 ||
-            fail "unsafe stale-lock recovery path: $RECOVERY_LOCK"
-        [ -f "$RECOVERY_LOCK" ] || fail "unsafe stale-lock recovery path: $RECOVERY_LOCK"
+        fail "unsafe stale-lock recovery path: $RECOVERY_LOCK"
     fi
     if command -v flock >/dev/null 2>&1; then
         if [ ! -e "$RECOVERY_LOCK" ]; then
@@ -439,11 +482,24 @@ acquire_recovery_guard() {
         flock -n 9 || fail "stale-lock recovery is already in progress: $RECOVERY_LOCK"
         RECOVERY_LOCK_HELD=2
     else
-        mkdir "$RECOVERY_LOCK" 2>/dev/null ||
+        RECOVERY_CLAIM=$RECOVERY_LOCK.claim.$$
+        if ! (set -C; printf '%s
+%s
+' "$$" "$LOCK_OWNER_ID" > "$RECOVERY_CLAIM") 2>/dev/null; then
+            fail "cannot create stale-lock recovery claim: $RECOVERY_CLAIM"
+        fi
+        [ -f "$RECOVERY_CLAIM" ] && [ ! -L "$RECOVERY_CLAIM" ] ||
+            fail "unsafe stale-lock recovery claim: $RECOVERY_CLAIM"
+        if [ ! -e "$RECOVERY_LOCK" ] && [ ! -L "$RECOVERY_LOCK" ] &&
+           ln "$RECOVERY_CLAIM" "$RECOVERY_LOCK" 2>/dev/null; then
+            rm -f "$RECOVERY_CLAIM"
+            RECOVERY_CLAIM=
+            RECOVERY_LOCK_HELD=3
+        else
+            rm -f "$RECOVERY_CLAIM"
+            RECOVERY_CLAIM=
             fail "stale-lock recovery is already in progress: $RECOVERY_LOCK"
-        recovery_owner_file=$RECOVERY_LOCK/owner
-        printf '%s\n%s\n' "$$" "$LOCK_OWNER_ID" > "$recovery_owner_file"
-        RECOVERY_LOCK_HELD=3
+        fi
     fi
 }
 
@@ -734,17 +790,17 @@ reconcile_pending_state() {
         reject_registration_symlinks "$REGISTRATION"
         [ -x "$REGISTRATION/bin/traceknot" ] ||
             fail 'pending update did not leave the Traceknot runtime'
-        "$REGISTRATION/bin/traceknot" self-check >/dev/null 2>&1 ||
-            fail 'pending update left an invalid Traceknot runtime'
         command -v diff >/dev/null 2>&1 || fail 'diff is required to reconcile a pending update'
         [ -d "$PENDING_PAYLOAD_DIR" ] && [ ! -L "$PENDING_PAYLOAD_DIR" ] ||
             fail 'pending update payload is missing or unsafe'
         if find "$PENDING_PAYLOAD_DIR" -type l -print | grep . >/dev/null; then
             fail 'pending update payload contains a symbolic link'
         fi
-        if ! diff -r "$PENDING_PAYLOAD_DIR" "$REGISTRATION" >/dev/null 2>&1; then
+        if ! run_with_deadline diff -r "$PENDING_PAYLOAD_DIR" "$REGISTRATION" >/dev/null 2>&1; then
             fail 'pending update payload differs from the installed registration'
         fi
+        run_with_deadline "$REGISTRATION/bin/traceknot" self-check >/dev/null 2>&1 ||
+            fail 'pending update left an invalid Traceknot runtime'
         if [ -f "$ACTIVE_STATE" ] &&
            jq -e --arg version "$PENDING_VERSION" \
                --arg sourceCommit "$PENDING_SOURCE_COMMIT" \
@@ -893,6 +949,32 @@ TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-skills-update.XXXXXX") ||
     fail 'cannot create temporary directory'
 HEADERS=$TMP_ROOT/headers
 RELEASE_JSON=$TMP_ROOT/releases.json
+STARTUP_REGISTRATION=
+STARTUP_LOCK_REF=$LOCK_REF
+STARTUP_LOCK_ENTRY_SHA256=$LOCK_ENTRY_SHA256
+if [ "$COMMAND" = apply ]; then
+    command -v diff >/dev/null 2>&1 || fail 'diff is required to snapshot the starting registration'
+    reject_registration_symlinks "$REGISTRATION"
+    STARTUP_REGISTRATION=$TMP_ROOT/startup-registration
+    mkdir "$STARTUP_REGISTRATION"
+    cp -R "$REGISTRATION/." "$STARTUP_REGISTRATION/"
+    if ! run_with_deadline diff -r "$REGISTRATION" "$STARTUP_REGISTRATION" >/dev/null 2>&1; then
+        fail 'cannot snapshot the starting Skills registration'
+    fi
+fi
+revalidate_starting_state() {
+    [ -f "$LOCK_FILE" ] && [ ! -L "$LOCK_FILE" ] ||
+        fail 'Skills CLI lock disappeared before update commit'
+    commit_lock_ref=$(jq -r '.skills.traceknot.ref // ""' "$LOCK_FILE")
+    commit_lock_entry_sha256=$(jq -cS '.skills.traceknot' "$LOCK_FILE" | sha256_stdin)
+    [ "$commit_lock_ref" = "$STARTUP_LOCK_REF" ] &&
+        [ "$commit_lock_entry_sha256" = "$STARTUP_LOCK_ENTRY_SHA256" ] ||
+        fail 'Skills CLI lock changed while the verified update was being prepared'
+    reject_registration_symlinks "$REGISTRATION"
+    if ! run_with_deadline diff -r "$STARTUP_REGISTRATION" "$REGISTRATION" >/dev/null 2>&1; then
+        fail 'Skills registration changed while the verified update was being prepared'
+    fi
+}
 
 validate_asset_api_url() {
     case "$1" in
@@ -1135,7 +1217,9 @@ while IFS="$(printf '\t')" read -r RELEASE_TAG RELEASE_PUBLISHED MANIFEST_URL; d
         LOCK_REF=$(jq -r '.skills.traceknot.ref // empty' "$LOCK_FILE" 2>/dev/null || true)
         if [ "$LOCK_REF" = "$SOURCE_COMMIT" ]; then
             record_unmanaged_lock_match
-            continue
+            if [ "$MANUAL_ADOPTION" -eq 0 ]; then
+                continue
+            fi
         fi
         if [ -n "$LOCK_MATCH_VERSION" ] &&
            [ "$(compare_versions "$VERSION" "$LOCK_MATCH_VERSION")" -lt 0 ]; then
@@ -1244,13 +1328,16 @@ run_with_deadline gh attestation verify "$ARCHIVE" \
     --deny-self-hosted-runners >/dev/null || fail 'artifact provenance verification failed'
 
 VERIFIED_RELEASE=$TMP_ROOT/verified-release
+ARCHIVE_LIST=$TMP_ROOT/archive.list
 mkdir "$VERIFIED_RELEASE"
-tar -tzf "$ARCHIVE" | while IFS= read -r entry; do
+run_with_deadline tar -tzf "$ARCHIVE" > "$ARCHIVE_LIST" || fail 'cannot list the release archive within the operation deadline'
+while IFS= read -r entry; do
     case "$entry" in
         /*|../*|*/../*|*/..|..) fail "unsafe archive entry: $entry" ;;
     esac
-done
-tar -xzf "$ARCHIVE" -C "$VERIFIED_RELEASE" --strip-components 1
+done < "$ARCHIVE_LIST"
+run_with_deadline tar -xzf "$ARCHIVE" -C "$VERIFIED_RELEASE" --strip-components 1 ||
+    fail 'cannot extract the release archive within the operation deadline'
 if find "$VERIFIED_RELEASE" -type l -print | grep . >/dev/null; then
     fail 'release archive contains a symbolic link'
 fi
@@ -1294,19 +1381,16 @@ else
 fi
 [ -x "$PREFLIGHT_SKILL/bin/traceknot" ] || fail 'preflight Skill runtime is missing'
 [ -x "$PREFLIGHT_SKILL/bin/traceknot-skills-update" ] || fail 'preflight Skills updater is missing'
-if ! "$PREFLIGHT_SKILL/bin/traceknot" self-check >/dev/null 2>&1; then
-    fail 'preflight runtime self-check failed'
-fi
 reject_registration_symlinks "$PREFLIGHT_SKILL"
-if ! diff -r "$VERIFIED_RELEASE/skill" "$PREFLIGHT_SKILL" >/dev/null 2>&1; then
+if ! run_with_deadline diff -r "$VERIFIED_RELEASE/skill" "$PREFLIGHT_SKILL" >/dev/null 2>&1; then
     fail 'Skills CLI preflight payload differs from the verified release artifact'
 fi
+run_with_deadline "$PREFLIGHT_SKILL/bin/traceknot" self-check >/dev/null 2>&1 ||
+    fail 'preflight runtime self-check failed'
 
+revalidate_starting_state
 if [ -e "$PENDING_PREVIOUS_PAYLOAD_DIR" ] || [ -L "$PENDING_PREVIOUS_PAYLOAD_DIR" ]; then
     fail 'previous pending payload path already exists'
-fi
-if find "$REGISTRATION" -type l -print | grep . >/dev/null; then
-    fail 'installed registration contains a symbolic link'
 fi
 PENDING_PREVIOUS_PAYLOAD_TMP=$STATE_DIR/pending-previous-payload.tmp.$$
 mkdir "$PENDING_PREVIOUS_PAYLOAD_TMP"
@@ -1326,6 +1410,7 @@ fi
 mv "$PENDING_PAYLOAD_TMP" "$PENDING_PAYLOAD_DIR"
 PENDING_PAYLOAD_TMP=
 durable_sync
+revalidate_starting_state
 CURRENT_LOCK_REF=$(jq -r '.skills.traceknot.ref // empty' "$LOCK_FILE")
 write_pending_state "$TRUSTED_NOW" "$VERSION" "$RELEASE_TAG" "$SOURCE_COMMIT" \
     "$ARTIFACT_SHA" "$CURRENT_LOCK_REF" "$LOCK_ENTRY_SHA256"
@@ -1351,12 +1436,11 @@ fi
 reject_registration_symlinks "$REGISTRATION"
 [ -x "$REGISTRATION/bin/traceknot" ] || fail 'updated Traceknot runtime is missing'
 [ -x "$REGISTRATION/bin/traceknot-skills-update" ] || fail 'updated Skills updater is missing'
-if ! "$REGISTRATION/bin/traceknot" self-check >/dev/null 2>&1; then
-    fail 'updated runtime self-check failed'
-fi
-if ! diff -r "$VERIFIED_RELEASE/skill" "$REGISTRATION" >/dev/null 2>&1; then
+if ! run_with_deadline diff -r "$VERIFIED_RELEASE/skill" "$REGISTRATION" >/dev/null 2>&1; then
     fail 'installed Skills payload differs from the verified release artifact'
 fi
+run_with_deadline "$REGISTRATION/bin/traceknot" self-check >/dev/null 2>&1 ||
+    fail 'updated runtime self-check failed'
 [ -f "$LOCK_FILE" ] && [ ! -L "$LOCK_FILE" ] || fail 'Skills CLI lock file is missing or unsafe'
 jq -e --arg commit "$SOURCE_COMMIT" '
   (.skills.traceknot.source | ascii_downcase) == "jin-doh/traceknot"
