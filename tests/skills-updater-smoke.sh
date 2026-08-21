@@ -307,6 +307,23 @@ printf '%s\n%s\n' "$STALE_PID" stale-process-identity > "$BASELINE_STATE/update.
 "$BASELINE_SKILL/bin/traceknot-skills-update" status --project "$BASELINE_PROJECT" >/dev/null
 kill "$STALE_PID" 2>/dev/null || true
 test ! -e "$BASELINE_STATE/update.lock"
+FLOCK_BIN=$TMP_DIR/flock-bin
+mkdir -p "$FLOCK_BIN"
+cat > "$FLOCK_BIN/flock" <<'EOF_FLOCK'
+#!/bin/sh
+case "${1:-}" in
+    -n) exit 0 ;;
+    *) exit 2 ;;
+esac
+EOF_FLOCK
+chmod +x "$FLOCK_BIN/flock"
+sleep 30 &
+FLOCK_STALE_PID=$!
+printf '%s\n%s\n' "$FLOCK_STALE_PID" stale-process-identity > "$BASELINE_STATE/update.lock"
+: > "$BASELINE_STATE/update.lock-recovery"
+PATH=$FLOCK_BIN:$PATH "$BASELINE_SKILL/bin/traceknot-skills-update" status --project "$BASELINE_PROJECT" >/dev/null
+kill "$FLOCK_STALE_PID" 2>/dev/null || true
+test ! -e "$BASELINE_STATE/update.lock-recovery"
 cp "$BASELINE_PROJECT/skills-lock.json" "$TMP_DIR/baseline-lock.saved"
 jq '.skills.traceknot.computedHash = "external-change"' "$BASELINE_PROJECT/skills-lock.json" > "$BASELINE_PROJECT/skills-lock.json.tmp"
 mv "$BASELINE_PROJECT/skills-lock.json.tmp" "$BASELINE_PROJECT/skills-lock.json"

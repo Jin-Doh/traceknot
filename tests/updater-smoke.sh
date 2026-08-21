@@ -197,6 +197,24 @@ assert_flat_launcher
 test -x "$PREFIX/bin/traceknot-update"
 test "$(sed -n 's/^automatic=//p' "$PREFIX/.traceknot-update/config")" = 1
 grep -F "# traceknot-auto-update:$PREFIX_CANON" "$CRONTAB_FILE" >/dev/null
+FLOCK_BIN=$TMP_DIR/flock-bin
+mkdir -p "$FLOCK_BIN"
+cat > "$FLOCK_BIN/flock" <<'EOF_FLOCK'
+#!/bin/sh
+case "${1:-}" in
+    -n) exit 0 ;;
+    *) exit 2 ;;
+esac
+EOF_FLOCK
+chmod +x "$FLOCK_BIN/flock"
+sleep 30 &
+FLOCK_STALE_PID=$!
+printf '%s\n%s\n' "$FLOCK_STALE_PID" stale-process-identity > "$PREFIX/.traceknot-update.lock"
+: > "$PREFIX/.traceknot-update.lock-recovery"
+PATH=$FLOCK_BIN:$PATH "$PREFIX/bin/traceknot-update" status --prefix "$PREFIX" >/dev/null
+kill "$FLOCK_STALE_PID" 2>/dev/null || true
+test ! -e "$PREFIX/.traceknot-update.lock"
+test ! -e "$PREFIX/.traceknot-update.lock-recovery"
 
 # Release metadata cannot redirect asset fetches outside the approved GitHub API origin.
 cp "$FIXTURE/releases.json" "$FIXTURE/releases.safe.json"

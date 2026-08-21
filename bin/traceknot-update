@@ -220,9 +220,9 @@ try_acquire_lock() {
 }
 
 acquire_recovery_guard() {
-    if [ -e "$RECOVERY_LOCK" ] || [ -L "$RECOVERY_LOCK" ]; then
-        [ -d "$RECOVERY_LOCK" ] && [ ! -L "$RECOVERY_LOCK" ] ||
-            fail "unsafe stale-lock recovery path: $RECOVERY_LOCK"
+    if [ -L "$RECOVERY_LOCK" ]; then
+        fail "unsafe stale-lock recovery path: $RECOVERY_LOCK"
+    elif [ -d "$RECOVERY_LOCK" ]; then
         recovery_owner_file=$RECOVERY_LOCK/owner
         [ -f "$recovery_owner_file" ] && [ ! -L "$recovery_owner_file" ] ||
             fail "invalid stale-lock recovery ownership: $RECOVERY_LOCK"
@@ -239,6 +239,10 @@ acquire_recovery_guard() {
                 fail "stale-lock recovery is already in progress: $RECOVERY_LOCK"
         fi
         rm -rf "$RECOVERY_LOCK"
+    elif [ -e "$RECOVERY_LOCK" ]; then
+        command -v flock >/dev/null 2>&1 ||
+            fail "unsafe stale-lock recovery path: $RECOVERY_LOCK"
+        [ -f "$RECOVERY_LOCK" ] || fail "unsafe stale-lock recovery path: $RECOVERY_LOCK"
     fi
     if command -v flock >/dev/null 2>&1; then
         if [ ! -e "$RECOVERY_LOCK" ]; then
