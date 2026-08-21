@@ -119,15 +119,27 @@ while [ "$#" -gt 0 ]; do
         *) url=$1; shift ;;
     esac
 done
-if [ -n "${FAKE_CURL_PID_FILE:-}" ]; then
-    printf '%s
-' "$$" > "$FAKE_CURL_PID_FILE"
-fi
-if [ "${FAKE_CURL_IGNORE_TERM:-0}" -eq 1 ]; then
-    trap '' TERM
-fi
-if [ -n "${FAKE_CURL_SLEEP:-}" ]; then
-    sleep "$FAKE_CURL_SLEEP"
+if [ "${FAKE_CURL_CHILD_IGNORE_TERM:-0}" -eq 1 ]; then
+    trap 'exit 143' TERM
+    (
+        trap '' TERM
+        sleep "${FAKE_CURL_SLEEP:-30}"
+    ) &
+    fake_child_pid=$!
+    if [ -n "${FAKE_CURL_CHILD_PID_FILE:-}" ]; then
+        printf '%s\n' "$fake_child_pid" > "$FAKE_CURL_CHILD_PID_FILE"
+    fi
+    wait "$fake_child_pid"
+else
+    if [ -n "${FAKE_CURL_PID_FILE:-}" ]; then
+        printf '%s\n' "$$" > "$FAKE_CURL_PID_FILE"
+    fi
+    if [ "${FAKE_CURL_IGNORE_TERM:-0}" -eq 1 ]; then
+        trap '' TERM
+    fi
+    if [ -n "${FAKE_CURL_SLEEP:-}" ]; then
+        sleep "$FAKE_CURL_SLEEP"
+    fi
 fi
 if [ -n "$headers" ]; then
     printf 'HTTP/2 200\r\ndate: %s\r\n\r\n' "$FAKE_HTTP_DATE" > "$headers"
@@ -167,6 +179,23 @@ case "${1:-}" in
 esac
 EOF_CRONTAB
 chmod +x "$FAKE_BIN/crontab"
+
+cat > "$FAKE_BIN/sync" <<'EOF_SYNC'
+#!/bin/sh
+set -eu
+if [ -n "${FAKE_MUTATE_AFTER_PENDING_LOCK:-}" ] &&
+   [ -n "${FAKE_MUTATE_AFTER_PENDING_STATE:-}" ] &&
+   [ -n "${FAKE_MUTATE_AFTER_PENDING_SENTINEL:-}" ] &&
+   [ -f "$FAKE_MUTATE_AFTER_PENDING_STATE" ] &&
+   [ ! -e "$FAKE_MUTATE_AFTER_PENDING_SENTINEL" ]; then
+    jq '.skills.traceknot.computedHash = "external-after-pending"' \
+        "$FAKE_MUTATE_AFTER_PENDING_LOCK" > "$FAKE_MUTATE_AFTER_PENDING_LOCK.tmp"
+    mv "$FAKE_MUTATE_AFTER_PENDING_LOCK.tmp" "$FAKE_MUTATE_AFTER_PENDING_LOCK"
+    : > "$FAKE_MUTATE_AFTER_PENDING_SENTINEL"
+fi
+exit 0
+EOF_SYNC
+chmod +x "$FAKE_BIN/sync"
 
 cat > "$FAKE_BIN/npx" <<'EOF_NPX'
 #!/bin/sh
@@ -467,8 +496,25 @@ fi
 END_TIMEOUT=$(date -u '+%s')
 [ "$((END_TIMEOUT - START_TIMEOUT))" -lt 7 ]
 if [ -f "$CURL_PID_FILE" ] && kill -0 "$(cat "$CURL_PID_FILE")" 2>/dev/null; then
-    printf '%s
-' 'timeout child survived KILL escalation' >&2
+    printf '%s\n' 'timeout child survived KILL escalation' >&2
+    exit 1
+fi
+
+# A TERM-responsive command parent must not let a TERM-ignoring descendant
+# escape after reparenting.
+DESCENDANT_PID_FILE=$TMP_DIR/timeout-descendant.pid
+START_TIMEOUT=$(date -u '+%s')
+if FAKE_CURL_CHILD_IGNORE_TERM=1 FAKE_CURL_CHILD_PID_FILE="$DESCENDANT_PID_FILE" FAKE_CURL_SLEEP=30 \
+    TRACEKNOT_UPDATE_OPERATION_TIMEOUT=2 \
+    "$TIMEOUT_SKILL/bin/traceknot-skills-update" --project "$TIMEOUT_PROJECT" --auto >/dev/null 2>&1; then
+    printf '%s\n' 'descendant timeout check unexpectedly succeeded' >&2
+    exit 1
+fi
+END_TIMEOUT=$(date -u '+%s')
+[ "$((END_TIMEOUT - START_TIMEOUT))" -lt 7 ]
+if [ -f "$DESCENDANT_PID_FILE" ] && kill -0 "$(cat "$DESCENDANT_PID_FILE")" 2>/dev/null; then
+    kill -KILL "$(cat "$DESCENDANT_PID_FILE")" 2>/dev/null || true
+    printf '%s\n' 'TERM-ignoring descendant survived parent exit and KILL escalation' >&2
     exit 1
 fi
 
@@ -508,6 +554,33 @@ for mutation_kind in lock registration; do
     test "$(cat "$NPX_COUNT")" -eq $((before_race + 1))
     test ! -e "$RACE_STATE/pending.json"
 done
+
+# A manual/external lock change after pending state becomes durable but before
+# the real Skills CLI invocation must abort without overwriting the new lock.
+PENDING_RACE_PROJECT="$TMP_DIR/pending-race"
+mkdir -p "$PENDING_RACE_PROJECT"
+PENDING_RACE_SKILL=$PENDING_RACE_PROJECT/.agents/skills/traceknot
+install_initial_skill "$PENDING_RACE_SKILL"
+write_initial_lock "$PENDING_RACE_PROJECT/skills-lock.json"
+PENDING_RACE_STATE=$PENDING_RACE_PROJECT/.agents/.traceknot-update
+seed_adoption "$PENDING_RACE_STATE" "$PENDING_RACE_PROJECT/skills-lock.json" 0 "$((FAKE_NOW - 1814400))"
+printf '%s\t%s\t%s\t%s\n' "$(manifest_sha)" "$((FAKE_NOW - 604801))" "$TAG" "$ARTIFACT_SHA" > "$PENDING_RACE_STATE/observations.tsv"
+PENDING_RACE_SENTINEL=$TMP_DIR/pending-race.mutated
+before_pending_race=$(cat "$NPX_COUNT")
+export FAKE_MUTATE_AFTER_PENDING_LOCK="$PENDING_RACE_PROJECT/skills-lock.json"
+export FAKE_MUTATE_AFTER_PENDING_STATE="$PENDING_RACE_STATE/pending.json"
+export FAKE_MUTATE_AFTER_PENDING_SENTINEL="$PENDING_RACE_SENTINEL"
+if "$PENDING_RACE_SKILL/bin/traceknot-skills-update" apply --project "$PENDING_RACE_PROJECT" >/dev/null 2>&1; then
+    printf '%s\n' 'post-pending external lock mutation was not rejected' >&2
+    exit 1
+fi
+unset FAKE_MUTATE_AFTER_PENDING_LOCK FAKE_MUTATE_AFTER_PENDING_STATE FAKE_MUTATE_AFTER_PENDING_SENTINEL
+test -f "$PENDING_RACE_SENTINEL"
+test "$(cat "$NPX_COUNT")" -eq $((before_pending_race + 1))
+test ! -e "$PENDING_RACE_STATE/pending.json"
+test ! -e "$PENDING_RACE_STATE/pending-payload"
+test ! -e "$PENDING_RACE_STATE/pending-previous-payload"
+jq -e '.skills.traceknot.computedHash == "external-after-pending"' "$PENDING_RACE_PROJECT/skills-lock.json" >/dev/null
 
 # Candidate runtimes are never executed before byte equality is established.
 for poison_kind in preflight apply; do

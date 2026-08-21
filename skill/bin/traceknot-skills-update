@@ -110,15 +110,32 @@ remaining_operation_seconds() {
     printf '%s\n' "$deadline_remaining"
 }
 
-signal_process_tree() {
-    signal_name=$1
-    process_pid=$2
+collect_process_tree() {
+    process_pid=$1
     if command -v pgrep >/dev/null 2>&1; then
         for child_pid in $(pgrep -P "$process_pid" 2>/dev/null || true); do
-            signal_process_tree "$signal_name" "$child_pid"
+            collect_process_tree "$child_pid"
         done
     fi
-    kill -s "$signal_name" "$process_pid" 2>/dev/null || true
+    printf '%s
+' "$process_pid"
+}
+
+signal_process_list() {
+    signal_name=$1
+    shift
+    for process_pid in "$@"; do
+        kill -s "$signal_name" "$process_pid" 2>/dev/null || true
+    done
+}
+
+process_list_alive() {
+    for process_pid in "$@"; do
+        if kill -0 "$process_pid" 2>/dev/null; then
+            return 0
+        fi
+    done
+    return 1
 }
 
 run_with_deadline() {
@@ -137,16 +154,24 @@ run_with_deadline() {
             bounded_now=$(date -u '+%s') || exit 0
             if [ "$bounded_now" -ge "$OPERATION_DEADLINE" ]; then
                 : > "$bounded_timed_out"
-                signal_process_tree TERM "$bounded_pid"
+                bounded_processes=$(collect_process_tree "$bounded_pid")
+                # PIDs are intentionally word-split into a retained process set.
+                # shellcheck disable=SC2086
+                signal_process_list TERM $bounded_processes
                 bounded_grace_deadline=$((bounded_now + 2))
-                while kill -0 "$bounded_pid" 2>/dev/null; do
+                # Do not key escalation only to the command parent: it may exit
+                # while a TERM-ignoring descendant remains alive and reparented.
+                # shellcheck disable=SC2086
+                while process_list_alive $bounded_processes; do
                     bounded_now=$(date -u '+%s') || break
                     [ "$bounded_now" -lt "$bounded_grace_deadline" ] || break
                     sleep 1
                 done
-                if kill -0 "$bounded_pid" 2>/dev/null; then
-                    signal_process_tree KILL "$bounded_pid"
-                fi
+                # Always KILL the retained descendant set after the grace period.
+                # Dead PIDs are harmless; live descendants cannot escape merely
+                # because their original parent already exited.
+                # shellcheck disable=SC2086
+                signal_process_list KILL $bounded_processes
                 exit 0
             fi
             sleep 1
@@ -962,18 +987,22 @@ if [ "$COMMAND" = apply ]; then
         fail 'cannot snapshot the starting Skills registration'
     fi
 fi
-revalidate_starting_state() {
-    [ -f "$LOCK_FILE" ] && [ ! -L "$LOCK_FILE" ] ||
-        fail 'Skills CLI lock disappeared before update commit'
-    commit_lock_ref=$(jq -r '.skills.traceknot.ref // ""' "$LOCK_FILE")
-    commit_lock_entry_sha256=$(jq -cS '.skills.traceknot' "$LOCK_FILE" | sha256_stdin)
+starting_state_unchanged() {
+    [ -f "$LOCK_FILE" ] && [ ! -L "$LOCK_FILE" ] || return 1
+    commit_lock_ref=$(jq -r '.skills.traceknot.ref // ""' "$LOCK_FILE") || return 1
+    commit_lock_entry_sha256=$(jq -cS '.skills.traceknot' "$LOCK_FILE" | sha256_stdin) || return 1
     [ "$commit_lock_ref" = "$STARTUP_LOCK_REF" ] &&
-        [ "$commit_lock_entry_sha256" = "$STARTUP_LOCK_ENTRY_SHA256" ] ||
-        fail 'Skills CLI lock changed while the verified update was being prepared'
-    reject_registration_symlinks "$REGISTRATION"
-    if ! run_with_deadline diff -r "$STARTUP_REGISTRATION" "$REGISTRATION" >/dev/null 2>&1; then
-        fail 'Skills registration changed while the verified update was being prepared'
+        [ "$commit_lock_entry_sha256" = "$STARTUP_LOCK_ENTRY_SHA256" ] || return 1
+    [ -d "$REGISTRATION" ] && [ ! -L "$REGISTRATION" ] || return 1
+    if find "$REGISTRATION" -type l -print | grep . >/dev/null; then
+        return 1
     fi
+    run_with_deadline diff -r "$STARTUP_REGISTRATION" "$REGISTRATION" >/dev/null 2>&1
+}
+
+revalidate_starting_state() {
+    starting_state_unchanged ||
+        fail 'Skills CLI lock or registration changed while the verified update was being prepared'
 }
 
 validate_asset_api_url() {
@@ -1414,6 +1443,15 @@ revalidate_starting_state
 CURRENT_LOCK_REF=$(jq -r '.skills.traceknot.ref // empty' "$LOCK_FILE")
 write_pending_state "$TRUSTED_NOW" "$VERSION" "$RELEASE_TAG" "$SOURCE_COMMIT" \
     "$ARTIFACT_SHA" "$CURRENT_LOCK_REF" "$LOCK_ENTRY_SHA256"
+# The pending record is durable now, so close the remaining preparation window
+# before invoking Skills CLI. External/manual changes are not governed by our
+# private update.lock and must not be overwritten.
+if ! starting_state_unchanged; then
+    rm -f "$PENDING_STATE"
+    rm -rf "$PENDING_PAYLOAD_DIR" "$PENDING_PREVIOUS_PAYLOAD_DIR"
+    durable_sync
+    fail 'Skills CLI lock or registration changed immediately before update mutation'
+fi
 APPLY_LOG=$TMP_ROOT/apply.log
 if [ "$SCOPE" = global ]; then
     if ! run_with_deadline npx --yes "skills@$SKILLS_CLI_VERSION" add "$SOURCE_INPUT" \
