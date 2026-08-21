@@ -38,33 +38,20 @@ jobs:
           python3 .github/review-fixes/patch-pr68-tests.py
       - name: Run focused validation
         run: |
-          set +e
-          {
-            echo '==> shell syntax'
-            sh -n bin/traceknot-skills-update skill/bin/traceknot-skills-update bin/traceknot-update tests/skills-updater-smoke.sh
-            echo '==> mirror parity'
-            cmp -s bin/traceknot-skills-update skill/bin/traceknot-skills-update
-            echo '==> updater smoke trace'
-            sh -x tests/skills-updater-smoke.sh
-            echo '==> whitespace'
-            git diff --check
-          } > .github/review-fixes/focused-validation.log 2>&1
-          status=$?
-          tail -n 300 .github/review-fixes/focused-validation.log
-          if [ "$status" -ne 0 ]; then
-            git config user.name github-actions[bot]
-            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-            git add -- .github/review-fixes/focused-validation.log
-            git commit -m "chore: capture PR 68 patch diagnostics"
-            git push origin HEAD:fix/skills-cli-auto-update
-            exit "$status"
-          fi
-          rm -f .github/review-fixes/focused-validation.log
+          set -e
+          echo '==> shell syntax'
+          sh -n bin/traceknot-skills-update skill/bin/traceknot-skills-update bin/traceknot-update tests/skills-updater-smoke.sh
+          echo '==> mirror parity'
+          cmp -s bin/traceknot-skills-update skill/bin/traceknot-skills-update
+          echo '==> updater smoke trace'
+          sh -x tests/skills-updater-smoke.sh
+          echo '==> whitespace'
+          git diff --check
       - name: Commit patched branch
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git rm -- .github/review-fixes/apply-pr68-current.py .github/review-fixes/fix-pr68-transform.py .github/review-fixes/patch-pr68-tests.py .github/workflows/apply-pr68-current-review.yml
+          git rm -f -- .github/review-fixes/apply-pr68-current.py .github/review-fixes/fix-pr68-transform.py .github/review-fixes/patch-pr68-tests.py .github/workflows/apply-pr68-current-review.yml
           git add -- bin/traceknot-skills-update skill/bin/traceknot-skills-update bin/traceknot-update tests/skills-updater-smoke.sh docs/automatic-updates.md
           git commit -m "fix: close updater concurrency and verification gaps"
           git push origin HEAD:fix/skills-cli-auto-update
