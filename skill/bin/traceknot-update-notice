@@ -158,8 +158,13 @@ else
             LOCK_MODE=flock
             ;;
         lockf)
+            # The committed helper is 0644, so $0 is not directly executable.
+            # Run it under /bin/sh inside the lockf command interface.
             export TRACEKNOT_UPDATE_NOTICE_LOCKED=1
-            exec lockf -t 0 "$LOCK_FILE" "$0" "$@"
+            # A busy lock surfaces as lockf's EX_TEMPFAIL (75); either way the
+            # re-entered child owns the entire outcome, so normalize to 0.
+            lockf -t 0 "$LOCK_FILE" /bin/sh "$0" "$@" || exit 0
+            exit 0
             ;;
         shlock)
             shlock -f "$LOCK_FILE" -p "$$" >/dev/null 2>&1 || exit 0
