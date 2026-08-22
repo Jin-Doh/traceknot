@@ -7,6 +7,8 @@ const RUNTIME_SOURCE = resolve(ROOT, "bin/traceknot");
 const RUNTIME_OUTPUT = resolve(ROOT, "skill/bin/traceknot");
 const UPDATER_SOURCE = resolve(ROOT, "bin/traceknot-skills-update");
 const UPDATER_OUTPUT = resolve(ROOT, "skill/bin/traceknot-skills-update");
+const UPDATE_NOTICE_SOURCE = resolve(ROOT, "bin/traceknot-update-notice");
+const UPDATE_NOTICE_OUTPUT = resolve(ROOT, "skill/bin/traceknot-update-notice");
 const CHECK = process.argv.slice(2).includes("--check");
 
 type Mirror = Readonly<{ source: string; target: string; relative: string }>;
@@ -77,6 +79,11 @@ async function syncUpdater(): Promise<void> {
   await chmod(UPDATER_OUTPUT, 0o755);
 }
 
+async function syncUpdateNotice(): Promise<void> {
+  await cp(UPDATE_NOTICE_SOURCE, UPDATE_NOTICE_OUTPUT, { preserveTimestamps: false });
+  await chmod(UPDATE_NOTICE_OUTPUT, 0o644);
+}
+
 async function syncMirrors(entries: readonly Mirror[]): Promise<void> {
   await rm(resolve(ROOT, "skill/contracts"), { recursive: true, force: true });
   await rm(resolve(ROOT, "skill/adapters"), { recursive: true, force: true });
@@ -123,24 +130,32 @@ async function assertExecutable(path: string): Promise<void> {
   if ((mode & 0o111) === 0) throw new Error(`generated Skill executable is not executable: ${path}`);
 }
 
+async function assertNonExecutable(path: string): Promise<void> {
+  const mode = (await stat(path)).mode & 0o777;
+  if ((mode & 0o111) !== 0) throw new Error(`generated Skill maintenance script must remain non-executable: ${path}`);
+}
+
 async function checkDrift(entries: readonly Mirror[]): Promise<void> {
   let expectedRuntime: Buffer;
   let expectedUpdater: Buffer;
+  let expectedUpdateNotice: Buffer;
   try {
-    [expectedRuntime, expectedUpdater] = await Promise.all([
+    [expectedRuntime, expectedUpdater, expectedUpdateNotice] = await Promise.all([
       readFile(RUNTIME_OUTPUT),
       readFile(UPDATER_OUTPUT),
+      readFile(UPDATE_NOTICE_OUTPUT),
     ]);
   } catch {
-    throw new Error("generated Skill executables are missing; run bun run build:skill-runtime");
+    throw new Error("generated Skill runtime assets are missing; run bun run build:skill-runtime");
   }
   const temporaryRoot = await mkdtemp(join(tmpdir(), "traceknot-skill-runtime-"));
   const temporaryRuntime = join(temporaryRoot, "traceknot");
   try {
     await buildBundle(temporaryRuntime);
-    const [actualRuntime, updaterSource] = await Promise.all([
+    const [actualRuntime, updaterSource, updateNoticeSource] = await Promise.all([
       readFile(temporaryRuntime),
       readFile(UPDATER_SOURCE),
+      readFile(UPDATE_NOTICE_SOURCE),
     ]);
     if (!expectedRuntime.equals(actualRuntime)) {
       throw new Error(`generated Skill runtime is out of date: ${RUNTIME_OUTPUT}; run bun run build:skill-runtime`);
@@ -148,7 +163,14 @@ async function checkDrift(entries: readonly Mirror[]): Promise<void> {
     if (!expectedUpdater.equals(updaterSource)) {
       throw new Error(`generated Skills updater is out of date: ${UPDATER_OUTPUT}; run bun run build:skill-runtime`);
     }
-    await Promise.all([assertExecutable(RUNTIME_OUTPUT), assertExecutable(UPDATER_OUTPUT)]);
+    if (!expectedUpdateNotice.equals(updateNoticeSource)) {
+      throw new Error(`generated update advisory is out of date: ${UPDATE_NOTICE_OUTPUT}; run bun run build:skill-runtime`);
+    }
+    await Promise.all([
+      assertExecutable(RUNTIME_OUTPUT),
+      assertExecutable(UPDATER_OUTPUT),
+      assertNonExecutable(UPDATE_NOTICE_OUTPUT),
+    ]);
     await checkMirrors(entries);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
@@ -163,6 +185,7 @@ if (CHECK) {
   await mkdir(resolve(ROOT, "skill/bin"), { recursive: true });
   await buildBundle(RUNTIME_OUTPUT);
   await syncUpdater();
+  await syncUpdateNotice();
   await syncMirrors(entries);
-  console.log(`Built Skill runtime, Skills updater, and ${entries.length} generated Skill mirrors`);
+  console.log(`Built Skill runtime, Skills updater, update advisory, and ${entries.length} generated Skill mirrors`);
 }

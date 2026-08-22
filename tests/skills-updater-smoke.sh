@@ -398,6 +398,13 @@ test "$(cat "$NPX_COUNT")" -eq 0
 second_baseline_output=$("$BASELINE_SKILL/bin/traceknot-skills-update" check --project "$BASELINE_PROJECT")
 printf '%s\n' "$second_baseline_output" | grep -F 'No release published after the unmanaged installation baseline' >/dev/null
 test "$(cat "$NPX_COUNT")" -eq 0
+# Advisory-originated checks may update observations, but must not advance the
+# automatic updater's shared 24-hour lastCheck gate.
+sed 's/^lastCheck=.*/lastCheck=123/' "$BASELINE_STATE/config" > "$BASELINE_STATE/config.tmp"
+mv "$BASELINE_STATE/config.tmp" "$BASELINE_STATE/config"
+TRACEKNOT_UPDATE_READ_ONLY_CHECK=1 \
+    "$BASELINE_SKILL/bin/traceknot-skills-update" check --project "$BASELINE_PROJECT" >/dev/null
+test "$(sed -n 's/^lastCheck=//p' "$BASELINE_STATE/config")" = 123
 sleep 30 &
 STALE_PID=$!
 printf '%s\n%s\n' "$STALE_PID" stale-process-identity > "$BASELINE_STATE/update.lock"
@@ -619,6 +626,20 @@ grep -F -- "--global --auto" "$CRONTAB_FILE" >/dev/null
 grep -F 'TRACEKNOT_UPDATE_OPERATION_TIMEOUT=900' "$CRONTAB_FILE" >/dev/null
 GLOBAL_STATE=$HOME/.local/state/traceknot/skills-update-global
 seed_adoption "$GLOBAL_STATE" "$HOME/.agents/.skill-lock.json" 1 "$((FAKE_NOW - 1814400))"
+# Routine advisory checks yield after the updater lock when automatic updates
+# are enabled, before any network or observation work begins.
+before_automatic_read_only=$(cat "$NPX_COUNT")
+automatic_read_only_status=0
+if TRACEKNOT_UPDATE_READ_ONLY_CHECK=1 \
+    "$GLOBAL_SKILL/bin/traceknot-skills-update" check --global >/dev/null 2>&1; then
+    automatic_read_only_status=0
+else
+    automatic_read_only_status=$?
+fi
+[ "$automatic_read_only_status" -eq 75 ]
+test "$(cat "$NPX_COUNT")" -eq "$before_automatic_read_only"
+test "$(sed -n 's/^lastCheck=//p' "$GLOBAL_STATE/config")" -eq 0
+
 
 first_output=$("$GLOBAL_SKILL/bin/traceknot-skills-update" check --global)
 printf '%s\n' "$first_output" | grep -F 'No release has exceeded' >/dev/null
@@ -793,6 +814,22 @@ test -f "$INTERRUPT_STATE/active.json"
 jq -e '.version == "1.0.0"' "$INTERRUPT_STATE/active.json" >/dev/null
 jq -e --arg commit "$SOURCE_COMMIT" '.skills.traceknot.ref == $commit' \
     "$INTERRUPT_PROJECT/skills-lock.json" >/dev/null
+# The advisory mode must acquire the updater lock and refuse recovery without
+# clearing or promoting the durable interrupted transaction.
+before_read_only=$(cat "$NPX_COUNT")
+if TRACEKNOT_UPDATE_READ_ONLY_CHECK=1 \
+    "$INTERRUPT_SKILL/bin/traceknot-skills-update" check --project "$INTERRUPT_PROJECT" >/dev/null 2>&1; then
+    printf '%s\n' 'read-only check treated pending recovery as a completed check' >&2
+    exit 1
+else
+    read_only_status=$?
+fi
+test "$read_only_status" -eq 75
+test "$(cat "$NPX_COUNT")" -eq "$before_read_only"
+test -f "$INTERRUPT_STATE/pending.json"
+test -d "$INTERRUPT_STATE/pending-payload"
+test -d "$INTERRUPT_STATE/pending-previous-payload"
+jq -e '.version == "1.0.0"' "$INTERRUPT_STATE/active.json" >/dev/null
 before_reconcile=$(cat "$NPX_COUNT")
 "$INTERRUPT_SKILL/bin/traceknot-skills-update" check --project "$INTERRUPT_PROJECT" >/dev/null
 test "$(cat "$NPX_COUNT")" -eq "$before_reconcile"

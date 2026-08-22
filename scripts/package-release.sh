@@ -64,8 +64,10 @@ for required_path in \
     skill/SKILL.md \
     skill/bin/traceknot \
     skill/bin/traceknot-skills-update \
+    skill/bin/traceknot-update-notice \
     bin/traceknot-update \
     bin/traceknot-skills-update \
+    bin/traceknot-update-notice \
     contracts/update-manifest.schema.json
 do
     git cat-file -e "$SOURCE_COMMIT:$required_path" 2>/dev/null ||
