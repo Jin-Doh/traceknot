@@ -1385,9 +1385,11 @@ if [ "$SCOPE" = global ]; then
     PREFLIGHT_HOME=$PREFLIGHT_ROOT/home
     PREFLIGHT_STATE=$PREFLIGHT_ROOT/state
     mkdir -p "$PREFLIGHT_HOME" "$PREFLIGHT_STATE"
-    if ! HOME=$PREFLIGHT_HOME XDG_STATE_HOME=$PREFLIGHT_STATE \
-        run_with_deadline npx --yes "skills@$SKILLS_CLI_VERSION" add "$SOURCE_INPUT" \
-            --skill traceknot --agent universal --global --yes >"$PREFLIGHT_LOG" 2>&1; then
+    if ! (
+        HOME=$PREFLIGHT_HOME XDG_STATE_HOME=$PREFLIGHT_STATE \
+            run_with_deadline npx --yes "skills@$SKILLS_CLI_VERSION" add "$SOURCE_INPUT" \
+                --skill traceknot --agent universal --global --yes
+    ) >"$PREFLIGHT_LOG" 2>&1; then
         cat "$PREFLIGHT_LOG" >&2
         fail 'Skills CLI preflight installation failed'
     fi

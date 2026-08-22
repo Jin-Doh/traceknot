@@ -338,6 +338,7 @@ seed_adoption() {
     else
         seed_scope=project
         seed_project_root=${state%/.agents/.traceknot-update}
+        seed_project_root=$(CDPATH='' cd -P "$seed_project_root" && pwd)
     fi
     cat > "$state/config" <<EOF_CONFIG
 traceknot-skills-update-config/v1
