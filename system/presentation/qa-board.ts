@@ -279,6 +279,7 @@ const BOARD_COPY = {
     run: "Run",
     updated: "Updated",
     verdictRationale: "Verdict rationale",
+    changeSummary: "Change summary",
     mandatory: "Mandatory",
     passed: "Passed",
     failed: "Failed",
@@ -348,6 +349,7 @@ const BOARD_COPY = {
     run: "실행",
     updated: "업데이트",
     verdictRationale: "판정 근거",
+    changeSummary: "변경 요약",
     mandatory: "필수",
     passed: "통과",
     failed: "실패",
@@ -417,6 +419,7 @@ const BOARD_COPY = {
     run: "运行",
     updated: "更新时间",
     verdictRationale: "判定依据",
+    changeSummary: "变更摘要",
     mandatory: "必需",
     passed: "通过",
     failed: "失败",
@@ -610,8 +613,9 @@ button,a,summary{touch-action:manipulation}
 .summary-incomplete{--state:var(--incomplete)}
 .summary-main{display:grid;grid-template-columns:minmax(0,1fr) 176px;gap:34px;padding:34px 38px 30px}
 .eyebrow{margin:0 0 10px;color:var(--primary);font-size:.75rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
-.summary-card h1{max-width:860px;margin:0;font-size:clamp(1.85rem,3.2vw,2.8rem);line-height:1.08;letter-spacing:-.04em;overflow-wrap:anywhere;text-wrap:balance}
-.outcome-title{margin:15px 0 0;font-size:1.08rem;font-weight:760}
+.summary-card h1{max-width:760px;margin:0;font-size:clamp(1.7rem,1.25rem + 1.6vw,2.35rem);line-height:1.12;letter-spacing:-.03em;text-wrap:balance}
+.summary-change{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;max-width:96ch;margin:13px 0 0;color:var(--muted);font-size:.9rem;line-height:1.55}
+.summary-change strong{color:var(--text)}
 .rationale{max-width:78ch;margin:8px 0 0;color:var(--muted);font-size:.94rem;line-height:1.65;text-wrap:pretty}
 .rationale strong{color:var(--text)}
 .verdict{align-self:start;display:grid;justify-items:center;min-width:160px;padding:18px 16px;border-radius:17px;text-align:center}
@@ -706,7 +710,7 @@ button,a,summary{touch-action:manipulation}
 .finding.status-incomplete{--finding-state:var(--incomplete)}
 .finding>summary{list-style:none}
 .finding>summary::-webkit-details-marker{display:none}
-.finding-header{display:grid;grid-template-columns:36px minmax(0,1fr) 28px;align-items:center;gap:12px;min-height:78px;padding:13px 16px;cursor:pointer;user-select:none}
+.finding-header{display:grid;grid-template-columns:36px minmax(0,1fr) 28px;align-items:center;gap:12px;min-height:60px;padding:11px 16px;cursor:pointer;user-select:none}
 .finding-header:hover{background:var(--surface-2)}
 .finding-header:focus-visible{outline:3px solid var(--primary);outline-offset:-3px}
 .status-icon{width:30px;height:30px;display:grid;place-items:center;border-radius:9px;background:var(--surface-3);color:var(--finding-state)}
@@ -733,10 +737,10 @@ button,a,summary{touch-action:manipulation}
 .previews img{display:block;width:100%;height:auto;border-radius:8px}
 .previews figcaption{margin-top:7px;color:var(--muted);font-family:ui-monospace,monospace;font-size:.68rem}
 .coverage-table{width:100%;border-collapse:collapse}
-.coverage-table th,.coverage-table td{padding:16px 10px;border-top:1px solid var(--line);text-align:left;vertical-align:top}
+.coverage-table th,.coverage-table td{padding:11px 10px;border-top:1px solid var(--line);text-align:left;vertical-align:top}
 .coverage-table thead th{padding-top:0;border-top:0;color:var(--muted);font-size:.7rem;letter-spacing:.055em;text-transform:uppercase}
 .coverage-table tbody th{width:42%;font-size:.82rem}
-.coverage-table progress{display:block;width:min(330px,100%);height:9px;margin-top:10px;accent-color:var(--primary)}
+.coverage-table progress{display:block;width:min(330px,100%);height:7px;margin-top:9px;accent-color:var(--primary)}
 .coverage-table progress::-webkit-progress-bar{background:var(--surface-3);border-radius:999px}
 .coverage-table progress::-webkit-progress-value{background:var(--primary);border-radius:999px}
 .coverage-table td{font-size:.82rem}
@@ -810,7 +814,7 @@ button,a,summary{touch-action:manipulation}
   .language-switcher{max-width:58vw;overflow-x:auto}
   .language-switcher a{min-height:34px;padding:0 9px;font-size:.72rem}
   .summary-main{padding:25px 22px 22px}
-  .summary-card h1{font-size:1.72rem}
+  .summary-card h1{font-size:1.5rem}
   .visualization-grid{padding:15px}
   .health-layout{grid-template-columns:94px minmax(0,1fr);gap:14px}
   .health-ring{width:88px;height:88px}
@@ -894,7 +898,7 @@ ${alternateLinks}
 <header class="topbar"><div class="brand"><span class="brand-mark" aria-hidden="true">${TRACEKNOT_MARK_SVG}</span><span>${copy.documentTitle}</span></div><nav class="language-switcher" aria-label="${copy.language}"><span>${copy.language}</span>${languageLinks}</nav></header>
 <main id="main">
 <section class="summary-card summary-${verdictTone}" id="overview" aria-labelledby="report-title">
-<div class="summary-main"><div><p class="eyebrow">${copy.reportLabel} · ${copy.revision} ${view.revision}</p><h1 id="report-title">${escapeHtml(view.changeSummary)}</h1><p class="outcome-title">${copy.outcomes[view.verdict]}</p><p class="rationale"><strong>${copy.verdictRationale}:</strong> ${escapeHtml(view.rationale)}</p><div class="summary-meta"><span><strong>${copy.run}</strong> ${escapeHtml(view.runId)}</span><span><strong>${copy.snapshot}</strong> <code title="${escapeHtml(view.snapshotId)}">${escapeHtml(short(view.snapshotId))}</code></span><span><strong>${copy.updated}</strong> <time datetime="${escapeHtml(view.sourceUpdatedAt)}">${escapeHtml(view.sourceUpdatedAt)}</time></span></div></div><div class="verdict verdict-${verdictTone}" role="status"><span class="verdict-icon">${statusIcon(verdictStatus)}</span><strong>${escapeHtml(view.verdict)}</strong><span>${copy.status[verdictStatus]}</span></div></div>
+<div class="summary-main"><div><p class="eyebrow">${copy.reportLabel} · ${copy.revision} ${view.revision}</p><h1 id="report-title">${escapeHtml(copy.outcomes[view.verdict])}</h1><p class="summary-change"><strong>${copy.changeSummary}:</strong> <span title="${escapeHtml(view.changeSummary)}">${escapeHtml(view.changeSummary)}</span></p><p class="rationale"><strong>${copy.verdictRationale}:</strong> ${escapeHtml(view.rationale)}</p><div class="summary-meta"><span><strong>${copy.run}</strong> ${escapeHtml(view.runId)}</span><span><strong>${copy.snapshot}</strong> <code title="${escapeHtml(view.snapshotId)}">${escapeHtml(short(view.snapshotId))}</code></span><span><strong>${copy.updated}</strong> <time datetime="${escapeHtml(view.sourceUpdatedAt)}">${escapeHtml(view.sourceUpdatedAt)}</time></span></div></div><div class="verdict verdict-${verdictTone}" role="status"><span class="verdict-icon">${statusIcon(verdictStatus)}</span><strong>${escapeHtml(view.verdict)}</strong><span>${copy.status[verdictStatus]}</span></div></div>
 ${visualizationHtml(view, locale)}
 <div class="summary-footer"><section class="assurance-strip" aria-label="${copy.assurance}"><strong>${copy.assurance}</strong><span><b>${copy.assuranceContext}</b>${escapeHtml(view.assurance.context)}</span><span><b>${copy.requiredIndependence}</b>${escapeHtml(view.assurance.requiredIndependence)}</span><span><b>${copy.releaseStatus}</b>${escapeHtml(view.assurance.releaseStatus)}</span></section><dl class="counts"><div class="count"><dt>${copy.mandatory}</dt><dd>${view.counts.mandatory}</dd></div><div class="count count-pass"><dt>${copy.passed}</dt><dd>${view.counts.passed}</dd></div><div class="count count-fail"><dt>${copy.failed}</dt><dd>${view.counts.failed}</dd></div><div class="count count-blocked"><dt>${copy.blocked}</dt><dd>${view.counts.blocked}</dd></div><div class="count count-incomplete"><dt>${copy.incomplete}</dt><dd>${view.counts.incomplete}</dd></div></dl></div>
 </section>
