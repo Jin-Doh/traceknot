@@ -59,6 +59,10 @@ npx skills add Jin-Doh/traceknot --skill traceknot --global
 작업 완료 여부와 구분해서 보고해 줘.
 ```
 
+Codex(`gpt-5.6-luna`)가 실제 변경에 Traceknot을 적용하는 과정입니다. Skill이 자동 발견되고, Verify CLI가 명시적 커맨드 증거를 수집하며, 격리된 실행에서 세션 QA 보드까지 발행됩니다.
+
+![gpt-5.6-luna로 실행한 Codex가 Traceknot 검증을 적용하고 세션 QA 보드를 발행하는 장면](assets/readme/traceknot-codex-board.gif)
+
 Skill bundle은 macOS와 `libc.so.6`를 제공하는 glibc 기반 Linux의 문서화된 workflow에 필요한 내용을 자체 포함합니다. 저장소의 `bin/traceknot`에서 생성된 `skill/bin/traceknot`와 참조 문서를 포함하므로 Bun과 플랫폼 C library 외에 별도 Traceknot runtime 설치가 필요하지 않습니다. Native Windows와 musl-only Linux는 local artifact store와 command collector가 지원하지 않으며, native library를 사용할 수 없으면 `traceknot self-check`가 fail-closed로 종료됩니다.
 
 <!-- readme-section:why -->
