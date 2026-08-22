@@ -1,0 +1,263 @@
+#!/bin/sh
+# Best-effort post-verdict update advisory for Skills CLI installations.
+
+set -u
+
+MODE=${TRACEKNOT_UPDATE_NOTICE:-auto}
+CHECK_INTERVAL=${TRACEKNOT_UPDATE_NOTICE_INTERVAL:-86400}
+CHECK_TIMEOUT=${TRACEKNOT_UPDATE_NOTICE_TIMEOUT:-60}
+TMP_OUTPUT=
+LOCK_MODE=
+LOCK_FILE=
+
+case "$MODE" in
+    0|false|off|disabled) exit 0 ;;
+    ''|auto|force) ;;
+    *) exit 0 ;;
+esac
+case "$CHECK_INTERVAL" in ''|*[!0-9]*) exit 0 ;; esac
+case "$CHECK_TIMEOUT" in ''|*[!0-9]*) exit 0 ;; esac
+[ "$CHECK_TIMEOUT" -gt 0 ] || exit 0
+READ_ONLY_ALLOW_AUTOMATIC=0
+[ "$MODE" = force ] && READ_ONLY_ALLOW_AUTOMATIC=1
+
+
+if [ -n "${CI:-}" ] && [ "$MODE" != force ]; then
+    exit 0
+fi
+[ -n "${HOME:-}" ] || exit 0
+case "$HOME" in /*) ;; *) exit 0 ;; esac
+
+BIN_DIR=$(CDPATH='' cd -P "$(dirname "$0")" 2>/dev/null && pwd) || exit 0
+UPDATER=$BIN_DIR/traceknot-skills-update
+[ -x "$UPDATER" ] || exit 0
+
+GLOBAL_BIN=$(CDPATH='' cd -P "$HOME/.agents/skills/traceknot/bin" 2>/dev/null && pwd) || GLOBAL_BIN=
+if [ -n "$GLOBAL_BIN" ] && [ "$BIN_DIR" = "$GLOBAL_BIN" ]; then
+    SCOPE=global
+    PROJECT_ROOT=
+    STATE_HOME=${XDG_STATE_HOME:-"$HOME/.local/state"}
+    case "$STATE_HOME" in /*) ;; *) exit 0 ;; esac
+    NOTICE_STATE=$STATE_HOME/traceknot/update-notice-global
+    UPDATER_STATE=$STATE_HOME/traceknot/skills-update-global
+else
+    case "$BIN_DIR" in
+        */.agents/skills/traceknot/bin)
+            SCOPE=project
+            PROJECT_ROOT=${BIN_DIR%/.agents/skills/traceknot/bin}
+            [ -n "$PROJECT_ROOT" ] || PROJECT_ROOT=/
+            [ "$PROJECT_ROOT" != / ] || exit 0
+            NOTICE_STATE=$PROJECT_ROOT/.agents/.traceknot-update-notice
+            UPDATER_STATE=$PROJECT_ROOT/.agents/.traceknot-update
+            ;;
+        *) exit 0 ;;
+    esac
+fi
+
+mkdir -p "$(dirname "$NOTICE_STATE")" 2>/dev/null || exit 0
+if [ -e "$NOTICE_STATE" ] || [ -L "$NOTICE_STATE" ]; then
+    [ -d "$NOTICE_STATE" ] && [ ! -L "$NOTICE_STATE" ] || exit 0
+else
+    mkdir "$NOTICE_STATE" 2>/dev/null || exit 0
+fi
+
+# Automatic-update users do not need a routine recommendation, and skipping
+# before the updater invocation prevents advisory scans from contending with the
+# daily apply job. Explicit force remains available for a manual diagnostic.
+if [ "$MODE" != force ]; then
+    UPDATER_CONFIG=$UPDATER_STATE/config
+    if [ -e "$UPDATER_CONFIG" ] || [ -L "$UPDATER_CONFIG" ]; then
+        [ -f "$UPDATER_CONFIG" ] && [ ! -L "$UPDATER_CONFIG" ] || exit 0
+        [ "$(grep -c '^automatic=' "$UPDATER_CONFIG" 2>/dev/null || true)" -eq 1 ] || exit 0
+        AUTOMATIC_VALUE=$(sed -n 's/^automatic=//p' "$UPDATER_CONFIG")
+        case "$AUTOMATIC_VALUE" in
+            0) ;;
+            1) exit 0 ;;
+            *) exit 0 ;;
+        esac
+    fi
+fi
+
+LOCK_FILE=$NOTICE_STATE/check.lock
+LOCK_BACKEND_FILE=$NOTICE_STATE/lock-backend
+LAST_SUCCESS=$NOTICE_STATE/last-success
+
+
+cleanup() {
+    [ -z "$TMP_OUTPUT" ] || rm -f "$TMP_OUTPUT"
+    if [ "$LOCK_MODE" = shlock ] &&
+       [ -f "$LOCK_FILE" ] && [ ! -L "$LOCK_FILE" ] &&
+       [ "$(sed -n '1p' "$LOCK_FILE" 2>/dev/null || true)" = "$$" ]; then
+        rm -f "$LOCK_FILE"
+    fi
+}
+trap cleanup EXIT
+trap 'exit 0' HUP INT TERM
+
+# Pin the process-owned backend per advisory state directory. This prevents
+# concurrent completions with different PATH values from selecting flock,
+# lockf, and shlock independently for the same pathname. A re-entered
+# process (lockf exec) skips selection because it already holds the lock.
+select_lock_backend() {
+    if [ "${TRACEKNOT_UPDATE_NOTICE_LOCKED:-0}" = 1 ]; then
+        LOCK_BACKEND=$(sed -n '1p' "$LOCK_BACKEND_FILE" 2>/dev/null || true)
+        case "$LOCK_BACKEND" in
+            flock|lockf|shlock) ;;
+            *) exit 0 ;;
+        esac
+        return 0
+    fi
+    if [ -e "$LOCK_BACKEND_FILE" ] || [ -L "$LOCK_BACKEND_FILE" ]; then
+        [ -f "$LOCK_BACKEND_FILE" ] && [ ! -L "$LOCK_BACKEND_FILE" ] || exit 0
+    else
+        if command -v flock >/dev/null 2>&1; then
+            backend_candidate=flock
+        elif command -v lockf >/dev/null 2>&1; then
+            backend_candidate=lockf
+        elif command -v shlock >/dev/null 2>&1; then
+            backend_candidate=shlock
+        else
+            exit 0
+        fi
+        backend_claim=$NOTICE_STATE/.lock-backend.$$
+        if [ -e "$backend_claim" ] || [ -L "$backend_claim" ]; then
+            exit 0
+        fi
+        (set -C; printf '%s\n' "$backend_candidate" > "$backend_claim") 2>/dev/null ||
+            exit 0
+        if [ ! -e "$LOCK_BACKEND_FILE" ] && [ ! -L "$LOCK_BACKEND_FILE" ]; then
+            ln "$backend_claim" "$LOCK_BACKEND_FILE" 2>/dev/null || true
+        fi
+        rm -f "$backend_claim"
+        [ -f "$LOCK_BACKEND_FILE" ] && [ ! -L "$LOCK_BACKEND_FILE" ] || exit 0
+    fi
+    LOCK_BACKEND=$(sed -n '1p' "$LOCK_BACKEND_FILE" 2>/dev/null || true)
+    case "$LOCK_BACKEND" in
+        flock|lockf|shlock) ;;
+        *) exit 0 ;;
+    esac
+    command -v "$LOCK_BACKEND" >/dev/null 2>&1 || exit 0
+}
+
+# Use a process-owned lock instead of implementing stale-owner replacement
+# in shell. BSD lockf cannot lock an inherited descriptor, so the helper
+# re-executes itself under `lockf -t 0 <file>`; the re-entered process
+# skips backend selection and lock acquisition. shlock remains a
+# last-resort fallback on systems without flock or lockf.
+select_lock_backend
+if [ -e "$LOCK_FILE" ] || [ -L "$LOCK_FILE" ]; then
+    [ -f "$LOCK_FILE" ] && [ ! -L "$LOCK_FILE" ] || exit 0
+fi
+if [ "${TRACEKNOT_UPDATE_NOTICE_LOCKED:-0}" = 1 ]; then
+    LOCK_MODE=$LOCK_BACKEND
+else
+    case "$LOCK_BACKEND" in
+        flock)
+            exec 9>>"$LOCK_FILE" || exit 0
+            flock -n 9 || exit 0
+            LOCK_MODE=flock
+            ;;
+        lockf)
+            # The committed helper is 0644, so $0 is not directly executable.
+            # Run it under /bin/sh inside the lockf command interface.
+            export TRACEKNOT_UPDATE_NOTICE_LOCKED=1
+            # A busy lock surfaces as lockf's EX_TEMPFAIL (75); either way the
+            # re-entered child owns the entire outcome, so normalize to 0.
+            lockf -t 0 "$LOCK_FILE" /bin/sh "$0" "$@" || exit 0
+            exit 0
+            ;;
+        shlock)
+            shlock -f "$LOCK_FILE" -p "$$" >/dev/null 2>&1 || exit 0
+            LOCK_MODE=shlock
+            ;;
+    esac
+fi
+
+
+
+NOW=$(date -u '+%s' 2>/dev/null) || exit 0
+
+if [ "$MODE" != force ] && [ -e "$LAST_SUCCESS" ]; then
+    [ -f "$LAST_SUCCESS" ] && [ ! -L "$LAST_SUCCESS" ] || exit 0
+    LAST_SUCCESS_VALUE=$(cat "$LAST_SUCCESS" 2>/dev/null || true)
+    case "$LAST_SUCCESS_VALUE" in ''|*[!0-9]*) LAST_SUCCESS_VALUE=0 ;; esac
+    if [ "$LAST_SUCCESS_VALUE" -le "$NOW" ] &&
+       [ $((NOW - LAST_SUCCESS_VALUE)) -lt "$CHECK_INTERVAL" ]; then
+        exit 0
+    fi
+fi
+
+# Avoid an unnecessary updater process when recovery is already visible. The
+# updater's read-only mode repeats this test after acquiring its own lock, which
+# closes the race with a concurrently created pending transaction.
+for recovery_path in \
+    "$UPDATER_STATE/pending.json" \
+    "$UPDATER_STATE/pending-payload" \
+    "$UPDATER_STATE/pending-previous-payload"
+do
+    if [ -e "$recovery_path" ] || [ -L "$recovery_path" ]; then
+        exit 0
+    fi
+done
+
+TMP_OUTPUT=$NOTICE_STATE/check-output.$$
+if [ -e "$TMP_OUTPUT" ] || [ -L "$TMP_OUTPUT" ]; then
+    exit 0
+fi
+(set -C; : > "$TMP_OUTPUT") 2>/dev/null || exit 0
+DEADLINE_EPOCH=$((NOW + CHECK_TIMEOUT))
+if [ "$SCOPE" = global ]; then
+    TRACEKNOT_UPDATE_NOTICE=0 \
+    TRACEKNOT_UPDATE_READ_ONLY_CHECK=1 \
+    TRACEKNOT_UPDATE_READ_ONLY_ALLOW_AUTOMATIC="$READ_ONLY_ALLOW_AUTOMATIC" \
+    TRACEKNOT_UPDATE_DEADLINE_EPOCH="$DEADLINE_EPOCH" \
+        "$UPDATER" check --global >"$TMP_OUTPUT" 2>/dev/null || exit 0
+else
+    TRACEKNOT_UPDATE_NOTICE=0 \
+    TRACEKNOT_UPDATE_READ_ONLY_CHECK=1 \
+    TRACEKNOT_UPDATE_READ_ONLY_ALLOW_AUTOMATIC="$READ_ONLY_ALLOW_AUTOMATIC" \
+    TRACEKNOT_UPDATE_DEADLINE_EPOCH="$DEADLINE_EPOCH" \
+        "$UPDATER" check --project "$PROJECT_ROOT" >"$TMP_OUTPUT" 2>/dev/null || exit 0
+fi
+
+NOTICE_LINE=$(sed -n '/^Eligible update: /p' "$TMP_OUTPUT" | tail -n 1)
+RELEASE=
+if [ -n "$NOTICE_LINE" ]; then
+    RELEASE=${NOTICE_LINE#Eligible update: }
+    RELEASE=${RELEASE%% *}
+    # A malformed eligibility claim is not a successfully classified check and
+    # must not suppress a later retry through the local success interval.
+    printf '%s\n' "$RELEASE" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' || exit 0
+fi
+
+COMPLETED_AT=$(date -u '+%s' 2>/dev/null) || exit 0
+SUCCESS_TMP=$NOTICE_STATE/.last-success.$$
+if [ -e "$SUCCESS_TMP" ] || [ -L "$SUCCESS_TMP" ]; then
+    exit 0
+fi
+(set -C; printf '%s\n' "$COMPLETED_AT" > "$SUCCESS_TMP") 2>/dev/null || exit 0
+mv "$SUCCESS_TMP" "$LAST_SUCCESS" 2>/dev/null || {
+    rm -f "$SUCCESS_TMP"
+    exit 0
+}
+
+[ -n "$RELEASE" ] || exit 0
+
+shell_quote() {
+    printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+if [ "$SCOPE" = global ]; then
+    UPDATE_COMMAND="$(shell_quote "$UPDATER") apply --global"
+else
+    UPDATE_COMMAND="$(shell_quote "$UPDATER") apply --project $(shell_quote "$PROJECT_ROOT")"
+fi
+
+{
+    printf '\nTraceknot update available: %s\n' "$RELEASE"
+    printf '%s\n' 'A newer release is eligible under the seven-day update policy.'
+    printf '%s\n' 'Recommended verification-and-update command:'
+    printf '  %s\n' "$UPDATE_COMMAND"
+    printf '%s\n' 'The apply command performs artifact and provenance verification.'
+    printf '%s\n' 'This maintenance advisory does not affect the current QA verdict.'
+} >&2

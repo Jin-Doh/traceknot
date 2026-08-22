@@ -3,8 +3,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
-const SOURCE = resolve(ROOT, "bin/traceknot");
-const OUTPUT = resolve(ROOT, "skill/bin/traceknot");
+const RUNTIME_SOURCE = resolve(ROOT, "bin/traceknot");
+const RUNTIME_OUTPUT = resolve(ROOT, "skill/bin/traceknot");
+const UPDATER_SOURCE = resolve(ROOT, "bin/traceknot-skills-update");
+const UPDATER_OUTPUT = resolve(ROOT, "skill/bin/traceknot-skills-update");
+const UPDATE_NOTICE_SOURCE = resolve(ROOT, "bin/traceknot-update-notice");
+const UPDATE_NOTICE_OUTPUT = resolve(ROOT, "skill/bin/traceknot-update-notice");
 const CHECK = process.argv.slice(2).includes("--check");
 
 type Mirror = Readonly<{ source: string; target: string; relative: string }>;
@@ -44,7 +48,7 @@ async function buildBundle(output: string): Promise<void> {
   const buildEntry = resolve(ROOT, "bin/.traceknot-skill-runtime-entry.ts");
   const bundleRoot = await mkdtemp(join(tmpdir(), "traceknot-skill-bundle-"));
   try {
-    const source = await readFile(SOURCE, "utf8");
+    const source = await readFile(RUNTIME_SOURCE, "utf8");
     await rm(buildEntry, { force: true });
     await writeFile(buildEntry, source.replace(/^#![^\n]*\n/u, ""));
     const result = await Bun.build({
@@ -70,6 +74,16 @@ async function buildBundle(output: string): Promise<void> {
   }
 }
 
+async function syncUpdater(): Promise<void> {
+  await cp(UPDATER_SOURCE, UPDATER_OUTPUT, { preserveTimestamps: false });
+  await chmod(UPDATER_OUTPUT, 0o755);
+}
+
+async function syncUpdateNotice(): Promise<void> {
+  await cp(UPDATE_NOTICE_SOURCE, UPDATE_NOTICE_OUTPUT, { preserveTimestamps: false });
+  await chmod(UPDATE_NOTICE_OUTPUT, 0o644);
+}
+
 async function syncMirrors(entries: readonly Mirror[]): Promise<void> {
   await rm(resolve(ROOT, "skill/contracts"), { recursive: true, force: true });
   await rm(resolve(ROOT, "skill/adapters"), { recursive: true, force: true });
@@ -80,7 +94,6 @@ async function syncMirrors(entries: readonly Mirror[]): Promise<void> {
     await cp(entry.source, entry.target, { preserveTimestamps: false });
   }
 }
-
 
 async function checkMirrors(entries: readonly Mirror[]): Promise<void> {
   const expected = new Set(entries.map(entry => entry.relative));
@@ -112,23 +125,52 @@ async function checkMirrors(entries: readonly Mirror[]): Promise<void> {
   }
 }
 
+async function assertExecutable(path: string): Promise<void> {
+  const mode = (await stat(path)).mode & 0o777;
+  if ((mode & 0o111) === 0) throw new Error(`generated Skill executable is not executable: ${path}`);
+}
+
+async function assertNonExecutable(path: string): Promise<void> {
+  const mode = (await stat(path)).mode & 0o777;
+  if ((mode & 0o111) !== 0) throw new Error(`generated Skill maintenance script must remain non-executable: ${path}`);
+}
+
 async function checkDrift(entries: readonly Mirror[]): Promise<void> {
-  let expected: Buffer;
+  let expectedRuntime: Buffer;
+  let expectedUpdater: Buffer;
+  let expectedUpdateNotice: Buffer;
   try {
-    expected = await readFile(OUTPUT);
+    [expectedRuntime, expectedUpdater, expectedUpdateNotice] = await Promise.all([
+      readFile(RUNTIME_OUTPUT),
+      readFile(UPDATER_OUTPUT),
+      readFile(UPDATE_NOTICE_OUTPUT),
+    ]);
   } catch {
-    throw new Error(`generated Skill runtime is missing: ${OUTPUT}; run bun run build:skill-runtime`);
+    throw new Error("generated Skill runtime assets are missing; run bun run build:skill-runtime");
   }
   const temporaryRoot = await mkdtemp(join(tmpdir(), "traceknot-skill-runtime-"));
-  const temporaryOutput = join(temporaryRoot, "traceknot");
+  const temporaryRuntime = join(temporaryRoot, "traceknot");
   try {
-    await buildBundle(temporaryOutput);
-    const actual = await readFile(temporaryOutput);
-    if (!expected.equals(actual)) {
-      throw new Error(`generated Skill runtime is out of date: ${OUTPUT}; run bun run build:skill-runtime`);
+    await buildBundle(temporaryRuntime);
+    const [actualRuntime, updaterSource, updateNoticeSource] = await Promise.all([
+      readFile(temporaryRuntime),
+      readFile(UPDATER_SOURCE),
+      readFile(UPDATE_NOTICE_SOURCE),
+    ]);
+    if (!expectedRuntime.equals(actualRuntime)) {
+      throw new Error(`generated Skill runtime is out of date: ${RUNTIME_OUTPUT}; run bun run build:skill-runtime`);
     }
-    const mode = (await Bun.file(OUTPUT).stat()).mode & 0o777;
-    if ((mode & 0o111) === 0) throw new Error(`generated Skill runtime is not executable: ${OUTPUT}`);
+    if (!expectedUpdater.equals(updaterSource)) {
+      throw new Error(`generated Skills updater is out of date: ${UPDATER_OUTPUT}; run bun run build:skill-runtime`);
+    }
+    if (!expectedUpdateNotice.equals(updateNoticeSource)) {
+      throw new Error(`generated update advisory is out of date: ${UPDATE_NOTICE_OUTPUT}; run bun run build:skill-runtime`);
+    }
+    await Promise.all([
+      assertExecutable(RUNTIME_OUTPUT),
+      assertExecutable(UPDATER_OUTPUT),
+      assertNonExecutable(UPDATE_NOTICE_OUTPUT),
+    ]);
     await checkMirrors(entries);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
@@ -141,7 +183,9 @@ if (CHECK) {
   console.log("Skill runtime drift check: PASS");
 } else {
   await mkdir(resolve(ROOT, "skill/bin"), { recursive: true });
-  await buildBundle(OUTPUT);
+  await buildBundle(RUNTIME_OUTPUT);
+  await syncUpdater();
+  await syncUpdateNotice();
   await syncMirrors(entries);
-  console.log(`Built executable Skill runtime and ${entries.length} generated Skill mirrors`);
+  console.log(`Built Skill runtime, Skills updater, update advisory, and ${entries.length} generated Skill mirrors`);
 }
