@@ -59,6 +59,10 @@ mandatory obligations, observed evidence, defects, residual risk,
 and final QA verdict separately from task completion.
 ```
 
+Watch the bundled Verify CLI resolve a real two-obligation manifest end to end: evidence collection, PASS verdict, and session QA Board publication.
+
+![Traceknot Verify CLI collecting an explicit command manifest, resolving PASS, and publishing a session QA Board](assets/readme/traceknot-verify.gif)
+
 The Skill bundle is self-contained for the documented workflow on macOS and glibc-based Linux systems that expose `libc.so.6`. It includes `skill/bin/traceknot`, generated from the repository's `bin/traceknot`, and its references; no separate Traceknot runtime installation is required beyond Bun and the platform C library. Native Windows and musl-only Linux are not supported by the local artifact store or command collector, and `traceknot self-check` fails closed when the native library is unavailable.
 
 <!-- readme-section:why -->
