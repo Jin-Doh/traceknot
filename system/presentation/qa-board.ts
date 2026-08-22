@@ -770,14 +770,14 @@ button,a,summary{touch-action:manipulation}
 @media(prefers-color-scheme:dark){
   :root{
     --canvas:#0c121a;
-    --surface:#161e29;
-    --surface-2:#111822;
+    --surface:#17202d;
+    --surface-2:#121a26;
     --surface-3:#222c3a;
     --text:#eef3f9;
     --muted:#a8b4c4;
     --faint:#8794a6;
-    --line:#334052;
-    --line-strong:#526176;
+    --line:#3d4a5c;
+    --line-strong:#5d6b7e;
     --primary:#88adff;
     --primary-soft:#1d3158;
     --pass:#55d995;
@@ -788,7 +788,7 @@ button,a,summary{touch-action:manipulation}
     --blocked-soft:#493018;
     --incomplete:#c1c9d5;
     --incomplete-soft:#303947;
-    --shadow:0 1px 2px rgba(0,0,0,.25),0 18px 44px rgba(0,0,0,.28);
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 18px 44px rgba(0,0,0,.4);
   }
   body{background:radial-gradient(circle at 50% -12rem,#182b50 0,transparent 40rem),var(--canvas)}
   .language-switcher,.jump-nav{box-shadow:0 8px 28px rgba(0,0,0,.22)}
@@ -855,6 +855,36 @@ button,a,summary{touch-action:manipulation}
   .summary-card,.panel,.technical-trace,.attention-banner,.finding,.language-switcher,.jump-nav{border:1px solid CanvasText}
   .summary-card{border-top-width:4px}
   .status-icon,.verdict-icon,.flow-node{forced-color-adjust:none}
+}
+@media print{
+  :root{
+    color-scheme:light;
+    --canvas:#ffffff;
+    --surface:#ffffff;
+    --surface-2:#f7f9fc;
+    --surface-3:#edf2f7;
+    --text:#172033;
+    --muted:#5b687b;
+    --faint:#7b8798;
+    --line:#d7e0ea;
+    --line-strong:#bcc8d6;
+    --primary:#2f61d5;
+    --primary-soft:#eaf0ff;
+    --pass:#087a46;
+    --pass-soft:#e6f7ee;
+    --fail:#b42318;
+    --fail-soft:#fff0ee;
+    --blocked:#9a4d00;
+    --blocked-soft:#fff3e2;
+    --incomplete:#596579;
+    --incomplete-soft:#eef1f5;
+    --shadow:none;
+  }
+  body{background:var(--canvas)}
+  .language-switcher,.jump-nav{display:none}
+  .shell{width:100%;padding:0 0 24px}
+  .summary-card,.panel,.technical-trace,.attention-banner,.finding,.viz-card{box-shadow:none;break-inside:avoid}
+  a{text-decoration:none}
 }
 `;
 
