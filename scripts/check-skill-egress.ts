@@ -23,7 +23,7 @@ export interface SkillEgressViolation {
 const ALLOWED_MARKDOWN = /^skill\/(?:SKILL\.md|references\/[a-z0-9][a-z0-9._-]*\.md)$/u;
 const ALLOWED_SCHEMA = /^skill\/contracts\/[a-z0-9][a-z0-9._-]*\.schema\.json$/u;
 const ALLOWED_ADAPTER = /^skill\/adapters\/[a-z0-9][a-z0-9._-]*\/capability\.json$/u;
-const RUNTIME_PATH = "skill/bin/traceknot";
+const RUNTIME_PATHS = new Set(["skill/bin/traceknot", "skill/bin/traceknot-skills-update"]);
 const REFERENCE_LINK = /references\/([a-z0-9][a-z0-9._-]*\.md)/gu;
 const LOCAL_REFERENCE_LINK = /\]\((?:\.\/)?([a-z0-9][a-z0-9._-]*\.md)(?:#[^)]+)?\)/gu;
 const RESERVED_BASENAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/iu;
@@ -37,7 +37,7 @@ function repositoryPath(root: string, path: string): string {
 }
 
 function declaredArtifactFiles(projectRoot: string): ReadonlySet<string> {
-  const declared = new Set<string>(["skill/SKILL.md", RUNTIME_PATH]);
+  const declared = new Set<string>(["skill/SKILL.md", ...RUNTIME_PATHS]);
   const pending = ["skill/SKILL.md"];
   const scanned = new Set<string>();
   while (pending.length > 0) {
@@ -150,21 +150,22 @@ export function inspectSkillTree(root: string): readonly SkillEgressViolation[] 
       for (const entry of readdirSync(absolutePath).sort()) visit(resolve(absolutePath, entry));
       return;
     }
-    const allowedFileType = ALLOWED_MARKDOWN.test(path) || ALLOWED_SCHEMA.test(path) || ALLOWED_ADAPTER.test(path) || path === RUNTIME_PATH;
+    const runtime = RUNTIME_PATHS.has(path);
+    const allowedFileType = ALLOWED_MARKDOWN.test(path) || ALLOWED_SCHEMA.test(path) || ALLOWED_ADAPTER.test(path) || runtime;
     if (!allowedFileType || !declaredFiles.has(path)) {
       violations.push({ code: "UNEXPECTED_FILE", path, message: "Skill artifacts must be declared references or generated runtime assets" });
     }
     const executable = (stat.mode & 0o111) !== 0;
-    if (path === RUNTIME_PATH && !executable) {
+    if (runtime && !executable) {
       violations.push({ code: "NON_EXECUTABLE_RUNTIME", path, message: "generated Skill runtime must be executable" });
-    } else if (path !== RUNTIME_PATH && executable) {
+    } else if (!runtime && executable) {
       violations.push({ code: "EXECUTABLE_FILE", path, message: "non-runtime Skill artifacts must not be executable" });
     }
   };
 
   for (const entry of readdirSync(skillRoot).sort()) visit(resolve(skillRoot, entry));
   for (const declaredFile of declaredFiles) {
-    if (declaredFile === RUNTIME_PATH || declaredFile === "skill/SKILL.md") continue;
+    if (declaredFile === "skill/SKILL.md" || RUNTIME_PATHS.has(declaredFile)) continue;
     if (!normalizedPaths.has(declaredFile.toLocaleLowerCase("en-US"))) {
       const reference = declaredFile.startsWith("skill/references/");
       violations.push({
@@ -174,8 +175,10 @@ export function inspectSkillTree(root: string): readonly SkillEgressViolation[] 
       });
     }
   }
-  if (!normalizedPaths.has(RUNTIME_PATH.toLocaleLowerCase("en-US"))) {
-    violations.push({ code: "MISSING_RUNTIME", path: RUNTIME_PATH, message: "generated Skill runtime is missing from the artifact tree" });
+  for (const runtimePath of RUNTIME_PATHS) {
+    if (!normalizedPaths.has(runtimePath.toLocaleLowerCase("en-US"))) {
+      violations.push({ code: "MISSING_RUNTIME", path: runtimePath, message: "generated Skill runtime is missing from the artifact tree" });
+    }
   }
   if (!normalizedPaths.has("skill/SKILL.md".toLocaleLowerCase("en-US"))) {
     violations.push({ code: "MISSING_SKILL", path: "skill/SKILL.md", message: "portable Skill entrypoint is missing" });

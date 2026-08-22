@@ -14,9 +14,9 @@ fail() {
 }
 
 usage() {
-    cat <<EOF
+    cat <<EOF_USAGE
 Usage: $PROGRAM --version X.Y.Z [--output DIR] [--source-commit SHA]
-EOF
+EOF_USAGE
 }
 
 while [ "$#" -gt 0 ]; do
@@ -59,7 +59,15 @@ if [ -z "$SOURCE_COMMIT" ]; then
 fi
 printf '%s\n' "$SOURCE_COMMIT" | grep -Eq '^[0-9a-f]{40}$' || fail 'source commit must be a full lowercase SHA-1'
 [ "$(git rev-parse "$SOURCE_COMMIT^{commit}")" = "$SOURCE_COMMIT" ] || fail 'source commit does not exist'
-for required_path in LICENSE skill/SKILL.md bin/traceknot-update contracts/update-manifest.schema.json; do
+for required_path in \
+    LICENSE \
+    skill/SKILL.md \
+    skill/bin/traceknot \
+    skill/bin/traceknot-skills-update \
+    bin/traceknot-update \
+    bin/traceknot-skills-update \
+    contracts/update-manifest.schema.json
+do
     git cat-file -e "$SOURCE_COMMIT:$required_path" 2>/dev/null ||
         fail "source commit is missing required release path: $required_path"
 done
