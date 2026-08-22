@@ -32,12 +32,16 @@ OPERATION_DEADLINE=0
 AUTO_WAITING_FOR_ADOPTION=0
 MANUAL_ADOPTION=0
 READ_ONLY_CHECK=${TRACEKNOT_UPDATE_READ_ONLY_CHECK:-0}
+READ_ONLY_ALLOW_AUTOMATIC=${TRACEKNOT_UPDATE_READ_ONLY_ALLOW_AUTOMATIC:-0}
 fail() {
     printf '%s: %s\n' "$PROGRAM" "$*" >&2
     exit 2
 }
 case "$READ_ONLY_CHECK" in 0|1) ;; *) fail 'invalid read-only check mode' ;; esac
-
+case "$READ_ONLY_ALLOW_AUTOMATIC" in 0|1) ;; *) fail 'invalid read-only automatic override' ;; esac
+if [ "$READ_ONLY_ALLOW_AUTOMATIC" -eq 1 ] && [ "$READ_ONLY_CHECK" -eq 0 ]; then
+    fail 'read-only automatic override requires read-only check mode'
+fi
 usage() {
     cat <<EOF_USAGE
 Usage: $PROGRAM COMMAND (--global | --project DIR) [--dry-run]
@@ -615,6 +619,15 @@ else
 fi
 [ "$CONFIG_SCOPE" = "$SCOPE" ] || fail 'update state belongs to another scope'
 [ "$CONFIG_PROJECT_ROOT" = "$PROJECT_ROOT" ] || fail 'update state belongs to another project'
+if [ "$READ_ONLY_CHECK" -eq 1 ] &&
+   [ "$AUTOMATIC" -eq 1 ] &&
+   [ "$READ_ONLY_ALLOW_AUTOMATIC" -eq 0 ]; then
+    # Routine advisory checks must yield after taking the updater lock. This
+    # closes the preflight race with the scheduled --auto invocation without
+    # allowing the advisory to hold the lock during a network scan.
+    exit 75
+fi
+
 
 write_config() {
     automatic_value=$1
@@ -1414,9 +1427,11 @@ if [ "$SCOPE" = global ]; then
     PREFLIGHT_HOME=$PREFLIGHT_ROOT/home
     PREFLIGHT_STATE=$PREFLIGHT_ROOT/state
     mkdir -p "$PREFLIGHT_HOME" "$PREFLIGHT_STATE"
-    if ! HOME=$PREFLIGHT_HOME XDG_STATE_HOME=$PREFLIGHT_STATE \
-        run_with_deadline npx --yes "skills@$SKILLS_CLI_VERSION" add "$SOURCE_INPUT" \
-            --skill traceknot --agent universal --global --yes >"$PREFLIGHT_LOG" 2>&1; then
+    if ! (
+        HOME=$PREFLIGHT_HOME XDG_STATE_HOME=$PREFLIGHT_STATE \
+            run_with_deadline npx --yes "skills@$SKILLS_CLI_VERSION" add "$SOURCE_INPUT" \
+                --skill traceknot --agent universal --global --yes
+    ) >"$PREFLIGHT_LOG" 2>&1; then
         cat "$PREFLIGHT_LOG" >&2
         fail 'Skills CLI preflight installation failed'
     fi

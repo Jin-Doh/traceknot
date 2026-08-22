@@ -18,6 +18,9 @@ esac
 case "$CHECK_INTERVAL" in ''|*[!0-9]*) exit 0 ;; esac
 case "$CHECK_TIMEOUT" in ''|*[!0-9]*) exit 0 ;; esac
 [ "$CHECK_TIMEOUT" -gt 0 ] || exit 0
+READ_ONLY_ALLOW_AUTOMATIC=0
+[ "$MODE" = force ] && READ_ONLY_ALLOW_AUTOMATIC=1
+
 
 if [ -n "${CI:-}" ] && [ "$MODE" != force ]; then
     exit 0
@@ -76,7 +79,9 @@ if [ "$MODE" != force ]; then
 fi
 
 LOCK_FILE=$NOTICE_STATE/check.lock
+LOCK_BACKEND_FILE=$NOTICE_STATE/lock-backend
 LAST_SUCCESS=$NOTICE_STATE/last-success
+
 
 cleanup() {
     [ -z "$TMP_OUTPUT" ] || rm -f "$TMP_OUTPUT"
@@ -89,24 +94,67 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 0' HUP INT TERM
 
-# Use process-owned locking instead of implementing stale-owner replacement in
-# shell. flock releases ownership with the file descriptor; shlock provides the
-# portable macOS fallback and reclaims dead owners.
+# Pin the process-owned backend per advisory state directory. This prevents
+# concurrent completions with different PATH values from selecting flock,
+# lockf, and shlock independently for the same pathname.
+select_lock_backend() {
+    if [ -e "$LOCK_BACKEND_FILE" ] || [ -L "$LOCK_BACKEND_FILE" ]; then
+        [ -f "$LOCK_BACKEND_FILE" ] && [ ! -L "$LOCK_BACKEND_FILE" ] || exit 0
+    else
+        if command -v flock >/dev/null 2>&1; then
+            backend_candidate=flock
+        elif command -v lockf >/dev/null 2>&1; then
+            backend_candidate=lockf
+        elif command -v shlock >/dev/null 2>&1; then
+            backend_candidate=shlock
+        else
+            exit 0
+        fi
+        backend_claim=$NOTICE_STATE/.lock-backend.$$
+        if [ -e "$backend_claim" ] || [ -L "$backend_claim" ]; then
+            exit 0
+        fi
+        (set -C; printf '%s\n' "$backend_candidate" > "$backend_claim") 2>/dev/null ||
+            exit 0
+        if [ ! -e "$LOCK_BACKEND_FILE" ] && [ ! -L "$LOCK_BACKEND_FILE" ]; then
+            ln "$backend_claim" "$LOCK_BACKEND_FILE" 2>/dev/null || true
+        fi
+        rm -f "$backend_claim"
+        [ -f "$LOCK_BACKEND_FILE" ] && [ ! -L "$LOCK_BACKEND_FILE" ] || exit 0
+    fi
+    LOCK_BACKEND=$(sed -n '1p' "$LOCK_BACKEND_FILE" 2>/dev/null || true)
+    case "$LOCK_BACKEND" in
+        flock|lockf|shlock) ;;
+        *) exit 0 ;;
+    esac
+    command -v "$LOCK_BACKEND" >/dev/null 2>&1 || exit 0
+}
+
+# Use a process-owned lock instead of implementing stale-owner replacement
+# in shell. lockf is the macOS fallback because it uses kernel file locking;
+# shlock remains a last-resort fallback on systems without either utility.
+select_lock_backend
 if [ -e "$LOCK_FILE" ] || [ -L "$LOCK_FILE" ]; then
     [ -f "$LOCK_FILE" ] && [ ! -L "$LOCK_FILE" ] || exit 0
 fi
-if command -v flock >/dev/null 2>&1; then
-    exec 9>>"$LOCK_FILE" || exit 0
-    flock -n 9 || exit 0
-    LOCK_MODE=flock
-elif command -v shlock >/dev/null 2>&1; then
-    shlock -f "$LOCK_FILE" -p "$$" >/dev/null 2>&1 || exit 0
-    LOCK_MODE=shlock
-else
-    # The advisory is best effort. Without a process-owned lock, skip rather
-    # than risk duplicate network checks or cross-process cleanup races.
-    exit 0
-fi
+case "$LOCK_BACKEND" in
+    flock)
+        exec 9>>"$LOCK_FILE" || exit 0
+        flock -n 9 || exit 0
+        LOCK_MODE=flock
+        ;;
+    lockf)
+        exec 9>>"$LOCK_FILE" || exit 0
+        lockf -s -t 0 9 >/dev/null 2>&1 || exit 0
+        LOCK_MODE=lockf
+        ;;
+    shlock)
+        shlock -f "$LOCK_FILE" -p "$$" >/dev/null 2>&1 || exit 0
+        LOCK_MODE=shlock
+        ;;
+esac
+
+
 
 NOW=$(date -u '+%s' 2>/dev/null) || exit 0
 
@@ -142,11 +190,13 @@ DEADLINE_EPOCH=$((NOW + CHECK_TIMEOUT))
 if [ "$SCOPE" = global ]; then
     TRACEKNOT_UPDATE_NOTICE=0 \
     TRACEKNOT_UPDATE_READ_ONLY_CHECK=1 \
+    TRACEKNOT_UPDATE_READ_ONLY_ALLOW_AUTOMATIC="$READ_ONLY_ALLOW_AUTOMATIC" \
     TRACEKNOT_UPDATE_DEADLINE_EPOCH="$DEADLINE_EPOCH" \
         "$UPDATER" check --global >"$TMP_OUTPUT" 2>/dev/null || exit 0
 else
     TRACEKNOT_UPDATE_NOTICE=0 \
     TRACEKNOT_UPDATE_READ_ONLY_CHECK=1 \
+    TRACEKNOT_UPDATE_READ_ONLY_ALLOW_AUTOMATIC="$READ_ONLY_ALLOW_AUTOMATIC" \
     TRACEKNOT_UPDATE_DEADLINE_EPOCH="$DEADLINE_EPOCH" \
         "$UPDATER" check --project "$PROJECT_ROOT" >"$TMP_OUTPUT" 2>/dev/null || exit 0
 fi

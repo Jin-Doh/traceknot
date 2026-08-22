@@ -338,6 +338,7 @@ seed_adoption() {
     else
         seed_scope=project
         seed_project_root=${state%/.agents/.traceknot-update}
+        seed_project_root=$(CDPATH='' cd -P "$seed_project_root" && pwd)
     fi
     cat > "$state/config" <<EOF_CONFIG
 traceknot-skills-update-config/v1
@@ -625,6 +626,20 @@ grep -F -- "--global --auto" "$CRONTAB_FILE" >/dev/null
 grep -F 'TRACEKNOT_UPDATE_OPERATION_TIMEOUT=900' "$CRONTAB_FILE" >/dev/null
 GLOBAL_STATE=$HOME/.local/state/traceknot/skills-update-global
 seed_adoption "$GLOBAL_STATE" "$HOME/.agents/.skill-lock.json" 1 "$((FAKE_NOW - 1814400))"
+# Routine advisory checks yield after the updater lock when automatic updates
+# are enabled, before any network or observation work begins.
+before_automatic_read_only=$(cat "$NPX_COUNT")
+automatic_read_only_status=0
+if TRACEKNOT_UPDATE_READ_ONLY_CHECK=1 \
+    "$GLOBAL_SKILL/bin/traceknot-skills-update" check --global >/dev/null 2>&1; then
+    automatic_read_only_status=0
+else
+    automatic_read_only_status=$?
+fi
+[ "$automatic_read_only_status" -eq 75 ]
+test "$(cat "$NPX_COUNT")" -eq "$before_automatic_read_only"
+test "$(sed -n 's/^lastCheck=//p' "$GLOBAL_STATE/config")" -eq 0
+
 
 first_output=$("$GLOBAL_SKILL/bin/traceknot-skills-update" check --global)
 printf '%s\n' "$first_output" | grep -F 'No release has exceeded' >/dev/null

@@ -14,14 +14,17 @@ FIXTURE_MODE=$TMP_ROOT/mode
 CALL_LOG=$TMP_ROOT/calls
 UPDATER_STATE=$XDG_STATE_HOME/traceknot/skills-update-global
 mkdir -p "$GLOBAL_BIN" "$UPDATER_STATE"
+GLOBAL_BIN_CANONICAL=$(CDPATH='' cd -P "$GLOBAL_BIN" && pwd)
 cp "$NOTICE_SOURCE" "$GLOBAL_BIN/traceknot-update-notice"
 : > "$CALL_LOG"
 
 cat > "$GLOBAL_BIN/traceknot-skills-update" <<'EOF_UPDATER'
 #!/bin/sh
 set -eu
-printf '%s|readOnly=%s|deadline=%s\n' \
-    "$*" "${TRACEKNOT_UPDATE_READ_ONLY_CHECK:-}" "${TRACEKNOT_UPDATE_DEADLINE_EPOCH:-}" \
+printf '%s|readOnly=%s|allowAutomatic=%s|deadline=%s\n' \
+    "$*" "${TRACEKNOT_UPDATE_READ_ONLY_CHECK:-}" \
+    "${TRACEKNOT_UPDATE_READ_ONLY_ALLOW_AUTOMATIC:-}" \
+    "${TRACEKNOT_UPDATE_DEADLINE_EPOCH:-}" \
     >> "$NOTICE_TEST_CALL_LOG"
 case "$(cat "$NOTICE_TEST_MODE")" in
     eligible)
@@ -62,7 +65,7 @@ output=$(run_global 0)
 
 output=$(run_global auto)
 printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/null
-printf '%s\n' "$output" | grep -F "'$GLOBAL_BIN/traceknot-skills-update' apply --global" >/dev/null
+printf '%s\n' "$output" | grep -F "'$GLOBAL_BIN_CANONICAL/traceknot-skills-update' apply --global" >/dev/null
 printf '%s\n' "$output" | grep -F 'apply command performs artifact and provenance verification' >/dev/null
 [ "$(wc -l < "$CALL_LOG" | tr -d ' ')" -eq 1 ]
 deadline=$(sed -n 's/.*deadline=//p' "$CALL_LOG" | tail -n 1)
@@ -120,6 +123,7 @@ output=$(run_global auto)
 [ "$(wc -l < "$CALL_LOG" | tr -d ' ')" -eq "$before_automatic" ]
 output=$(run_global force)
 printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/null
+grep -F 'allowAutomatic=1' "$CALL_LOG" >/dev/null
 rm -f "$UPDATER_STATE/config" "$XDG_STATE_HOME/traceknot/update-notice-global/last-success"
 
 # The OS-backed advisory lock is reusable after its owner exits and rejects
@@ -128,6 +132,8 @@ NOTICE_STATE=$XDG_STATE_HOME/traceknot/update-notice-global
 LOCK_FILE=$NOTICE_STATE/check.lock
 rm -f "$NOTICE_STATE/last-success" "$LOCK_FILE"
 : > "$LOCK_FILE"
+backend=$(cat "$NOTICE_STATE/lock-backend")
+case "$backend" in flock|lockf|shlock) ;; *) exit 1 ;; esac
 output=$(run_global force)
 printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/null
 rm -f "$NOTICE_STATE/last-success" "$LOCK_FILE"
@@ -156,10 +162,11 @@ wait "$pid2"
 notice_count=$(cat "$TMP_ROOT/concurrent-1" "$TMP_ROOT/concurrent-2" | grep -c 'Traceknot update available:' || true)
 [ "$notice_count" -eq 1 ]
 
-# Project-local scope is inferred from the installed helper path and quoted safely.
 PROJECT_ROOT="$TMP_ROOT/project with ' quote"
 PROJECT_BIN=$PROJECT_ROOT/.agents/skills/traceknot/bin
 mkdir -p "$PROJECT_BIN" "$PROJECT_ROOT/.agents/.traceknot-update"
+PROJECT_ROOT_CANONICAL=$(CDPATH='' cd -P "$PROJECT_ROOT" && pwd)
+PROJECT_BIN_CANONICAL=$(CDPATH='' cd -P "$PROJECT_BIN" && pwd)
 cp "$NOTICE_SOURCE" "$PROJECT_BIN/traceknot-update-notice"
 cp "$GLOBAL_BIN/traceknot-skills-update" "$PROJECT_BIN/traceknot-skills-update"
 printf '%s\n' eligible > "$FIXTURE_MODE"
@@ -168,10 +175,10 @@ output=$(HOME=$HOME XDG_STATE_HOME=$XDG_STATE_HOME NOTICE_TEST_MODE=$FIXTURE_MOD
     sh "$PROJECT_BIN/traceknot-update-notice" 2>&1)
 command_line=$(printf '%s\n' "$output" | sed -n 's/^  //p' | tail -n 1)
 eval "set -- $command_line"
-[ "$1" = "$PROJECT_BIN/traceknot-skills-update" ]
+[ "$1" = "$PROJECT_BIN_CANONICAL/traceknot-skills-update" ]
 [ "$2" = apply ]
 [ "$3" = --project ]
-[ "$4" = "$PROJECT_ROOT" ]
+[ "$4" = "$PROJECT_ROOT_CANONICAL" ]
 
 # CI suppresses the advisory unless explicitly forced.
 : > "$CALL_LOG"

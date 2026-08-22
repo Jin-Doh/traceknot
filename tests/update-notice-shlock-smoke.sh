@@ -58,10 +58,11 @@ chmod +x "$LOCK_BIN/shlock"
 
 # Give the helper only the commands it needs, deliberately excluding flock so
 # the macOS-style shlock path is exercised on the Linux CI runner.
-for command_name in cat date dirname grep mkdir mv rm sed sleep tail; do
+for command_name in cat date dirname grep ln mkdir mv rm sed sleep tail; do
     command_path=$(command -v "$command_name")
     ln -s "$command_path" "$LOCK_BIN/$command_name"
 done
+
 
 run_notice() {
     mode=$1
@@ -78,6 +79,31 @@ printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/nul
 [ "$(wc -l < "$CALL_LOG" | tr -d ' ')" -eq 1 ]
 LOCK_FILE=$XDG_STATE_HOME/traceknot/update-notice-global/check.lock
 test ! -e "$LOCK_FILE"
+
+# The backend marker is durable for this advisory state directory.
+LOCK_BACKEND_FILE=$XDG_STATE_HOME/traceknot/update-notice-global/lock-backend
+test "$(cat "$LOCK_BACKEND_FILE")" = shlock
+
+# A later PATH that exposes a different backend must keep using the pinned
+# protocol for this advisory state directory.
+FLOCK_BIN=$TMP_ROOT/flock-bin
+FLOCK_SENTINEL=$TMP_ROOT/flock-called
+mkdir "$FLOCK_BIN"
+cat > "$FLOCK_BIN/flock" <<'EOF_FLOCK'
+#!/bin/sh
+: > "$FLOCK_SENTINEL"
+exit 1
+EOF_FLOCK
+chmod +x "$FLOCK_BIN/flock"
+rm -f "$XDG_STATE_HOME/traceknot/update-notice-global/last-success"
+output=$(PATH=$FLOCK_BIN:$LOCK_BIN HOME=$HOME XDG_STATE_HOME=$XDG_STATE_HOME \
+    NOTICE_TEST_MODE=$MODE_FILE NOTICE_TEST_CALL_LOG=$CALL_LOG \
+    CI= TRACEKNOT_UPDATE_NOTICE=force TRACEKNOT_UPDATE_NOTICE_TIMEOUT=5 \
+    FLOCK_SENTINEL=$FLOCK_SENTINEL \
+    /bin/sh "$GLOBAL_BIN/traceknot-update-notice" 2>&1)
+printf '%s\n' "$output" | grep -F 'Traceknot update available: v9.9.9' >/dev/null
+test ! -e "$FLOCK_SENTINEL"
+[ "$(wc -l < "$CALL_LOG" | tr -d ' ')" -eq 2 ]
 
 # shlock ownership also serializes concurrent invocations and is released by
 # the winning helper when it exits.
