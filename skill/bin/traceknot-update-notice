@@ -96,8 +96,17 @@ trap 'exit 0' HUP INT TERM
 
 # Pin the process-owned backend per advisory state directory. This prevents
 # concurrent completions with different PATH values from selecting flock,
-# lockf, and shlock independently for the same pathname.
+# lockf, and shlock independently for the same pathname. A re-entered
+# process (lockf exec) skips selection because it already holds the lock.
 select_lock_backend() {
+    if [ "${TRACEKNOT_UPDATE_NOTICE_LOCKED:-0}" = 1 ]; then
+        LOCK_BACKEND=$(sed -n '1p' "$LOCK_BACKEND_FILE" 2>/dev/null || true)
+        case "$LOCK_BACKEND" in
+            flock|lockf|shlock) ;;
+            *) exit 0 ;;
+        esac
+        return 0
+    fi
     if [ -e "$LOCK_BACKEND_FILE" ] || [ -L "$LOCK_BACKEND_FILE" ]; then
         [ -f "$LOCK_BACKEND_FILE" ] && [ ! -L "$LOCK_BACKEND_FILE" ] || exit 0
     else
@@ -131,28 +140,33 @@ select_lock_backend() {
 }
 
 # Use a process-owned lock instead of implementing stale-owner replacement
-# in shell. lockf is the macOS fallback because it uses kernel file locking;
-# shlock remains a last-resort fallback on systems without either utility.
+# in shell. BSD lockf cannot lock an inherited descriptor, so the helper
+# re-executes itself under `lockf -t 0 <file>`; the re-entered process
+# skips backend selection and lock acquisition. shlock remains a
+# last-resort fallback on systems without flock or lockf.
 select_lock_backend
 if [ -e "$LOCK_FILE" ] || [ -L "$LOCK_FILE" ]; then
     [ -f "$LOCK_FILE" ] && [ ! -L "$LOCK_FILE" ] || exit 0
 fi
-case "$LOCK_BACKEND" in
-    flock)
-        exec 9>>"$LOCK_FILE" || exit 0
-        flock -n 9 || exit 0
-        LOCK_MODE=flock
-        ;;
-    lockf)
-        exec 9>>"$LOCK_FILE" || exit 0
-        lockf -s -t 0 9 >/dev/null 2>&1 || exit 0
-        LOCK_MODE=lockf
-        ;;
-    shlock)
-        shlock -f "$LOCK_FILE" -p "$$" >/dev/null 2>&1 || exit 0
-        LOCK_MODE=shlock
-        ;;
-esac
+if [ "${TRACEKNOT_UPDATE_NOTICE_LOCKED:-0}" = 1 ]; then
+    LOCK_MODE=$LOCK_BACKEND
+else
+    case "$LOCK_BACKEND" in
+        flock)
+            exec 9>>"$LOCK_FILE" || exit 0
+            flock -n 9 || exit 0
+            LOCK_MODE=flock
+            ;;
+        lockf)
+            export TRACEKNOT_UPDATE_NOTICE_LOCKED=1
+            exec lockf -t 0 "$LOCK_FILE" "$0" "$@"
+            ;;
+        shlock)
+            shlock -f "$LOCK_FILE" -p "$$" >/dev/null 2>&1 || exit 0
+            LOCK_MODE=shlock
+            ;;
+    esac
+fi
 
 
 
