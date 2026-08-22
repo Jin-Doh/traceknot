@@ -31,11 +31,17 @@ REQUESTED_DEADLINE=${TRACEKNOT_UPDATE_DEADLINE_EPOCH:-0}
 OPERATION_DEADLINE=0
 AUTO_WAITING_FOR_ADOPTION=0
 MANUAL_ADOPTION=0
+READ_ONLY_CHECK=${TRACEKNOT_UPDATE_READ_ONLY_CHECK:-0}
+READ_ONLY_ALLOW_AUTOMATIC=${TRACEKNOT_UPDATE_READ_ONLY_ALLOW_AUTOMATIC:-0}
 fail() {
     printf '%s: %s\n' "$PROGRAM" "$*" >&2
     exit 2
 }
-
+case "$READ_ONLY_CHECK" in 0|1) ;; *) fail 'invalid read-only check mode' ;; esac
+case "$READ_ONLY_ALLOW_AUTOMATIC" in 0|1) ;; *) fail 'invalid read-only automatic override' ;; esac
+if [ "$READ_ONLY_ALLOW_AUTOMATIC" -eq 1 ] && [ "$READ_ONLY_CHECK" -eq 0 ]; then
+    fail 'read-only automatic override requires read-only check mode'
+fi
 usage() {
     cat <<EOF_USAGE
 Usage: $PROGRAM COMMAND (--global | --project DIR) [--dry-run]
@@ -238,6 +244,10 @@ while [ "$#" -gt 0 ]; do
         *) fail "unknown argument: $1" ;;
     esac
 done
+
+if [ "$READ_ONLY_CHECK" -eq 1 ] && [ "$COMMAND" != check ]; then
+    fail 'read-only check mode supports only the check command'
+fi
 
 if [ -z "$OPERATION_TIMEOUT" ]; then
     if [ "$AUTO_INVOCATION" -eq 1 ]; then
@@ -609,6 +619,15 @@ else
 fi
 [ "$CONFIG_SCOPE" = "$SCOPE" ] || fail 'update state belongs to another scope'
 [ "$CONFIG_PROJECT_ROOT" = "$PROJECT_ROOT" ] || fail 'update state belongs to another project'
+if [ "$READ_ONLY_CHECK" -eq 1 ] &&
+   [ "$AUTOMATIC" -eq 1 ] &&
+   [ "$READ_ONLY_ALLOW_AUTOMATIC" -eq 0 ]; then
+    # Routine advisory checks must yield after taking the updater lock. This
+    # closes the preflight race with the scheduled --auto invocation without
+    # allowing the advisory to hold the lock during a network scan.
+    exit 75
+fi
+
 
 write_config() {
     automatic_value=$1
@@ -907,11 +926,28 @@ if [ "$COMMAND" != disable ]; then
         fail 'sha256sum or shasum is required'
     validate_active_state
     validate_pending_state
-    if [ ! -e "$PENDING_STATE" ] && [ ! -L "$PENDING_STATE" ]; then
+    if [ "$READ_ONLY_CHECK" -eq 1 ]; then
+        # The updater lock is already held here. Refuse transaction recovery
+        # atomically with the advisory check when any pending artifact exists.
+        for recovery_path in \
+            "$PENDING_STATE" \
+            "$PENDING_PAYLOAD_DIR" \
+            "$PENDING_PREVIOUS_PAYLOAD_DIR"
+        do
+            if [ -e "$recovery_path" ] || [ -L "$recovery_path" ]; then
+                # Distinguish a skipped maintenance observation from a
+                # completed eligibility check so callers do not advance their
+                # local success interval while recovery remains pending.
+                exit 75
+            fi
+        done
+    elif [ ! -e "$PENDING_STATE" ] && [ ! -L "$PENDING_STATE" ]; then
         reclaim_orphan_pending_payload
     fi
     validate_skills_lock
-    reconcile_pending_state
+    if [ "$READ_ONLY_CHECK" -eq 0 ]; then
+        reconcile_pending_state
+    fi
 fi
 
 if [ "$AUTO_INVOCATION" -eq 1 ] && [ ! -f "$ACTIVE_STATE" ]; then
@@ -1137,7 +1173,13 @@ if [ ! -f "$ACTIVE_STATE" ] && [ "$ADOPTED_AT" -eq 0 ]; then
     ADOPTED_LOCK_SHA256=$LOCK_ENTRY_SHA256
     ADOPTION_CREATED=1
 fi
-write_config "$AUTOMATIC" "$TRUSTED_NOW" "$ADOPTED_AT" "$ADOPTED_LOCK_SHA256"
+if [ "$READ_ONLY_CHECK" -eq 1 ]; then
+    # Advisory observations share release/first-seen state but must not advance
+    # the scheduler's lastCheck gate or postpone a pending automatic apply.
+    write_config "$AUTOMATIC" "$LAST_CHECK" "$ADOPTED_AT" "$ADOPTED_LOCK_SHA256"
+else
+    write_config "$AUTOMATIC" "$TRUSTED_NOW" "$ADOPTED_AT" "$ADOPTED_LOCK_SHA256"
+fi
 
 jq -r '
   .[]
