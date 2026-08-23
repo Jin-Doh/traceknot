@@ -23,11 +23,11 @@ The source PNG remains in the generating session's artifact store. The optimized
 
 ### Generation record
 
-- Generated: 2026-08-22
+- Generated: 2026-08-23
 - Tool: VHS 0.11.0
 - Script: [`tapes/verify.tape`](tapes/verify.tape)
 - Sandbox: [`tapes/verify-setup.sh`](tapes/verify-setup.sh) rebuilds `/tmp/traceknot-demo` deterministically
-- Repository asset: 1120 × 560 GIF, 24 fps, ~150 KB
+- Repository asset: 1120 × 560 GIF, 24 fps, 13.2 s, ~162 KB
 - Embedded text: live terminal output only; no captions or overlays
 
 ### Regeneration
