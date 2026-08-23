@@ -48,11 +48,11 @@ A deterministic CLI-only demo (no agent) recorded from the same fixtures with [`
 
 ### Generation record
 
-- Generated: 2026-08-22
+- Generated: 2026-08-23
 - Tools: VHS 0.11.0 (terminal segment) + headless Chromium capture (Board segment), stitched with ffmpeg
-- Scripts: [`tapes/codex-board-setup.sh`](tapes/codex-board-setup.sh), [`tapes/codex-board.tape`](tapes/codex-board.tape)
-- Sandbox: `/tmp/traceknot-demo-codex` — isolated git repo, isolated `CODEX_HOME` (real auth copied in; no plugins, hooks, or MCP servers)
-- Repository asset: 1024 × 660, 15 fps, ~3.3 MB
+- Scripts: [`tapes/codex-board-setup.sh`](tapes/codex-board-setup.sh), [`tapes/codex-board.tape`](tapes/codex-board.tape), [`tapes/capture-board.sh`](tapes/capture-board.sh)
+- Sandbox: `/tmp/traceknot-demo-codex` — isolated git repo, isolated `HOME` with the self-contained Skill bundle, isolated `CODEX_HOME` (real auth copied in; no plugins, hooks, or MCP servers)
+- Repository asset: 1024 × 660, 15 fps, ~3.0 MB
 - Embedded text: live terminal output and rendered Board only; no captions or overlays
 
 ### Regeneration
@@ -61,12 +61,15 @@ A deterministic CLI-only demo (no agent) recorded from the same fixtures with [`
 brew install vhs  # once; ffmpeg required for stitching
 sh assets/readme/tapes/codex-board-setup.sh
 cd /tmp/traceknot-demo-codex/app && vhs "$OLDPWD/assets/readme/tapes/codex-board.tape"
+sh "$OLDPWD/assets/readme/tapes/capture-board.sh" \
+  /tmp/traceknot-demo-codex/verify-state \
+  /tmp/traceknot-demo-codex/app/board.png
 
 # stitch: terminal segment (62 s) + Board segment (4 s hold)
 ffmpeg -i codex-board.gif -t 62 -vf "fps=15,scale=1024:-2,setsar=1" seg-term.mp4
 # board.png = headless-Chromium capture of verify-state/sessions/<key>/index.html
 ffmpeg -loop 1 -t 4 -framerate 15 -i board.png \
-  -vf "crop=1024:660:0:60,setsar=1,fps=15" seg-board.mp4
+  -vf "scale=1024:-2,crop=1024:660:0:60,setsar=1,fps=15" seg-board.mp4
 ffmpeg -i seg-term.mp4 -i seg-board.mp4 -filter_complex \
   "[0:v][1:v]concat=n=2:v=1:a=0,split[x][y];[x]palettegen=max_colors=200[p];[y][p]paletteuse=dither=bayer:bayer_scale=4" \
   "$OLDPWD/assets/readme/traceknot-codex-board.gif"

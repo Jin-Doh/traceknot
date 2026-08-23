@@ -31,10 +31,10 @@ Set Theme {
 Type "cd /tmp/traceknot-demo-codex/app"
 Enter
 Sleep 300ms
-Type "clear && CODEX_HOME=/tmp/traceknot-demo-codex/codex-home codex"
+Type "clear && HOME=/tmp/traceknot-demo-codex/home CODEX_HOME=/tmp/traceknot-demo-codex/codex-home codex"
 Enter
 Sleep 4500ms
-Type "Apply Traceknot to verify this change: run $HOME/.agents/skills/traceknot/bin/traceknot verify --request request.json --manifest manifest.json --root . --format markdown --state-dir ../verify-state --session-id demo-session --session-host demo-host then report the verdict."
+Type "Apply Traceknot to verify this change: run $HOME/.agents/skills/traceknot/bin/traceknot verify --request ../request.json --manifest ../manifest.json --root . --format markdown --state-dir ../verify-state --session-id demo-session --session-host demo-host then report the verdict."
 Enter
 Sleep 50s
 Sleep 30s

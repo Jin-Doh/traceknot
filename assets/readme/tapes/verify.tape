@@ -31,6 +31,6 @@ Set Theme {
 Type "ls"
 Enter
 Sleep 700ms
-Type "./traceknot verify --request request.json --manifest manifest.json --root demo-app --format markdown --session-id demo-session --session-host demo-host"
+Type "./traceknot verify --request request.json --manifest manifest.json --root demo-app --state-dir verify-state --format markdown --session-id demo-session --session-host demo-host"
 Enter
 Sleep 2600ms

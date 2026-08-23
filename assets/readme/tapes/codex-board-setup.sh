@@ -12,7 +12,16 @@ printf 'export const version = "1.4.2";\n' > "$DEMO/app/src/version.ts"
 git -C "$DEMO/app" init -q
 git -C "$DEMO/app" add .
 git -C "$DEMO/app" -c user.email=demo@traceknot -c user.name=demo commit -qm "add version module"
-cat > "$DEMO/app/request.json" <<EOF_REQ
+mkdir -p "$DEMO/home/.agents/skills"
+cp -R skill "$DEMO/home/.agents/skills/traceknot"
+cat > "$DEMO/check-clean" <<'EOF_CLEAN'
+#!/bin/sh
+set -eu
+[ "$#" -eq 1 ] || exit 2
+[ -z "$(/usr/bin/git -C "$1" status --porcelain)" ]
+EOF_CLEAN
+chmod +x "$DEMO/check-clean"
+cat > "$DEMO/request.json" <<EOF_REQ
 {
   "schemaVersion": "verification-request/v1",
   "requestId": "codex-demo",
@@ -24,19 +33,19 @@ cat > "$DEMO/app/request.json" <<EOF_REQ
   ]
 }
 EOF_REQ
-cat > "$DEMO/app/manifest.json" <<EOF_MAN
+cat > "$DEMO/manifest.json" <<EOF_MAN
 {
   "schemaVersion": "verification-manifest/v1",
   "obligations": [
     { "id": "obligation:condition:runtime", "executable": "$BUN", "argv": ["--version"] },
-    { "id": "obligation:condition:clean-tree", "executable": "/usr/bin/git", "argv": ["status", "--porcelain"] }
+    { "id": "obligation:condition:clean-tree", "executable": "$DEMO/check-clean", "argv": ["$DEMO/app"] }
   ]
 }
 EOF_MAN
 cat > "$DEMO/prompt.txt" <<'EOF_PROMPT'
 Apply Traceknot to verify this change. Run:
 
-$HOME/.agents/skills/traceknot/bin/traceknot verify --request request.json --manifest manifest.json --root . --format markdown --state-dir ../verify-state --session-id demo-session --session-host demo-host
+$HOME/.agents/skills/traceknot/bin/traceknot verify --request ../request.json --manifest ../manifest.json --root . --format markdown --state-dir ../verify-state --session-id demo-session --session-host demo-host
 
 Then report the final verdict exactly as the CLI printed it.
 EOF_PROMPT

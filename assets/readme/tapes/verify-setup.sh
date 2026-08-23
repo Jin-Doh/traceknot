@@ -10,6 +10,13 @@ printf 'export const version = "1.0.0";\n' > "$DEMO/demo-app/src/version.ts"
 git -C "$DEMO/demo-app" init -q
 git -C "$DEMO/demo-app" add .
 git -C "$DEMO/demo-app" -c user.email=demo@traceknot -c user.name=demo commit -qm "demo snapshot"
+cat > "$DEMO/check-clean" <<'EOF_CLEAN'
+#!/bin/sh
+set -eu
+[ "$#" -eq 1 ] || exit 2
+[ -z "$(/usr/bin/git -C "$1" status --porcelain)" ]
+EOF_CLEAN
+chmod +x "$DEMO/check-clean"
 cat > "$DEMO/request.json" <<EOF_REQ
 {
   "schemaVersion": "verification-request/v1",
@@ -27,14 +34,14 @@ cat > "$DEMO/manifest.json" <<EOF_MAN
   "schemaVersion": "verification-manifest/v1",
   "obligations": [
     { "id": "obligation:condition:runtime", "executable": "$BUN", "argv": ["--version"] },
-    { "id": "obligation:condition:clean-tree", "executable": "/usr/bin/git", "argv": ["-C", "$DEMO/demo-app", "status", "--porcelain"] }
+    { "id": "obligation:condition:clean-tree", "executable": "$DEMO/check-clean", "argv": ["$DEMO/demo-app"] }
   ]
 }
 EOF_MAN
 if [ -x "$HOME/.agents/skills/traceknot/bin/traceknot" ]; then
     ln -sf "$HOME/.agents/skills/traceknot/bin/traceknot" "$DEMO/traceknot"
 else
-    cp bin/traceknot "$DEMO/traceknot"
+    cp skill/bin/traceknot "$DEMO/traceknot"
 fi
 printf 'demo sandbox ready at %s\n' "$DEMO"
 printf '%s\n' "$DEMO" > "$DEMO/.path"
