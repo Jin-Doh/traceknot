@@ -93,17 +93,27 @@ for argument do
     esac
 done
 [ -n "$OUTPUT" ] || exit 2
-printf '%s\n' "$BOARD" > "$OUTPUT"
+printf 'partial\n' > "$OUTPUT"
+sleep 0.7
+printf 'complete:%s\n' "$BOARD" > "$OUTPUT"
 EOF_CHROME
 chmod +x "$FAKE_CHROME"
+FAKE_VALIDATOR=$TMP_ROOT/fake-validator
+cat > "$FAKE_VALIDATOR" <<'EOF_VALIDATOR'
+#!/bin/sh
+grep -F 'complete:file://' "$1" >/dev/null
+EOF_VALIDATOR
+chmod +x "$FAKE_VALIDATOR"
 for LOCALE in en ko zh-CN; do
     BOARD_CAPTURE=$CODEX_DEMO/app/board.$LOCALE.png
-    TRACEKNOT_CHROME=$FAKE_CHROME sh "$ROOT/assets/readme/tapes/capture-board.sh" \
+    TRACEKNOT_CHROME=$FAKE_CHROME TRACEKNOT_CAPTURE_VALIDATOR=$FAKE_VALIDATOR \
+        sh "$ROOT/assets/readme/tapes/capture-board.sh" \
         "$CODEX_DEMO/verify-state" "$BOARD_CAPTURE" "$LOCALE" >/dev/null
     [ -s "$BOARD_CAPTURE" ]
     grep -F "/index.$LOCALE.html" "$BOARD_CAPTURE" >/dev/null
 done
-if TRACEKNOT_CHROME=$FAKE_CHROME sh "$ROOT/assets/readme/tapes/capture-board.sh" \
+if TRACEKNOT_CHROME=$FAKE_CHROME TRACEKNOT_CAPTURE_VALIDATOR=$FAKE_VALIDATOR \
+    sh "$ROOT/assets/readme/tapes/capture-board.sh" \
     "$CODEX_DEMO/verify-state" "$CODEX_DEMO/app/board.invalid.png" fr >/dev/null 2>&1; then
     printf '%s\n' 'unsupported Board locale unexpectedly succeeded' >&2
     exit 1
