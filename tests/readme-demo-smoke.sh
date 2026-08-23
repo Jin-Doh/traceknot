@@ -62,17 +62,20 @@ cat > "$FAKE_CHROME" <<'EOF_CHROME'
 #!/bin/sh
 set -eu
 OUTPUT=
+BOARD=
 for argument do
     case "$argument" in
         --screenshot=*) OUTPUT=${argument#--screenshot=} ;;
+        file://*) BOARD=$argument ;;
     esac
 done
 [ -n "$OUTPUT" ] || exit 2
-printf 'fake screenshot\n' > "$OUTPUT"
+printf '%s\n' "$BOARD" > "$OUTPUT"
 EOF_CHROME
 chmod +x "$FAKE_CHROME"
 TRACEKNOT_CHROME=$FAKE_CHROME sh "$ROOT/assets/readme/tapes/capture-board.sh" \
     "$CODEX_DEMO/verify-state" "$CODEX_DEMO/app/board.png" >/dev/null
 [ -s "$CODEX_DEMO/app/board.png" ]
+grep -F '/index.en.html' "$CODEX_DEMO/app/board.png" >/dev/null
 
 printf '%s\n' 'README demo smoke test: PASS'
