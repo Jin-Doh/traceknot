@@ -616,6 +616,14 @@ button,a,summary{touch-action:manipulation}
 .summary-card h1{max-width:760px;margin:0;font-size:clamp(1.7rem,1.25rem + 1.6vw,2.35rem);line-height:1.12;letter-spacing:-.03em;text-wrap:balance}
 .summary-change{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;max-width:96ch;margin:13px 0 0;color:var(--muted);font-size:.9rem;line-height:1.55}
 .summary-change strong{color:var(--text)}
+.summary-change.details{margin:13px 0 0;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
+.summary-change.details>summary{display:flex;align-items:center;gap:10px;min-height:40px;padding:0 12px;color:var(--muted);font-size:.8rem;font-weight:700;cursor:pointer;list-style:none}
+.summary-change.details>summary::-webkit-details-marker{display:none}
+.summary-change.details>summary::after{content:"+";margin-left:auto;color:var(--faint);font-weight:850}
+.summary-change.details[open]>summary::after{content:"\2212"}
+.summary-change.details>summary strong{color:var(--text)}
+.summary-change.details>summary .summary-hint{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.summary-change.details>p{margin:0;padding:0 12px 11px;color:var(--muted);font-size:.86rem;line-height:1.55;overflow-wrap:anywhere}
 .rationale{max-width:78ch;margin:8px 0 0;color:var(--muted);font-size:.94rem;line-height:1.65;text-wrap:pretty}
 .rationale strong{color:var(--text)}
 .verdict{align-self:start;display:grid;justify-items:center;min-width:160px;padding:18px 16px;border-radius:17px;text-align:center}
@@ -885,6 +893,7 @@ button,a,summary{touch-action:manipulation}
   .shell{width:100%;padding:0 0 24px}
   .summary-card,.panel,.technical-trace,.attention-banner,.finding,.viz-card{box-shadow:none;break-inside:avoid}
   a{text-decoration:none}
+  .finding::details-content,.technical-trace::details-content,.summary-change.details::details-content{content-visibility:visible;display:block}
 }
 `;
 
@@ -910,6 +919,10 @@ export function renderQaBoardHtml(view: QaBoardView, locale: QaBoardLocale = "en
   const alternateLinks = QA_BOARD_LOCALES.map(item => `<link rel="alternate" hreflang="${item}" href="index.${item}.html">`).join("\n");
   const verdictTone = view.verdict === "PASS" ? "pass" : view.verdict === "PASS_WITH_ACCEPTED_RISK" ? "risk" : view.verdict.toLowerCase();
   const verdictStatus: BoardFindingStatus = view.verdict === "PASS_WITH_ACCEPTED_RISK" ? "PASS" : view.verdict;
+  const longSummary = view.changeSummary.length > 140;
+  const changeSummaryBlock = longSummary
+    ? `<details class="summary-change details"><summary><strong>${copy.changeSummary}</strong><span class="summary-hint">${escapeHtml(short(view.changeSummary))}</span></summary><p>${escapeHtml(view.changeSummary)}</p></details>`
+    : `<p class="summary-change"><strong>${copy.changeSummary}:</strong> ${escapeHtml(view.changeSummary)}</p>`;
   return `<!doctype html>
 <html lang="${locale}">
 <head>
@@ -928,7 +941,7 @@ ${alternateLinks}
 <header class="topbar"><div class="brand"><span class="brand-mark" aria-hidden="true">${TRACEKNOT_MARK_SVG}</span><span>${copy.documentTitle}</span></div><nav class="language-switcher" aria-label="${copy.language}"><span>${copy.language}</span>${languageLinks}</nav></header>
 <main id="main">
 <section class="summary-card summary-${verdictTone}" id="overview" aria-labelledby="report-title">
-<div class="summary-main"><div><p class="eyebrow">${copy.reportLabel} · ${copy.revision} ${view.revision}</p><h1 id="report-title">${escapeHtml(copy.outcomes[view.verdict])}</h1><p class="summary-change"><strong>${copy.changeSummary}:</strong> <span title="${escapeHtml(view.changeSummary)}">${escapeHtml(view.changeSummary)}</span></p><p class="rationale"><strong>${copy.verdictRationale}:</strong> ${escapeHtml(view.rationale)}</p><div class="summary-meta"><span><strong>${copy.run}</strong> ${escapeHtml(view.runId)}</span><span><strong>${copy.snapshot}</strong> <code title="${escapeHtml(view.snapshotId)}">${escapeHtml(short(view.snapshotId))}</code></span><span><strong>${copy.updated}</strong> <time datetime="${escapeHtml(view.sourceUpdatedAt)}">${escapeHtml(view.sourceUpdatedAt)}</time></span></div></div><div class="verdict verdict-${verdictTone}" role="status"><span class="verdict-icon">${statusIcon(verdictStatus)}</span><strong>${escapeHtml(view.verdict)}</strong><span>${copy.status[verdictStatus]}</span></div></div>
+<div class="summary-main"><div><p class="eyebrow">${copy.reportLabel} · ${copy.revision} ${view.revision}</p><h1 id="report-title">${escapeHtml(copy.outcomes[view.verdict])}</h1>${changeSummaryBlock}<p class="rationale"><strong>${copy.verdictRationale}:</strong> ${escapeHtml(view.rationale)}</p><div class="summary-meta"><span><strong>${copy.run}</strong> ${escapeHtml(view.runId)}</span><span><strong>${copy.snapshot}</strong> <code title="${escapeHtml(view.snapshotId)}">${escapeHtml(short(view.snapshotId))}</code></span><span><strong>${copy.updated}</strong> <time datetime="${escapeHtml(view.sourceUpdatedAt)}">${escapeHtml(view.sourceUpdatedAt)}</time></span></div></div><div class="verdict verdict-${verdictTone}" role="status"><span class="verdict-icon">${statusIcon(verdictStatus)}</span><strong>${escapeHtml(view.verdict)}</strong><span>${copy.status[verdictStatus]}</span></div></div>
 ${visualizationHtml(view, locale)}
 <div class="summary-footer"><section class="assurance-strip" aria-label="${copy.assurance}"><strong>${copy.assurance}</strong><span><b>${copy.assuranceContext}</b>${escapeHtml(view.assurance.context)}</span><span><b>${copy.requiredIndependence}</b>${escapeHtml(view.assurance.requiredIndependence)}</span><span><b>${copy.releaseStatus}</b>${escapeHtml(view.assurance.releaseStatus)}</span></section><dl class="counts"><div class="count"><dt>${copy.mandatory}</dt><dd>${view.counts.mandatory}</dd></div><div class="count count-pass"><dt>${copy.passed}</dt><dd>${view.counts.passed}</dd></div><div class="count count-fail"><dt>${copy.failed}</dt><dd>${view.counts.failed}</dd></div><div class="count count-blocked"><dt>${copy.blocked}</dt><dd>${view.counts.blocked}</dd></div><div class="count count-incomplete"><dt>${copy.incomplete}</dt><dd>${view.counts.incomplete}</dd></div></dl></div>
 </section>
