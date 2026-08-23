@@ -1,13 +1,18 @@
 #!/bin/sh
-# Capture the English Board produced by the disposable Codex demo sandbox.
+# Capture a localized Board produced by the disposable Codex demo sandbox.
 set -eu
 
 STATE_DIR=${1:-/tmp/traceknot-demo-codex/verify-state}
-OUTPUT=${2:-/tmp/traceknot-demo-codex/app/board.png}
+LOCALE=${3:-en}
+case "$LOCALE" in
+    en|ko|zh-CN) ;;
+    *) printf '%s\n' "capture-board: unsupported Board locale: $LOCALE" >&2; exit 2 ;;
+esac
+OUTPUT=${2:-/tmp/traceknot-demo-codex/app/board.$LOCALE.png}
 
-set -- "$STATE_DIR"/sessions/*/index.en.html
+set -- "$STATE_DIR"/sessions/*/"index.$LOCALE.html"
 if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
-    printf '%s\n' "capture-board: expected exactly one English Board at $STATE_DIR/sessions/*/index.en.html" >&2
+    printf '%s\n' "capture-board: expected exactly one $LOCALE Board at $STATE_DIR/sessions/*/index.$LOCALE.html" >&2
     exit 1
 fi
 BOARD=$1

@@ -96,9 +96,17 @@ done
 printf '%s\n' "$BOARD" > "$OUTPUT"
 EOF_CHROME
 chmod +x "$FAKE_CHROME"
-TRACEKNOT_CHROME=$FAKE_CHROME sh "$ROOT/assets/readme/tapes/capture-board.sh" \
-    "$CODEX_DEMO/verify-state" "$CODEX_DEMO/app/board.png" >/dev/null
-[ -s "$CODEX_DEMO/app/board.png" ]
-grep -F '/index.en.html' "$CODEX_DEMO/app/board.png" >/dev/null
+for LOCALE in en ko zh-CN; do
+    BOARD_CAPTURE=$CODEX_DEMO/app/board.$LOCALE.png
+    TRACEKNOT_CHROME=$FAKE_CHROME sh "$ROOT/assets/readme/tapes/capture-board.sh" \
+        "$CODEX_DEMO/verify-state" "$BOARD_CAPTURE" "$LOCALE" >/dev/null
+    [ -s "$BOARD_CAPTURE" ]
+    grep -F "/index.$LOCALE.html" "$BOARD_CAPTURE" >/dev/null
+done
+if TRACEKNOT_CHROME=$FAKE_CHROME sh "$ROOT/assets/readme/tapes/capture-board.sh" \
+    "$CODEX_DEMO/verify-state" "$CODEX_DEMO/app/board.invalid.png" fr >/dev/null 2>&1; then
+    printf '%s\n' 'unsupported Board locale unexpectedly succeeded' >&2
+    exit 1
+fi
 
 printf '%s\n' 'README demo smoke test: PASS'
