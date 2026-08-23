@@ -616,7 +616,7 @@ button,a,summary{touch-action:manipulation}
 .summary-card h1{max-width:760px;margin:0;font-size:clamp(1.7rem,1.25rem + 1.6vw,2.35rem);line-height:1.12;letter-spacing:-.03em;text-wrap:balance}
 .summary-change{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;max-width:96ch;margin:13px 0 0;color:var(--muted);font-size:.9rem;line-height:1.55}
 .summary-change strong{color:var(--text)}
-.summary-change.details{margin:13px 0 0;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
+.summary-change.details{display:block;margin:13px 0 0;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);-webkit-line-clamp:unset;overflow:visible}
 .summary-change.details>summary{display:flex;align-items:center;gap:10px;min-height:40px;padding:0 12px;color:var(--muted);font-size:.8rem;font-weight:700;cursor:pointer;list-style:none}
 .summary-change.details>summary::-webkit-details-marker{display:none}
 .summary-change.details>summary::after{content:"+";margin-left:auto;color:var(--faint);font-weight:850}
@@ -919,10 +919,9 @@ export function renderQaBoardHtml(view: QaBoardView, locale: QaBoardLocale = "en
   const alternateLinks = QA_BOARD_LOCALES.map(item => `<link rel="alternate" hreflang="${item}" href="index.${item}.html">`).join("\n");
   const verdictTone = view.verdict === "PASS" ? "pass" : view.verdict === "PASS_WITH_ACCEPTED_RISK" ? "risk" : view.verdict.toLowerCase();
   const verdictStatus: BoardFindingStatus = view.verdict === "PASS_WITH_ACCEPTED_RISK" ? "PASS" : view.verdict;
-  const longSummary = view.changeSummary.length > 140;
-  const changeSummaryBlock = longSummary
-    ? `<details class="summary-change details"><summary><strong>${copy.changeSummary}</strong><span class="summary-hint">${escapeHtml(short(view.changeSummary))}</span></summary><p>${escapeHtml(view.changeSummary)}</p></details>`
-    : `<p class="summary-change"><strong>${copy.changeSummary}:</strong> ${escapeHtml(view.changeSummary)}</p>`;
+  // Always a native disclosure: character count is not a reliable truncation
+  // proxy across viewports, text zoom, and wide CJK glyphs.
+  const changeSummaryBlock = `<details class="summary-change details"><summary><strong>${copy.changeSummary}</strong><span class="summary-hint">${escapeHtml(short(view.changeSummary))}</span></summary><p>${escapeHtml(view.changeSummary)}</p></details>`;
   return `<!doctype html>
 <html lang="${locale}">
 <head>
