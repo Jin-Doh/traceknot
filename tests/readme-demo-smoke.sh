@@ -1,0 +1,147 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH='' cd -P -- "$(dirname "$0")/.." && pwd)
+TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-readme-demo.XXXXXX")
+trap 'rm -rf "$TMP_ROOT"' EXIT HUP INT TERM
+
+HOME_DIR=$TMP_ROOT/home
+VERIFY_DEMO=$TMP_ROOT/verify-demo
+CODEX_DEMO=$TMP_ROOT/codex-demo
+BIN_DIR=$TMP_ROOT/bin
+REAL_GIT=$(command -v git)
+mkdir -p "$BIN_DIR" "$HOME_DIR/.codex" "$HOME_DIR/.agents/skills/traceknot/bin"
+printf '{}\n' > "$HOME_DIR/.codex/auth.json"
+cat > "$BIN_DIR/git" <<EOF_GIT
+#!/bin/sh
+exec "$REAL_GIT" "\$@"
+EOF_GIT
+printf '#!/bin/sh\nexit 99\n' > "$HOME_DIR/.agents/skills/traceknot/bin/traceknot"
+chmod +x "$BIN_DIR/git" "$HOME_DIR/.agents/skills/traceknot/bin/traceknot"
+DEMO_PATH=$BIN_DIR:$PATH
+OLD_BUN_DIR=$TMP_ROOT/old-bun
+mkdir -p "$OLD_BUN_DIR"
+cat > "$OLD_BUN_DIR/bun" <<'EOF_OLD_BUN'
+#!/bin/sh
+case "${1:-}" in
+    --version) printf '%s\n' '1.3.13'; exit 0 ;;
+    -e) exit 1 ;;
+    *) exit 1 ;;
+esac
+EOF_OLD_BUN
+chmod +x "$OLD_BUN_DIR/bun"
+if PATH=$OLD_BUN_DIR:$DEMO_PATH HOME=$HOME_DIR TRACEKNOT_DEMO_DIR=$TMP_ROOT/old-verify \
+    sh "$ROOT/assets/readme/tapes/verify-setup.sh" >/dev/null 2>&1; then
+    printf '%s\n' 'verify setup unexpectedly accepted Bun 1.3.13' >&2
+    exit 1
+fi
+if PATH=$OLD_BUN_DIR:$DEMO_PATH HOME=$HOME_DIR TRACEKNOT_CODEX_DEMO=$TMP_ROOT/old-codex \
+    sh "$ROOT/assets/readme/tapes/codex-board-setup.sh" >/dev/null 2>&1; then
+    printf '%s\n' 'Codex setup unexpectedly accepted Bun 1.3.13' >&2
+    exit 1
+fi
+
+run_verify_setup() {
+    PATH=$DEMO_PATH GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgSign GIT_CONFIG_VALUE_0=true \
+        HOME=$HOME_DIR TRACEKNOT_DEMO_DIR=$VERIFY_DEMO \
+        sh "$ROOT/assets/readme/tapes/verify-setup.sh" >/dev/null
+    [ -x "$VERIFY_DEMO/traceknot" ]
+    cmp -s "$ROOT/skill/bin/traceknot" "$VERIFY_DEMO/traceknot"
+    grep -F "$BIN_DIR/git" "$VERIFY_DEMO/check-clean" >/dev/null
+    HOME=$HOME_DIR "$VERIFY_DEMO/traceknot" verify \
+        --request "$VERIFY_DEMO/request.json" \
+        --manifest "$VERIFY_DEMO/manifest.json" \
+        --root "$VERIFY_DEMO/demo-app" \
+        --state-dir "$VERIFY_DEMO/verify-state" \
+        --format json \
+        --session-id readme-demo-session \
+        --session-host readme-demo-host >/dev/null
+}
+
+run_verify_setup
+run_verify_setup
+printf 'dirty\n' >> "$VERIFY_DEMO/demo-app/src/version.ts"
+DIRTY_OUTPUT=$TMP_ROOT/dirty-output.json
+if HOME=$HOME_DIR "$VERIFY_DEMO/traceknot" verify \
+    --request "$VERIFY_DEMO/request.json" \
+    --manifest "$VERIFY_DEMO/manifest.json" \
+    --root "$VERIFY_DEMO/demo-app" \
+    --state-dir "$VERIFY_DEMO/dirty-state" \
+    --format json >"$DIRTY_OUTPUT" 2>&1; then
+    printf '%s\n' 'dirty demo repository unexpectedly passed the clean-tree obligation' >&2
+    exit 1
+fi
+grep -F '"qaVerdict": "FAIL"' "$DIRTY_OUTPUT" >/dev/null
+grep -F '"obligation:condition:clean-tree"' "$DIRTY_OUTPUT" >/dev/null
+
+PATH=$DEMO_PATH GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgSign GIT_CONFIG_VALUE_0=true \
+    HOME=$HOME_DIR TRACEKNOT_CODEX_DEMO=$CODEX_DEMO \
+    sh "$ROOT/assets/readme/tapes/codex-board-setup.sh" >/dev/null
+case "$(uname -s)" in
+    Darwin)
+        SANDBOX_MODE=$(stat -f '%Lp' "$CODEX_DEMO")
+        AUTH_MODE=$(stat -f '%Lp' "$CODEX_DEMO/codex-home/auth.json")
+        ;;
+    *)
+        SANDBOX_MODE=$(stat -c '%a' "$CODEX_DEMO")
+        AUTH_MODE=$(stat -c '%a' "$CODEX_DEMO/codex-home/auth.json")
+        ;;
+esac
+grep -F "$BIN_DIR/git" "$CODEX_DEMO/check-clean" >/dev/null
+[ "$SANDBOX_MODE" = 700 ]
+[ "$AUTH_MODE" = 600 ]
+[ -f "$CODEX_DEMO/request.json" ]
+[ -f "$CODEX_DEMO/manifest.json" ]
+cmp -s "$ROOT/skill/bin/traceknot" "$CODEX_DEMO/home/.agents/skills/traceknot/bin/traceknot"
+[ ! -e "$CODEX_DEMO/app/request.json" ]
+[ ! -e "$CODEX_DEMO/app/manifest.json" ]
+[ -z "$(git -C "$CODEX_DEMO/app" status --porcelain)" ]
+HOME=$CODEX_DEMO/home "$CODEX_DEMO/home/.agents/skills/traceknot/bin/traceknot" verify \
+    --request "$CODEX_DEMO/request.json" \
+    --manifest "$CODEX_DEMO/manifest.json" \
+    --root "$CODEX_DEMO/app" \
+    --state-dir "$CODEX_DEMO/verify-state" \
+    --format json \
+    --session-id codex-demo-session \
+    --session-host codex-demo-host >/dev/null
+
+FAKE_CHROME=$TMP_ROOT/fake-chrome
+cat > "$FAKE_CHROME" <<'EOF_CHROME'
+#!/bin/sh
+set -eu
+OUTPUT=
+BOARD=
+for argument do
+    case "$argument" in
+        --screenshot=*) OUTPUT=${argument#--screenshot=} ;;
+        file://*) BOARD=$argument ;;
+    esac
+done
+[ -n "$OUTPUT" ] || exit 2
+printf 'partial\n' > "$OUTPUT"
+sleep 0.7
+printf 'complete:%s\n' "$BOARD" > "$OUTPUT"
+EOF_CHROME
+chmod +x "$FAKE_CHROME"
+FAKE_VALIDATOR=$TMP_ROOT/fake-validator
+cat > "$FAKE_VALIDATOR" <<'EOF_VALIDATOR'
+#!/bin/sh
+grep -F 'complete:file://' "$1" >/dev/null
+EOF_VALIDATOR
+chmod +x "$FAKE_VALIDATOR"
+for LOCALE in en ko zh-CN; do
+    BOARD_CAPTURE=$CODEX_DEMO/app/board.$LOCALE.png
+    TRACEKNOT_CHROME=$FAKE_CHROME TRACEKNOT_CAPTURE_VALIDATOR=$FAKE_VALIDATOR \
+        sh "$ROOT/assets/readme/tapes/capture-board.sh" \
+        "$CODEX_DEMO/verify-state" "$BOARD_CAPTURE" "$LOCALE" >/dev/null
+    [ -s "$BOARD_CAPTURE" ]
+    grep -F "/index.$LOCALE.html" "$BOARD_CAPTURE" >/dev/null
+done
+if TRACEKNOT_CHROME=$FAKE_CHROME TRACEKNOT_CAPTURE_VALIDATOR=$FAKE_VALIDATOR \
+    sh "$ROOT/assets/readme/tapes/capture-board.sh" \
+    "$CODEX_DEMO/verify-state" "$CODEX_DEMO/app/board.invalid.png" fr >/dev/null 2>&1; then
+    printf '%s\n' 'unsupported Board locale unexpectedly succeeded' >&2
+    exit 1
+fi
+
+printf '%s\n' 'README demo smoke test: PASS'
