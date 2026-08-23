@@ -240,7 +240,14 @@ function escapeHtml(value: string): string {
 }
 
 function short(value: string): string {
-  return value.length <= 16 ? value : `${value.slice(0, 12)}…`;
+  let prefix = "";
+  let codePoints = 0;
+  for (const codePoint of value) {
+    codePoints += 1;
+    if (codePoints <= 12) prefix += codePoint;
+    if (codePoints > 16) return `${prefix}…`;
+  }
+  return value;
 }
 
 const BOARD_COPY = {

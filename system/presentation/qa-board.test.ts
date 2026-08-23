@@ -113,6 +113,19 @@ describe("QA Board projection", () => {
     expect(html).not.toContain("https://");
     expect(html).toContain("read-only projection");
   });
+  test("truncates summary hints by Unicode code point", () => {
+    const crossingBoundary = "abcdefghijk😀uvwxyz";
+    const crossingFixture = source({ documents: { ...source().documents, request: { ...source().documents.request!, change: { ...source().documents.request!.change, summary: crossingBoundary } } } });
+    const crossingHtml = renderQaBoardHtml(buildQaBoardView(crossingFixture));
+    expect(crossingHtml).toContain('<span class="summary-hint">abcdefghijk😀…</span>');
+    expect(crossingHtml).toContain(`<p>${crossingBoundary}</p>`);
+    expect(crossingHtml).not.toContain("�");
+    const compactAstral = "😀".repeat(9);
+    const compactFixture = source({ documents: { ...source().documents, request: { ...source().documents.request!, change: { ...source().documents.request!.change, summary: compactAstral } } } });
+    const compactHtml = renderQaBoardHtml(buildQaBoardView(compactFixture));
+    expect(compactHtml).toContain(`<span class="summary-hint">${compactAstral}</span>`);
+    expect(compactHtml).not.toContain(`<span class="summary-hint">${compactAstral}…</span>`);
+  });
   test("keeps optional project support outside verification output", () => {
     const view = buildQaBoardView(source());
     const withoutSupport = renderQaBoardHtml(view);
