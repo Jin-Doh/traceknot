@@ -4,17 +4,18 @@
 set -eu
 DEMO=${TRACEKNOT_DEMO_DIR:-/tmp/traceknot-demo}
 BUN=$(command -v bun || printf '%s' '__BUN__')
+GIT=$(command -v git) || { printf '%s\n' 'verify-setup: git is required' >&2; exit 1; }
 rm -rf "$DEMO"
 mkdir -p "$DEMO/demo-app/src"
 printf 'export const version = "1.0.0";\n' > "$DEMO/demo-app/src/version.ts"
-git -C "$DEMO/demo-app" init -q
-git -C "$DEMO/demo-app" add .
-git -C "$DEMO/demo-app" -c user.email=demo@traceknot -c user.name=demo commit -qm "demo snapshot"
-cat > "$DEMO/check-clean" <<'EOF_CLEAN'
+"$GIT" -C "$DEMO/demo-app" init -q
+"$GIT" -C "$DEMO/demo-app" add .
+"$GIT" -C "$DEMO/demo-app" -c user.email=demo@traceknot -c user.name=demo commit -qm "demo snapshot"
+cat > "$DEMO/check-clean" <<EOF_CLEAN
 #!/bin/sh
 set -eu
-[ "$#" -eq 1 ] || exit 2
-[ -z "$(/usr/bin/git -C "$1" status --porcelain)" ]
+[ "\$#" -eq 1 ] || exit 2
+[ -z "\$("$GIT" -C "\$1" status --porcelain)" ]
 EOF_CLEAN
 chmod +x "$DEMO/check-clean"
 cat > "$DEMO/request.json" <<EOF_REQ
@@ -38,10 +39,6 @@ cat > "$DEMO/manifest.json" <<EOF_MAN
   ]
 }
 EOF_MAN
-if [ -x "$HOME/.agents/skills/traceknot/bin/traceknot" ]; then
-    ln -sf "$HOME/.agents/skills/traceknot/bin/traceknot" "$DEMO/traceknot"
-else
-    cp skill/bin/traceknot "$DEMO/traceknot"
-fi
+cp skill/bin/traceknot "$DEMO/traceknot"
 printf 'demo sandbox ready at %s\n' "$DEMO"
 printf '%s\n' "$DEMO" > "$DEMO/.path"

@@ -8,13 +8,23 @@ trap 'rm -rf "$TMP_ROOT"' EXIT HUP INT TERM
 HOME_DIR=$TMP_ROOT/home
 VERIFY_DEMO=$TMP_ROOT/verify-demo
 CODEX_DEMO=$TMP_ROOT/codex-demo
-mkdir -p "$HOME_DIR/.codex"
+BIN_DIR=$TMP_ROOT/bin
+REAL_GIT=$(command -v git)
+mkdir -p "$BIN_DIR" "$HOME_DIR/.codex" "$HOME_DIR/.agents/skills/traceknot/bin"
 printf '{}\n' > "$HOME_DIR/.codex/auth.json"
+cat > "$BIN_DIR/git" <<EOF_GIT
+#!/bin/sh
+exec "$REAL_GIT" "\$@"
+EOF_GIT
+printf '#!/bin/sh\nexit 99\n' > "$HOME_DIR/.agents/skills/traceknot/bin/traceknot"
+chmod +x "$BIN_DIR/git" "$HOME_DIR/.agents/skills/traceknot/bin/traceknot"
+DEMO_PATH=$BIN_DIR:$PATH
 
 run_verify_setup() {
-    HOME=$HOME_DIR TRACEKNOT_DEMO_DIR=$VERIFY_DEMO sh "$ROOT/assets/readme/tapes/verify-setup.sh" >/dev/null
+    PATH=$DEMO_PATH HOME=$HOME_DIR TRACEKNOT_DEMO_DIR=$VERIFY_DEMO sh "$ROOT/assets/readme/tapes/verify-setup.sh" >/dev/null
     [ -x "$VERIFY_DEMO/traceknot" ]
     cmp -s "$ROOT/skill/bin/traceknot" "$VERIFY_DEMO/traceknot"
+    grep -F "$BIN_DIR/git" "$VERIFY_DEMO/check-clean" >/dev/null
     HOME=$HOME_DIR "$VERIFY_DEMO/traceknot" verify \
         --request "$VERIFY_DEMO/request.json" \
         --manifest "$VERIFY_DEMO/manifest.json" \
@@ -41,7 +51,7 @@ fi
 grep -F '"qaVerdict": "FAIL"' "$DIRTY_OUTPUT" >/dev/null
 grep -F '"obligation:condition:clean-tree"' "$DIRTY_OUTPUT" >/dev/null
 
-HOME=$HOME_DIR TRACEKNOT_CODEX_DEMO=$CODEX_DEMO sh "$ROOT/assets/readme/tapes/codex-board-setup.sh" >/dev/null
+PATH=$DEMO_PATH HOME=$HOME_DIR TRACEKNOT_CODEX_DEMO=$CODEX_DEMO sh "$ROOT/assets/readme/tapes/codex-board-setup.sh" >/dev/null
 case "$(uname -s)" in
     Darwin)
         SANDBOX_MODE=$(stat -f '%Lp' "$CODEX_DEMO")
@@ -52,6 +62,7 @@ case "$(uname -s)" in
         AUTH_MODE=$(stat -c '%a' "$CODEX_DEMO/codex-home/auth.json")
         ;;
 esac
+grep -F "$BIN_DIR/git" "$CODEX_DEMO/check-clean" >/dev/null
 [ "$SANDBOX_MODE" = 700 ]
 [ "$AUTH_MODE" = 600 ]
 [ -f "$CODEX_DEMO/request.json" ]

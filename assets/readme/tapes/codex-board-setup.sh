@@ -7,6 +7,7 @@ set -eu
 umask 077
 DEMO=${TRACEKNOT_CODEX_DEMO:-/tmp/traceknot-demo-codex}
 BUN=$(command -v bun || printf '%s' '__BUN__')
+GIT=$(command -v git) || { printf '%s\n' 'codex-board-setup: git is required' >&2; exit 1; }
 rm -rf "$DEMO"
 if ! mkdir "$DEMO"; then
     printf '%s\n' "codex-board-setup: sandbox path was claimed before private creation: $DEMO" >&2
@@ -14,16 +15,16 @@ if ! mkdir "$DEMO"; then
 fi
 mkdir -p "$DEMO/app/src"
 printf 'export const version = "1.4.2";\n' > "$DEMO/app/src/version.ts"
-git -C "$DEMO/app" init -q
-git -C "$DEMO/app" add .
-git -C "$DEMO/app" -c user.email=demo@traceknot -c user.name=demo commit -qm "add version module"
+"$GIT" -C "$DEMO/app" init -q
+"$GIT" -C "$DEMO/app" add .
+"$GIT" -C "$DEMO/app" -c user.email=demo@traceknot -c user.name=demo commit -qm "add version module"
 mkdir -p "$DEMO/home/.agents/skills"
 cp -R skill "$DEMO/home/.agents/skills/traceknot"
-cat > "$DEMO/check-clean" <<'EOF_CLEAN'
+cat > "$DEMO/check-clean" <<EOF_CLEAN
 #!/bin/sh
 set -eu
-[ "$#" -eq 1 ] || exit 2
-[ -z "$(/usr/bin/git -C "$1" status --porcelain)" ]
+[ "\$#" -eq 1 ] || exit 2
+[ -z "\$("$GIT" -C "\$1" status --porcelain)" ]
 EOF_CLEAN
 chmod +x "$DEMO/check-clean"
 cat > "$DEMO/request.json" <<EOF_REQ
