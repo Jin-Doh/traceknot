@@ -4,9 +4,14 @@
 # Then record from the demo directory (the script prints its path):
 #   vhs assets/readme/tapes/codex-board.tape
 set -eu
+umask 077
 DEMO=${TRACEKNOT_CODEX_DEMO:-/tmp/traceknot-demo-codex}
 BUN=$(command -v bun || printf '%s' '__BUN__')
 rm -rf "$DEMO"
+if ! mkdir "$DEMO"; then
+    printf '%s\n' "codex-board-setup: sandbox path was claimed before private creation: $DEMO" >&2
+    exit 1
+fi
 mkdir -p "$DEMO/app/src"
 printf 'export const version = "1.4.2";\n' > "$DEMO/app/src/version.ts"
 git -C "$DEMO/app" init -q
@@ -49,9 +54,10 @@ $HOME/.agents/skills/traceknot/bin/traceknot verify --request ../request.json --
 
 Then report the final verdict exactly as the CLI printed it.
 EOF_PROMPT
-# Isolated CODEX_HOME: real auth, minimal config, no plugins/hooks/MCP noise.
+# Isolated writable homes: copy only authentication into the private sandbox.
 mkdir -p "$DEMO/codex-home"
 cp "$HOME/.codex/auth.json" "$DEMO/codex-home/auth.json"
+chmod 600 "$DEMO/codex-home/auth.json"
 cat > "$DEMO/codex-home/config.toml" <<EOF_CFG
 model = "gpt-5.6-luna"
 model_reasoning_effort = "medium"

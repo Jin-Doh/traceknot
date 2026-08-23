@@ -42,6 +42,18 @@ grep -F '"qaVerdict": "FAIL"' "$DIRTY_OUTPUT" >/dev/null
 grep -F '"obligation:condition:clean-tree"' "$DIRTY_OUTPUT" >/dev/null
 
 HOME=$HOME_DIR TRACEKNOT_CODEX_DEMO=$CODEX_DEMO sh "$ROOT/assets/readme/tapes/codex-board-setup.sh" >/dev/null
+case "$(uname -s)" in
+    Darwin)
+        SANDBOX_MODE=$(stat -f '%Lp' "$CODEX_DEMO")
+        AUTH_MODE=$(stat -f '%Lp' "$CODEX_DEMO/codex-home/auth.json")
+        ;;
+    *)
+        SANDBOX_MODE=$(stat -c '%a' "$CODEX_DEMO")
+        AUTH_MODE=$(stat -c '%a' "$CODEX_DEMO/codex-home/auth.json")
+        ;;
+esac
+[ "$SANDBOX_MODE" = 700 ]
+[ "$AUTH_MODE" = 600 ]
 [ -f "$CODEX_DEMO/request.json" ]
 [ -f "$CODEX_DEMO/manifest.json" ]
 cmp -s "$ROOT/skill/bin/traceknot" "$CODEX_DEMO/home/.agents/skills/traceknot/bin/traceknot"

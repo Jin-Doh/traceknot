@@ -52,7 +52,7 @@ A deterministic CLI-only demo (no agent) recorded from the same fixtures with [`
 - Tools: VHS 0.11.0 (terminal segment) + headless Chromium capture (Board segment), stitched with ffmpeg
 - Scripts: [`tapes/codex-board-setup.sh`](tapes/codex-board-setup.sh), [`tapes/codex-board.tape`](tapes/codex-board.tape), [`tapes/capture-board.sh`](tapes/capture-board.sh)
 - Sandbox: `/tmp/traceknot-demo-codex` — isolated git repo, isolated `HOME` with the self-contained Skill bundle, and isolated `CODEX_HOME`; only Codex authentication is copied in. Host-provided integrations visible during Codex startup are not used by the demo verification.
-- Repository asset: 1024 × 660, 15 fps, ~3.0 MB
+- Repository asset: 1024 × 660, 15 fps, 37.5 s, ~2.9 MB
 - Embedded text: live terminal output and rendered Board only; no captions or overlays
 
 ### Regeneration
@@ -65,8 +65,9 @@ sh "$OLDPWD/assets/readme/tapes/capture-board.sh" \
   /tmp/traceknot-demo-codex/verify-state \
   /tmp/traceknot-demo-codex/app/board.png
 
-# stitch: terminal segment (62 s) + Board segment (4 s hold)
-ffmpeg -i codex-board.gif -t 62 -vf "fps=15,scale=1024:-2,setsar=1" seg-term.mp4
+# stitch: complete terminal run with duplicate idle frames removed, then hold the completed frame for 3 s
+ffmpeg -i codex-board.gif \
+  -vf "fps=15,scale=1024:-2,setsar=1,mpdecimate,setpts=N/(15*TB),tpad=stop_mode=clone:stop_duration=3" seg-term.mp4
 # board.png = English headless-Chromium capture of verify-state/sessions/<key>/index.en.html
 ffmpeg -loop 1 -t 4 -framerate 15 -i board.png \
   -vf "scale=1024:-2,crop=1024:660:0:60,setsar=1,fps=15" seg-board.mp4
