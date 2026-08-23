@@ -19,9 +19,32 @@ EOF_GIT
 printf '#!/bin/sh\nexit 99\n' > "$HOME_DIR/.agents/skills/traceknot/bin/traceknot"
 chmod +x "$BIN_DIR/git" "$HOME_DIR/.agents/skills/traceknot/bin/traceknot"
 DEMO_PATH=$BIN_DIR:$PATH
+OLD_BUN_DIR=$TMP_ROOT/old-bun
+mkdir -p "$OLD_BUN_DIR"
+cat > "$OLD_BUN_DIR/bun" <<'EOF_OLD_BUN'
+#!/bin/sh
+case "${1:-}" in
+    --version) printf '%s\n' '1.3.13'; exit 0 ;;
+    -e) exit 1 ;;
+    *) exit 1 ;;
+esac
+EOF_OLD_BUN
+chmod +x "$OLD_BUN_DIR/bun"
+if PATH=$OLD_BUN_DIR:$DEMO_PATH HOME=$HOME_DIR TRACEKNOT_DEMO_DIR=$TMP_ROOT/old-verify \
+    sh "$ROOT/assets/readme/tapes/verify-setup.sh" >/dev/null 2>&1; then
+    printf '%s\n' 'verify setup unexpectedly accepted Bun 1.3.13' >&2
+    exit 1
+fi
+if PATH=$OLD_BUN_DIR:$DEMO_PATH HOME=$HOME_DIR TRACEKNOT_CODEX_DEMO=$TMP_ROOT/old-codex \
+    sh "$ROOT/assets/readme/tapes/codex-board-setup.sh" >/dev/null 2>&1; then
+    printf '%s\n' 'Codex setup unexpectedly accepted Bun 1.3.13' >&2
+    exit 1
+fi
 
 run_verify_setup() {
-    PATH=$DEMO_PATH HOME=$HOME_DIR TRACEKNOT_DEMO_DIR=$VERIFY_DEMO sh "$ROOT/assets/readme/tapes/verify-setup.sh" >/dev/null
+    PATH=$DEMO_PATH GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgSign GIT_CONFIG_VALUE_0=true \
+        HOME=$HOME_DIR TRACEKNOT_DEMO_DIR=$VERIFY_DEMO \
+        sh "$ROOT/assets/readme/tapes/verify-setup.sh" >/dev/null
     [ -x "$VERIFY_DEMO/traceknot" ]
     cmp -s "$ROOT/skill/bin/traceknot" "$VERIFY_DEMO/traceknot"
     grep -F "$BIN_DIR/git" "$VERIFY_DEMO/check-clean" >/dev/null
@@ -51,7 +74,9 @@ fi
 grep -F '"qaVerdict": "FAIL"' "$DIRTY_OUTPUT" >/dev/null
 grep -F '"obligation:condition:clean-tree"' "$DIRTY_OUTPUT" >/dev/null
 
-PATH=$DEMO_PATH HOME=$HOME_DIR TRACEKNOT_CODEX_DEMO=$CODEX_DEMO sh "$ROOT/assets/readme/tapes/codex-board-setup.sh" >/dev/null
+PATH=$DEMO_PATH GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=commit.gpgSign GIT_CONFIG_VALUE_0=true \
+    HOME=$HOME_DIR TRACEKNOT_CODEX_DEMO=$CODEX_DEMO \
+    sh "$ROOT/assets/readme/tapes/codex-board-setup.sh" >/dev/null
 case "$(uname -s)" in
     Darwin)
         SANDBOX_MODE=$(stat -f '%Lp' "$CODEX_DEMO")

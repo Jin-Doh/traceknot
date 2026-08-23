@@ -6,7 +6,12 @@
 set -eu
 umask 077
 DEMO=${TRACEKNOT_CODEX_DEMO:-/tmp/traceknot-demo-codex}
-BUN=$(command -v bun || printf '%s' '__BUN__')
+BUN=$(command -v bun) || { printf '%s\n' 'codex-board-setup: Bun 1.3.14 or later is required' >&2; exit 1; }
+BUN_VERSION=$("$BUN" --version)
+if ! "$BUN" -e 'const [major, minor, patch] = Bun.version.split(".").map(Number); process.exit(major > 1 || major === 1 && (minor > 3 || minor === 3 && patch >= 14) ? 0 : 1)' >/dev/null 2>&1; then
+    printf '%s\n' "codex-board-setup: Bun 1.3.14 or later is required; found $BUN_VERSION" >&2
+    exit 1
+fi
 GIT=$(command -v git) || { printf '%s\n' 'codex-board-setup: git is required' >&2; exit 1; }
 rm -rf "$DEMO"
 if ! mkdir "$DEMO"; then
@@ -17,7 +22,7 @@ mkdir -p "$DEMO/app/src"
 printf 'export const version = "1.4.2";\n' > "$DEMO/app/src/version.ts"
 "$GIT" -C "$DEMO/app" init -q
 "$GIT" -C "$DEMO/app" add .
-"$GIT" -C "$DEMO/app" -c user.email=demo@traceknot -c user.name=demo commit -qm "add version module"
+"$GIT" -C "$DEMO/app" -c user.email=demo@traceknot -c user.name=demo commit --no-gpg-sign -qm "add version module"
 mkdir -p "$DEMO/home/.agents/skills"
 cp -R skill "$DEMO/home/.agents/skills/traceknot"
 cat > "$DEMO/check-clean" <<EOF_CLEAN
