@@ -26,11 +26,11 @@
     "js-yaml": "3.15.2"
   },
   "devDependencies": {
-    "@babel/parser": "8.0.4",
-    "@types/bun": "1.4.0",
+    "@babel/parser": "8.0.5",
+    "@types/bun": "1.4.2",
     "ajv": "8.20.0",
     "ajv-cli": "5.0.0",
-    "entities": "8.0.0",
+    "entities": "8.1.0",
     "hast-util-to-text": "4.0.2",
     "mdast-util-to-string": "4.0.0",
     "parse5": "8.0.1",
@@ -38,7 +38,7 @@
     "remark-gfm": "4.0.1",
     "remark-parse": "11.0.0",
     "remark-rehype": "11.1.2",
-    "skills": "1.5.23",
+    "skills": "1.5.26",
     "typescript": "7.0.2",
     "unified": "11.0.5",
     "unist-util-visit": "5.1.0",
