@@ -107,13 +107,18 @@ describe("LocalShellCollector", () => {
       const observation = await collectorFor(root, store).collect({
         ...requestFor(root),
         argv: ["-e", script],
-        timeoutMs: 100,
+        // Allow the wrapper, command, and detached descendant to start even
+        // when this suite runs inside the governed self-hosting collector.
+        timeoutMs: 2_000,
       });
       expect(observation.execution.exitStatus).toBe("timed-out");
       expect(observation.actualValues?.timedOut).toBe(true);
       const stdout = observation.artifacts.find(artifact => artifact.path === "stdout");
-      const descendantPid = Number(new TextDecoder().decode(await store.readArtifact(stdout!.digest)));
+      const descendantOutput = new TextDecoder().decode(await store.readArtifact(stdout!.digest));
+      expect(descendantOutput).toMatch(/^[1-9]\d*$/);
+      const descendantPid = Number(descendantOutput);
       expect(Number.isSafeInteger(descendantPid)).toBe(true);
+      expect(descendantPid).toBeGreaterThan(1);
       expect(() => process.kill(descendantPid, 0)).toThrow();
     } finally {
       await cleanup(root, store);

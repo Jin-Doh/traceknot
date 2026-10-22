@@ -3,6 +3,11 @@
 
 set -eu
 
+# These are synthetic local fixtures, not installations to report to a service.
+# Skills documents this opt-out for both telemetry and security-audit requests.
+DISABLE_TELEMETRY=1
+export DISABLE_TELEMETRY
+
 ROOT=$(CDPATH='' cd -P "$(dirname "$0")/.." && pwd)
 SKILLS_CLI=$ROOT/node_modules/.bin/skills
 TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/traceknot-skills-cli.XXXXXX")

@@ -1,7 +1,8 @@
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
+import { parseQaBoardManifest } from "../system/presentation/qa-board-validation";
 
 type YamlObject = Record<string, unknown>;
 
@@ -102,13 +103,17 @@ describe("reusable governed GitHub Action", () => {
     expect(String(artifactInputs.path)).toContain("!${{ steps.prepare.outputs.board-path }}/**/boards");
     expect(String(artifactInputs.path)).toContain("!${{ steps.prepare.outputs.board-path }}/**/boards/**");
     expect(String(artifactInputs.path)).not.toContain("!${{ steps.prepare.outputs.board-path }}\n");
+    expect(artifactInputs["if-no-files-found"]).toBe("error");
     expect(artifactInputs["include-hidden-files"]).toBe(true);
     expect(artifactInputs["retention-days"]).toBe("${{ inputs.artifact-retention-days }}");
     const boardInputs = object(steps[6]?.with, "Board artifact inputs");
     expect(boardInputs.name).toContain("-board-${{ steps.prepare.outputs.invocation-id }}");
     expect(boardInputs.path).toBe("${{ steps.prepare.outputs.board-path }}/**/boards/*-${{ steps.prepare.outputs.invocation-id }}/**");
     expect(boardInputs["if-no-files-found"]).toBe("ignore");
+    expect(boardInputs["include-hidden-files"]).toBe(true);
     expect(boardInputs["retention-days"]).toBe("${{ inputs.board-retention-days }}");
+    const sarifInputs = object(steps[7]?.with, "SARIF upload inputs");
+    expect(sarifInputs.sarif_file).toBe("${{ steps.prepare.outputs.sarif-path }}");
     expect(String(steps[8]?.run)).toContain("rm -rf -- \"$TRACEKNOT_EVIDENCE\"");
     const prepareRun = String(steps[2]?.run);
     expect(prepareRun).toContain('session_id="github-actions-${invocation_id}"');
@@ -148,6 +153,11 @@ describe("reusable governed GitHub Action", () => {
     const workspace = await mkdtemp(join(tmpdir(), "traceknot-action-snapshot-"));
     const runner = await mkdtemp(join(tmpdir(), "traceknot-action-runner-"));
     try {
+      const firstSarif = JSON.stringify({
+        version: "2.1.0",
+        runs: [{ tool: { driver: { name: "first-snapshot" } }, results: [] }],
+      });
+      await writeFile(join(workspace, "report.sarif"), firstSarif);
       await writeFile(join(workspace, "request.json"), '{"version":"first-request"}\n');
       await writeFile(join(workspace, "manifest.json"), '{"version":"first-manifest"}\n');
       git(workspace, ["init", "-q"]);
@@ -155,6 +165,10 @@ describe("reusable governed GitHub Action", () => {
       git(workspace, ["commit", "-qm", "first"]);
       const firstHead = git(workspace, ["rev-parse", "HEAD"]);
 
+      await writeFile(join(workspace, "report.sarif"), JSON.stringify({
+        version: "2.1.0",
+        runs: [{ tool: { driver: { name: "second-snapshot" } }, results: [] }],
+      }));
       await writeFile(join(workspace, "request.json"), '{"version":"second-request"}\n');
       await writeFile(join(workspace, "manifest.json"), '{"version":"second-manifest"}\n');
       git(workspace, ["add", "."]);
@@ -205,7 +219,7 @@ exit "$status"
           TRACEKNOT_ASSURANCE: "release",
           TRACEKNOT_REQUEST: "request.json",
           TRACEKNOT_MANIFEST: "manifest.json",
-          TRACEKNOT_SARIF: "",
+          TRACEKNOT_SARIF: "report.sarif",
           TRACEKNOT_BOARD: "false",
           TRACEKNOT_ARTIFACT_RETENTION_DAYS: "30",
           TRACEKNOT_BOARD_RETENTION_DAYS: "14",
@@ -220,6 +234,10 @@ exit "$status"
           (line: string) => line.split("=", 2),
         ),
       );
+      expect(outputs["head-oid"]).toBe(firstHead);
+      expect(git(workspace, ["rev-parse", "HEAD"])).toBe(secondHead);
+      expect(await readFile(String(outputs["sarif-path"]), "utf8")).toBe(firstSarif);
+      expect((await stat(String(outputs["sarif-path"]))).mode & 0o777).toBe(0o600);
       expect(await readFile(String(outputs["request-path"]), "utf8")).toBe(
         '{"version":"first-request"}\n',
       );
@@ -234,7 +252,56 @@ exit "$status"
     }
   });
 
-  test("retains report and evidence paths when verification fails", async () => {
+  test.each(["untracked.sarif", "missing.sarif", "../outside.sarif", "/absolute.sarif"])(
+    "rejects optional SARIF outside tracked HEAD: %s",
+    async (sarifPath) => {
+      const workspace = await mkdtemp(join(tmpdir(), "traceknot-action-sarif-"));
+      const runner = await mkdtemp(join(tmpdir(), "traceknot-action-runner-"));
+      try {
+        await writeFile(join(workspace, "input.txt"), "tracked fixture\n");
+        git(workspace, ["init", "-q"]);
+        git(workspace, ["add", "."]);
+        git(workspace, ["commit", "-qm", "fixture"]);
+        await writeFile(join(workspace, "untracked.sarif"), '{"version":"2.1.0","runs":[]}');
+        const action = await yaml("action.yml");
+        const prepare = (object(action.runs, "action runs").steps as readonly YamlObject[])[2];
+        const outputPath = join(runner, "github-output.txt");
+        const result = Bun.spawn(["bash", "-c", String(prepare?.run)], {
+          cwd: resolve("."),
+          env: {
+            ...process.env,
+            RUNNER_TEMP: runner,
+            GITHUB_WORKSPACE: workspace,
+            GITHUB_OUTPUT: outputPath,
+            TRACEKNOT_MODE: "self-hosting",
+            TRACEKNOT_ASSURANCE: "release",
+            TRACEKNOT_SARIF: sarifPath,
+            TRACEKNOT_BOARD: "false",
+            TRACEKNOT_ARTIFACT_RETENTION_DAYS: "30",
+            TRACEKNOT_BOARD_RETENTION_DAYS: "14",
+            TRACEKNOT_CLEANUP_LOCAL: "false",
+          },
+          stdout: "ignore",
+          stderr: "pipe",
+        });
+        expect(await result.exited).toBe(64);
+        const stderr = await new Response(result.stderr).text();
+        expect(stderr).toContain(sarifPath.startsWith(".") || sarifPath.startsWith("/")
+          ? "tracked path must stay beneath HEAD"
+          : "tracked path is not a blob in HEAD");
+        expect(await Bun.file(outputPath).exists()).toBe(false);
+        const stagedSarif = await Array.fromAsync(new Bun.Glob("**/report.sarif").scan({ cwd: runner }));
+        expect(stagedSarif).toEqual([]);
+      } finally {
+        await Promise.all([
+          rm(workspace, { recursive: true, force: true }),
+          rm(runner, { recursive: true, force: true }),
+        ]);
+      }
+    },
+  );
+
+  test.each(["false", "true"])("retains failed verification evidence with board=%s", async (board) => {
     const workspace = await mkdtemp(join(tmpdir(), "traceknot-action-workspace-"));
     const runner = await mkdtemp(join(tmpdir(), "traceknot-action-runner-"));
     try {
@@ -276,7 +343,7 @@ exit "$status"
         TRACEKNOT_RUN_ID: "",
         TRACEKNOT_ASSURANCE: "release",
         TRACEKNOT_FORMAT: "json",
-        TRACEKNOT_BOARD: "false",
+        TRACEKNOT_BOARD: board,
         TRACEKNOT_SARIF: "",
         TRACEKNOT_ARTIFACT_RETENTION_DAYS: "30",
         TRACEKNOT_BOARD_RETENTION_DAYS: "14",
@@ -300,6 +367,8 @@ exit "$status"
           (line: string) => line.split("=", 2),
         ),
       );
+      expect(outputs["sarif-path"]).toBe("");
+      expect(await Bun.file(join(String(outputs["evidence-path"]), "inputs", "report.sarif")).exists()).toBe(false);
       const result = Bun.spawn(["bash", "-c", String(verify?.run)], {
         cwd: resolve("."),
         env: {
@@ -312,6 +381,8 @@ exit "$status"
           TRACEKNOT_REQUEST: String(outputs["request-path"]),
           TRACEKNOT_MANIFEST: String(outputs["manifest-path"]),
           TRACEKNOT_EXPECTED_HEAD: String(outputs["head-oid"]),
+          TRACEKNOT_INVOCATION_ID: String(outputs["invocation-id"]),
+          TRACEKNOT_SESSION_ID: String(outputs["session-id"]),
         },
         stdout: "ignore",
         stderr: "pipe",
@@ -329,6 +400,41 @@ exit "$status"
       expect(outputs["evidence-path"]).toContain("traceknot-governed.");
       expect((await stat(String(outputs["evidence-path"]))).mode & 0o077).toBe(0);
       expect((await readdir(join(String(outputs["artifact-path"]), ".objects"))).length).toBeGreaterThan(0);
+
+      // This exercises generated paths against the configured pattern locally,
+      // not the upload-artifact implementation or GitHub's artifact service.
+      const boardInputs = object(actionSteps[6]?.with, "Board artifact inputs");
+      const boardPattern = String(boardInputs.path)
+        .replaceAll("${{ steps.prepare.outputs.board-path }}", String(outputs["board-path"]))
+        .replaceAll("${{ steps.prepare.outputs.invocation-id }}", String(outputs["invocation-id"]));
+      // Bun.Glob requires its literal base directory to exist. Creating an
+      // empty base when Board is disabled lets the same pattern check both cases.
+      await mkdir(String(outputs["board-path"]), { recursive: true });
+      const boardFiles = await Array.fromAsync(new Bun.Glob(boardPattern).scan({
+        cwd: runner,
+        absolute: true,
+        onlyFiles: true,
+        dot: true,
+      }));
+      if (board === "true") {
+        const manifests = boardFiles.filter(path => path.endsWith("/manifest.json"));
+        expect(manifests).toHaveLength(1);
+        const manifestPath = manifests[0]!;
+        const boardManifest = parseQaBoardManifest(JSON.parse(await readFile(manifestPath, "utf8")));
+        expect(boardManifest.verdict).toBe("FAIL");
+        expect(boardManifest.generatedBy.invocationId).toBe(outputs["invocation-id"]);
+        expect(boardManifest.generatedBy.sessionHost).toBe("github-actions");
+        expect(boardManifest.files.some(file => file.path === "index.html")).toBe(true);
+        for (const file of boardManifest.files) {
+          const path = join(dirname(manifestPath), file.path);
+          expect(boardFiles).toContain(path);
+          const bytes = await readFile(path);
+          expect(bytes.byteLength).toBe(file.bytes);
+          expect(new Bun.CryptoHasher("sha256").update(bytes).digest("hex")).toBe(file.sha256);
+        }
+      } else {
+        expect(boardFiles).toEqual([]);
+      }
 
       const traversal = Bun.spawn(["bash", "-c", String(prepare?.run)], {
         cwd: resolve("."),

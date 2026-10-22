@@ -1,0 +1,15 @@
+diff --git a/bin/js-yaml.js b/bin/js-yaml.js
+--- a/bin/js-yaml.js
++++ b/bin/js-yaml.js
+@@ -24,5 +24,10 @@
+ var cli = new argparse.ArgumentParser({
+   prog:     'js-yaml',
+-  version:  require('../package.json').version,
+   addHelp:  true
+ });
++
++// argparse 2 keeps v1 aliases except the deprecated constructor version.
++cli.add_argument('-v', '--version', {
++  action: 'version',
++  version: require('../package.json').version
++});
