@@ -21,7 +21,7 @@
   },
   "overrides": {
     "brace-expansion": "1.1.21",
-    "fast-uri": "3.1.8",
+    "fast-uri": "3.1.9",
     "fast-json-patch": "3.1.1",
     "js-yaml": "3.15.2",
     "argparse": "2.0.1"
