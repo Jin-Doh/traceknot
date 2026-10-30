@@ -152,7 +152,7 @@ When multiple releases are eligible, the highest semantic version is selected. U
 4. download and verify its deterministic archive;
 5. verify GitHub artifact provenance;
 6. safely extract the archive into temporary storage;
-7. invoke `skills@1.5.22` with `--agent universal` in an isolated temporary global or project scope using the exact source commit;
+7. invoke `skills@1.7.2` with `--agent universal` in an isolated temporary global or project scope using the exact source commit;
 8. run the temporary runtime self-check;
 9. compare the complete temporary Skill with the verified `skill/` payload;
 10. persist `pending.json` before invoking the same pinned Skills CLI against the real scope;
