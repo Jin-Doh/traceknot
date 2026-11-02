@@ -21,6 +21,30 @@ function cli(packagePath: string, args: readonly string[], input?: string) {
   };
 }
 
+// glob's post-timeout traversal fix (GHSA-3g3m-2fjr-6pw4) and minimatch's
+// globpart amplification fix (GHSA-g3hv-75wg-m249) only land above the
+// versions this tree used to hoist. `bun audit` runs in the canonical gate, so
+// scan the lockfile for every resolution rather than trusting package.json.
+const RESOLUTION_FLOORS: Readonly<Record<string, string>> = {
+  glob: "14.0.2",
+  minimatch: "11.0.1",
+};
+
+function lockedVersions(lock: string, name: string): string[] {
+  const pattern = new RegExp(`"${name}@([0-9][^"]*)"`, "g");
+  return [...new Set([...lock.matchAll(pattern)].map((match) => match[1]!))];
+}
+
+function compareVersions(left: string, right: string): number {
+  const leftParts = left.split(".").map(Number);
+  const rightParts = right.split(".").map(Number);
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const delta = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (delta !== 0) return delta;
+  }
+  return 0;
+}
+
 describe("CI dependency compatibility", () => {
   // Exercise AJV's actual resolver, not a separately installed fast-uri copy.
   test("keeps malformed URI schemes and hosts from becoming valid references", () => {
@@ -49,6 +73,21 @@ describe("CI dependency compatibility", () => {
     expect(uri.normalize("javascript:alert(1)", options)).toBe("javascript%3Aalert(1)");
     expect(uri.normalize("path/to/file", options)).toBe("path/to/file");
     expect(uri.normalize("a/b:c", options)).toBe("a/b:c");
+  });
+
+  // The AJV CLI glob below expands `{valid,also-valid}` through minimatch and
+  // brace-expansion, so it also guards the resolver swap that removed the old
+  // brace-expansion 1.x override.
+  test("keeps every hoisted glob and minimatch past its traversal advisory", async () => {
+    const lock = await Bun.file(join(import.meta.dir, "../bun.lock")).text();
+    for (const [name, floor] of Object.entries(RESOLUTION_FLOORS)) {
+      const versions = lockedVersions(lock, name);
+      expect(versions.length).toBeGreaterThan(0);
+      for (const version of versions) {
+        expect({ name, version, floor, ok: compareVersions(version, floor) >= 0 })
+          .toEqual({ name, version, floor, ok: true });
+      }
+    }
   });
 
   test("keeps js-yaml's legacy argparse CLI working without sprintf-js", async () => {
