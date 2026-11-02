@@ -1,0 +1,17 @@
+diff --git a/dist/commands/util.js b/dist/commands/util.js
+--- a/dist/commands/util.js
++++ b/dist/commands/util.js
+@@ -14,8 +14,11 @@
+         _getFiles(args);
+     return files;
+     function _getFiles(fileOrPattern) {
+-        if (glob.hasMagic(fileOrPattern)) {
+-            const dataFiles = glob.sync(fileOrPattern, { cwd: process.cwd() });
++        // glob 14 stopped reporting brace expansion as magic, so let the
++        // expansion decide: a pattern that resolves is a glob, everything else
++        // is read as a literal path.
++        const dataFiles = glob.sync(fileOrPattern, { cwd: process.cwd() });
++        if (dataFiles.length) {
+             files = files.concat(dataFiles);
+         }
+         else {
