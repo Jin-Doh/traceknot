@@ -28,14 +28,14 @@
     "minimatch": "11.0.3"
   },
   "devDependencies": {
-    "@babel/parser": "8.0.8",
+    "@babel/parser": "8.0.10",
     "@types/bun": "1.4.4",
     "ajv": "8.20.0",
     "ajv-cli": "5.0.0",
     "entities": "8.1.0",
     "hast-util-to-text": "4.0.3",
     "mdast-util-to-string": "4.0.0",
-    "parse5": "8.0.1",
+    "parse5": "8.1.0",
     "rehype-raw": "7.0.0",
     "remark-gfm": "4.0.1",
     "remark-parse": "11.0.0",
