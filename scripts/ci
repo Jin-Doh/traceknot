@@ -31,6 +31,9 @@ if [ "$ACTUAL_BUN" != "$EXPECTED_BUN" ]; then
     exit 2
 fi
 
+printf '%s\n' '==> Skills CLI pin contract'
+bun scripts/sync-skills-pin.ts --check
+
 printf '%s\n' '==> locked dependencies'
 bun install --frozen-lockfile --ignore-scripts
 
